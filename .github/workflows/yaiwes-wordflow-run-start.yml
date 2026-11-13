@@ -1,0 +1,160 @@
+name: YAIWES Wordflow RUN Start
+
+on:
+  workflow_dispatch:
+    inputs:
+      instruction:
+        description: 'Literal task/instructions for this new isolated LOOP run'
+        required: true
+        type: string
+      project_id:
+        description: 'Project destination id (safe slug)'
+        required: true
+        type: string
+      profile:
+        description: 'Completion profile'
+        required: true
+        default: general
+        type: choice
+        options:
+          - general
+          - backend
+          - frontend
+      manifest_path:
+        description: 'Optional JSON manifest inside workspace/incoming (1-100 text files)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-wordflow-run-start-${{ github.event.inputs.project_id }}
+  cancel-in-progress: false
+
+jobs:
+  start-run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact Wordflow scope
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-wordflow-run-start.yml
+            /➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/**
+            /➡️📂 Wordflow LOOP Yaiwes/workspace/**
+            /➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json
+
+      - name: Verify global truth before RUN
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          p='➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json'
+          x=json.load(open(p,encoding='utf-8'))
+          assert x['status']=='CODE_GRAPH_CLOSED_VERIFIED_30_OF_30', x['status']
+          assert x['new_phase']['gaps_closed']==30, x['new_phase']
+          print('GLOBAL_CODE_GRAPH_PRE_RUN=PASS_30_OF_30')
+          PY
+
+      - name: Validate optional manifest path
+        id: manifest
+        shell: bash
+        env:
+          MANIFEST_INPUT: ${{ github.event.inputs.manifest_path }}
+        run: |
+          set -euo pipefail
+          m="${MANIFEST_INPUT:-}"
+          if [ -z "$m" ]; then
+            echo 'arg=' >> "$GITHUB_OUTPUT"
+            echo 'RUN_INPUT_MODE=LITERAL'
+            exit 0
+          fi
+          case "$m" in
+            *'..'*|/*) echo 'MANIFEST_PATH_UNSAFE' >&2; exit 31;;
+          esac
+          prefix='➡️📂 Wordflow LOOP Yaiwes/workspace/incoming/'
+          case "$m" in
+            "$prefix"*) ;;
+            *) echo 'MANIFEST_MUST_BE_INSIDE_WORKSPACE_INCOMING' >&2; exit 32;;
+          esac
+          test -f "$m"
+          printf 'arg=--manifest=%s\n' "$m" >> "$GITHUB_OUTPUT"
+          echo 'RUN_INPUT_MODE=MANIFEST'
+
+      - name: Build isolated run plan
+        shell: bash
+        env:
+          INSTRUCTION: ${{ github.event.inputs.instruction }}
+          PROJECT_ID: ${{ github.event.inputs.project_id }}
+          PROFILE: ${{ github.event.inputs.profile }}
+          MANIFEST_ARG: ${{ steps.manifest.outputs.arg }}
+        run: |
+          set -euo pipefail
+          ROOT='➡️📂 Wordflow LOOP Yaiwes'
+          RUN_ID="run-${GITHUB_RUN_ID}"
+          cmd=(python3 "$ROOT/runtime/src/core/run_launcher.py"
+            --instruction "$INSTRUCTION"
+            --project-id "$PROJECT_ID"
+            --profile "$PROFILE"
+            --run-id "$RUN_ID"
+            --authorized-root "$ROOT"
+            --mutation-authorized)
+          if [ -n "${MANIFEST_ARG:-}" ]; then
+            m="${MANIFEST_ARG#--manifest=}"
+            cmd+=(--manifest "$m")
+          fi
+          "${cmd[@]}"
+          test -f "$ROOT/workspace/runs/$RUN_ID/CRAZY-WALL.json"
+          test -f "$ROOT/workspace/runs/$RUN_ID/DAG.json"
+          test -f "$ROOT/workspace/runs/$RUN_ID/STATE.json"
+          python3 - <<PY
+          import json
+          root='$ROOT/workspace/runs/$RUN_ID'
+          s=json.load(open(root+'/STATE.json',encoding='utf-8'))
+          d=json.load(open(root+'/DAG.json',encoding='utf-8'))
+          assert s['status']=='READY'
+          assert s['global_code_graph_30_of_30_untouched'] is True
+          assert d['schema']=='yaiwes.run-dag/v1'
+          print('RUN_PLAN_READBACK=PASS run_id='+s['run_id'])
+          PY
+
+      - name: Persist run artifacts no force
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='➡️📂 Wordflow LOOP Yaiwes'
+          RUN_ID="run-${GITHUB_RUN_ID}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$ROOT/workspace/runs/$RUN_ID"
+          git commit -m "run(wordflow): initialize isolated $RUN_ID"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+
+      - name: Fresh remote truth/readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='➡️📂 Wordflow LOOP Yaiwes'
+          RUN_ID="run-${GITHUB_RUN_ID}"
+          git fetch origin main
+          git show "origin/main:$ROOT/workspace/runs/$RUN_ID/STATE.json" >/tmp/run-state.json
+          git show "origin/main:$ROOT/Crazy Wall Orquestador/STATE.json" >/tmp/global-state.json
+          python3 - <<'PY'
+          import json
+          run=json.load(open('/tmp/run-state.json'))
+          glob=json.load(open('/tmp/global-state.json'))
+          assert run['status']=='READY'
+          assert run['global_code_graph_30_of_30_untouched'] is True
+          assert glob['status']=='CODE_GRAPH_CLOSED_VERIFIED_30_OF_30'
+          assert glob['new_phase']['gaps_closed']==30
+          print('YAIWES_RUN_START=PASS_READY_GLOBAL_30_OF_30_UNTOUCHED')
+          PY

@@ -1,0 +1,75 @@
+/* Track layout sizing. Keep in sync with LABEL_HEIGHT_PX / TRACK_HEIGHT_PX. */
+.timelineContainer {
+  --label-height: 18px;
+  --track-height: 32px;
+  width: 100%;
+}
+
+.timelineInner {
+  position: relative;
+  height: calc(var(--label-height) + var(--track-height));
+}
+
+.track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--label-height);
+  height: var(--track-height);
+  overflow: hidden;
+}
+
+.tickWrapper {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+
+.tickOuter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+}
+
+.tickLabel {
+  height: 16px;
+  line-height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tickWrapper:hover .innerTick {
+  width: 3px;
+}
+
+.innerTick {
+  width: 1px;
+  height: 30px;
+  border-radius: 1px;
+  background: var(--color-accent-green);
+}
+
+.innerTick.error {
+  background: var(--color-accent-red);
+}
+
+.innerTick.skipped {
+  background: var(--color-accent-gray);
+}
+
+.innerTick.mixed {
+  background: linear-gradient(90deg, var(--color-accent-red) 50%, var(--color-accent-green) 50%);
+}
+
+.axisTick {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--color-keyline-default);
+}

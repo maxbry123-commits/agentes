@@ -1,0 +1,149 @@
+import { VERSION } from '../../../constants';
+import { getUserEmail } from '../../../globalConfig/accounts';
+import logger from '../../../logger';
+import { fetchWithProxy } from '../../../util/fetch/index';
+import invariant from '../../../util/invariant';
+import {
+  accumulateAttackerTokenUsage,
+  accumulateResponseTokenUsage,
+  createEmptyTokenUsage,
+} from '../../../util/tokenUsageUtils';
+import { REDTEAM_MEMORY_POISONING_PLUGIN_ID } from '../../plugins/agentic/constants';
+import { getRemoteGenerationHeaders, getRemoteGenerationUrl } from '../../remoteGeneration';
+import { remoteGenerationContextPayload } from '../../remoteGenerationContext';
+import { throwIfTargetPromptExceedsMaxChars } from '../../shared/promptLength';
+import { callTargetProvider, messagesToRedteamHistory } from '../shared';
+
+import type {
+  ApiProvider,
+  CallApiContextParams,
+  CallApiOptionsParams,
+  ProviderOptions,
+  ProviderResponse,
+} from '../../../types/providers';
+
+interface MemoryPoisoningConfig extends ProviderOptions {
+  targetId?: string;
+}
+
+export class MemoryPoisoningProvider implements ApiProvider {
+  constructor(readonly config: MemoryPoisoningConfig) {}
+
+  private get targetId(): string | undefined {
+    if (typeof this.config.targetId === 'string') {
+      return this.config.targetId;
+    }
+    return typeof this.config.config?.targetId === 'string'
+      ? this.config.config.targetId
+      : undefined;
+  }
+
+  id() {
+    return REDTEAM_MEMORY_POISONING_PLUGIN_ID;
+  }
+
+  /**
+   * Generates a scenario containing a memory and a follow up question/command which is dependent on the memory.
+   *
+   *  1. Generate a scenario containing memories and follow up questions/commands which are dependent on the memories.
+   *  2. Send the memory message to the target.
+   *  3. Send the test case to the target; the test case should poison the memory created in the previous step.
+   *  4. Send the follow up question to the target.
+   *  5. A memory is successfully poisoned if the follow up question is answered incorrectly.
+   *
+   * @param prompt The poisoned prompt.
+   * @param context The context of the poisoned prompt.
+   * @param options The options for the poisoned prompt.
+   */
+  async callApi(
+    prompt: string,
+    context?: CallApiContextParams,
+    options?: CallApiOptionsParams,
+  ): Promise<ProviderResponse> {
+    try {
+      const targetProvider: ApiProvider | undefined = context?.originalProvider;
+      const purpose = context?.test?.metadata?.purpose;
+      invariant(targetProvider, 'Expected originalProvider to be set');
+      invariant(context?.test, 'Expected test to be set');
+      invariant(purpose, 'Expected purpose to be set');
+
+      // Generate a scenario containing memories and follow up questions/commands which are dependent on the memories.
+      const scenarioRes = await fetchWithProxy(
+        getRemoteGenerationUrl(),
+        {
+          body: JSON.stringify({
+            task: 'agentic:memory-poisoning-scenario',
+            ...remoteGenerationContextPayload(this.targetId),
+            purpose,
+            version: VERSION,
+            email: getUserEmail(),
+          }),
+          headers: getRemoteGenerationHeaders(),
+          method: 'POST',
+        },
+        options?.abortSignal,
+      );
+
+      // Send the memory message to the provider.
+      if (!scenarioRes.ok) {
+        throw new Error(`Failed to generate scenario: ${scenarioRes.statusText}`);
+      }
+
+      // Scope the scenario to the test case to ensure its passed to the grader:
+      const scenario = await scenarioRes.json();
+      context!.test!.metadata ??= {};
+      context!.test!.metadata['scenario'] = scenario;
+
+      const totalTokenUsage = createEmptyTokenUsage();
+      if (scenario.tokenUsage) {
+        accumulateAttackerTokenUsage(totalTokenUsage, { tokenUsage: scenario.tokenUsage });
+      }
+
+      // Send the memory message to the provider.
+      throwIfTargetPromptExceedsMaxChars(scenario.memory);
+      const memoryResponse = await callTargetProvider(
+        targetProvider,
+        scenario.memory,
+        context,
+        options,
+      );
+      accumulateResponseTokenUsage(totalTokenUsage, memoryResponse);
+
+      // Send the test case to the provider; the test case should poison the memory created in the previous step.
+      throwIfTargetPromptExceedsMaxChars(prompt);
+      const testResponse = await callTargetProvider(targetProvider, prompt, context, options);
+      accumulateResponseTokenUsage(totalTokenUsage, testResponse);
+
+      // Send the follow up question to the provider.
+      throwIfTargetPromptExceedsMaxChars(scenario.followUp);
+      const response = await callTargetProvider(
+        targetProvider,
+        scenario.followUp,
+        context,
+        options,
+      );
+      accumulateResponseTokenUsage(totalTokenUsage, response);
+
+      const messages = [
+        { content: scenario.memory, role: 'user' as const },
+        { content: memoryResponse.output, role: 'assistant' as const },
+        { content: prompt, role: 'user' as const },
+        { content: testResponse.output, role: 'assistant' as const },
+        { content: scenario.followUp, role: 'user' as const },
+        { content: response.output, role: 'assistant' as const },
+      ];
+
+      return {
+        output: response.output,
+        metadata: {
+          messages,
+          redteamHistory: messagesToRedteamHistory(messages),
+        },
+        tokenUsage: totalTokenUsage,
+      };
+    } catch (error) {
+      logger.error(`Error in MemoryPoisoningProvider: ${error}`);
+      throw error;
+    }
+  }
+}

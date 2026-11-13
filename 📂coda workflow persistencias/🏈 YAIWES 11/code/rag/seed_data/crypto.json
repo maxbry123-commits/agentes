@@ -1,0 +1,44 @@
+[
+  {
+    "title": "RSA 攻击方法",
+    "content": "RSA 常见攻击: 1) Wiener 攻击: d < N^0.25 时通过连分数求 d; 2) Fermat 分解: p 和 q 接近时 N 可分解; 3) 共模攻击: 相同 n 不同 e, 通过扩展欧几里得求明文; 4) Hastad 广播攻击: 相同 e 多个 n, 用 CRT 组合后开 e 次方; 5) 低指数攻击: e 很小 (如 e=3) 且 m 较小时 m^e < N, 直接开方; 6) Boneh-Durfee: d < N^0.292 时改进 Wiener; 7) 选择密文攻击: 利用 RSA 的同态性质. 常用工具: RsaCtfTool, openssl, Python (gmpy2, pycryptodome).",
+    "tags": "crypto,rsa,wiener,fermat,共模攻击,hastad",
+    "tools": "crypto_attacks, execute_python_code, execute_shell_command",
+    "checklist": "1. 获取 n,e,c; 2. 检查 n 是否可分解 (factor.n, factordb); 3. 尝试常见攻击; 4. 检查 e 大小 (小指数/大指数); 5. 检查有无额外信息 (p,q,d 泄露)"
+  },
+  {
+    "title": "哈希长度扩展攻击",
+    "content": "Hash Length Extension: 已知 H(message) 和消息长度, 可在不知道密钥的情况下构造 H(message || padding || extra). 适用算法: MD5, SHA1, SHA256 (Merkle-Damgård 结构). 攻击场景: Web 认证绕过 (如 'key=secret&data=flag' 的 MAC). 工具: Python hlextend 库, hashpumpy. 注意: SHA3 (Keccak) 和 Blake2 不受长度扩展攻击. 防御: 使用 HMAC 结构替代简单的 hash(secret || message).",
+    "tags": "crypto,hash,length extension,sha256,md5",
+    "tools": "crypto_attacks, execute_python_code",
+    "checklist": "1. 确认 hash 算法 (Merkle-Damgård); 2. 获取已知哈希; 3. 猜测密钥长度; 4. 构造扩展消息; 5. 利用新的有效哈希"
+  },
+  {
+    "title": "AES-CBC 比特翻转攻击",
+    "content": "CBC 模式: C_i = E(P_i XOR C_{i-1}), P_i = D(C_i) XOR C_{i-1}. 比特翻转原理: 修改 C_{i-1} 的第 j 字节会改变 P_i 的第 j 字节. 可精确控制解密后的明文内容. 应用: 修改 Cookie/Token 中的用户角色. 公式: new_C_{i-1}[j] = C_{i-1}[j] XOR old_P_i[j] XOR new_P_i[j]. 注意: 修改第一个块 (IV) 会影响 P_1. 工具: Python 自定义脚本, crypto_attacks 工具的 cbc_flip 动作.",
+    "tags": "crypto,cbc,bit flipping,aes,padding oracle",
+    "tools": "crypto_attacks, execute_python_code",
+    "checklist": "1. 获取密文; 2. 识别目标明文位置; 3. 计算翻转后的密文; 4. 发送验证"
+  },
+  {
+    "title": "Padding Oracle 攻击",
+    "content": "Padding Oracle: 服务器泄露 padding 是否正确的信息 (如 200 vs 500,  'invalid padding' 错误). 利用: 逐字节爆破密文块的中间值 (intermediate value). 流程: 对 C_{n-1}[i] 从 0x00 到 0xff 逐字节尝试, 观察 padding 错误变化. 第 1 字节爆破完成后 padding 为 0x01, 第 2 字节为 0x02, 以此类推. 工具: padbuster, Python 自定义实现. 所有现代加密库都已防御此攻击, 但 CTF 中仍会出现.",
+    "tags": "crypto,padding oracle,aes-cbc",
+    "tools": "execute_python_code, network_tool",
+    "checklist": "1. 检测是否暴露 padding 错误信息; 2. 获取密文; 3. 逐字节爆破中间值; 4. 解密全部数据"
+  },
+  {
+    "title": "古典密码破解",
+    "content": "古典密码破解: 1) 凯撒密码: 暴力 ROT 0-25, 根据词频判断 (英文常见字母 e,t,a,o,i,n); 2) 维吉尼亚密码: Kasiski 测试找密钥长度, 重合指数 (IC ≈ 0.065 英文) 验证, 频率分析找密钥; 3) 仿射密码: E(x)=(ax+b) mod 26, 需 gcd(a,26)=1, 共 12*26=312 种可能可爆破; 4) Atbash: A↔Z, B↔Y; 5) 培根密码: 5 位二进制代表字母; 6) Playfair: 5x5 矩阵. 工具: codec_tool (自动检测), cyberchef, dcode.fr.",
+    "tags": "crypto,classical,caesar,vigenere,affine,atbash",
+    "tools": "codec_tool, crypto_attacks",
+    "checklist": "1. 观察字符集 (字母/数字/符号); 2. 尝试常见编码; 3. 频率分析; 4. 尝试自动破解工具"
+  },
+  {
+    "title": "离散对数与 Diffie-Hellman",
+    "content": "离散对数问题: 给定 g, p, g^x mod p = h, 求 x. 攻击方法: 1) 小步大步 (Baby-step giant-step): O(√p) 时间; 2) Pollard's rho: O(√p) 时间, 内存更小; 3) Pohlig-Hellman: p-1 有小因子时有效; 4) 静态 DH: 如果 g=1 或 g=p-1, 可轻松求解. 工具: SageMath (discrete_log), Python sympy. CTF 常用: p 很小直接暴力, 或 p-1 平滑用 Pohlig-Hellman.",
+    "tags": "crypto,dh,diffie-hellman,discrete log,pohlig-hellman",
+    "tools": "execute_python_code, execute_shell_command (sage)",
+    "checklist": "1. 检查 p 大小; 2. 检查 p-1 因子分解; 3. 选择合适的攻击; 4. 计算私钥 → 解密"
+  }
+]

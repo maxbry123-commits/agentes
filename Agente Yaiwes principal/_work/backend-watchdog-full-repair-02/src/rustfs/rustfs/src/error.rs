@@ -1,0 +1,1401 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::storage_api::error::contract::{StorageErrorCode, range::HTTPRangeError};
+use crate::storage_api::error::{PoolMetadataError, QuotaError, StorageError};
+use http::StatusCode;
+use rustfs_kms::KmsUnavailableError;
+use s3s::{S3Error, S3ErrorCode};
+
+const MAX_VERSIONS_EXCEEDED_CODE: &str = "MaxVersionsExceeded";
+const MAX_VERSIONS_EXCEEDED_MESSAGE: &str = "You've exceeded the limit on the number of versions you can create on this object";
+
+/// S3 error code for a request that names a KMS key the KMS does not hold.
+pub const KMS_KEY_NOT_FOUND_ERROR_CODE: &str = "KMS.NotFoundException";
+
+/// HTTP status of the error codes s3s cannot derive on its own.
+///
+/// s3s answers `None` for every `Custom` code, which the response layer turns
+/// into a 500; a code that means "your request named something that does not
+/// exist" has to say so itself.
+fn custom_error_status(code: &S3ErrorCode) -> Option<StatusCode> {
+    match code {
+        S3ErrorCode::Custom(custom) if &**custom == KMS_KEY_NOT_FOUND_ERROR_CODE || &**custom == MAX_VERSIONS_EXCEEDED_CODE => {
+            Some(StatusCode::BAD_REQUEST)
+        }
+        _ => None,
+    }
+}
+
+/// Marks a request body that exceeded a presigned upload size capability.
+///
+/// This marker must survive the body-reader and storage layers so the client
+/// receives `EntityTooLarge` instead of a generic internal error.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct UploadLimitExceeded {
+    pub limit: u64,
+}
+
+impl std::fmt::Display for UploadLimitExceeded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "upload exceeds the maximum content length of {} bytes", self.limit)
+    }
+}
+
+impl std::error::Error for UploadLimitExceeded {}
+
+/// Marks a server-side object/source reader failure that must not be reported as
+/// a malformed client request body.
+#[derive(Debug)]
+pub(crate) struct ServerSideSourceReadError {
+    operation: &'static str,
+    source: std::io::Error,
+}
+
+impl ServerSideSourceReadError {
+    pub(crate) const fn new(operation: &'static str, source: std::io::Error) -> Self {
+        Self { operation, source }
+    }
+}
+
+impl std::fmt::Display for ServerSideSourceReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} source read failed: {}", self.operation, self.source)
+    }
+}
+
+impl std::error::Error for ServerSideSourceReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
+#[derive(Debug)]
+pub struct ApiError {
+    pub code: S3ErrorCode,
+    pub message: String,
+    pub source: Option<Box<dyn std::error::Error + Send + Sync>>,
+}
+
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for ApiError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.source.as_deref().map(|source| source as _)
+    }
+}
+
+/// Only bounded classifications are safe to include in routine diagnostics.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct ApiErrorDiagnostic {
+    pub storage_code: Option<StorageErrorCode>,
+    pub io_kind: Option<std::io::ErrorKind>,
+    pub rpc_code: Option<tonic::Code>,
+    pub pool_metadata: Option<PoolMetadataDiagnostic>,
+    pub truncated: bool,
+}
+
+/// Safe projection of local metadata failure context, without operation text or sources.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PoolMetadataDiagnostic {
+    pub reason: &'static str,
+    pub phase: &'static str,
+    pub since_unix_secs: i64,
+}
+
+impl From<&PoolMetadataError> for PoolMetadataDiagnostic {
+    fn from(context: &PoolMetadataError) -> Self {
+        Self {
+            reason: context.kind.as_str(),
+            phase: context.phase,
+            since_unix_secs: context.since.unix_timestamp(),
+        }
+    }
+}
+
+impl ApiError {
+    pub(crate) fn diagnostic(&self) -> ApiErrorDiagnostic {
+        let mut diagnostic = ApiErrorDiagnostic::default();
+        let mut current = std::error::Error::source(self);
+        for _ in 0..16 {
+            let Some(error) = current else {
+                return diagnostic;
+            };
+            if let Some(storage) = error.downcast_ref::<StorageError>() {
+                diagnostic.storage_code = Some(storage.code());
+            }
+            if let Some(status) = error.downcast_ref::<tonic::Status>() {
+                diagnostic.rpc_code = Some(status.code());
+            }
+            if diagnostic.pool_metadata.is_none()
+                && let Some(context) = error.downcast_ref::<PoolMetadataError>()
+            {
+                diagnostic.pool_metadata = Some(context.into());
+            }
+            current = if let Some(io) = error.downcast_ref::<std::io::Error>() {
+                diagnostic.io_kind = Some(io.kind());
+                // io::Error::source can skip the wrapped error itself.
+                io.get_ref().map(|source| source as &(dyn std::error::Error + 'static))
+            } else {
+                error.source()
+            };
+        }
+        diagnostic.truncated = current.is_some();
+        diagnostic
+    }
+
+    /// Access-denied error with the exact message emitted by the authorization
+    /// paths in `storage::access`; callers there match on the code only.
+    pub fn access_denied() -> Self {
+        ApiError {
+            code: S3ErrorCode::AccessDenied,
+            message: "Access Denied".to_string(),
+            source: None,
+        }
+    }
+
+    pub fn service_unavailable() -> Self {
+        ApiError {
+            code: S3ErrorCode::ServiceUnavailable,
+            message: Self::error_code_to_message(&S3ErrorCode::ServiceUnavailable),
+            source: None,
+        }
+    }
+
+    pub fn invalid_request(message: impl std::fmt::Display) -> Self {
+        ApiError {
+            code: S3ErrorCode::InvalidRequest,
+            message: message.to_string(),
+            source: None,
+        }
+    }
+
+    pub fn other<E>(error: E) -> Self
+    where
+        E: std::fmt::Display + Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        ApiError {
+            code: S3ErrorCode::InternalError,
+            message: error.to_string(),
+            source: Some(error.into()),
+        }
+    }
+
+    pub fn error_code_to_message(code: &S3ErrorCode) -> String {
+        match code {
+            S3ErrorCode::InvalidRequest => "Invalid Request".to_string(),
+            S3ErrorCode::InvalidArgument => "Invalid argument".to_string(),
+            S3ErrorCode::InvalidStorageClass => "Invalid storage class.".to_string(),
+            S3ErrorCode::AccessDenied => "Access Denied.".to_string(),
+            S3ErrorCode::BadDigest => "The Content-Md5 you specified did not match what we received.".to_string(),
+            S3ErrorCode::EntityTooSmall => "Your proposed upload is smaller than the minimum allowed object size.".to_string(),
+            S3ErrorCode::EntityTooLarge => "Your proposed upload exceeds the maximum allowed object size.".to_string(),
+            S3ErrorCode::InternalError => "We encountered an internal error, please try again.".to_string(),
+            S3ErrorCode::InvalidAccessKeyId => "The Access Key Id you provided does not exist in our records.".to_string(),
+            S3ErrorCode::InvalidBucketName => "The specified bucket is not valid.".to_string(),
+            S3ErrorCode::InvalidDigest => "The Content-Md5 you specified is not valid.".to_string(),
+            S3ErrorCode::InvalidRange => "The requested range is not satisfiable".to_string(),
+            S3ErrorCode::MalformedXML => "The XML you provided was not well-formed or did not validate against our published schema.".to_string(),
+            S3ErrorCode::MissingContentLength => "You must provide the Content-Length HTTP header.".to_string(),
+            S3ErrorCode::MissingSecurityHeader => "Your request was missing a required header".to_string(),
+            S3ErrorCode::MissingRequestBodyError => "Request body is empty.".to_string(),
+            S3ErrorCode::NoSuchBucket => "The specified bucket does not exist".to_string(),
+            S3ErrorCode::NoSuchBucketPolicy => "The bucket policy does not exist".to_string(),
+            S3ErrorCode::NoSuchLifecycleConfiguration => "The lifecycle configuration does not exist".to_string(),
+            S3ErrorCode::NoSuchKey => "The specified key does not exist.".to_string(),
+            S3ErrorCode::NoSuchUpload => "The specified multipart upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed.".to_string(),
+            S3ErrorCode::NoSuchVersion => "The specified version does not exist.".to_string(),
+            S3ErrorCode::NotImplemented => "A header you provided implies functionality that is not implemented".to_string(),
+            S3ErrorCode::PreconditionFailed => "At least one of the pre-conditions you specified did not hold".to_string(),
+            S3ErrorCode::SignatureDoesNotMatch => "The request signature we calculated does not match the signature you provided. Check your key and signing method.".to_string(),
+            S3ErrorCode::MethodNotAllowed => "The specified method is not allowed against this resource.".to_string(),
+            S3ErrorCode::InvalidPart => "One or more of the specified parts could not be found.  The part may not have been uploaded, or the specified entity tag may not match the part's entity tag.".to_string(),
+            S3ErrorCode::InvalidPartOrder => "The list of parts was not in ascending order. The parts list must be specified in order by part number.".to_string(),
+            S3ErrorCode::InvalidObjectState => "The operation is not valid for the current state of the object.".to_string(),
+            S3ErrorCode::AuthorizationHeaderMalformed => "The authorization header is malformed; the region is wrong; expecting 'us-east-1'.".to_string(),
+            S3ErrorCode::MalformedPOSTRequest => "The body of your POST request is not well-formed multipart/form-data.".to_string(),
+            S3ErrorCode::BucketNotEmpty => "The bucket you tried to delete is not empty".to_string(),
+            S3ErrorCode::BucketAlreadyExists => "The requested bucket name is not available. The bucket namespace is shared by all users of the system. Please select a different name and try again.".to_string(),
+            S3ErrorCode::BucketAlreadyOwnedByYou => "Your previous request to create the named bucket succeeded and you already own it.".to_string(),
+            S3ErrorCode::AllAccessDisabled => "All access to this resource has been disabled.".to_string(),
+            S3ErrorCode::InvalidPolicyDocument => "The content of the form does not meet the conditions specified in the policy document.".to_string(),
+            S3ErrorCode::IncompleteBody => "You did not provide the number of bytes specified by the Content-Length HTTP header.".to_string(),
+            S3ErrorCode::RequestTimeTooSkewed => "The difference between the request time and the server's time is too large.".to_string(),
+            S3ErrorCode::InvalidRegion => "Region does not match.".to_string(),
+            S3ErrorCode::SlowDown => "Resource requested is unreadable, please reduce your request rate".to_string(),
+            S3ErrorCode::KeyTooLongError => "Your key is too long".to_string(),
+            S3ErrorCode::NoSuchTagSet => "The TagSet does not exist".to_string(),
+            S3ErrorCode::ObjectLockConfigurationNotFoundError => "Object Lock configuration does not exist for this bucket".to_string(),
+            S3ErrorCode::InvalidBucketState => "Object Lock configuration cannot be enabled on existing buckets".to_string(),
+            S3ErrorCode::NoSuchCORSConfiguration => "The CORS configuration does not exist".to_string(),
+            S3ErrorCode::NoSuchWebsiteConfiguration => "The specified bucket does not have a website configuration".to_string(),
+            S3ErrorCode::NoSuchObjectLockConfiguration => "The specified object does not have a ObjectLock configuration".to_string(),
+            S3ErrorCode::MetadataTooLarge => "Your metadata headers exceed the maximum allowed metadata size.".to_string(),
+            S3ErrorCode::ServiceUnavailable => "The service is unavailable. Please retry.".to_string(),
+            S3ErrorCode::Busy => "The service is unavailable. Please retry.".to_string(),
+            S3ErrorCode::EmptyRequestBody => "Request body cannot be empty.".to_string(),
+            S3ErrorCode::UnauthorizedAccess => "You are not authorized to perform this operation".to_string(),
+            S3ErrorCode::ExpressionTooLong => "The SQL expression is too long: The maximum byte-length for the SQL expression is 256 KB.".to_string(),
+            S3ErrorCode::IllegalSqlFunctionArgument => "Illegal argument was used in the SQL function.".to_string(),
+            S3ErrorCode::InvalidKeyPath => "Key path in the SQL expression is invalid.".to_string(),
+            S3ErrorCode::InvalidCompressionFormat => "The file is not in a supported compression format. Only GZIP is supported at this time.".to_string(),
+            S3ErrorCode::InvalidFileHeaderInfo => "The FileHeaderInfo is invalid. Only NONE, USE, and IGNORE are supported.".to_string(),
+            S3ErrorCode::InvalidJsonType => "The JsonType is invalid. Only DOCUMENT and LINES are supported at this time.".to_string(),
+            S3ErrorCode::InvalidQuoteFields => "The QuoteFields is invalid. Only ALWAYS and ASNEEDED are supported.".to_string(),
+            S3ErrorCode::InvalidRequestParameter => "The value of a parameter in SelectRequest element is invalid. Check the service API documentation and try again.".to_string(),
+            S3ErrorCode::InvalidDataSource => "Invalid data source type. Only CSV and JSON are supported at this time.".to_string(),
+            S3ErrorCode::InvalidExpressionType => "The ExpressionType is invalid. Only SQL expressions are supported at this time.".to_string(),
+            S3ErrorCode::InvalidDataType => "The SQL expression contains an invalid data type.".to_string(),
+            S3ErrorCode::InvalidTextEncoding => "Invalid encoding type. Only UTF-8 encoding is supported at this time.".to_string(),
+            S3ErrorCode::InvalidTableAlias => "The SQL expression contains an invalid table alias.".to_string(),
+            S3ErrorCode::MissingRequiredParameter => "The SelectRequest entity is missing a required parameter. Check the service documentation and try again.".to_string(),
+            S3ErrorCode::ObjectSerializationConflict => "The SelectRequest entity can only contain one of CSV or JSON. Check the service documentation and try again.".to_string(),
+            S3ErrorCode::UnsupportedSqlOperation => "Encountered an unsupported SQL operation.".to_string(),
+            S3ErrorCode::UnsupportedSqlStructure => "Encountered an unsupported SQL structure. Check the SQL Reference.".to_string(),
+            S3ErrorCode::UnsupportedSyntax => "Encountered invalid syntax.".to_string(),
+            S3ErrorCode::UnsupportedRangeHeader => "Range header is not supported for this operation.".to_string(),
+            S3ErrorCode::LexerInvalidChar => "The SQL expression contains an invalid character.".to_string(),
+            S3ErrorCode::LexerInvalidOperator => "The SQL expression contains an invalid literal.".to_string(),
+            S3ErrorCode::LexerInvalidLiteral => "The SQL expression contains an invalid operator.".to_string(),
+            S3ErrorCode::LexerInvalidIONLiteral => "The SQL expression contains an invalid operator.".to_string(),
+            S3ErrorCode::ParseExpectedDatePart => "Did not find the expected date part in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedKeyword => "Did not find the expected keyword in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedTokenType => "Did not find the expected token in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpected2TokenTypes => "Did not find the expected token in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedNumber => "Did not find the expected number in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedRightParenBuiltinFunctionCall => "Did not find the expected right parenthesis character in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedTypeName => "Did not find the expected type name in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedWhenClause => "Did not find the expected WHEN clause in the SQL expression. CASE is not supported.".to_string(),
+            S3ErrorCode::ParseUnsupportedToken => "The SQL expression contains an unsupported token.".to_string(),
+            S3ErrorCode::ParseUnsupportedLiteralsGroupBy => "The SQL expression contains an unsupported use of GROUP BY.".to_string(),
+            S3ErrorCode::ParseExpectedMember => "The SQL expression contains an unsupported use of MEMBER.".to_string(),
+            S3ErrorCode::ParseUnsupportedSelect => "The SQL expression contains an unsupported use of SELECT.".to_string(),
+            S3ErrorCode::ParseUnsupportedCase => "The SQL expression contains an unsupported use of CASE.".to_string(),
+            S3ErrorCode::ParseUnsupportedCaseClause => "The SQL expression contains an unsupported use of CASE.".to_string(),
+            S3ErrorCode::ParseUnsupportedAlias => "The SQL expression contains an unsupported use of ALIAS.".to_string(),
+            S3ErrorCode::ParseUnsupportedSyntax => "The SQL expression contains unsupported syntax.".to_string(),
+            S3ErrorCode::ParseUnknownOperator => "The SQL expression contains an invalid operator.".to_string(),
+            S3ErrorCode::ParseMissingIdentAfterAt => "Did not find the expected identifier after the @ symbol in the SQL expression.".to_string(),
+            S3ErrorCode::ParseUnexpectedOperator => "The SQL expression contains an unexpected operator.".to_string(),
+            S3ErrorCode::ParseUnexpectedTerm => "The SQL expression contains an unexpected term.".to_string(),
+            S3ErrorCode::ParseUnexpectedToken => "The SQL expression contains an unexpected token.".to_string(),
+            S3ErrorCode::ParseExpectedExpression => "Did not find the expected SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedLeftParenAfterCast => "Did not find expected the left parenthesis in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedLeftParenValueConstructor => "Did not find expected the left parenthesis in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedLeftParenBuiltinFunctionCall => "Did not find the expected left parenthesis in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedArgumentDelimiter => "Did not find the expected argument delimiter in the SQL expression.".to_string(),
+            S3ErrorCode::ParseCastArity => "The SQL expression CAST has incorrect arity.".to_string(),
+            S3ErrorCode::ParseInvalidTypeParam => "The SQL expression contains an invalid parameter value.".to_string(),
+            S3ErrorCode::ParseEmptySelect => "The SQL expression contains an empty SELECT.".to_string(),
+            S3ErrorCode::ParseSelectMissingFrom => "GROUP is not supported in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedIdentForGroupName => "GROUP is not supported in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedIdentForAlias => "Did not find the expected identifier for the alias in the SQL expression.".to_string(),
+            S3ErrorCode::ParseUnsupportedCallWithStar => "Only COUNT with (*) as a parameter is supported in the SQL expression.".to_string(),
+            S3ErrorCode::ParseNonUnaryAgregateFunctionCall => "Only one argument is supported for aggregate functions in the SQL expression.".to_string(),
+            S3ErrorCode::ParseMalformedJoin => "JOIN is not supported in the SQL expression.".to_string(),
+            S3ErrorCode::ParseExpectedIdentForAt => "Did not find the expected identifier for AT name in the SQL expression.".to_string(),
+            S3ErrorCode::ParseAsteriskIsNotAloneInSelectList => "Other expressions are not allowed in the SELECT list when '*' is used without dot notation in the SQL expression.".to_string(),
+            S3ErrorCode::ParseCannotMixSqbAndWildcardInSelectList => "Cannot mix [] and * in the same expression in a SELECT list in SQL expression.".to_string(),
+            S3ErrorCode::ParseInvalidContextForWildcardInSelectList => "Invalid use of * in SELECT list in the SQL expression.".to_string(),
+            S3ErrorCode::IncorrectSqlFunctionArgumentType => "Incorrect type of arguments in function call in the SQL expression.".to_string(),
+            S3ErrorCode::ValueParseFailure => "Time stamp parse failure in the SQL expression.".to_string(),
+            S3ErrorCode::EvaluatorInvalidArguments => "Incorrect number of arguments in the function call in the SQL expression.".to_string(),
+            S3ErrorCode::IntegerOverflow => "Int overflow or underflow in the SQL expression.".to_string(),
+            S3ErrorCode::LikeInvalidInputs => "Invalid argument given to the LIKE clause in the SQL expression.".to_string(),
+            S3ErrorCode::CastFailed => "Attempt to convert from one data type to another using CAST failed in the SQL expression.".to_string(),
+            S3ErrorCode::InvalidCast => "Attempt to convert from one data type to another using CAST failed in the SQL expression.".to_string(),
+            S3ErrorCode::EvaluatorInvalidTimestampFormatPattern => "Time stamp format pattern requires additional fields in the SQL expression.".to_string(),
+            S3ErrorCode::EvaluatorInvalidTimestampFormatPatternSymbolForParsing => "Time stamp format pattern contains a valid format symbol that cannot be applied to time stamp parsing in the SQL expression.".to_string(),
+            S3ErrorCode::EvaluatorTimestampFormatPatternDuplicateFields => "Time stamp format pattern contains multiple format specifiers representing the time stamp field in the SQL expression.".to_string(),
+            S3ErrorCode::EvaluatorTimestampFormatPatternHourClockAmPmMismatch => "Time stamp format pattern contains unterminated token in the SQL expression.".to_string(),
+            S3ErrorCode::EvaluatorUnterminatedTimestampFormatPatternToken => "Time stamp format pattern contains an invalid token in the SQL expression.".to_string(),
+            S3ErrorCode::EvaluatorInvalidTimestampFormatPatternToken => "Time stamp format pattern contains an invalid token in the SQL expression.".to_string(),
+            S3ErrorCode::EvaluatorInvalidTimestampFormatPatternSymbol => "Time stamp format pattern contains an invalid symbol in the SQL expression.".to_string(),
+            S3ErrorCode::EvaluatorBindingDoesNotExist => "A column name or a path provided does not exist in the SQL expression".to_string(),
+            S3ErrorCode::InvalidColumnIndex => "The column index is invalid. Please check the service documentation and try again.".to_string(),
+            S3ErrorCode::UnsupportedFunction => "Encountered an unsupported SQL function.".to_string(),
+            S3ErrorCode::Custom(code) if &**code == MAX_VERSIONS_EXCEEDED_CODE => {
+                MAX_VERSIONS_EXCEEDED_MESSAGE.to_string()
+            }
+            _ => code.as_str().to_string(),
+        }
+    }
+}
+
+fn error_chain_has_type<T>(err: &(dyn std::error::Error + 'static)) -> bool
+where
+    T: std::error::Error + 'static,
+{
+    if err.downcast_ref::<T>().is_some() {
+        return true;
+    }
+
+    if let Some(io_err) = err.downcast_ref::<std::io::Error>()
+        && let Some(inner) = io_err.get_ref()
+        && error_chain_has_type::<T>(inner)
+    {
+        return true;
+    }
+
+    let mut current = Some(err);
+    while let Some(err) = current {
+        if err.downcast_ref::<T>().is_some() {
+            return true;
+        }
+        current = err.source();
+    }
+    false
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum S3sBodyStreamError {
+    Sha256Mismatch,
+    IncompleteBody,
+}
+
+fn classify_s3s_body_stream_error_display(err: &(dyn std::error::Error + 'static)) -> Option<S3sBodyStreamError> {
+    match err.to_string().as_str() {
+        "UploadStreamError: Sha256Mismatch" => Some(S3sBodyStreamError::Sha256Mismatch),
+        "UploadStreamError: LengthMismatch"
+        | "UploadStreamError: Incomplete"
+        | "AwsChunkedStreamError: LengthMismatch"
+        | "AwsChunkedStreamError: Incomplete" => Some(S3sBodyStreamError::IncompleteBody),
+        _ => None,
+    }
+}
+
+fn error_chain_s3s_body_stream_error(err: &(dyn std::error::Error + 'static)) -> Option<S3sBodyStreamError> {
+    if let Some(classified) = classify_s3s_body_stream_error_display(err) {
+        return Some(classified);
+    }
+
+    if let Some(io_err) = err.downcast_ref::<std::io::Error>()
+        && let Some(inner) = io_err.get_ref()
+        && let Some(classified) = error_chain_s3s_body_stream_error(inner)
+    {
+        return Some(classified);
+    }
+
+    let mut current = err.source();
+    while let Some(err) = current {
+        if let Some(classified) = classify_s3s_body_stream_error_display(err) {
+            return Some(classified);
+        }
+        if let Some(io_err) = err.downcast_ref::<std::io::Error>()
+            && let Some(inner) = io_err.get_ref()
+            && let Some(classified) = error_chain_s3s_body_stream_error(inner)
+        {
+            return Some(classified);
+        }
+        current = err.source();
+    }
+    None
+}
+
+impl From<ApiError> for S3Error {
+    fn from(err: ApiError) -> Self {
+        let status = custom_error_status(&err.code);
+        let mut s3e = S3Error::with_message(err.code, err.message);
+        if let Some(status) = status {
+            s3e.set_status_code(status);
+        }
+        if let Some(source) = err.source {
+            s3e.set_source(source);
+        }
+        s3e
+    }
+}
+
+impl From<StorageError> for ApiError {
+    fn from(err: StorageError) -> Self {
+        if err.pool_metadata_failure().is_some() {
+            return ApiError {
+                code: S3ErrorCode::ServiceUnavailable,
+                message: ApiError::error_code_to_message(&S3ErrorCode::ServiceUnavailable),
+                source: Some(Box::new(err)),
+            };
+        }
+        if let StorageError::Io(ref io_err) = err
+            && let Some(inner) = io_err.get_ref()
+        {
+            let s3s_body_stream_error = error_chain_s3s_body_stream_error(inner);
+
+            // Preserve client-provided body and digest failures across I/O boundaries.
+            if inner.downcast_ref::<rustfs_rio::ChecksumMismatch>().is_some()
+                || inner.downcast_ref::<rustfs_rio::BadDigest>().is_some()
+                || inner.downcast_ref::<rustfs_rio::Sha256Mismatch>().is_some()
+                || matches!(s3s_body_stream_error, Some(S3sBodyStreamError::Sha256Mismatch))
+            {
+                return ApiError {
+                    code: S3ErrorCode::BadDigest,
+                    message: ApiError::error_code_to_message(&S3ErrorCode::BadDigest),
+                    source: Some(Box::new(err)),
+                };
+            }
+
+            if error_chain_has_type::<UploadLimitExceeded>(inner) {
+                return ApiError {
+                    code: S3ErrorCode::EntityTooLarge,
+                    message: ApiError::error_code_to_message(&S3ErrorCode::EntityTooLarge),
+                    source: Some(Box::new(err)),
+                };
+            }
+
+            if error_chain_has_type::<ServerSideSourceReadError>(inner) {
+                return ApiError {
+                    code: S3ErrorCode::ServiceUnavailable,
+                    message: ApiError::error_code_to_message(&S3ErrorCode::ServiceUnavailable),
+                    source: Some(Box::new(err)),
+                };
+            }
+
+            if matches!(s3s_body_stream_error, Some(S3sBodyStreamError::IncompleteBody)) {
+                return ApiError {
+                    code: S3ErrorCode::IncompleteBody,
+                    message: ApiError::error_code_to_message(&S3ErrorCode::IncompleteBody),
+                    source: Some(Box::new(err)),
+                };
+            }
+
+            if inner.downcast_ref::<KmsUnavailableError>().is_some()
+                || matches!(
+                    inner.downcast_ref::<rustfs_kms::KmsError>(),
+                    Some(rustfs_kms::KmsError::BackendError { .. })
+                )
+            {
+                return ApiError {
+                    code: S3ErrorCode::ServiceUnavailable,
+                    message: ApiError::error_code_to_message(&S3ErrorCode::ServiceUnavailable),
+                    source: Some(Box::new(err)),
+                };
+            }
+
+            // A request header or bucket default naming a key the KMS does not
+            // hold is the caller's mistake to correct, and S3 reports it as
+            // 400 `KMS.NotFoundException`. Left to the fallthrough it became a
+            // 500 whose generic message hid which key was missing.
+            if let Some(rustfs_kms::KmsError::KeyNotFound { key_id }) = inner.downcast_ref::<rustfs_kms::KmsError>() {
+                let message = format!("KMS key not found: {key_id}");
+                return ApiError {
+                    code: S3ErrorCode::Custom(KMS_KEY_NOT_FOUND_ERROR_CODE.into()),
+                    message,
+                    source: Some(Box::new(err)),
+                };
+            }
+        }
+
+        let code = match &err {
+            StorageError::NotImplemented => S3ErrorCode::NotImplemented,
+            StorageError::InvalidArgument(_, _, _) => S3ErrorCode::InvalidArgument,
+            StorageError::MethodNotAllowed => S3ErrorCode::MethodNotAllowed,
+            StorageError::BucketNotFound(_) => S3ErrorCode::NoSuchBucket,
+            StorageError::BucketNotEmpty(_) | StorageError::BucketNotEmptyWithDetails { .. } => S3ErrorCode::BucketNotEmpty,
+            StorageError::BucketNameInvalid(_) => S3ErrorCode::InvalidBucketName,
+            StorageError::ObjectNameInvalid(_, _) => S3ErrorCode::InvalidArgument,
+            StorageError::BucketExists(_) => S3ErrorCode::BucketAlreadyOwnedByYou,
+            StorageError::StorageFull => S3ErrorCode::ServiceUnavailable,
+            StorageError::SlowDown => S3ErrorCode::SlowDown,
+            StorageError::FaultyDisk
+            | StorageError::FaultyRemoteDisk
+            | StorageError::DiskNotFound
+            | StorageError::TooManyOpenFiles => S3ErrorCode::ServiceUnavailable,
+            StorageError::ErasureReadQuorum
+            | StorageError::InsufficientReadQuorum(_, _)
+            | StorageError::ErasureWriteQuorum
+            | StorageError::InsufficientWriteQuorum(_, _) => S3ErrorCode::ServiceUnavailable,
+            StorageError::NamespaceLockQuorumUnavailable { .. } => S3ErrorCode::ServiceUnavailable,
+            StorageError::QuotaExceeded { .. } => S3ErrorCode::InvalidRequest,
+            StorageError::MaxVersionsExceeded => S3ErrorCode::Custom(MAX_VERSIONS_EXCEEDED_CODE.into()),
+            StorageError::Lock(_) => S3ErrorCode::ServiceUnavailable,
+            StorageError::DecommissionNotStarted => S3ErrorCode::InvalidRequest,
+            StorageError::DecommissionAlreadyRunning => S3ErrorCode::InvalidRequest,
+            StorageError::RebalanceAlreadyRunning => S3ErrorCode::InvalidRequest,
+            StorageError::PrefixAccessDenied(_, _) => S3ErrorCode::AccessDenied,
+            StorageError::InvalidUploadIDKeyCombination(_, _) => S3ErrorCode::InvalidArgument,
+            StorageError::MalformedUploadID(_) => S3ErrorCode::InvalidArgument,
+            StorageError::ObjectNameTooLong(_, _) => S3ErrorCode::InvalidArgument,
+            StorageError::ObjectNamePrefixAsSlash(_, _) => S3ErrorCode::InvalidArgument,
+            StorageError::ObjectNotFound(_, _) => S3ErrorCode::NoSuchKey,
+            StorageError::ConfigNotFound => S3ErrorCode::NoSuchKey,
+            StorageError::VolumeNotFound => S3ErrorCode::NoSuchBucket,
+            StorageError::FileNotFound => S3ErrorCode::NoSuchKey,
+            StorageError::FileVersionNotFound => S3ErrorCode::NoSuchVersion,
+            StorageError::VersionNotFound(_, _, _) => S3ErrorCode::NoSuchVersion,
+            StorageError::InvalidUploadID(_, _, _) => S3ErrorCode::NoSuchUpload,
+            StorageError::InvalidVersionID(_, _, _) => S3ErrorCode::InvalidArgument,
+            StorageError::DataMovementOverwriteErr(_, _, _) => S3ErrorCode::InvalidArgument,
+            StorageError::ObjectExistsAsDirectory(_, _) => S3ErrorCode::InvalidArgument,
+            StorageError::InvalidPart(_, _, _) => S3ErrorCode::InvalidPart,
+            StorageError::EntityTooSmall(_, _, _) => S3ErrorCode::EntityTooSmall,
+            StorageError::EntityTooLarge(_, _) => S3ErrorCode::EntityTooLarge,
+            StorageError::PreconditionFailed => S3ErrorCode::PreconditionFailed,
+            StorageError::NotModified => S3ErrorCode::NotModified,
+            StorageError::InvalidRangeSpec(_) => S3ErrorCode::InvalidRange,
+            _ => S3ErrorCode::InternalError,
+        };
+
+        let message = if matches!(&err, StorageError::QuotaExceeded { .. }) {
+            err.to_string()
+        } else if matches!(&err, StorageError::MaxVersionsExceeded)
+            || (code == S3ErrorCode::InternalError && matches!(&err, StorageError::Io(_)))
+        {
+            ApiError::error_code_to_message(&code)
+        } else if code == S3ErrorCode::InternalError {
+            err.to_string()
+        } else if let StorageError::InvalidArgument(_, _, reason) = &err
+            && !reason.is_empty()
+        {
+            // Argument-validation rejections carry a client-actionable reason
+            // (e.g. object keys unsupported on Windows hosts, issue #3299);
+            // a bare "Invalid argument" gives the caller nothing to fix.
+            format!("Invalid argument: {reason}")
+        } else {
+            ApiError::error_code_to_message(&code)
+        };
+        ApiError {
+            code,
+            message,
+            source: Some(Box::new(err)),
+        }
+    }
+}
+
+impl From<HTTPRangeError> for ApiError {
+    fn from(err: HTTPRangeError) -> Self {
+        ApiError {
+            code: S3ErrorCode::InvalidRange,
+            message: err.to_string(),
+            source: Some(Box::new(err)),
+        }
+    }
+}
+
+impl From<std::io::Error> for ApiError {
+    fn from(err: std::io::Error) -> Self {
+        // Map client-provided digest mismatches to BadDigest.
+        if let Some(inner) = err.get_ref() {
+            let s3s_body_stream_error = error_chain_s3s_body_stream_error(inner);
+            if error_chain_has_type::<rustfs_rio::ChecksumMismatch>(inner)
+                || error_chain_has_type::<rustfs_rio::BadDigest>(inner)
+                || error_chain_has_type::<rustfs_rio::Sha256Mismatch>(inner)
+                || matches!(s3s_body_stream_error, Some(S3sBodyStreamError::Sha256Mismatch))
+            {
+                return ApiError {
+                    code: S3ErrorCode::BadDigest,
+                    message: ApiError::error_code_to_message(&S3ErrorCode::BadDigest),
+                    source: Some(Box::new(err)),
+                };
+            }
+            if error_chain_has_type::<UploadLimitExceeded>(inner) {
+                return ApiError {
+                    code: S3ErrorCode::EntityTooLarge,
+                    message: ApiError::error_code_to_message(&S3ErrorCode::EntityTooLarge),
+                    source: Some(Box::new(err)),
+                };
+            }
+            if error_chain_has_type::<ServerSideSourceReadError>(inner) {
+                return ApiError {
+                    code: S3ErrorCode::ServiceUnavailable,
+                    message: ApiError::error_code_to_message(&S3ErrorCode::ServiceUnavailable),
+                    source: Some(Box::new(err)),
+                };
+            }
+            if matches!(s3s_body_stream_error, Some(S3sBodyStreamError::IncompleteBody)) {
+                return ApiError {
+                    code: S3ErrorCode::IncompleteBody,
+                    message: ApiError::error_code_to_message(&S3ErrorCode::IncompleteBody),
+                    source: Some(Box::new(err)),
+                };
+            }
+            if error_chain_has_type::<rustfs_rio::IncompleteBody>(inner) {
+                return ApiError {
+                    code: S3ErrorCode::IncompleteBody,
+                    message: ApiError::error_code_to_message(&S3ErrorCode::IncompleteBody),
+                    source: Some(Box::new(err)),
+                };
+            }
+        }
+        ApiError {
+            code: S3ErrorCode::InternalError,
+            message: err.to_string(),
+            source: Some(Box::new(err)),
+        }
+    }
+}
+
+impl From<rustfs_iam::error::Error> for ApiError {
+    fn from(err: rustfs_iam::error::Error) -> Self {
+        let serr: StorageError = err.into();
+        serr.into()
+    }
+}
+
+impl From<QuotaError> for ApiError {
+    fn from(err: QuotaError) -> Self {
+        let code = match &err {
+            QuotaError::QuotaExceeded { .. } => S3ErrorCode::InvalidRequest,
+            QuotaError::ConfigNotFound { .. } => S3ErrorCode::NoSuchBucket,
+            QuotaError::UsageUnavailable { .. } => S3ErrorCode::ServiceUnavailable,
+            QuotaError::InvalidConfig { .. } => S3ErrorCode::InvalidArgument,
+            QuotaError::StorageError(_) => S3ErrorCode::InternalError,
+        };
+
+        let message = if code == S3ErrorCode::InternalError {
+            err.to_string()
+        } else {
+            ApiError::error_code_to_message(&code)
+        };
+
+        ApiError {
+            code,
+            message,
+            source: Some(Box::new(err)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use s3s::{S3Error, S3ErrorCode};
+    use std::io::{Error as IoError, ErrorKind};
+
+    #[test]
+    fn api_error_diagnostic_preserves_typed_cause_without_sensitive_payload() {
+        let error = ApiError::from(StorageError::Io(IoError::new(ErrorKind::TimedOut, "secret=do-not-log")));
+        let diagnostic = error.diagnostic();
+        assert_eq!(diagnostic.storage_code, Some(StorageErrorCode::Io));
+        assert_eq!(diagnostic.io_kind, Some(ErrorKind::TimedOut));
+        assert!(!diagnostic.truncated);
+        assert!(!format!("{diagnostic:?}").contains("do-not-log"));
+        assert!(std::error::Error::source(&error).is_some());
+
+        let error = ApiError::from(StorageError::Io(IoError::other(StorageError::ErasureWriteQuorum)));
+        assert_eq!(error.diagnostic().storage_code, Some(StorageErrorCode::ErasureWriteQuorum));
+
+        let mut status = tonic::Status::unavailable("secret RPC message");
+        status
+            .metadata_mut()
+            .insert("authorization", "secret-token".parse().expect("metadata value"));
+        let error = ApiError::from(StorageError::from(status));
+        assert_eq!(error.diagnostic().rpc_code, Some(tonic::Code::Unavailable));
+        assert!(!format!("{:?}", error.diagnostic()).contains("secret"));
+    }
+
+    #[test]
+    fn api_error_diagnostic_bounds_cyclic_error_chains() {
+        #[derive(Debug)]
+        struct Cycle;
+        impl std::fmt::Display for Cycle {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("secret cycle")
+            }
+        }
+        impl std::error::Error for Cycle {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(self)
+            }
+        }
+        let error = ApiError {
+            code: S3ErrorCode::InternalError,
+            message: "safe".into(),
+            source: Some(Box::new(Cycle)),
+        };
+        assert!(error.diagnostic().truncated);
+        assert!(!format!("{:?}", error.diagnostic()).contains("secret"));
+    }
+
+    #[derive(Debug)]
+    enum MockUploadStreamError {
+        Underlying(IoError),
+        Sha256Mismatch,
+        LengthMismatch,
+        Incomplete,
+    }
+
+    impl std::fmt::Display for MockUploadStreamError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::Underlying(err) => write!(f, "UploadStreamError: Underlying: {err}"),
+                Self::Sha256Mismatch => f.write_str("UploadStreamError: Sha256Mismatch"),
+                Self::LengthMismatch => f.write_str("UploadStreamError: LengthMismatch"),
+                Self::Incomplete => f.write_str("UploadStreamError: Incomplete"),
+            }
+        }
+    }
+
+    impl std::error::Error for MockUploadStreamError {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            match self {
+                Self::Underlying(err) => Some(err),
+                Self::Sha256Mismatch | Self::LengthMismatch | Self::Incomplete => None,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct MockS3sBodyStreamError(&'static str);
+
+    impl std::fmt::Display for MockS3sBodyStreamError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.0)
+        }
+    }
+
+    impl std::error::Error for MockS3sBodyStreamError {}
+
+    #[test]
+    fn test_api_error_from_io_error() {
+        let io_error = IoError::new(ErrorKind::PermissionDenied, "permission denied");
+        let api_error: ApiError = io_error.into();
+
+        assert_eq!(api_error.code, S3ErrorCode::InternalError);
+        assert!(api_error.message.contains("permission denied"));
+        assert!(api_error.source.is_some());
+    }
+
+    #[test]
+    fn test_api_error_from_io_error_different_kinds() {
+        let test_cases = vec![
+            (ErrorKind::NotFound, "not found"),
+            (ErrorKind::InvalidInput, "invalid input"),
+            (ErrorKind::TimedOut, "timed out"),
+            (ErrorKind::WriteZero, "write zero"),
+            (ErrorKind::Other, "other error"),
+        ];
+
+        for (kind, message) in test_cases {
+            let io_error = IoError::new(kind, message);
+            let api_error: ApiError = io_error.into();
+
+            assert_eq!(api_error.code, S3ErrorCode::InternalError);
+            assert!(api_error.message.contains(message));
+            assert!(api_error.source.is_some());
+
+            // Test that source can be downcast back to io::Error
+            let source = api_error.source.as_ref().unwrap();
+            let downcast_io_error = source.downcast_ref::<IoError>();
+            assert!(downcast_io_error.is_some());
+            assert_eq!(downcast_io_error.unwrap().kind(), kind);
+        }
+    }
+
+    #[test]
+    fn sha256_mismatch_io_errors_map_to_bad_digest() {
+        let io_error = IoError::new(
+            ErrorKind::InvalidData,
+            rustfs_rio::Sha256Mismatch {
+                expected_sha256: "expected".to_string(),
+                calculated_sha256: "calculated".to_string(),
+            },
+        );
+        let api_error = ApiError::from(io_error);
+        assert_eq!(api_error.code, S3ErrorCode::BadDigest);
+        assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::BadDigest));
+
+        let storage_error = StorageError::Io(IoError::new(
+            ErrorKind::InvalidData,
+            rustfs_rio::Sha256Mismatch {
+                expected_sha256: "expected".to_string(),
+                calculated_sha256: "calculated".to_string(),
+            },
+        ));
+        let api_error = ApiError::from(storage_error);
+        assert_eq!(api_error.code, S3ErrorCode::BadDigest);
+        assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::BadDigest));
+    }
+
+    #[test]
+    fn content_md5_mismatch_io_errors_map_to_bad_digest() {
+        let bad_digest = || rustfs_rio::BadDigest {
+            expected_md5: "expected".to_string(),
+            calculated_md5: "calculated".to_string(),
+        };
+        let api_error = ApiError::from(IoError::new(ErrorKind::InvalidData, bad_digest()));
+        assert_eq!(api_error.code, S3ErrorCode::BadDigest);
+        assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::BadDigest));
+
+        let api_error = ApiError::from(StorageError::Io(IoError::new(ErrorKind::InvalidData, bad_digest())));
+        assert_eq!(api_error.code, S3ErrorCode::BadDigest);
+        assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::BadDigest));
+    }
+
+    #[test]
+    fn upload_stream_sha256_mismatch_maps_to_bad_digest() {
+        let api_error = ApiError::from(IoError::other(MockUploadStreamError::Sha256Mismatch));
+        assert_eq!(api_error.code, S3ErrorCode::BadDigest);
+        assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::BadDigest));
+
+        let api_error = ApiError::from(StorageError::Io(IoError::other(MockUploadStreamError::Sha256Mismatch)));
+        assert_eq!(api_error.code, S3ErrorCode::BadDigest);
+        assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::BadDigest));
+    }
+
+    #[test]
+    fn underlying_upload_stream_errors_remain_internal() {
+        let api_error =
+            ApiError::from(IoError::other(MockUploadStreamError::Underlying(IoError::other("underlying body error"))));
+        assert_eq!(api_error.code, S3ErrorCode::InternalError);
+
+        let api_error = ApiError::from(StorageError::Io(IoError::other(MockUploadStreamError::Underlying(IoError::other(
+            "underlying body error",
+        )))));
+        assert_eq!(api_error.code, S3ErrorCode::InternalError);
+    }
+
+    #[test]
+    fn s3s_incomplete_body_stream_errors_map_to_incomplete_body() {
+        for error in [MockUploadStreamError::LengthMismatch, MockUploadStreamError::Incomplete] {
+            let api_error = ApiError::from(IoError::other(error));
+            assert_eq!(api_error.code, S3ErrorCode::IncompleteBody);
+            assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::IncompleteBody));
+        }
+
+        for error in [MockUploadStreamError::LengthMismatch, MockUploadStreamError::Incomplete] {
+            let api_error = ApiError::from(StorageError::Io(IoError::other(error)));
+            assert_eq!(api_error.code, S3ErrorCode::IncompleteBody);
+            assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::IncompleteBody));
+        }
+
+        for message in ["AwsChunkedStreamError: LengthMismatch", "AwsChunkedStreamError: Incomplete"] {
+            let api_error = ApiError::from(IoError::other(MockS3sBodyStreamError(message)));
+            assert_eq!(api_error.code, S3ErrorCode::IncompleteBody, "{message}");
+            assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::IncompleteBody));
+
+            let api_error = ApiError::from(IoError::other(IoError::other(MockS3sBodyStreamError(message))));
+            assert_eq!(api_error.code, S3ErrorCode::IncompleteBody, "{message}");
+            assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::IncompleteBody));
+
+            let api_error = ApiError::from(StorageError::Io(IoError::other(MockS3sBodyStreamError(message))));
+            assert_eq!(api_error.code, S3ErrorCode::IncompleteBody, "{message}");
+            assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::IncompleteBody));
+        }
+    }
+
+    #[test]
+    fn server_side_source_read_error_maps_to_service_unavailable_before_incomplete_body() {
+        let short_source = IoError::new(ErrorKind::UnexpectedEof, rustfs_rio::IncompleteBody { remaining: 17 });
+        let marker = ServerSideSourceReadError::new("CopyObject", short_source);
+
+        let api_error = ApiError::from(IoError::new(ErrorKind::UnexpectedEof, marker));
+        assert_eq!(api_error.code, S3ErrorCode::ServiceUnavailable);
+        assert_ne!(api_error.code, S3ErrorCode::IncompleteBody);
+
+        let short_source = IoError::new(ErrorKind::UnexpectedEof, rustfs_rio::IncompleteBody { remaining: 17 });
+        let marker = ServerSideSourceReadError::new("CopyObject", short_source);
+        let api_error = ApiError::from(StorageError::Io(IoError::new(ErrorKind::UnexpectedEof, marker)));
+        assert_eq!(api_error.code, S3ErrorCode::ServiceUnavailable);
+        assert_ne!(api_error.code, S3ErrorCode::IncompleteBody);
+    }
+
+    #[test]
+    fn test_api_error_surfaces_invalid_argument_reason() {
+        let err = StorageError::InvalidArgument(
+            "bucket".into(),
+            "a:b*c".into(),
+            "object key contains characters unsupported on Windows hosts".into(),
+        );
+        let api_error: ApiError = err.into();
+        assert_eq!(api_error.code, S3ErrorCode::InvalidArgument);
+        assert_eq!(
+            api_error.message,
+            "Invalid argument: object key contains characters unsupported on Windows hosts"
+        );
+
+        // An empty reason falls back to the generic message.
+        let err = StorageError::InvalidArgument("bucket".into(), "object".into(), String::new());
+        let api_error: ApiError = err.into();
+        assert_eq!(api_error.message, "Invalid argument");
+    }
+
+    #[test]
+    fn test_api_error_other_function() {
+        let custom_error = "Custom API error";
+        let api_error = ApiError::other(custom_error);
+
+        assert_eq!(api_error.code, S3ErrorCode::InternalError);
+        assert_eq!(api_error.message, custom_error);
+        assert!(api_error.source.is_some());
+    }
+
+    #[test]
+    fn test_api_error_other_function_with_complex_error() {
+        let io_error = IoError::new(ErrorKind::InvalidData, "complex error");
+        let api_error = ApiError::other(io_error);
+
+        assert_eq!(api_error.code, S3ErrorCode::InternalError);
+        assert!(api_error.message.contains("complex error"));
+        assert!(api_error.source.is_some());
+
+        // Test that source can be downcast back to io::Error
+        let source = api_error.source.as_ref().unwrap();
+        let downcast_io_error = source.downcast_ref::<IoError>();
+        assert!(downcast_io_error.is_some());
+        assert_eq!(downcast_io_error.unwrap().kind(), ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn test_api_error_from_storage_error() {
+        let storage_error = StorageError::BucketNotFound("test-bucket".to_string());
+        let api_error: ApiError = storage_error.into();
+
+        assert_eq!(api_error.code, S3ErrorCode::NoSuchBucket);
+        assert!(api_error.source.is_some());
+
+        // Test that source can be downcast back to StorageError
+        let source = api_error.source.as_ref().unwrap();
+        let downcast_storage_error = source.downcast_ref::<StorageError>();
+        assert!(downcast_storage_error.is_some());
+    }
+
+    #[test]
+    fn policy_metadata_read_failure_maps_to_internal_error() {
+        let api_error = ApiError::from(StorageError::Io(IoError::other("policy read failed")));
+
+        assert_eq!(api_error.code, S3ErrorCode::InternalError);
+        assert!(api_error.source.is_some());
+    }
+
+    #[test]
+    fn storage_io_internal_error_redacts_public_message_and_retains_source() {
+        let sensitive_path = "/sensitive/storage/path";
+        let api_error = ApiError::from(StorageError::Io(IoError::new(
+            ErrorKind::PermissionDenied,
+            format!("permission denied: {sensitive_path}"),
+        )));
+
+        assert_eq!(api_error.code, S3ErrorCode::InternalError);
+        assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::InternalError));
+        assert!(!api_error.message.contains(sensitive_path));
+        let source = api_error
+            .source
+            .as_deref()
+            .and_then(|source| source.downcast_ref::<StorageError>())
+            .expect("API error should retain the storage error source");
+        assert!(matches!(source, StorageError::Io(io_error) if io_error.to_string().contains(sensitive_path)));
+    }
+
+    #[test]
+    fn test_kms_service_unavailable_maps_to_retryable_error() {
+        let api_error = ApiError::from(StorageError::other(KmsUnavailableError));
+
+        assert_eq!(api_error.code, S3ErrorCode::ServiceUnavailable);
+        assert_eq!(api_error.message, "The service is unavailable. Please retry.");
+    }
+
+    #[test]
+    fn test_kms_backend_unavailable_maps_to_retryable_error() {
+        let api_error = ApiError::from(StorageError::other(rustfs_kms::KmsError::backend_error("Vault connection refused")));
+
+        assert_eq!(api_error.code, S3ErrorCode::ServiceUnavailable);
+        assert_eq!(api_error.message, "The service is unavailable. Please retry.");
+    }
+
+    #[test]
+    fn pool_metadata_failures_map_to_503_and_preserve_typed_private_context() {
+        use crate::storage_api::error::{PoolMetadataError, PoolMetadataFailure};
+        let since = time::OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("fixed failure time");
+        for kind in [
+            PoolMetadataFailure::ReadUnavailable,
+            PoolMetadataFailure::RecoveryRequired,
+            PoolMetadataFailure::TransactionUnknown,
+            PoolMetadataFailure::FenceLost,
+        ] {
+            let error = StorageError::other(PoolMetadataError {
+                kind,
+                operation: "private operation path".to_owned(),
+                phase: "prepare_cas",
+                since,
+                source: Some(std::sync::Arc::new(StorageError::other("private disk failure"))),
+            });
+            let error = StorageError::Io(std::io::Error::new(std::io::ErrorKind::TimedOut, error));
+            let cloned = error.clone();
+            assert_eq!(cloned, error, "cloning must preserve the outer I/O kind and message");
+            assert_eq!(cloned.pool_metadata_failure().unwrap().kind, kind);
+            let api = ApiError::from(cloned);
+            assert_eq!(api.code, S3ErrorCode::ServiceUnavailable);
+            assert_eq!(api.message, "The service is unavailable. Please retry.");
+            assert!(!api.message.contains("private"));
+            let source = api.source.as_ref().unwrap().downcast_ref::<StorageError>().unwrap();
+            assert_eq!(source.pool_metadata_failure().unwrap().kind, kind);
+            let diagnostic = api.diagnostic();
+            assert_eq!(
+                diagnostic.pool_metadata,
+                Some(PoolMetadataDiagnostic {
+                    reason: kind.as_str(),
+                    phase: "prepare_cas",
+                    since_unix_secs: since.unix_timestamp(),
+                })
+            );
+            assert!(!diagnostic.truncated);
+            assert!(!format!("{diagnostic:?}").contains("private"));
+            assert_eq!(api.diagnostic(), diagnostic, "inspection must preserve the original failure time");
+        }
+    }
+
+    #[test]
+    fn test_kms_key_not_found_maps_to_bad_request_kms_not_found_exception() {
+        let api_error = ApiError::from(StorageError::other(rustfs_kms::KmsError::key_not_found("no-such-key")));
+
+        assert_eq!(api_error.code, S3ErrorCode::Custom(KMS_KEY_NOT_FOUND_ERROR_CODE.into()));
+        assert_eq!(api_error.message, "KMS key not found: no-such-key");
+
+        // s3s knows no status for a custom code; the conversion has to supply it.
+        let s3_error = S3Error::from(api_error);
+        assert_eq!(s3_error.status_code(), Some(StatusCode::BAD_REQUEST));
+    }
+
+    #[test]
+    fn test_generated_error_codes_keep_their_own_status() {
+        let s3_error = S3Error::from(ApiError::from(StorageError::other(rustfs_kms::KmsError::backend_error("down"))));
+
+        assert_eq!(s3_error.status_code(), Some(StatusCode::SERVICE_UNAVAILABLE));
+    }
+
+    #[test]
+    fn test_unknown_authoritative_quota_usage_maps_to_retryable_error() {
+        let api_error = ApiError::from(QuotaError::UsageUnavailable {
+            bucket: "bucket".to_string(),
+        });
+
+        assert_eq!(api_error.code, S3ErrorCode::ServiceUnavailable);
+        assert_eq!(api_error.message, "The service is unavailable. Please retry.");
+    }
+
+    #[test]
+    fn test_kms_cryptographic_error_is_not_retryable() {
+        let api_error = ApiError::from(StorageError::other(rustfs_kms::KmsError::cryptographic_error(
+            "decrypt",
+            "authentication failed",
+        )));
+
+        assert_eq!(api_error.code, S3ErrorCode::InternalError);
+    }
+
+    #[test]
+    fn test_kms_material_faults_map_to_internal_error_not_retryable_or_not_found() {
+        // Missing/corrupt key material is a persistent integrity fault of an existing key.
+        // It must not be disguised as a retryable backend outage (503 invites pointless
+        // retries) nor as NoSuchKey/404 (which suggests the key can be recreated —
+        // recreating it would orphan every DEK wrapped by the original material).
+        let material_faults = [
+            rustfs_kms::KmsError::material_missing("key-a"),
+            rustfs_kms::KmsError::material_corrupt("key-a", "truncated record"),
+            rustfs_kms::KmsError::material_authentication_failed("key-a"),
+            rustfs_kms::KmsError::unsupported_format_version("key-a", "v99"),
+        ];
+
+        for fault in material_faults {
+            let description = fault.to_string();
+            let api_error = ApiError::from(StorageError::other(fault));
+
+            assert_eq!(api_error.code, S3ErrorCode::InternalError, "wrong code for: {description}");
+            assert_ne!(api_error.code, S3ErrorCode::ServiceUnavailable, "must not be retryable: {description}");
+            assert_ne!(api_error.code, S3ErrorCode::NoSuchKey, "must not report key-not-found: {description}");
+        }
+    }
+
+    #[test]
+    fn test_api_error_from_storage_error_mappings() {
+        let test_cases = vec![
+            (StorageError::NotImplemented, S3ErrorCode::NotImplemented),
+            (
+                StorageError::InvalidArgument("test".into(), "test".into(), "test".into()),
+                S3ErrorCode::InvalidArgument,
+            ),
+            (StorageError::MethodNotAllowed, S3ErrorCode::MethodNotAllowed),
+            (StorageError::BucketNotFound("test".into()), S3ErrorCode::NoSuchBucket),
+            (StorageError::BucketNotEmpty("test".into()), S3ErrorCode::BucketNotEmpty),
+            (
+                StorageError::BucketNotEmptyWithDetails {
+                    bucket: "test".into(),
+                    details: "metadata-less residue".into(),
+                },
+                S3ErrorCode::BucketNotEmpty,
+            ),
+            (StorageError::BucketNameInvalid("test".into()), S3ErrorCode::InvalidBucketName),
+            (
+                StorageError::ObjectNameInvalid("test".into(), "test".into()),
+                S3ErrorCode::InvalidArgument,
+            ),
+            (StorageError::BucketExists("test".into()), S3ErrorCode::BucketAlreadyOwnedByYou),
+            (StorageError::StorageFull, S3ErrorCode::ServiceUnavailable),
+            (StorageError::SlowDown, S3ErrorCode::SlowDown),
+            (StorageError::FaultyDisk, S3ErrorCode::ServiceUnavailable),
+            (StorageError::FaultyRemoteDisk, S3ErrorCode::ServiceUnavailable),
+            (StorageError::DiskNotFound, S3ErrorCode::ServiceUnavailable),
+            (StorageError::TooManyOpenFiles, S3ErrorCode::ServiceUnavailable),
+            (StorageError::ErasureReadQuorum, S3ErrorCode::ServiceUnavailable),
+            (
+                StorageError::InsufficientReadQuorum("test".into(), "test".into()),
+                S3ErrorCode::ServiceUnavailable,
+            ),
+            (StorageError::ErasureWriteQuorum, S3ErrorCode::ServiceUnavailable),
+            (
+                StorageError::InsufficientWriteQuorum("test".into(), "test".into()),
+                S3ErrorCode::ServiceUnavailable,
+            ),
+            (
+                StorageError::NamespaceLockQuorumUnavailable {
+                    mode: "write",
+                    bucket: "bucket".into(),
+                    object: "object".into(),
+                    required: 3,
+                    achieved: 2,
+                },
+                S3ErrorCode::ServiceUnavailable,
+            ),
+            (StorageError::DecommissionNotStarted, S3ErrorCode::InvalidRequest),
+            (StorageError::DecommissionAlreadyRunning, S3ErrorCode::InvalidRequest),
+            (StorageError::RebalanceAlreadyRunning, S3ErrorCode::InvalidRequest),
+            (StorageError::QuotaExceeded { current: 5, limit: 10 }, S3ErrorCode::InvalidRequest),
+            (StorageError::PrefixAccessDenied("test".into(), "test".into()), S3ErrorCode::AccessDenied),
+            (StorageError::ObjectNotFound("test".into(), "test".into()), S3ErrorCode::NoSuchKey),
+            (StorageError::ConfigNotFound, S3ErrorCode::NoSuchKey),
+            (StorageError::VolumeNotFound, S3ErrorCode::NoSuchBucket),
+            (StorageError::FileNotFound, S3ErrorCode::NoSuchKey),
+            (StorageError::FileVersionNotFound, S3ErrorCode::NoSuchVersion),
+            (StorageError::NotModified, S3ErrorCode::NotModified),
+            (StorageError::MalformedUploadID("test".into()), S3ErrorCode::InvalidArgument),
+            (
+                StorageError::InvalidUploadID("bucket".into(), "object".into(), "uploadid".into()),
+                S3ErrorCode::NoSuchUpload,
+            ),
+        ];
+
+        for (storage_error, expected_code) in test_cases {
+            let api_error: ApiError = storage_error.into();
+            assert_eq!(api_error.code, expected_code);
+            assert!(api_error.source.is_some());
+        }
+    }
+
+    #[test]
+    fn test_api_error_from_unexpected_eof_maps_to_incomplete_body() {
+        let io_error = IoError::new(ErrorKind::UnexpectedEof, rustfs_rio::IncompleteBody { remaining: 7 });
+        let api_error: ApiError = io_error.into();
+
+        assert_eq!(api_error.code, S3ErrorCode::IncompleteBody);
+        assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::IncompleteBody));
+        assert!(api_error.source.is_some());
+    }
+
+    #[test]
+    fn test_api_error_from_nested_unexpected_eof_maps_to_incomplete_body() {
+        let nested = IoError::new(
+            ErrorKind::UnexpectedEof,
+            IoError::new(ErrorKind::UnexpectedEof, rustfs_rio::IncompleteBody { remaining: 7 }),
+        );
+        let api_error: ApiError = nested.into();
+
+        assert_eq!(api_error.code, S3ErrorCode::IncompleteBody);
+        assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::IncompleteBody));
+        assert!(api_error.source.is_some());
+    }
+
+    #[test]
+    fn upload_limit_marker_maps_to_entity_too_large_across_io_boundaries() {
+        let direct: ApiError = IoError::other(UploadLimitExceeded { limit: 5 }).into();
+        assert_eq!(direct.code, S3ErrorCode::EntityTooLarge);
+
+        let storage: ApiError = StorageError::Io(IoError::other(IoError::other(UploadLimitExceeded { limit: 5 }))).into();
+        assert_eq!(storage.code, S3ErrorCode::EntityTooLarge);
+        assert_eq!(storage.message, ApiError::error_code_to_message(&S3ErrorCode::EntityTooLarge));
+    }
+
+    #[test]
+    fn test_api_error_from_storage_io_copy_object_terminal_error_stays_internal() {
+        let io_error = IoError::other(StorageError::FileCorrupt);
+        let storage_error: StorageError = io_error.into();
+        assert!(matches!(storage_error, StorageError::FileCorrupt));
+
+        let api_error: ApiError = storage_error.into();
+
+        assert_eq!(api_error.code, S3ErrorCode::InternalError);
+        let source = api_error
+            .source
+            .as_deref()
+            .and_then(|source| source.downcast_ref::<StorageError>())
+            .expect("API error should retain the storage error source");
+        assert!(matches!(source, StorageError::FileCorrupt));
+    }
+
+    #[test]
+    fn test_api_error_from_iam_error() {
+        let iam_error = rustfs_iam::error::Error::other("IAM test error");
+        let api_error: ApiError = iam_error.into();
+
+        assert_eq!(api_error.code, S3ErrorCode::InternalError);
+        assert_eq!(api_error.message, ApiError::error_code_to_message(&S3ErrorCode::InternalError));
+        let source = api_error
+            .source
+            .as_deref()
+            .and_then(|source| source.downcast_ref::<StorageError>())
+            .expect("API error should retain the storage error source");
+        assert!(matches!(source, StorageError::Io(io_error) if io_error.to_string().contains("IAM test error")));
+    }
+
+    #[test]
+    fn test_api_error_to_s3_error() {
+        let api_error = ApiError {
+            code: S3ErrorCode::NoSuchBucket,
+            message: "Bucket not found".to_string(),
+            source: Some(Box::new(IoError::new(ErrorKind::NotFound, "not found"))),
+        };
+
+        let s3_error: S3Error = api_error.into();
+        assert_eq!(*s3_error.code(), S3ErrorCode::NoSuchBucket);
+        assert!(s3_error.message().unwrap_or("").contains("Bucket not found"));
+        assert!(s3_error.source().is_some());
+    }
+
+    #[test]
+    fn test_namespace_lock_quorum_failure_maps_to_service_unavailable_status() {
+        let api_error: ApiError = StorageError::NamespaceLockQuorumUnavailable {
+            mode: "write",
+            bucket: "bucket".into(),
+            object: "object".into(),
+            required: 3,
+            achieved: 2,
+        }
+        .into();
+
+        let s3_error: S3Error = api_error.into();
+
+        assert_eq!(*s3_error.code(), S3ErrorCode::ServiceUnavailable);
+        assert_eq!(s3_error.status_code(), Some(http::StatusCode::SERVICE_UNAVAILABLE));
+    }
+
+    #[test]
+    fn quota_exceeded_preserves_existing_s3_error_contract() {
+        let api_error: ApiError = StorageError::QuotaExceeded { current: 5, limit: 10 }.into();
+
+        assert_eq!(api_error.code, S3ErrorCode::InvalidRequest);
+        assert_eq!(api_error.message, "Bucket quota exceeded. Current usage: 5 bytes, limit: 10 bytes");
+    }
+
+    #[test]
+    fn max_versions_exceeded_maps_to_minio_compatible_s3_error() {
+        let api_error: ApiError = StorageError::MaxVersionsExceeded.into();
+
+        assert_eq!(api_error.code, S3ErrorCode::Custom(MAX_VERSIONS_EXCEEDED_CODE.into()));
+        assert_eq!(api_error.message, MAX_VERSIONS_EXCEEDED_MESSAGE);
+
+        let s3_error: S3Error = api_error.into();
+        assert_eq!(s3_error.code(), &S3ErrorCode::Custom(MAX_VERSIONS_EXCEEDED_CODE.into()));
+        assert_eq!(s3_error.message(), Some(MAX_VERSIONS_EXCEEDED_MESSAGE));
+        assert_eq!(s3_error.status_code(), Some(StatusCode::BAD_REQUEST));
+    }
+
+    #[test]
+    fn test_api_error_to_s3_error_without_source() {
+        let api_error = ApiError {
+            code: S3ErrorCode::InvalidArgument,
+            message: "Invalid argument".to_string(),
+            source: None,
+        };
+
+        let s3_error: S3Error = api_error.into();
+        assert_eq!(*s3_error.code(), S3ErrorCode::InvalidArgument);
+        assert!(s3_error.message().unwrap_or("").contains("Invalid argument"));
+    }
+
+    #[test]
+    fn test_api_error_display() {
+        let api_error = ApiError {
+            code: S3ErrorCode::InternalError,
+            message: "Test error message".to_string(),
+            source: None,
+        };
+
+        assert_eq!(api_error.to_string(), "Test error message");
+    }
+
+    #[test]
+    fn test_api_error_debug() {
+        let api_error = ApiError {
+            code: S3ErrorCode::NoSuchKey,
+            message: "Object not found".to_string(),
+            source: Some(Box::new(IoError::new(ErrorKind::NotFound, "file not found"))),
+        };
+
+        let debug_str = format!("{api_error:?}");
+        assert!(debug_str.contains("NoSuchKey"));
+        assert!(debug_str.contains("Object not found"));
+    }
+
+    #[test]
+    fn test_api_error_roundtrip_through_io_error() {
+        let original_io_error = IoError::new(ErrorKind::PermissionDenied, "original permission error");
+
+        // Convert to ApiError
+        let api_error: ApiError = original_io_error.into();
+
+        // Verify the conversion preserved the information
+        assert_eq!(api_error.code, S3ErrorCode::InternalError);
+        assert!(api_error.message.contains("original permission error"));
+        assert!(api_error.source.is_some());
+
+        // Test that we can downcast back to the original io::Error
+        let source = api_error.source.as_ref().unwrap();
+        let downcast_io_error = source.downcast_ref::<IoError>();
+        assert!(downcast_io_error.is_some());
+        assert_eq!(downcast_io_error.unwrap().kind(), ErrorKind::PermissionDenied);
+        assert!(downcast_io_error.unwrap().to_string().contains("original permission error"));
+    }
+
+    #[test]
+    fn test_api_error_chain_conversion() {
+        // Start with an io::Error
+        let io_error = IoError::new(ErrorKind::InvalidData, "invalid data");
+
+        // Convert to StorageError (simulating what happens in the codebase)
+        let storage_error = StorageError::other(io_error);
+
+        // Convert to ApiError
+        let api_error: ApiError = storage_error.into();
+
+        // Verify the chain is preserved
+        assert!(api_error.source.is_some());
+
+        // Check that we can still access the original error information
+        let source = api_error.source.as_ref().unwrap();
+        let downcast_storage_error = source.downcast_ref::<StorageError>();
+        assert!(downcast_storage_error.is_some());
+    }
+
+    #[test]
+    fn test_api_error_error_trait_implementation() {
+        let api_error = ApiError {
+            code: S3ErrorCode::InternalError,
+            message: "Test error".to_string(),
+            source: Some(Box::new(IoError::other("source error"))),
+        };
+
+        // Test that it implements std::error::Error
+        let error: &dyn std::error::Error = &api_error;
+        assert_eq!(error.to_string(), "Test error");
+        let source = error
+            .source()
+            .expect("typed source must remain reachable through the error trait");
+        let source = source.downcast_ref::<IoError>().expect("original I/O error");
+        assert_eq!(source.kind(), ErrorKind::Other);
+        assert_eq!(source.to_string(), "source error");
+        assert!(std::error::Error::source(&ApiError::access_denied()).is_none());
+    }
+}

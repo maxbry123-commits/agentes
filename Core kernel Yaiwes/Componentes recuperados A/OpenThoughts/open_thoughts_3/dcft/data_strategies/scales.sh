@@ -1,0 +1,1 @@
+find dcft/data_strategies/_B1_Mixing -name "*_1k.yaml" -o -name "*_3k.yaml" -o -name "*_10k.yaml" | sed 's|.*/\(.*\)\.yaml|\1|' | xargs -I {} bash -c 'echo {}'

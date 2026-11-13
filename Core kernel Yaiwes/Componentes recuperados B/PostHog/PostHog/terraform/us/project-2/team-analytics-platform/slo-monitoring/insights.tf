@@ -1,0 +1,669 @@
+locals {
+  # ===========================================================================
+  # SLO operation config. Add new operations here to auto-generate insights.
+  # Each operation must emit slo_operation_started and slo_operation_completed
+  # events with matching properties.operation value (see posthog/slo/types.py).
+  # ===========================================================================
+  slo_operations = {
+    export = {
+      name    = "Exports"
+      slo     = 99.95 # error budget = 0.05%
+      regions = ["US", "EU"]
+    }
+    subscription_delivery = {
+      name    = "Subscription deliveries"
+      slo     = 99.95 # error budget = 0.05%
+      regions = ["US", "EU"]
+    }
+    subscription_create = {
+      name    = "Subscription created"
+      slo     = 99.95 # error budget = 0.05%
+      regions = ["US", "EU"]
+    }
+    subscription_delete = {
+      name    = "Subscription deleted"
+      slo     = 99.95 # error budget = 0.05%
+      regions = ["US", "EU"]
+    }
+    ai_subscription_prompt_generation = {
+      name    = "AI report generation"
+      slo     = 99.95 # error budget = 0.05%
+      regions = ["US", "EU"]
+    }
+    alert_check = {
+      name    = "Alert checks"
+      slo     = 99.95 # error budget = 0.05%
+      regions = ["US", "EU"]
+    }
+    alert_delivery = {
+      name    = "Alert notification delivery"
+      slo     = 99.95 # error budget = 0.05%
+      regions = ["US", "EU"]
+    }
+    dashboard_widget_delivery = {
+      name    = "Dashboard widget delivery"
+      slo     = 99.95 # error budget = 0.05%
+      regions = ["US", "EU"]
+    }
+    query_service = {
+      name    = "Query service"
+      slo     = 99.95 # error budget = 0.05%
+      regions = ["US", "EU"]
+      # Sampled at 1% to keep ingestion volume sane (unsampled would be many millions
+      # of events per day). Match this to QUERY_SERVICE_SLO_SAMPLE_RATE in
+      # posthog/settings/web.py. Documentation only; the dashboard SQL reads
+      # `properties.sample_rate` from each event and weights by 1/sample_rate, so a
+      # mismatch here doesn't break math.
+      sample_rate = 0.01
+    }
+  }
+
+  # ---------------------------------------------------------------------------
+  # Flatten: {operation}_{region} for burn rate + duration per region.
+  # ---------------------------------------------------------------------------
+  slo_operation_regions = merge([
+    for op_key, op in local.slo_operations : {
+      for region in op.regions :
+      "${op_key}_${lower(region)}" => {
+        name         = op.name
+        slo          = op.slo
+        operation    = op_key
+        region       = region
+        region_count = length(op.regions)
+      }
+    }
+  ]...)
+
+  # Row budgets for queries (with 2x margin for safety).
+  slo_burn_rate_limit    = 168 * 4 * 2 # 7 days * 24h * 4 metrics * margin
+  slo_duration_limit     = 7 * 3 * 2   # 7 days * 3 percentiles * margin
+  slo_success_rate_limit = length(local.slo_operations) * 28 * 2
+
+  # Explicit operation list for the success rate query (avoids DISTINCT drift).
+  slo_operation_list = join(", ", [for k, _ in local.slo_operations : "'${k}'"])
+
+  # ---------------------------------------------------------------------------
+  # Burn rate query template (hourly granularity, 4 windows).
+  # Placeholders: {{OPERATION}}, {{REGION}}, {{ERROR_BUDGET}}
+  # ---------------------------------------------------------------------------
+  slo_burn_rate_query = <<-SQL
+    -- Single scan: GROUP BY (cid, hour) extracts correlation_id once per row.
+    -- Correlated events (cid != '') are paired by cid then attributed to start hour.
+    -- Uncorrelated events (cid = '') use bucket-based counting with clamp.
+    -- Sampled operations (properties.sample_rate < 1.0) are reweighted by 1/sample_rate
+    -- so the dashboard reflects true volume; events without the property coalesce to 1.0.
+    WITH weighted_events AS (
+        SELECT
+            event,
+            timestamp,
+            coalesce(nullIf(properties.correlation_id, ''), '') AS correlation_id,
+            properties.outcome AS outcome,
+            coalesce(toFloat(properties.sample_rate), 1.0) AS sample_rate,
+            1.0 / coalesce(toFloat(properties.sample_rate), 1.0) AS weight
+        FROM events
+        WHERE event IN ('slo_operation_started', 'slo_operation_completed')
+          AND properties.operation = '{{OPERATION}}'
+          AND properties.region = '{{REGION}}'
+          AND timestamp >= now() - INTERVAL 35 DAY
+    ),
+    per_cid_hour AS (
+        SELECT
+            correlation_id AS cid,
+            toStartOfHour(timestamp) AS event_hour,
+            sumIf(weight, event = 'slo_operation_started') AS starts,
+            sumIf(weight, event = 'slo_operation_completed' AND outcome = 'success') AS successes,
+            -- Per-cid sample_rate for the correlated-path collapse. All events in a pair
+            -- share the same rate (coin flip is per-operation) so max() is unambiguous.
+            max(sample_rate) AS cid_sample_rate,
+            min(if(event = 'slo_operation_started', timestamp, NULL)) AS first_start
+        FROM weighted_events
+        GROUP BY cid, event_hour
+    ),
+    hourly AS (
+        SELECT hour, sum(total) AS total, sum(failures) AS failures
+        FROM (
+            -- Uncorrelated: starts/successes already weighted; 1 row per hour.
+            SELECT
+                event_hour AS hour,
+                starts AS total,
+                greatest(starts - successes, 0.0) AS failures
+            FROM per_cid_hour
+            WHERE cid = ''
+
+            UNION ALL
+
+            -- Correlated: collapse across hours per cid, attribute to start hour.
+            -- Each cid = one operation, weighted by 1/sample_rate of its events.
+            SELECT
+                toStartOfHour(min(first_start)) AS hour,
+                1.0 / max(cid_sample_rate) AS total,
+                if(max(successes) > 0, 0.0, 1.0 / max(cid_sample_rate)) AS failures
+            FROM per_cid_hour
+            WHERE cid != ''
+            GROUP BY cid
+            HAVING hour IS NOT NULL
+        )
+        GROUP BY hour
+    ),
+    hour_range AS (
+        SELECT toStartOfHour(now()) - INTERVAL number HOUR AS hour FROM numbers(841)
+    ),
+    base AS (
+        SELECT
+            h.hour AS hour,
+            coalesce(hourly.total, 0) AS total,
+            coalesce(hourly.failures, 0) AS failures
+        FROM hour_range AS h
+        LEFT JOIN hourly ON h.hour = hourly.hour
+    ),
+    rolling AS (
+        SELECT
+            hour,
+            total AS t1h,
+            failures AS f1h,
+            sum(total) OVER w24h AS t24h,
+            sum(failures) OVER w24h AS f24h,
+            sum(total) OVER w7d AS t7d,
+            sum(failures) OVER w7d AS f7d,
+            sum(total) OVER w28d AS t28d,
+            sum(failures) OVER w28d AS f28d
+        FROM base
+        WINDOW
+            w24h AS (ORDER BY hour ASC ROWS BETWEEN 23 PRECEDING AND CURRENT ROW),
+            w7d  AS (ORDER BY hour ASC ROWS BETWEEN 167 PRECEDING AND CURRENT ROW),
+            w28d AS (ORDER BY hour ASC ROWS BETWEEN 671 PRECEDING AND CURRENT ROW)
+    )
+    SELECT hour AS time, metric, value
+    FROM (
+        SELECT
+            hour,
+            if(t1h  > 0, round((f1h  / t1h)  / {{ERROR_BUDGET}}, 2), NULL) AS raw_1h,
+            if(t24h > 0, round((f24h / t24h) / {{ERROR_BUDGET}}, 2), NULL) AS raw_24h,
+            if(t7d  > 0, round((f7d  / t7d)  / {{ERROR_BUDGET}}, 2), NULL) AS raw_7d,
+            if(t28d > 0, round((f28d / t28d) / {{ERROR_BUDGET}}, 2), NULL) AS raw_28d,
+            ['Burn rate 1h', 'Burn rate 24h', 'Burn rate 7d', 'Burn rate 28d'] AS metrics,
+            [
+                sign(raw_1h)  * log10(1 + abs(raw_1h)),
+                sign(raw_24h) * log10(1 + abs(raw_24h)),
+                sign(raw_7d)  * log10(1 + abs(raw_7d)),
+                sign(raw_28d) * log10(1 + abs(raw_28d))
+            ] AS vals
+        FROM rolling
+        WHERE hour >= now() - INTERVAL 7 DAY
+    )
+    ARRAY JOIN metrics AS metric, vals AS value
+    ORDER BY time ASC, metric ASC
+    LIMIT ${local.slo_burn_rate_limit}
+  SQL
+
+  # ---------------------------------------------------------------------------
+  # Duration percentile query template (daily granularity, p50/p95/p99 in seconds).
+  # Placeholders: {{OPERATION}}, {{REGION}}
+  # ---------------------------------------------------------------------------
+  slo_duration_query = <<-SQL
+    WITH daily AS (
+        SELECT
+            toDate(timestamp) AS date,
+            quantile(0.50)(toFloat(properties.duration_ms)) / 1000 AS p50,
+            quantile(0.95)(toFloat(properties.duration_ms)) / 1000 AS p95,
+            quantile(0.99)(toFloat(properties.duration_ms)) / 1000 AS p99
+        FROM events
+        WHERE event = 'slo_operation_completed'
+          AND properties.operation = '{{OPERATION}}'
+          AND properties.region = '{{REGION}}'
+          AND properties.duration_ms IS NOT NULL
+          AND timestamp >= now() - INTERVAL 7 DAY
+        GROUP BY date
+    ),
+    date_range AS (
+        SELECT toDate(now()) - number AS date FROM numbers(7)
+    ),
+    base AS (
+        SELECT
+            d.date AS date,
+            daily.p50,
+            daily.p95,
+            daily.p99
+        FROM date_range AS d
+        LEFT JOIN daily ON d.date = daily.date
+    )
+    SELECT date AS day, metric, value
+    FROM (
+        SELECT
+            date,
+            ['p50', 'p95', 'p99'] AS metrics,
+            [
+                round(p50, 1),
+                round(p95, 1),
+                round(p99, 1)
+            ] AS vals
+        FROM base
+    )
+    ARRAY JOIN metrics AS metric, vals AS value
+    ORDER BY day ASC, metric ASC
+    LIMIT ${local.slo_duration_limit}
+  SQL
+
+}
+
+# ---------------------------------------------------------------------------
+# Burn rate insights (one per operation, auto-generated).
+# ---------------------------------------------------------------------------
+resource "posthog_insight" "slo_burn_rate" {
+  for_each = local.slo_operation_regions
+
+  name        = "SLO: Burn Rates - ${each.value.name} (${each.value.slo}%)${each.value.region_count > 1 ? " — ${each.value.region}" : ""}"
+  description = "[Investigate failures with AI](/ai?ask=Investigate+${each.value.operation}+failures+in+${each.value.region}+region.+Check+slo_operation_started+events+without+matching+slo_operation_completed+success+outcomes+in+the+last+24h)"
+  query_json = jsonencode({
+    kind = "DataVisualizationNode"
+    source = {
+      kind = "HogQLQuery"
+      query = replace(
+        replace(
+          replace(local.slo_burn_rate_query, "{{OPERATION}}", each.value.operation),
+          "{{REGION}}", each.value.region),
+        "{{ERROR_BUDGET}}", tostring((100 - each.value.slo) / 100)
+      )
+    }
+    display = "ActionsLineGraph"
+    chartSettings = {
+      xAxis = { column = "time" }
+      yAxis = [
+        {
+          column   = "value"
+          settings = { formatting = { prefix = "", suffix = "" } }
+        }
+      ]
+      seriesBreakdownColumn = "metric"
+      showLegend            = true
+      goalLines = [
+        { label = "Budget rate", value = 0.30, position = "start" },
+        { label = "100x burn",   value = 2.00, position = "start" }
+      ]
+    }
+    tableSettings = {
+      columns = [
+        { column = "time", settings = { formatting = { prefix = "", suffix = "" } } },
+        { column = "metric", settings = { formatting = { prefix = "", suffix = "" } } },
+        { column = "value", settings = { formatting = { prefix = "", suffix = "" } } },
+      ]
+    }
+  })
+
+  dashboard_ids = [posthog_dashboard.slo_monitoring.id]
+  tags          = ["managed-by:terraform", "slo"]
+}
+
+# ---------------------------------------------------------------------------
+# Duration percentile insights (one per operation, auto-generated).
+# ---------------------------------------------------------------------------
+resource "posthog_insight" "slo_duration" {
+  for_each = local.slo_operation_regions
+
+  name        = "SLO: Duration - ${each.value.name}${each.value.region_count > 1 ? " — ${each.value.region}" : ""}"
+  query_json = jsonencode({
+    kind = "DataVisualizationNode"
+    source = {
+      kind  = "HogQLQuery"
+      query = replace(
+        replace(local.slo_duration_query, "{{OPERATION}}", each.value.operation),
+        "{{REGION}}", each.value.region)
+    }
+    display = "ActionsAreaGraph"
+    chartSettings = {
+      xAxis = { column = "day" }
+      yAxis = [
+        {
+          column = "value"
+          settings = {
+            display    = { color = "#1d4aff", label = "", trendLine = false, displayType = "auto", yAxisPosition = "left" }
+            formatting = { style = "number", prefix = "", suffix = "s" }
+          }
+        }
+      ]
+      seriesBreakdownColumn = "metric"
+    }
+    tableSettings = {
+      columns = [
+        { column = "day", settings = { formatting = { prefix = "", suffix = "" } } },
+        { column = "metric", settings = { formatting = { prefix = "", suffix = "" } } },
+        { column = "value", settings = { formatting = { style = "number", prefix = "", suffix = "s" } } },
+      ]
+    }
+  })
+
+  dashboard_ids = [posthog_dashboard.slo_monitoring.id]
+  tags          = ["managed-by:terraform", "slo"]
+}
+
+# ---------------------------------------------------------------------------
+# Combined 28d success rate (all operations on one chart).
+# ---------------------------------------------------------------------------
+resource "posthog_insight" "slo_success_rate" {
+  name        = "SLO: 28d Success Rate"
+  query_json = jsonencode({
+    kind = "DataVisualizationNode"
+    source = {
+      kind  = "HogQLQuery"
+      query = <<-SQL
+        -- Pair starts to completions by correlation_id (same as the burn rate query) so an
+        -- operation that starts late in a day and finishes after midnight is attributed to its
+        -- start day, not miscounted as a failure on the start day and dropped on the next.
+        -- Uncorrelated events (cid = '') fall back to per-day bucket counting with a clamp.
+        -- Sampled operations are reweighted by 1/sample_rate so the rate reflects true volume;
+        -- events without the property coalesce to 1.0 (no sampling).
+        WITH weighted_events AS (
+            SELECT
+                event,
+                timestamp,
+                properties.operation AS operation,
+                coalesce(nullIf(properties.correlation_id, ''), '') AS correlation_id,
+                properties.outcome AS outcome,
+                1.0 / coalesce(toFloat(properties.sample_rate), 1.0) AS weight
+            FROM events
+            WHERE event IN ('slo_operation_started', 'slo_operation_completed')
+              AND properties.operation IN (${local.slo_operation_list})
+              AND timestamp >= now() - INTERVAL 56 DAY
+        ),
+        per_cid_day AS (
+            SELECT
+                operation,
+                correlation_id AS cid,
+                toDate(timestamp) AS event_date,
+                sumIf(weight, event = 'slo_operation_started') AS starts,
+                sumIf(weight, event = 'slo_operation_completed' AND outcome = 'success') AS successes,
+                -- One operation per cid, so all its events share a weight; max() collapses them.
+                max(weight) AS cid_weight,
+                min(if(event = 'slo_operation_started', timestamp, NULL)) AS first_start
+            FROM weighted_events
+            GROUP BY operation, cid, event_date
+        ),
+        daily AS (
+            SELECT operation, date, sum(total) AS total, sum(failures) AS failures
+            FROM (
+                -- Uncorrelated: starts/successes already weighted; 1 row per (operation, day).
+                SELECT
+                    operation,
+                    event_date AS date,
+                    starts AS total,
+                    greatest(starts - successes, 0.0) AS failures
+                FROM per_cid_day
+                WHERE cid = ''
+
+                UNION ALL
+
+                -- Correlated: collapse across days per (operation, cid), attribute to start day.
+                SELECT
+                    operation,
+                    toDate(min(first_start)) AS date,
+                    max(cid_weight) AS total,
+                    if(max(successes) > 0, 0.0, max(cid_weight)) AS failures
+                FROM per_cid_day
+                WHERE cid != ''
+                GROUP BY operation, cid
+                HAVING date IS NOT NULL
+            )
+            GROUP BY operation, date
+        ),
+        date_range AS (
+            -- 28 displayed days + 28 days of look-back so every displayed point has a full
+            -- 28-day rolling window (avoids the warm-up ramp at the left edge of the chart).
+            SELECT toDate(now()) - number AS date FROM numbers(56)
+        ),
+        operations AS (
+            SELECT arrayJoin([${local.slo_operation_list}]) AS operation
+        ),
+        base AS (
+            SELECT
+                d.date AS date,
+                o.operation AS operation,
+                coalesce(daily.total, 0) AS total,
+                coalesce(daily.failures, 0) AS failures
+            FROM date_range AS d
+            CROSS JOIN operations AS o
+            LEFT JOIN daily ON d.date = daily.date AND o.operation = daily.operation
+        ),
+        rolling AS (
+            SELECT
+                date,
+                operation,
+                sum(total) OVER (PARTITION BY operation ORDER BY date ASC ROWS BETWEEN 27 PRECEDING AND CURRENT ROW) AS t28,
+                sum(failures) OVER (PARTITION BY operation ORDER BY date ASC ROWS BETWEEN 27 PRECEDING AND CURRENT ROW) AS f28
+            FROM base
+        )
+        SELECT
+            date AS day,
+            operation,
+            if(t28 > 0, round((t28 - f28) / t28 * 100, 2), NULL) AS success_rate
+        FROM rolling
+        WHERE date >= toDate(now()) - INTERVAL 27 DAY
+        ORDER BY date ASC, operation ASC
+        LIMIT ${local.slo_success_rate_limit}
+      SQL
+    }
+    display = "ActionsLineGraph"
+    chartSettings = {
+      xAxis = { column = "day" }
+      yAxis = [
+        {
+          column   = "success_rate"
+          settings = { formatting = { prefix = "", suffix = "%" } }
+        }
+      ]
+      seriesBreakdownColumn = "operation"
+      showLegend            = true
+    }
+    tableSettings = {
+      columns = [
+        { column = "day", settings = { formatting = { prefix = "", suffix = "" } } },
+        { column = "operation", settings = { formatting = { prefix = "", suffix = "" } } },
+        { column = "success_rate", settings = { formatting = { prefix = "", suffix = "%" } } },
+      ]
+    }
+  })
+
+  dashboard_ids = [posthog_dashboard.slo_monitoring.id]
+  tags          = ["managed-by:terraform", "slo"]
+}
+
+# ---------------------------------------------------------------------------
+# 28d volume summary table (all operations, includes SLO target).
+# ---------------------------------------------------------------------------
+resource "posthog_insight" "slo_volume" {
+  name        = "SLO: 28d Volume by Operation"
+  description = "* = all regions"
+  query_json = jsonencode({
+    kind = "DataVisualizationNode"
+    source = {
+      kind  = "HogQLQuery"
+      query = <<-SQL
+        -- No correlation_id needed: single 28-day bucket has no cross-bucket issue.
+        -- Counts reconstructed to true volume by weighting each event by 1/sample_rate;
+        -- events without the property coalesce to 1.0 (no sampling).
+        WITH weighted_events AS (
+            SELECT
+                event,
+                properties.operation AS operation,
+                properties.region AS raw_region,
+                properties.outcome AS outcome,
+                1.0 / coalesce(toFloat(properties.sample_rate), 1.0) AS weight
+            FROM events
+            WHERE event IN ('slo_operation_started', 'slo_operation_completed')
+              AND timestamp >= now() - INTERVAL 28 DAY
+        )
+        SELECT
+            operation,
+            if(
+                count(raw_region) OVER (PARTITION BY operation) = 1,
+                'all*',
+                raw_region
+            ) AS region,
+            sumIf(weight, event = 'slo_operation_started') AS started,
+            sumIf(weight, event = 'slo_operation_completed' AND outcome = 'success') AS successes,
+            sumIf(weight, event = 'slo_operation_completed' AND outcome = 'failure') AS failures,
+            greatest(
+                sumIf(weight, event = 'slo_operation_started')
+                  - sumIf(weight, event = 'slo_operation_completed'),
+                0.0
+            ) AS never_completed,
+            if(
+                sumIf(weight, event = 'slo_operation_started') > 0,
+                round(sumIf(weight, event = 'slo_operation_completed' AND outcome = 'success')
+                  / sumIf(weight, event = 'slo_operation_started') * 100, 2),
+                NULL
+            ) AS success_rate
+        FROM weighted_events
+        GROUP BY operation, raw_region
+        ORDER BY operation, region
+      SQL
+    }
+  })
+
+  dashboard_ids = [posthog_dashboard.slo_monitoring.id]
+  tags          = ["managed-by:terraform", "slo"]
+}
+
+resource "posthog_insight" "alert_delivery_by_type" {
+  name        = "SLO: Alert notification delivery by alert type"
+  description = "Daily delivery success for each alert type and region. New alert types appear automatically."
+  query_json = jsonencode({
+    kind = "DataVisualizationNode"
+    source = {
+      kind = "HogQLQuery"
+      query = <<-SQL
+        WITH delivery_events AS (
+            SELECT
+                event,
+                timestamp,
+                coalesce(nullIf(properties.correlation_id, ''), '') AS correlation_id,
+                coalesce(nullIf(properties.region, ''), 'unknown') AS region,
+                coalesce(nullIf(properties.alert_type, ''), 'unknown') AS alert_type,
+                properties.outcome AS outcome
+            FROM events
+            WHERE event IN ('slo_operation_started', 'slo_operation_completed')
+              AND properties.operation = 'alert_delivery'
+              AND timestamp >= now() - INTERVAL 28 DAY
+        ),
+        per_delivery_day AS (
+            SELECT
+                correlation_id,
+                region,
+                alert_type,
+                toDate(timestamp) AS event_day,
+                countIf(event = 'slo_operation_started') AS starts,
+                countIf(event = 'slo_operation_completed' AND outcome = 'success') AS successes,
+                min(if(event = 'slo_operation_started', timestamp, NULL)) AS first_start
+            FROM delivery_events
+            GROUP BY correlation_id, region, alert_type, event_day
+        ),
+        daily AS (
+            SELECT day, region, alert_type, sum(started) AS started, sum(successes) AS successes
+            FROM (
+                SELECT
+                    event_day AS day,
+                    region,
+                    alert_type,
+                    starts AS started,
+                    least(starts, successes) AS successes
+                FROM per_delivery_day
+                WHERE correlation_id = ''
+
+                UNION ALL
+
+                SELECT
+                    toDate(min(first_start)) AS day,
+                    region,
+                    alert_type,
+                    1 AS started,
+                    if(max(successes) > 0, 1, 0) AS successes
+                FROM per_delivery_day
+                WHERE correlation_id != ''
+                GROUP BY correlation_id, region, alert_type
+                HAVING day IS NOT NULL
+            )
+            GROUP BY day, region, alert_type
+        )
+        SELECT
+            day,
+            concat(region, ' / ', alert_type) AS series,
+            round(if(started > 0, successes / started * 100, 0), 4) AS success_rate,
+            started,
+            successes,
+            started - successes AS failures
+        FROM daily
+        ORDER BY day ASC, series ASC
+      SQL
+    }
+    display = "ActionsLineGraph"
+    chartSettings = {
+      xAxis                 = { column = "day" }
+      yAxis                 = [{ column = "success_rate", settings = { formatting = { suffix = "%" } } }]
+      seriesBreakdownColumn = "series"
+      showLegend            = true
+    }
+    tableSettings = {
+      columns = [
+        { column = "day" },
+        { column = "series" },
+        { column = "success_rate", settings = { formatting = { suffix = "%" } } },
+        { column = "started" },
+        { column = "successes" },
+        { column = "failures" },
+      ]
+    }
+  })
+
+  dashboard_ids = [posthog_dashboard.slo_monitoring.id]
+  tags          = ["managed-by:terraform", "slo"]
+}
+
+resource "posthog_insight" "alert_delivery_failure_rate" {
+  for_each = toset(["US", "EU"])
+
+  name        = "SLO: Alert notification delivery failure rate (${each.value})"
+  description = "Daily failed alert notification deliveries among completed attempts."
+  query_json = jsonencode({
+    kind = "InsightVizNode"
+    source = {
+      kind     = "TrendsQuery"
+      interval = "day"
+      dateRange = {
+        date_from = "-7d"
+      }
+      series = [
+        {
+          kind        = "EventsNode"
+          event       = "slo_operation_completed"
+          math        = "total"
+          custom_name = "Failed"
+          properties = [
+            { key = "operation", type = "event", value = "alert_delivery", operator = "exact" },
+            { key = "region", type = "event", value = each.value, operator = "exact" },
+            { key = "outcome", type = "event", value = "failure", operator = "exact" },
+          ]
+        },
+        {
+          kind        = "EventsNode"
+          event       = "slo_operation_completed"
+          math        = "total"
+          custom_name = "Completed"
+          properties = [
+            { key = "operation", type = "event", value = "alert_delivery", operator = "exact" },
+            { key = "region", type = "event", value = each.value, operator = "exact" },
+          ]
+        },
+      ]
+      trendsFilter = {
+        display = "ActionsLineGraph"
+        formulaNodes = [
+          { formula = "A/B", custom_name = "Failure rate" },
+        ]
+        aggregationAxisFormat   = "percentage_scaled"
+        decimalPlaces           = 4
+        showAlertThresholdLines = true
+      }
+    }
+  })
+
+  tags = ["managed-by:terraform", "slo"]
+}

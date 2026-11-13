@@ -1,0 +1,137 @@
+import async from 'async';
+import { Presets, SingleBar } from 'cli-progress';
+import logger from '../../logger';
+import invariant from '../../util/invariant';
+import {
+  getRemoteGenerationExplicitlyDisabledError,
+  neverGenerateRemote,
+} from '../remoteGeneration';
+import { remoteGenerationContextPayload } from '../remoteGenerationContext';
+import { postRemoteGenerationTask } from '../remoteGenerationTask';
+
+import type { TestCase } from '../../types/index';
+import type { StrategyRuntimeContext } from './types';
+
+async function generateLikertPrompts(
+  testCases: TestCase[],
+  injectVar: string,
+  config: Record<string, any>,
+  runtimeContext?: StrategyRuntimeContext,
+): Promise<TestCase[]> {
+  let progressBar: SingleBar | undefined;
+  try {
+    const concurrency = 10;
+    let allResults: TestCase[] = [];
+
+    if (logger.level !== 'debug') {
+      progressBar = new SingleBar(
+        {
+          format:
+            'Likert Jailbreak Generation {bar} {percentage}% | ETA: {eta}s | {value}/{total} cases',
+          hideCursor: true,
+          gracefulExit: true,
+        },
+        Presets.shades_classic,
+      );
+      progressBar.start(testCases.length, 0);
+    }
+
+    await async.forEachOfLimit(testCases, concurrency, async (testCase, index) => {
+      logger.debug(`[Likert] Processing test case: ${JSON.stringify(testCase)}`);
+      invariant(
+        testCase.vars,
+        `Likert: testCase.vars is required, but got ${JSON.stringify(testCase)}`,
+      );
+
+      const payload = {
+        task: 'jailbreak:likert',
+        prompt: testCase.vars[injectVar],
+        index,
+        plugin: testCase.metadata?.plugins?.join(',') ?? testCase.metadata?.pluginId,
+        ...remoteGenerationContextPayload(config.targetId),
+      };
+
+      interface LikertGenerationResponse {
+        error?: string;
+        modifiedPrompts?: string[];
+      }
+
+      const { data } = await postRemoteGenerationTask<LikertGenerationResponse>(
+        payload,
+        runtimeContext,
+      );
+
+      logger.debug(
+        `Got Likert jailbreak generation result for case ${Number(index) + 1}: ${JSON.stringify(
+          data,
+        )}`,
+      );
+      // Runtime check is necessary because both properties are optional in LikertGenerationResponse.
+      // The remote API could return {} or {error: "..."} without modifiedPrompts, and line 80 directly
+      // accesses data.modifiedPrompts.map() which would throw if undefined.
+      if (data.error || !data.modifiedPrompts) {
+        logger.error(`[jailbreak:likert] Error in Likert generation: ${data.error}}`);
+        logger.debug(`[jailbreak:likert] Response: ${JSON.stringify(data)}`);
+        return;
+      }
+
+      const likertTestCases = data.modifiedPrompts.map((modifiedPrompt: string) => {
+        const originalText = String(testCase.vars![injectVar]);
+        return {
+          ...testCase,
+          vars: {
+            ...testCase.vars,
+            [injectVar]: modifiedPrompt,
+          },
+          assert: testCase.assert?.map((assertion) => ({
+            ...assertion,
+            metric: assertion.metric ? `${assertion.metric}/Likert` : assertion.metric,
+          })),
+          metadata: {
+            ...testCase.metadata,
+            strategyId: 'jailbreak:likert',
+            originalText,
+          },
+        };
+      });
+
+      allResults = allResults.concat(likertTestCases);
+
+      if (progressBar) {
+        progressBar.increment(1);
+      } else {
+        logger.debug(`Processed case ${Number(index) + 1} of ${testCases.length}`);
+      }
+    });
+
+    if (progressBar) {
+      progressBar.stop();
+    }
+
+    return allResults;
+  } catch (error) {
+    if (progressBar) {
+      progressBar.stop();
+    }
+    logger.error(`Error in Likert generation: ${error}`);
+    return [];
+  }
+}
+
+export async function addLikertTestCases(
+  testCases: TestCase[],
+  injectVar: string,
+  config: Record<string, unknown>,
+  runtimeContext?: StrategyRuntimeContext,
+): Promise<TestCase[]> {
+  if (neverGenerateRemote()) {
+    throw new Error(getRemoteGenerationExplicitlyDisabledError('Likert jailbreak strategy'));
+  }
+
+  const likertTestCases = await generateLikertPrompts(testCases, injectVar, config, runtimeContext);
+  if (likertTestCases.length === 0) {
+    logger.warn('No Likert jailbreak test cases were generated');
+  }
+
+  return likertTestCases;
+}

@@ -1,0 +1,153 @@
+<tools>
+  <tool name="list_requests">
+    <description>List and filter proxy requests via HTTPQL.</description>
+    <parameters>
+      <parameter name="httpql_filter" type="string" required="false">
+        <description>HTTPQL filter. E.g. resp.code.eq:200, req.method.regex:"POST".</description>
+      </parameter>
+      <parameter name="start_page" type="integer" required="false">
+        <description>Starting page (1-based).</description>
+      </parameter>
+      <parameter name="end_page" type="integer" required="false">
+        <description>Ending page (inclusive).</description>
+      </parameter>
+      <parameter name="page_size" type="integer" required="false">
+        <description>Requests per page.</description>
+      </parameter>
+      <parameter name="sort_by" type="string" required="false">
+        <description>timestamp, host, status_code, response_time, response_size.</description>
+      </parameter>
+      <parameter name="sort_order" type="string" required="false">
+        <description>asc or desc.</description>
+      </parameter>
+      <parameter name="scope_id" type="string" required="false">
+        <description>Scope ID to filter.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Requests list, total_count, pagination info.</description>
+    </returns>
+    <examples>
+      <function=list_requests>
+        <parameter=httpql_filter>req.method.eq:"POST" AND req.path.cont:"/api/"</parameter>
+        <parameter=sort_by>response_time</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="view_request">
+    <description>View request/response data.</description>
+    <parameters>
+      <parameter name="request_id" type="string" required="true">
+        <description>Request ID.</description>
+      </parameter>
+      <parameter name="part" type="string" required="false">
+        <description>request or response.</description>
+      </parameter>
+      <parameter name="search_pattern" type="string" required="false">
+        <description>Regex to search content.</description>
+      </parameter>
+      <parameter name="page" type="integer" required="false">
+        <description>Page number.</description>
+      </parameter>
+      <parameter name="page_size" type="integer" required="false">
+        <description>Lines per page.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Content, matches, pagination info.</description>
+    </returns>
+    <examples>
+      <function=view_request>
+        <parameter=request_id>123</parameter>
+        <parameter=part>response</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="send_request">
+    <description>Send HTTP request through proxy.</description>
+    <parameters>
+      <parameter name="method" type="string" required="true">
+        <description>HTTP method.</description>
+      </parameter>
+      <parameter name="url" type="string" required="true">
+        <description>Target URL.</description>
+      </parameter>
+      <parameter name="headers" type="dict" required="false">
+        <description>Headers dict.</description>
+      </parameter>
+      <parameter name="body" type="string" required="false">
+        <description>Request body.</description>
+      </parameter>
+      <parameter name="timeout" type="integer" required="false">
+        <description>Timeout seconds.</description>
+      </parameter>
+      <parameter name="follow_redirects" type="boolean" required="false">
+        <description>Follow redirects.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Status, headers, body, timing.</description>
+    </returns>
+    <examples>
+      <function=send_request>
+        <parameter=method>GET</parameter>
+        <parameter=url>https://example.com/health</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="repeat_request">
+    <description>Repeat proxy request with modifications.</description>
+    <parameters>
+      <parameter name="request_id" type="string" required="true">
+        <description>Original request ID.</description>
+      </parameter>
+      <parameter name="modifications" type="dict" required="false">
+        <description>Changes: url, params, headers, body, cookies.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Status, headers, body, timing.</description>
+    </returns>
+    <examples>
+      <function=repeat_request>
+        <parameter=request_id>req_789</parameter>
+        <parameter=modifications>{"body": "{\"username\":\"admin\"}"}</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="scope_rules">
+    <description>Manage proxy scope patterns.</description>
+    <parameters>
+      <parameter name="action" type="string" required="true">
+        <description>get, update, list, create, delete.</description>
+      </parameter>
+      <parameter name="allowlist" type="list" required="false">
+        <description>Domain patterns to include.</description>
+      </parameter>
+      <parameter name="denylist" type="list" required="false">
+        <description>Patterns to exclude.</description>
+      </parameter>
+      <parameter name="scope_id" type="string" required="false">
+        <description>Scope ID (for get/update/delete).</description>
+      </parameter>
+      <parameter name="scope_name" type="string" required="false">
+        <description>Scope name (for create/update).</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Scope object, list, or confirmation.</description>
+    </returns>
+    <examples>
+      <function=scope_rules>
+        <parameter=action>create</parameter>
+        <parameter=scope_name>API</parameter>
+        <parameter=allowlist>["*.example.com"]</parameter>
+      </function>
+    </examples>
+  </tool>
+
+</tools>

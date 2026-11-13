@@ -1,0 +1,7 @@
+numpy
+sentencepiece
+torch
+tqdm
+transformers
+blobfile
+tiktoken

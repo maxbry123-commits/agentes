@@ -1,0 +1,33 @@
+{
+  "operations": {
+    "GET /users": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "User",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "User": {
+      "fields": [
+        "_embedded",
+        "page"
+      ],
+      "types": {
+        "_embedded": [
+          "object"
+        ],
+        "page": [
+          "object"
+        ]
+      }
+    }
+  }
+}

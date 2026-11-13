@@ -1,0 +1,201 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::collections::HashMap;
+use std::sync::LazyLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::sync::RwLock;
+use tonic::transport::Channel;
+
+pub static GLOBAL_LOCAL_NODE_NAME: LazyLock<RwLock<String>> = LazyLock::new(|| RwLock::new("".to_string()));
+pub static GLOBAL_RUSTFS_HOST: LazyLock<RwLock<String>> = LazyLock::new(|| RwLock::new("".to_string()));
+pub static GLOBAL_RUSTFS_PORT: LazyLock<RwLock<String>> = LazyLock::new(|| RwLock::new("9000".to_string()));
+pub static GLOBAL_RUSTFS_ADDR: LazyLock<RwLock<String>> = LazyLock::new(|| RwLock::new("".to_string()));
+pub static GLOBAL_CONN_MAP: LazyLock<RwLock<HashMap<String, Channel>>> = LazyLock::new(|| RwLock::new(HashMap::new()));
+pub static GLOBAL_ROOT_CERT: LazyLock<RwLock<Option<Vec<u8>>>> = LazyLock::new(|| RwLock::new(None));
+pub static GLOBAL_MTLS_IDENTITY: LazyLock<RwLock<Option<MtlsIdentityPem>>> = LazyLock::new(|| RwLock::new(None));
+pub static GLOBAL_OUTBOUND_TLS_GENERATION: LazyLock<AtomicU64> = LazyLock::new(|| AtomicU64::new(0));
+
+/// Log level to use when reporting cached gRPC connection eviction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConnectionEvictionLogLevel {
+    Warn,
+    Info,
+    Debug,
+}
+
+/// Set the global local node name.
+///
+/// # Arguments
+/// * `name` - A string slice representing the local node name.
+pub async fn set_global_local_node_name(name: &str) {
+    *GLOBAL_LOCAL_NODE_NAME.write().await = name.to_string();
+}
+
+/// Get the global local node name.
+///
+/// # Returns
+/// * `String` - The local node name.
+pub async fn get_global_local_node_name() -> String {
+    GLOBAL_LOCAL_NODE_NAME.read().await.clone()
+}
+
+/// Read the local node name without waiting for initialization or a writer.
+pub fn try_get_global_local_node_name() -> Option<String> {
+    GLOBAL_LOCAL_NODE_NAME
+        .try_read()
+        .ok()
+        .map(|name| name.clone())
+        .filter(|name| !name.is_empty())
+}
+
+/// Set the global RustFS address used for gRPC connections.
+///
+/// # Arguments
+/// * `addr` - A string slice representing the RustFS address (e.g., "https://node1:9000").
+pub async fn set_global_addr(addr: &str) {
+    *GLOBAL_RUSTFS_ADDR.write().await = addr.to_string();
+}
+
+/// Get the global RustFS host.
+pub async fn get_global_rustfs_host() -> String {
+    GLOBAL_RUSTFS_HOST.read().await.clone()
+}
+
+/// Get the global RustFS address used for gRPC connections.
+pub async fn get_global_addr() -> String {
+    GLOBAL_RUSTFS_ADDR.read().await.clone()
+}
+
+/// Set the global root CA certificate for outbound gRPC clients.
+/// This certificate is used to validate server TLS certificates.
+/// When set to None, clients use the system default root CAs.
+///
+/// # Arguments
+/// * `cert` - A vector of bytes representing the PEM-encoded root CA certificate.
+pub async fn set_global_root_cert(cert: Vec<u8>) {
+    *GLOBAL_ROOT_CERT.write().await = Some(cert);
+}
+
+/// Clear the global root CA certificate for outbound gRPC clients.
+pub async fn clear_global_root_cert() {
+    *GLOBAL_ROOT_CERT.write().await = None;
+}
+
+/// Get the global root CA certificate for outbound gRPC clients.
+pub async fn get_global_root_cert() -> Option<Vec<u8>> {
+    GLOBAL_ROOT_CERT.read().await.clone()
+}
+
+/// Set the global mTLS identity (cert+key PEM) for outbound gRPC clients.
+/// When set, clients will present this identity to servers requesting/requiring mTLS.
+/// When None, clients proceed with standard server-authenticated TLS.
+///
+/// # Arguments
+/// * `identity` - An optional MtlsIdentityPem struct containing the cert and key PEM.
+pub async fn set_global_mtls_identity(identity: Option<MtlsIdentityPem>) {
+    *GLOBAL_MTLS_IDENTITY.write().await = identity;
+}
+
+/// Get the global mTLS identity for outbound gRPC clients.
+pub async fn get_global_mtls_identity() -> Option<MtlsIdentityPem> {
+    GLOBAL_MTLS_IDENTITY.read().await.clone()
+}
+
+/// Set the global outbound TLS generation.
+pub fn set_global_outbound_tls_generation(generation: u64) {
+    GLOBAL_OUTBOUND_TLS_GENERATION.store(generation, Ordering::Relaxed);
+}
+
+/// Get the global outbound TLS generation.
+pub fn get_global_outbound_tls_generation() -> u64 {
+    GLOBAL_OUTBOUND_TLS_GENERATION.load(Ordering::Relaxed)
+}
+
+/// Evict a stale/dead connection from the global connection cache.
+/// This is critical for cluster recovery when a node dies unexpectedly (e.g., power-off).
+/// By removing the cached connection, subsequent requests will establish a fresh connection.
+///
+/// # Arguments
+/// * `addr` - The address of the connection to evict.
+pub async fn evict_connection(addr: &str) {
+    evict_connection_with_log_level(addr, ConnectionEvictionLogLevel::Info).await;
+}
+
+/// Evict a stale/dead connection from the global connection cache with an explicit log level.
+pub async fn evict_connection_with_log_level(addr: &str, log_level: ConnectionEvictionLogLevel) {
+    let removed = GLOBAL_CONN_MAP.write().await.remove(addr);
+    if removed.is_some() {
+        match log_level {
+            ConnectionEvictionLogLevel::Warn => {
+                tracing::warn!(
+                    addr = %addr,
+                    "Removed cached gRPC connection so future RPCs will attempt to establish a fresh channel"
+                );
+            }
+            ConnectionEvictionLogLevel::Info => {
+                tracing::info!(
+                    addr = %addr,
+                    "Removed cached gRPC connection so future RPCs will attempt to establish a fresh channel"
+                );
+            }
+            ConnectionEvictionLogLevel::Debug => {
+                tracing::debug!(
+                    addr = %addr,
+                    "Removed cached gRPC connection so future RPCs will attempt to establish a fresh channel"
+                );
+            }
+        }
+    }
+}
+
+/// Get a cached gRPC connection for the given address.
+pub async fn cached_connection(addr: &str) -> Option<Channel> {
+    GLOBAL_CONN_MAP.read().await.get(addr).cloned()
+}
+
+/// Cache a gRPC connection for the given address.
+pub async fn cache_connection(addr: String, channel: Channel) {
+    GLOBAL_CONN_MAP.write().await.insert(addr, channel);
+}
+
+/// Check if a connection exists in the cache for the given address.
+///
+/// # Arguments
+/// * `addr` - The address to check.
+///
+/// # Returns
+/// * `bool` - True if a cached connection exists, false otherwise.
+pub async fn has_cached_connection(addr: &str) -> bool {
+    GLOBAL_CONN_MAP.read().await.contains_key(addr)
+}
+
+/// Clear all cached connections. Useful for full cluster reset/recovery.
+pub async fn clear_all_connections() {
+    let mut map = GLOBAL_CONN_MAP.write().await;
+    let count = map.len();
+    map.clear();
+    if count > 0 {
+        tracing::warn!("Cleared {} cached connections from global map", count);
+    }
+}
+/// Optional client identity (cert+key PEM) for outbound mTLS.
+///
+/// When present, gRPC clients will present this identity to servers requesting/requiring mTLS.
+/// When absent, clients proceed with standard server-authenticated TLS.
+#[derive(Clone, Debug)]
+pub struct MtlsIdentityPem {
+    pub cert_pem: Vec<u8>,
+    pub key_pem: Vec<u8>,
+}

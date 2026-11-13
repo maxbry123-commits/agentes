@@ -1,0 +1,17 @@
+operators:
+  - id: judge
+    config:
+      type: completions
+      map: deepseek_judge
+      model: gpt-4o-mini
+    input_ids:
+      - annotate
+  - id: select_true
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          correct: True
+    input_ids:
+      - judge

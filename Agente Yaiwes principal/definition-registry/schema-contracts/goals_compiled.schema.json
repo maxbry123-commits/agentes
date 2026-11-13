@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.goals_compiled.v1",
+  "title": "GoalsCompiled",
+  "description": "Goals OUT compiled only from resolved StructuredQuestions form.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "goals_id",
+    "contract_id",
+    "form_hash",
+    "status",
+    "goals",
+    "goals_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "goals_id": { "type": "string" },
+    "contract_id": { "type": "string" },
+    "form_hash": { "type": ["string", "null"] },
+    "status": {
+      "type": "string",
+      "enum": ["COMPILED", "BLOCKED_UNRESOLVED_FORM"]
+    },
+    "goals": {
+      "type": "object",
+      "required": [
+        "G01_objective",
+        "G02_expected_result",
+        "G03_constraints",
+        "G04_forbidden",
+        "G05_success_criteria",
+        "G06_rollback",
+        "G07_resources_existing",
+        "G08_resources_missing",
+        "G09_engines_allowed",
+        "G10_risk_level",
+        "G11_budget",
+        "G12_approver"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "G01_objective": { "type": "string" },
+        "G02_expected_result": { "type": "string" },
+        "G03_constraints": { "type": "array", "items": { "type": "string" } },
+        "G04_forbidden": { "type": "array", "items": { "type": "string" } },
+        "G05_success_criteria": { "type": "string" },
+        "G06_rollback": { "type": "string" },
+        "G07_resources_existing": { "type": "array", "items": { "type": "string" } },
+        "G08_resources_missing": { "type": "array", "items": { "type": "string" } },
+        "G09_engines_allowed": { "type": "array", "items": { "type": "string" } },
+        "G10_risk_level": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "unknown"]
+        },
+        "G11_budget": { "type": "object", "additionalProperties": true },
+        "G12_approver": {
+          "type": "string",
+          "enum": ["auto", "council", "director", "unknown"]
+        }
+      }
+    },
+    "source_answers": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "goals_hash": { "type": "string" }
+  }
+}

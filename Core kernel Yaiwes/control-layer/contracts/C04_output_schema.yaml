@@ -1,0 +1,17 @@
+# C04 — L1 Interface. SALIDA 4
+id: C04
+layer: L1
+name: output_schema
+implementado: true
+critical: false
+description: "Schema de salida válido"
+requires:
+  - C00
+forbids: []
+rules:
+  - "validar antes de ejecutar"
+checks:
+  - schema_present
+evidence:
+  type: l1_marker
+  required: true

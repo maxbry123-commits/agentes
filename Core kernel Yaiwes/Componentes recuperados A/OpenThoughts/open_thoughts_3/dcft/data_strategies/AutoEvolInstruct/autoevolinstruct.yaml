@@ -1,0 +1,250 @@
+operators:
+  - id: load_orca
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/stackexchange_codegolf
+      split: train
+  - id: sample_dataset
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 10
+    input_ids:
+    - load_orca
+  - id: add_evol_prompt
+    config:
+      type: function
+      function: data_strategies.commons.add_value_to_every_row
+      function_config:
+        column_name: evol_prompt
+        value: |
+          You are an Instruction Rewriter that rewrites the given #Instruction# into a more complex version.
+          Please follow the steps below to rewrite the given "#Instruction#" into a more complex version.
+          Step 1: Please read the "#Instruction#" carefully and list all the possible methods to make this instruction more complex (to
+          make it a bit harder for well-known AI assistants such as ChatGPT and GPT4 to handle). Please do not provide methods to
+          change the language of the instruction!
+          Step 2: Please create a comprehensive plan based on the #Methods List# generated in Step 1 to make the #Instruction# more
+          complex. The plan should include several methods from the #Methods List#.
+          Step 3: Please execute the plan step by step and provide the #Rewritten Instruction#. #Rewritten Instruction# can only add 10 to
+          20 words into the "#Instruction#".
+          Step 4: Please carefully review the #Rewritten Instruction# and identify any unreasonable parts. Ensure that the #Rewritten
+          Instruction# is only a more complex version of the #Instruction#. Just provide the #Finally Rewritten Instruction# without any
+          explanation.
+          Please reply strictly in the following format:
+          Step 1 #Methods List#:
+          Step 2 #Plan#:
+          Step 3 #Rewritten Instruction#:
+          Step 4 #Finally Rewritten Instruction#
+    input_ids:
+      - sample_dataset
+  - id: convert_instruction_to_row
+    config:
+      type: function
+      function: data_strategies.AutoEvolInstruct.utils.convert_instruction_to_row
+      function_config:
+        column_name: instruction
+    input_ids:
+      - add_evol_prompt
+  - id: rename_task_column
+    config:
+      type: function
+      function: data_strategies.commons.force_rename_columns
+      function_config:
+        column_maps:
+          instruction: finally_rewritten_instructions
+    input_ids:
+      - convert_instruction_to_row
+  - id: generate_general_instructions_1
+    config:
+      type: completions_tacc
+      num_vllm_instances: 1
+      require_all_responses: false
+      map: auto_evol_llm
+      model: meta-llama/Llama-3.3-70B-Instruct
+      batch_size: 128
+      batch: true
+      temperature: 0.7
+    input_ids:
+      - rename_task_column
+  - id: generate_general_instructions_2
+    config:
+      type: completions_tacc
+      num_vllm_instances: 1
+      require_all_responses: false
+      map: auto_evol_llm
+      model: meta-llama/Llama-3.3-70B-Instruct
+      batch_size: 128
+      batch: true
+      temperature: 0.7
+    input_ids:
+      - generate_general_instructions_1
+  - id: generate_general_instructions_3
+    config:
+      type: completions_tacc
+      num_vllm_instances: 1
+      require_all_responses: false
+      map: auto_evol_llm
+      model: meta-llama/Llama-3.3-70B-Instruct
+      batch_size: 128
+      batch: true
+      temperature: 0.7
+    input_ids:
+      - generate_general_instructions_2
+  - id: generate_general_instructions_4
+    config:
+      type: completions_tacc
+      num_vllm_instances: 1
+      require_all_responses: false
+      map: auto_evol_llm
+      model: meta-llama/Llama-3.3-70B-Instruct
+      batch_size: 128
+      batch: true
+      temperature: 0.7
+    input_ids:
+      - generate_general_instructions_3  
+  - id: auto_evol_trajectory_analysis
+    config:
+      type: completions_tacc
+      num_vllm_instances: 1
+      require_all_responses: false
+      map: auto_evol_trajectory_analysis
+      model: meta-llama/Llama-3.3-70B-Instruct
+      batch_size: 128
+      batch: true
+      temperature: 0.7
+    input_ids:
+      - generate_general_instructions_4
+  - id: merge_rows
+    config:
+      type: function
+      function: data_strategies.AutoEvolInstruct.utils.get_all_feedback
+    input_ids:
+    - auto_evol_trajectory_analysis
+  - id: auto_evol_prompt_evolver
+    config:
+      type: completions_tacc
+      num_vllm_instances: 1
+      require_all_responses: false
+      map: auto_evol_prompt_evolver
+      model: meta-llama/Llama-3.3-70B-Instruct
+      batch_size: 128
+      batch: true
+      temperature: 0.79
+    input_ids:
+      - merge_rows
+  - id: sample_dataset_2
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 10
+    input_ids:
+    - load_orca
+  - id: convert_instruction_to_row_2
+    config:
+      type: function
+      function: data_strategies.AutoEvolInstruct.utils.convert_instruction_to_row
+      function_config:
+        column_name: instruction
+    input_ids:
+      - sample_dataset_2
+  - id: merge_sample_2 
+    config:
+      type: function
+      function: data_strategies.AutoEvolInstruct.utils.add_new_prompt
+      input_dataset_map:
+        original_dataset: convert_instruction_to_row_2
+        dataset_with_evol_prompt: auto_evol_prompt_evolver
+      function_config:
+        column_name: evol_prompt  
+    input_ids:
+      - convert_instruction_to_row_2
+      - auto_evol_prompt_evolver
+  - id: rename_task_column_2
+    config:
+      type: function
+      function: data_strategies.commons.force_rename_columns
+      function_config:
+        column_maps:
+          instruction: finally_rewritten_instructions
+    input_ids:
+      - merge_sample_2
+  - id: generate_general_instructions_1_2
+    config:
+      type: completions_tacc
+      num_vllm_instances: 1
+      require_all_responses: false
+      map: auto_evol_llm
+      model: meta-llama/Llama-3.3-70B-Instruct
+      batch_size: 128
+      batch: true
+      temperature: 0.7
+    input_ids:
+      - rename_task_column_2
+  - id: generate_general_instructions_2_2
+    config:
+      type: completions_tacc
+      num_vllm_instances: 1
+      require_all_responses: false
+      map: auto_evol_llm
+      model: meta-llama/Llama-3.3-70B-Instruct
+      batch_size: 128
+      batch: true
+      temperature: 0.7
+    input_ids:
+      - generate_general_instructions_1_2
+  - id: generate_general_instructions_3_2
+    config:
+      type: completions_tacc
+      num_vllm_instances: 1
+      require_all_responses: false
+      map: auto_evol_llm
+      model: meta-llama/Llama-3.3-70B-Instruct
+      batch_size: 128
+      batch: true
+      temperature: 0.7
+    input_ids:
+      - generate_general_instructions_2_2
+  - id: generate_general_instructions_4_2
+    config:
+      type: completions_tacc
+      num_vllm_instances: 1
+      require_all_responses: false
+      map: auto_evol_llm
+      model: meta-llama/Llama-3.3-70B-Instruct
+      batch_size: 128
+      batch: true
+      temperature: 0.7
+    input_ids:
+      - generate_general_instructions_3_2
+  - id: auto_evol_trajectory_analysis_2
+    config:
+      type: completions_tacc
+      num_vllm_instances: 1
+      require_all_responses: false
+      map: auto_evol_trajectory_analysis
+      model: meta-llama/Llama-3.3-70B-Instruct
+      batch_size: 128
+      batch: true
+      temperature: 0.7
+    input_ids:
+      - generate_general_instructions_4_2
+  - id: merge_rows_2
+    config:
+      type: function
+      function: data_strategies.AutoEvolInstruct.utils.get_all_feedback
+    input_ids:
+    - auto_evol_trajectory_analysis_2
+  # - id: auto_evol_prompt_evolver_2
+  #   config:
+  #     type: completions_tacc
+  #     num_vllm_instances: 1
+  #     require_all_responses: false
+  #     map: auto_evol_prompt_evolver
+  #     model: meta-llama/Llama-3.3-70B-Instruct
+  #     batch_size: 128
+  #     batch: true
+  #     temperature: 0.79
+  #   input_ids:
+  #     - merge_rows_2

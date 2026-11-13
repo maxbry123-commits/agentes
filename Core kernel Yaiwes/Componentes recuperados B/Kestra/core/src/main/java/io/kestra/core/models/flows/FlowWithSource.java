@@ -1,0 +1,89 @@
+package io.kestra.core.models.flows;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
+import lombok.experimental.SuperBuilder;
+
+@SuperBuilder(toBuilder = true)
+@Getter
+@NoArgsConstructor
+@ToString
+public class FlowWithSource extends Flow {
+
+    String source;
+
+    public Flow toFlow() {
+        return Flow.builder()
+            .tenantId(this.tenantId)
+            .id(this.id)
+            .namespace(this.namespace)
+            .revision(this.revision)
+            .description(this.description)
+            .labels(this.labels)
+            .inputs(this.inputs)
+            .outputs(this.outputs)
+            .variables(this.variables)
+            .tasks(this.tasks)
+            .errors(this.errors)
+            ._finally(this._finally)
+            .afterExecution(this.afterExecution)
+            .triggers(this.triggers)
+            .policyRefs(this.policyRefs)
+            .disabled(this.disabled)
+            .deleted(this.deleted)
+            .draft(this.draft)
+            .concurrency(this.concurrency)
+            .quotas(this.quotas)
+            .retry(this.retry)
+            .sla(this.sla)
+            .checks(this.checks)
+            .updated(this.updated)
+            .build();
+    }
+
+    @Override
+    @Schema(hidden = false)
+    public String getSource() {
+        return this.source;
+    }
+
+    @Override
+    public FlowWithSource toDeleted() {
+        return this.toBuilder()
+            .revision(this.revision + 1)
+            .deleted(true)
+            .build();
+    }
+
+    public static FlowWithSource of(Flow flow, String source) {
+        return FlowWithSource.builder()
+            .tenantId(flow.tenantId)
+            .id(flow.id)
+            .namespace(flow.namespace)
+            .revision(flow.revision)
+            .description(flow.description)
+            .labels(flow.labels)
+            .inputs(flow.inputs)
+            .outputs(flow.outputs)
+            .variables(flow.variables)
+            .tasks(flow.tasks)
+            .errors(flow.errors)
+            ._finally(flow._finally)
+            .afterExecution(flow.afterExecution)
+            .triggers(flow.triggers)
+            .policyRefs(flow.policyRefs)
+            .disabled(flow.disabled)
+            .deleted(flow.deleted)
+            .draft(flow.draft)
+            .source(source)
+            .concurrency(flow.concurrency)
+            .quotas(flow.quotas)
+            .retry(flow.retry)
+            .sla(flow.sla)
+            .checks(flow.checks)
+            .updated(flow.updated)
+            .build();
+    }
+}

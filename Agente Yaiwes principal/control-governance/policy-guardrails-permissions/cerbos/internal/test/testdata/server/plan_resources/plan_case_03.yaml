@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=../../.jsonschema/ServerTestCase.schema.json
+---
+description: "Missing policy"
+wantStatus:
+  httpStatusCode: 200
+  grpcStatusCode: 0
+planResources:
+  input: {
+    "requestId": "test",
+    "includeMeta": true,
+    "action": "read",
+    "principal": {
+      "id": "harry",
+      "policyVersion": "default",
+      "roles": [
+          "employee"
+      ],
+      "attr": {
+        "department": "marketing",
+        "geography": "GB",
+        "team": "design"
+      }
+    },
+    "resource": {
+      "kind": "contact",
+      "policyVersion": "default"
+    }
+  }
+  wantResponse:
+    requestId: test
+    action: read
+    resourceKind: contact
+    policyVersion: 'default'
+    filter:
+      kind: KIND_ALWAYS_DENIED
+    meta:
+      filterDebug: "NO_MATCH"

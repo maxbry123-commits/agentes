@@ -1,0 +1,255 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Fuzz
+
+on:
+  pull_request:
+    types: [ opened, synchronize, reopened, closed ]
+    # Run when the harness or any directly fuzzed production crate changes.
+    paths:
+      - "fuzz/**"
+      - "scripts/fuzz/**"
+      - "crates/ecstore/**"
+      - "crates/filemeta/**"
+      - "crates/policy/**"
+      - "crates/security-governance/**"
+      - "crates/utils/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/fuzz.yml"
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Which fuzz profile to run"
+        required: false
+        default: "both"
+        type: choice
+        options:
+          - smoke
+          - nightly
+          - both
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_TARGET: x86_64-unknown-linux-gnu
+  # Fuzz targets build without the dial9 feature, so tokio_unstable is not needed.
+  RUSTFLAGS: "-C target-feature=-crt-static"
+
+jobs:
+  cancel-closed-pr-runs:
+    name: Cancel Closed PR Runs
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Explain cancellation run
+        run: echo "PR closed; this run only cancels older runs in the same concurrency group."
+
+  # ──────────────────────────────────────────────────────────────
+  # Phase 1: Build all fuzz harness binaries once.
+  # ──────────────────────────────────────────────────────────────
+  fuzz-build:
+    name: Build Fuzz Harness
+    if: >
+      (github.event_name == 'pull_request' && github.event.action != 'closed') ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: sm-standard-4
+    timeout-minutes: 60
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust environment
+        uses: ./.github/actions/setup
+        with:
+          rust-version: nightly
+          cache-shared-key: fuzz-${{ hashFiles('fuzz/Cargo.lock') }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
+
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2
+        with:
+          tool: cargo-fuzz
+
+      - name: Build all fuzz targets
+        run: BUILD_ONLY=1 ./scripts/fuzz/run.sh
+
+      - name: Stage prebuilt fuzz binaries
+        run: |
+          binary_root="fuzz/prebuilt/${CARGO_BUILD_TARGET}/release"
+          mkdir -p "${binary_root}"
+          # Keep this list in sync with the smoke/nightly matrices and
+          # scripts/fuzz/run.sh default target set (all 5 buildable bins in
+          # fuzz/Cargo.toml). The *_storage_api.rs files are `mod` submodules
+          # of their parent targets, not standalone bins.
+          for target in archive_extract bucket_validation local_metadata path_containment policy_ingress; do
+            install -Dm755 "fuzz/target/${CARGO_BUILD_TARGET}/release/${target}" "${binary_root}/${target}"
+          done
+
+      - name: Upload prebuilt fuzz binaries
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: fuzz-prebuilt-binaries-${{ github.run_number }}
+          path: fuzz/prebuilt/${{ env.CARGO_BUILD_TARGET }}/release/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  # ──────────────────────────────────────────────────────────────
+  # Phase 2 (PR): Run smoke targets in parallel via matrix.
+  # ──────────────────────────────────────────────────────────────
+  pr-fuzz-smoke:
+    name: "Smoke / ${{ matrix.target }}"
+    needs: fuzz-build
+    if: >
+      (github.event_name == 'pull_request' && github.event.action != 'closed') ||
+      (github.event_name == 'workflow_dispatch' &&
+        (github.event.inputs.profile == 'smoke' || github.event.inputs.profile == 'both'))
+    runs-on: sm-standard-4
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      # One job per target runs in parallel, so wall-clock time is per-target
+      # (~60s fuzz + download/chmod overhead), not the sum across the matrix.
+      matrix:
+        target: [archive_extract, bucket_validation, local_metadata, path_containment, policy_ingress]
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Download prebuilt fuzz binaries
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: fuzz-prebuilt-binaries-${{ github.run_number }}
+          path: fuzz/prebuilt/${{ env.CARGO_BUILD_TARGET }}/release
+
+      - name: Restore executable bit
+        run: chmod +x "fuzz/prebuilt/${CARGO_BUILD_TARGET}/release/${{ matrix.target }}"
+
+      - name: Run ${{ matrix.target }}
+        env:
+          FUZZ_TARGET: ${{ matrix.target }}
+          MAX_TOTAL_TIME: 60
+          SKIP_BUILD: 1
+          USE_PREBUILT_BINARY: 1
+          PREBUILT_BINARY_DIR: ${{ github.workspace }}/fuzz/prebuilt/${{ env.CARGO_BUILD_TARGET }}/release
+        run: ./scripts/fuzz/run.sh
+
+      - name: Upload fuzz smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: fuzz-smoke-${{ matrix.target }}-${{ github.run_number }}
+          path: |
+            fuzz/artifacts/**
+            fuzz/corpus/${{ matrix.target }}/**
+          if-no-files-found: error
+          retention-days: 7
+
+  # ──────────────────────────────────────────────────────────────
+  # Phase 2 (Nightly): Run all targets in parallel via matrix.
+  # ──────────────────────────────────────────────────────────────
+  nightly-fuzz-corpus:
+    name: "Nightly / ${{ matrix.target }}"
+    needs: fuzz-build
+    # Scheduled failures are handled by alert-on-failure below.
+    if: >
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' &&
+        (github.event.inputs.profile == 'nightly' || github.event.inputs.profile == 'both'))
+    runs-on: sm-standard-4
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [archive_extract, bucket_validation, local_metadata, path_containment, policy_ingress]
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Download prebuilt fuzz binaries
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: fuzz-prebuilt-binaries-${{ github.run_number }}
+          path: fuzz/prebuilt/${{ env.CARGO_BUILD_TARGET }}/release
+
+      - name: Restore executable bit
+        run: chmod +x "fuzz/prebuilt/${CARGO_BUILD_TARGET}/release/${{ matrix.target }}"
+
+      - name: Run ${{ matrix.target }}
+        env:
+          FUZZ_TARGET: ${{ matrix.target }}
+          MAX_TOTAL_TIME: 300
+          SKIP_BUILD: 1
+          USE_PREBUILT_BINARY: 1
+          PREBUILT_BINARY_DIR: ${{ github.workspace }}/fuzz/prebuilt/${{ env.CARGO_BUILD_TARGET }}/release
+        run: ./scripts/fuzz/run.sh
+
+      - name: Upload nightly fuzz artifacts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: fuzz-nightly-${{ matrix.target }}-${{ github.run_number }}
+          path: |
+            fuzz/artifacts/**
+            fuzz/corpus/${{ matrix.target }}/**
+          if-no-files-found: error
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────
+  # Nightly alerting: open/update a tracking issue on failure.
+  # ──────────────────────────────────────────────────────────────
+  alert-on-failure:
+    name: Alert on scheduled failure
+    needs: [fuzz-build, nightly-fuzz-corpus]
+    # `always()` is required: without it this job is skipped when a needed
+    # job fails. Alerts only for scheduled (nightly) runs (backlog#1149
+    # ci-8); PR and manual dispatch failures are already watched by a human.
+    if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Open or update failure-tracking issue
+        uses: ./.github/actions/schedule-failure-issue
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}

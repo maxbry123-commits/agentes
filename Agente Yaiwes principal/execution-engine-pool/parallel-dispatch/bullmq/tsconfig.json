@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "types": ["node"],
+    "target": "ES2017",
+    "module": "ES2020",
+    "incremental": true,
+    "declaration": true,
+    "outDir": "dist/esm",
+    "sourceMap": false,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strict": true,
+    "useDefineForClassFields": false,
+    "jsx": "preserve",
+    "importHelpers": true,
+    "moduleResolution": "node",
+    "esModuleInterop": false,
+    "allowSyntheticDefaultImports": false,
+    "strictNullChecks": false,
+    "baseUrl": ".",
+    "lib": ["esnext", "DOM"]
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "tests/*", "src/commands/*.ts"]
+}

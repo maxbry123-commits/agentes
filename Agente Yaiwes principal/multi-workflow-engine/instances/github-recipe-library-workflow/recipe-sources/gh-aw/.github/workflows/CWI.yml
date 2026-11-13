@@ -1,0 +1,227 @@
+name: CWI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.go'
+      - 'cmd/**'
+      - 'pkg/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/CWI.yml'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '**/*.go'
+      - 'cmd/**'
+      - 'pkg/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/CWI.yml'
+  workflow_dispatch:
+
+jobs:
+  checkout-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd   # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Cache repository checkout
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9   # v6.1.0
+        with:
+          path: .
+          key: checkout-cwi-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+          enableCrossOsArchive: true
+
+  build-windows:
+    name: Build Windows CLI
+    needs: [checkout-cache]
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Restore checkout
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9   # v6.1.0
+        with:
+          path: .
+          key: checkout-cwi-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+
+      - name: Set up Go
+        id: setup-go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c   # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Report Go cache status
+        shell: bash
+        run: |
+          if [ "${{ steps.setup-go.outputs.cache-hit }}" == "true" ]; then
+            echo "✅ Go cache hit" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Go cache miss" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Download Go modules
+        if: steps.setup-go.outputs.cache-hit != 'true'
+        shell: bash
+        run: go mod download
+
+      - name: Verify dependencies
+        shell: bash
+        run: go mod verify
+
+      - name: Build Windows binary
+        shell: bash
+        run: go build -ldflags "-s -w" -o gh-aw.exe ./cmd/gh-aw
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4
+        with:
+          name: gh-aw-windows-amd64
+          path: gh-aw.exe
+          retention-days: 1
+
+  integration:
+    name: "Windows Integration"
+    needs:
+      - checkout-cache
+      - build-windows
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Restore checkout
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9   # v6.1.0
+        with:
+          path: .
+          key: checkout-cwi-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c   # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download Windows binary
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16   # v4
+        with:
+          name: gh-aw-windows-amd64
+
+      - name: Run version integration tests
+        shell: bash
+        env:
+          GH_AW_INTEGRATION_BINARY: ${{ github.workspace }}/gh-aw.exe
+        run: |
+          go test -v -timeout=5m -tags 'integration' -run 'TestVersion' ./cmd/gh-aw
+
+      - name: Run compile integration tests
+        shell: bash
+        env:
+          GH_AW_INTEGRATION_BINARY: ${{ github.workspace }}/gh-aw.exe
+        run: |
+          go test -v -timeout=5m -tags 'integration' -run '^TestCompileIntegration$' ./pkg/cli
+
+      - name: Run audit integration tests
+        shell: bash
+        env:
+          GH_AW_INTEGRATION_BINARY: ${{ github.workspace }}/gh-aw.exe
+        run: |
+          go test -v -timeout=5m -tags 'integration' -run '^TestAudit' ./pkg/cli
+
+      - name: Run logs integration tests
+        shell: bash
+        env:
+          GH_AW_INTEGRATION_BINARY: ${{ github.workspace }}/gh-aw.exe
+        run: |
+          go test -v -timeout=5m -tags 'integration' -run 'TestLogs' ./pkg/cli
+
+      - name: Run Windows MCP server integration test
+        shell: bash
+        env:
+          GH_AW_INTEGRATION_BINARY: ${{ github.workspace }}/gh-aw.exe
+        run: |
+          go test -v -timeout=5m -tags 'integration' -run '^TestMCPServer_WindowsSmokeCommands$' ./pkg/cli
+
+  summarize-timing:
+    name: Summarize workflow timing
+    needs:
+      - build-windows
+      - integration
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Delete checkout cache
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_KEY: checkout-cwi-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+        run: |
+          cache_id=$(gh cache list --key "$CACHE_KEY" --ref "$GITHUB_REF" --limit 1 --json id,key --jq '.[] | select(.key == env.CACHE_KEY) | .id')
+          if [ -n "$cache_id" ]; then
+            gh cache delete "$cache_id"
+          fi
+      - name: Summarize job and step durations
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3   # v9
+        with:
+          script: |
+            const fs = require('fs');
+
+            const formatDuration = (startedAt, completedAt) => {
+              if (!startedAt || !completedAt) return 'n/a';
+              const milliseconds = new Date(completedAt) - new Date(startedAt);
+              if (!Number.isFinite(milliseconds) || milliseconds < 0) return 'n/a';
+              const totalSeconds = Math.round(milliseconds / 1000);
+              const hours = Math.floor(totalSeconds / 3600);
+              const minutes = Math.floor((totalSeconds % 3600) / 60);
+              const seconds = totalSeconds % 60;
+              if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+              if (minutes > 0) return `${minutes}m ${seconds}s`;
+              return `${seconds}s`;
+            };
+
+            const cell = (value) => String(value ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+              per_page: 100,
+            });
+
+            const rows = [];
+            for (const job of jobs) {
+              if (job.name === 'Summarize workflow timing' || job.name === 'summarize-timing') continue;
+              rows.push(`| [${cell(job.name)}](${job.html_url}) | job | ${cell(job.conclusion || job.status)} | ${formatDuration(job.started_at, job.completed_at)} |`);
+              for (const step of job.steps || []) {
+                rows.push(`| ${cell(`- ${step.name}`)} | step | ${cell(step.conclusion || step.status)} | ${formatDuration(step.started_at, step.completed_at)} |`);
+              }
+            }
+
+            const summary = [
+              '## Workflow timing summary',
+              '',
+              'Step-level timing collected from the GitHub Actions API for this run.',
+              '',
+              '| Name | Type | Result | Duration |',
+              '| --- | --- | --- | --- |',
+              ...rows,
+              '',
+            ].join('\n');
+
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);

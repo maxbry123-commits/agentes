@@ -1,0 +1,156 @@
+"""
+Celery tasks for visual_review.
+
+Async entrypoints that call business logic.
+Keep task functions thin — only call logic/diffing methods.
+
+NOTE: Imports are done inside functions to avoid circular imports
+when Celery loads this module at startup.
+"""
+
+from uuid import UUID
+
+import structlog
+from celery import shared_task
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+
+from posthog.models.scoping import with_team_scope
+
+from ..logic.errors import HashIntegrityError
+
+logger = structlog.get_logger(__name__)
+TRACER = trace.get_tracer(__name__)
+
+
+@shared_task(
+    name="products.visual_review.backend.tasks.emit_run_processing_metrics",
+    ignore_result=True,
+)
+@with_team_scope()
+def emit_run_processing_metrics(team_id: int, run_id: str, outcome: str, diffed_count: int) -> None:
+    from ..logic import runs  # noqa: PLC0415 — avoids the logic/tasks circular import
+
+    runs.capture_run_processing_metrics(UUID(run_id), outcome=outcome, diffed_count=diffed_count)
+
+
+@shared_task(
+    name="products.visual_review.backend.tasks.process_run_diffs",
+    bind=True,
+    ignore_result=True,
+    acks_late=True,
+    reject_on_worker_lost=True,
+    max_retries=3,
+)
+@with_team_scope()
+def process_run_diffs(self, team_id: int, run_id: str) -> None:
+    """
+    Verify uploads, create artifacts, and process diffs for a run.
+
+    Called after CI signals that all artifacts have been uploaded.
+    Verifies hash integrity of new uploads before creating Artifact
+    records and computing diffs.
+    """
+    from posthog.egress.github.transport import GitHubRateLimitError
+
+    from ..diffing import count_processed_diffs, process_diffs
+    from ..logic import runs, uploads
+
+    run_uuid = UUID(run_id)
+    outcome = "completed"
+    diffed_count = 0
+    retrying = False
+
+    # Phase timings go to OTel spans (where is time spent); counts go to the
+    # vr_run_processed event (how many runs, how many diffs).
+    with TRACER.start_as_current_span("visual_review.process_run_diffs") as span:
+        span.set_attribute("visual_review.run_id", run_id)
+        span.set_attribute("visual_review.team_id", team_id)
+        try:
+            logger.info("visual_review.diff_processing_started", run_id=run_id, team_id=team_id)
+
+            with TRACER.start_as_current_span("visual_review.verify_uploads"):
+                uploads.verify_uploads_and_create_artifacts(run_uuid)
+            with TRACER.start_as_current_span("visual_review.process_diffs") as diff_span:
+                diffed_count = process_diffs(run_uuid)
+                diff_span.set_attribute("visual_review.attempt_diffed_count", diffed_count)
+            with TRACER.start_as_current_span("visual_review.finish_processing"):
+                runs.finish_processing(run_uuid)
+
+            logger.info("visual_review.diff_processing_completed", run_id=run_id, team_id=team_id)
+        except HashIntegrityError as e:
+            outcome = "hash_integrity_failed"
+            logger.warning("visual_review.hash_integrity_failed", run_id=run_id, error=str(e))
+            runs.finish_processing(run_uuid, error_message=str(e))
+        except GitHubRateLimitError as e:
+            outcome = "rate_limited"
+            logger.warning(
+                "visual_review.diff_processing_rate_limited",
+                run_id=run_id,
+                retry=self.request.retries,
+                max_retries=self.max_retries,
+            )
+            if self.max_retries is not None and self.request.retries >= self.max_retries:
+                outcome = "rate_limit_exhausted"
+                runs.finish_processing(run_uuid, error_message="GitHub API rate limit exceeded after retries")
+            else:
+                retrying = True
+                countdown = e.retry_after or 60
+                self.retry(countdown=min(countdown, 600), exc=e)
+        except Exception as e:
+            outcome = "failed"
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.record_exception(e)
+            logger.exception("visual_review.diff_processing_failed", run_id=run_id, team_id=team_id, error=str(e))
+            runs.finish_processing(run_uuid, error_message=str(e))
+            raise
+        finally:
+            span.set_attribute("visual_review.outcome", outcome)
+            # Skip on retry: the run isn't terminal yet and will emit on its next attempt.
+            if not retrying:
+                try:
+                    cumulative_diffed_count = count_processed_diffs(run_uuid)
+                except Exception:
+                    logger.warning("visual_review.diff_count_failed", run_id=run_id, exc_info=True)
+                    cumulative_diffed_count = diffed_count
+                runs.capture_run_processing_metrics(run_uuid, outcome=outcome, diffed_count=cumulative_diffed_count)
+
+
+@shared_task(
+    name="products.visual_review.backend.tasks.post_approval_comment",
+    bind=True,
+    ignore_result=True,
+    acks_late=True,
+    reject_on_worker_lost=True,
+    max_retries=3,
+)
+@with_team_scope()
+def post_approval_comment(self, team_id: int, run_id: str, add_images: bool = False) -> None:
+    """Update the PR comment in place with the approved-changes summary.
+
+    Best-effort: failures don't block the approval flow. Retries on GitHub
+    rate-limit errors only. ``add_images`` embeds the before/after snapshot
+    images when the reviewer opted in at finalize time.
+    """
+    from posthog.egress.github.transport import GitHubRateLimitError
+
+    from ..logic import comments
+
+    run_uuid = UUID(run_id)
+
+    try:
+        comments.post_approval_comment_for_run(run_uuid, team_id=team_id, add_images=add_images)
+    except GitHubRateLimitError as e:
+        logger.warning(
+            "visual_review.approval_comment_rate_limited",
+            run_id=run_id,
+            retry=self.request.retries,
+            max_retries=self.max_retries,
+        )
+        try:
+            countdown = e.retry_after or 60
+            self.retry(countdown=min(countdown, 600), exc=e)
+        except self.MaxRetriesExceededError:
+            logger.warning("visual_review.approval_comment_giving_up", run_id=run_id)
+    except Exception:
+        logger.exception("visual_review.approval_comment_task_failed", run_id=run_id, team_id=team_id)

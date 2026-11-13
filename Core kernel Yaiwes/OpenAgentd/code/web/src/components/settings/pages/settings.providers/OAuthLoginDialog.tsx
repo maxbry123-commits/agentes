@@ -1,0 +1,236 @@
+import { useEffect, useRef, useState } from 'react'
+import { Check, CheckCircle2, Copy, Loader2, TerminalSquare } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+
+import { configureDefaultModel, oauthLoginStream, submitOAuthCallback, type OAuthLoginEvent, type ProviderInfo } from '@/api/client'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { queryKeys } from '@/queries'
+import { openExternalUrl } from '@/lib/open-external'
+import { useToastStore } from '@/stores/useToastStore'
+import { deviceCodeHelp, eventLabel, isBenignOAuthStreamClose } from './providerUtils'
+
+export function OAuthLoginDialog({
+  provider,
+  open,
+  onOpenChange,
+}: {
+  provider: ProviderInfo
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const [events, setEvents] = useState<OAuthLoginEvent[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [code, setCode] = useState('')
+  const [codeCopied, setCodeCopied] = useState(false)
+  const [authMode, setAuthMode] = useState<'device' | 'browser'>('device')
+  const [submittingCode, setSubmittingCode] = useState(false)
+  const openedUrlRef = useRef<string | null>(null)
+  const successHandledRef = useRef(false)
+  const queryClient = useQueryClient()
+  const latest = events.at(-1)
+  const deviceEvent = events.find((event) => event.event === 'device_code')
+  const isSuccess = latest?.event === 'success'
+  const isWorking = open && !isSuccess && !error
+
+  const copyDeviceCode = async () => {
+    if (!deviceEvent?.user_code) return
+    try {
+      await navigator.clipboard.writeText(deviceEvent.user_code)
+      setCodeCopied(true)
+      window.setTimeout(() => setCodeCopied(false), 1500)
+    } catch {
+      // Copy is best-effort; the code remains visible for manual entry.
+    }
+  }
+
+  useEffect(() => {
+    if (!open) return undefined
+    const abort = new AbortController()
+    openedUrlRef.current = null
+    successHandledRef.current = false
+    oauthLoginStream(
+      provider.id,
+      {
+        onEvent: () => undefined,
+        onOAuthEvent: (event) => {
+          setEvents((current) => [...current, event])
+          if (event.verification_uri && openedUrlRef.current !== event.verification_uri) {
+            openedUrlRef.current = event.verification_uri
+            void openExternalUrl(event.verification_uri)
+          }
+          if (event.event === 'success' && !successHandledRef.current) {
+            successHandledRef.current = true
+            void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerModels(provider.id) })
+            void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+            void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
+            const model = event.suggested_model
+            if (model) {
+              void configureDefaultModel(model)
+                .then(() => {
+                  useToastStore.getState().push({
+                    tone: 'success',
+                    title: 'Provider connected',
+                    description: 'Default agents are ready.',
+                  })
+                })
+                .catch((err: unknown) => {
+                  useToastStore.getState().push({
+                    tone: 'error',
+                    title: 'Default model setup failed',
+                    description: err instanceof Error ? err.message : String(err),
+                  })
+                })
+            } else {
+              useToastStore.getState().push({ tone: 'success', title: 'Provider connected', description: provider.label })
+            }
+          }
+          if (event.event === 'failed') {
+            setError(event.message ?? 'OAuth login failed')
+          }
+        },
+        onError: (err) => {
+          if (successHandledRef.current && isBenignOAuthStreamClose(err.message)) return
+          setError(err.message)
+        },
+      },
+      abort.signal,
+      authMode === 'browser' ? 'browser' : undefined,
+    )
+    return () => abort.abort()
+  }, [authMode, open, provider.id, provider.label, queryClient])
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setAuthMode('device')
+        onOpenChange(nextOpen)
+      }}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Connect {provider.label}</DialogTitle>
+          <DialogDescription>Approve the browser prompt. This window will update when the token is saved.</DialogDescription>
+        </DialogHeader>
+        <div className="min-w-0 space-y-4">
+          <div className="flex items-center gap-3 rounded-sm border border-(--color-border) bg-(--bg-key) p-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-accent)">
+              {isWorking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-(--color-text)">{latest ? eventLabel(latest) : 'Starting secure login'}</p>
+              <p className="text-xs text-(--color-text-muted)">Keep this dialog open until setup completes.</p>
+            </div>
+          </div>
+          {deviceEvent?.user_code && (
+            <div className="overflow-hidden rounded-md border border-(--accent-blue)/25 bg-(--accent-blue-soft)">
+              <div className="p-3 text-center sm:p-5">
+                <p className="text-xs font-medium tracking-[0.18em] text-(--color-text-muted) uppercase">Device code</p>
+                <div className="mt-2 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                  <p className="min-w-0 max-w-full break-all font-mono text-2xl font-semibold tracking-[0.12em] text-(--color-text) sm:text-3xl sm:tracking-[0.18em]">{deviceEvent.user_code}</p>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          onClick={() => { void copyDeviceCode() }}
+                          variant="default"
+                          size="icon-sm"
+                          className="min-h-9 min-w-9 sm:min-h-0 sm:min-w-0"
+                          aria-label="Copy device code"
+                        >
+                          {codeCopied ? <Check size={15} className="text-(--color-success)" /> : <Copy size={15} />}
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>Copy device code</TooltipContent>
+                  </Tooltip>
+                </div>
+                <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-(--color-text-muted)">
+                  {deviceCodeHelp(provider.id)}
+                </p>
+                {deviceEvent.verification_uri && (
+                  <Button className="mt-4 min-h-11 sm:min-h-0" size="sm" onClick={() => void openExternalUrl(deviceEvent.verification_uri!)}>
+                    Open authorization page
+                  </Button>
+                )}
+              </div>
+              {provider.id === 'codex' && authMode !== 'browser' && !isSuccess && (
+                <div className="border-t border-(--accent-blue)/20 bg-(--bg-page)/70 p-3 text-left sm:p-4">
+                  <p className="text-xs font-medium text-(--color-text)">Workspace account?</p>
+                  <p className="mt-1 text-xs leading-relaxed text-(--color-text-muted)">
+                    If the Codex page says your admin must enable device-code authentication, switch to browser sign-in.
+                  </p>
+                  <Button
+                    className="mt-3 min-h-11 w-full sm:min-h-0"
+                    size="sm"
+                    variant="default"
+                    onClick={() => {
+                      setError(null)
+                      setEvents([])
+                      setAuthMode('browser')
+                    }}
+                  >
+                    Use browser sign-in instead
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          {latest?.event === 'code_required' && (
+            <form
+              className="space-y-2 rounded-sm border border-(--color-border) bg-(--bg-page) p-3"
+              onSubmit={(event) => {
+                event.preventDefault()
+                setSubmittingCode(true)
+                submitOAuthCallback(provider.id, code)
+                  .then((result) => {
+                    setEvents((current) => [...current, { event: 'success', suggested_model: result.suggested_model }])
+                    void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerModels(provider.id) })
+                    void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+                    void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
+
+                    useToastStore.getState().push({ tone: 'success', title: 'Provider connected', description: provider.label })
+                  })
+                  .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+                  .finally(() => setSubmittingCode(false))
+              }}
+            >
+              <label className="block text-xs font-medium text-(--color-text-muted)">
+                Paste authorization callback URL/code
+                <Input value={code} onChange={(event) => setCode(event.target.value)} className="mt-1 min-h-11 sm:min-h-9" autoComplete="off" />
+              </label>
+              <Button type="submit" size="sm" className="min-h-11 w-full sm:min-h-0 sm:w-auto" disabled={!code.trim() || submittingCode}>
+                {submittingCode && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                Finish connection
+              </Button>
+            </form>
+          )}
+          {isSuccess && (
+            <p className="text-sm text-(--color-success)">Connected successfully.</p>
+          )}
+          {error && <p className="text-sm text-(--color-error)">{error}</p>}
+          {events.length > 0 && (
+            <details className="rounded-sm border border-(--color-border) bg-(--bg-page) p-3">
+              <summary className="flex cursor-pointer items-center gap-2 text-xs font-medium text-(--color-text-muted)">
+                <TerminalSquare size={13} aria-hidden="true" />
+                Technical details
+              </summary>
+              <div className="mt-3 max-h-40 min-w-0 space-y-2 overflow-auto">
+                {events.map((event, index) => (
+                  <p key={`${event.event}-${index}`} className="min-w-0 text-xs text-(--color-text-muted) [overflow-wrap:anywhere]">
+                    <span className="font-mono text-(--color-text)">{event.event}</span>
+                    {event.message ? ` · ${event.message}` : ''}
+                  </p>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}

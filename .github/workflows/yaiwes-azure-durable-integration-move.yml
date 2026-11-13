@@ -1,0 +1,153 @@
+name: YAIWES Azure Durable Functions Integration Move
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-azure-durable-integration-move.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  move:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Core kernel Yaiwes/Componentes recuperados A/Azure-Durable-Functions
+            Agente Yaiwes principal/execution-orchestration/state-machine-executor
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+      - name: Move durable runtime source and required build metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC='Core kernel Yaiwes/Componentes recuperados A/Azure-Durable-Functions'
+          DST='Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions'
+          test ! -e "$DST"
+          mkdir -p "$DST/src" "$DST/.stylecop"
+          test -d "$SRC/src/WebJobs.Extensions.DurableTask"
+          mv "$SRC/src/WebJobs.Extensions.DurableTask" "$DST/src/WebJobs.Extensions.DurableTask"
+          for f in global.json Directory.Packages.props Directory.Build.targets nuget.config; do
+            test -f "$SRC/$f"
+            mv "$SRC/$f" "$DST/$f"
+          done
+          for f in GlobalSuppressions.cs stylecop.json; do
+            test -f "$SRC/.stylecop/$f"
+            mv "$SRC/.stylecop/$f" "$DST/.stylecop/$f"
+          done
+          test -f "$DST/src/WebJobs.Extensions.DurableTask/DurableTaskExtension.cs"
+          test -f "$DST/src/WebJobs.Extensions.DurableTask/WebJobs.Extensions.DurableTask.csproj"
+          test -f "$SRC/README.md"
+          test -d "$SRC/test"
+          test -d "$SRC/samples"
+          test ! -e "$SRC/src/WebJobs.Extensions.DurableTask"
+          git diff --check
+      - name: Add Yaiwes integration contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          DST='Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions'
+          cat > "$DST/README.md" <<'EOF'
+          # YAIWES Wordflow — Azure Durable Functions
+
+          Clasificación: B — orquestador durable / state-machine executor.
+
+          Capacidad integrada: runtime DurableTask para registrar orchestrators, activities y entities, seleccionar proveedor de durabilidad, operar TaskHubWorker, mantener historial/checkpoints y servir protocolos HTTP/gRPC según el worker.
+
+          Flujo: `evento ➡️ orchestrator ➡️ DurableTask history/state ➡️ activity/entity ➡️ checkpoint/replay ➡️ resultado/evidencia`.
+
+          El código upstream útil fue movido al Wordflow; README, tests, samples y artefactos de distribución permanecen fuera. YAIWES conecta únicamente mediante adapter + Ficha v2 + Universal Plugin Bus, fail-closed.
+          EOF
+          cat > "$DST/adapter.py" <<'EOF'
+          from pathlib import Path
+          import json
+
+          ROOT = Path(__file__).resolve().parent
+
+          def source_probe():
+              required = [
+                  ROOT / 'global.json',
+                  ROOT / 'Directory.Packages.props',
+                  ROOT / 'src/WebJobs.Extensions.DurableTask/WebJobs.Extensions.DurableTask.csproj',
+                  ROOT / 'src/WebJobs.Extensions.DurableTask/DurableTaskExtension.cs',
+                  ROOT / '.stylecop/GlobalSuppressions.cs',
+              ]
+              missing = [str(p) for p in required if not p.exists()]
+              if missing:
+                  raise RuntimeError({'missing': missing})
+              sdk = json.loads((ROOT / 'global.json').read_text())['sdk']['version']
+              return {
+                  'component': 'Azure-Durable-Functions',
+                  'classification': 'B',
+                  'sdk': sdk,
+                  'entry': str((ROOT / 'src/WebJobs.Extensions.DurableTask/DurableTaskExtension.cs').resolve()),
+              }
+
+          def runtime_command():
+              source_probe()
+              return ['dotnet', 'build', 'src/WebJobs.Extensions.DurableTask/WebJobs.Extensions.DurableTask.csproj', '-f', 'net10.0']
+          EOF
+          cat > "$DST/WIRING.json" <<'EOF'
+          {
+            "component":"Azure-Durable-Functions",
+            "classification":"B",
+            "adapter":"adapter.py",
+            "ficha":"ficha.azure-durable-functions.v2.json",
+            "plugin_bus":"../../../kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py",
+            "ficha_contract":"../../../kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py",
+            "transport":"stdio",
+            "runtime":"dotnet",
+            "fail_closed":true,
+            "direct_kernel_import":false
+          }
+          EOF
+          cat > "$DST/ficha.azure-durable-functions.v2.json" <<'EOF'
+          {
+            "artifact_id":"yaiwes.workflow.azure_durable_functions","version":"1.0.0","estado":"testing","contract_hash":"","tribunal_case_id":"YAIWES-AZURE-DURABLE-001",
+            "contrato":{"rol":"state_machine_orchestrator","consume":{"datatype":{"family":"workflow","type":"state_machine_definition","version":1}},"expone":{"datatype":{"family":"workflow","type":"durable_runtime","version":1}},"input_map":{},"output_map":{}},
+            "ejecucion":{"kind":"code","transport":"stdio","runtime_type":"compute","entry_point":"adapter:runtime_command","llm_ratio":0.0,"idempotente":true},
+            "seguridad":{"sandbox":"process_container","permisos":[],"limites":{"timeout_ms":120000,"deadline_ms":180000}},
+            "firma":{"gpg_key_id":"PENDIENTE"},"categoria":"pipeline","etapa":"E",
+            "repeticion":{"max":3,"condicion":"si_falla_verificacion"},"repite_en":["VERIFY"],
+            "activacion":{"eventos":["yaiwes.state_machine.requested"],"wake_words":[],"condicion":""},
+            "presupuesto":{"n0":{"max_tokens":1,"max_ms":120000,"max_costo_usd":0.000001}},
+            "telemetria":{"metricas":["tiempo","errores","orchestrations","activities","replays"],"span_otel":true},
+            "evidencia":{"produce":["L1_static","L2_build","L3_repeat"],"destino":"runtime/evidence/"},
+            "failover":{"sustituible_por":[],"compensacion":"fail_closed"},"salud":{"metodo":"source_probe","heartbeat_interval_s":30},
+            "trazas":{"task_id_requerido":true,"trace_id_requerido":true}
+          }
+          EOF
+          cat > "$DST/verify_integration.py" <<'EOF'
+          import json
+          from pathlib import Path
+          from adapter import source_probe
+
+          root = Path(__file__).resolve().parent
+          p = source_probe()
+          wiring = json.loads((root/'WIRING.json').read_text())
+          ficha = json.loads((root/'ficha.azure-durable-functions.v2.json').read_text())
+          csproj = (root/'src/WebJobs.Extensions.DurableTask/WebJobs.Extensions.DurableTask.csproj').read_text()
+          assert p['sdk'] == '10.0.302'
+          assert wiring['fail_closed'] is True and wiring['direct_kernel_import'] is False
+          assert ficha['ejecucion']['llm_ratio'] == 0.0
+          assert ficha['contrato']['rol'] == 'state_machine_orchestrator'
+          assert '<TargetFrameworks>net8.0;net10.0</TargetFrameworks>' in csproj
+          assert '<MajorVersion>3</MajorVersion>' in csproj and '<MinorVersion>15</MinorVersion>' in csproj
+          print('AZURE_DURABLE_STATIC_VERIFY_PASS')
+          EOF
+          python "$DST/verify_integration.py"
+      - name: Commit move
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'Core kernel Yaiwes/Componentes recuperados A/Azure-Durable-Functions' 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions'
+          git diff --cached --check
+          git commit -m 'feat(yaiwes): move Azure Durable Functions runtime into state-machine executor'
+          git pull --rebase origin main
+          git push origin HEAD:main

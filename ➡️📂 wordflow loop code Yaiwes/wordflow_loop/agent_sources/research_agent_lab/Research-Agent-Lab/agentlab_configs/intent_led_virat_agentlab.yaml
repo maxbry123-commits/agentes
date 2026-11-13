@@ -1,0 +1,37 @@
+copilot-mode: True
+research-topic: "Research topic: intent_conditioned_led_virat. Goal: Build a controlled multi-agent research workflow around the copied Intent-LED-mul-agent project, preserving the LED VIRAT baseline while planning small, reviewable modifications for intention-conditioned trajectory forecasting. Baselines: LED VIRAT baseline, Leapfrog Diffusion Model. Priorities: preserve baseline_original outputs; smoke-test every change before full training; prefer small conditioning changes over broad rewrites. Codebase copy: D:/Codes/VS/Intent-LED-mul-agent. Produce one concrete, reviewable experiment plan first."
+api-key: "OPENAI-API-KEY-HERE"
+llm-backend: "gpt-4o"
+lit-review-backend: "gpt-4o"
+language: "English"
+num-papers-lit-review: 5
+num-papers-to-write: 1
+parallel-labs: False
+mlesolver-max-steps: 1
+papersolver-max-steps: 1
+lab-index: 1
+load-existing: False
+except-if-fail: False
+compile-latex: False
+task-notes:
+  plan-formulation:
+    - "Propose only one experiment in this run."
+    - "Prefer the smallest baseline-compatible modification before large architecture changes."
+    - "Primary metrics: ADE, FDE, miss_rate, multimodal_diversity."
+    - "Do not claim novelty without evidence from literature review."
+  data-preparation:
+    - "Read the project notes first if present: D:/Codes/VS/Intent-LED-mul-agent/work.md."
+    - "Allowed edit paths: models/*, trainer/*, data/dataloader_virat.py, cfg/virat/*, utils/*, main_led_nba.py, visualize_virat_prediction.py, work.md."
+    - "Protected paths: results/checkpoints/*, results/led_virat/baseline_original/*, results/fig/*, ../MID-main/*, data/raw/*, __pycache__/*."
+    - "Do not modify raw data, checkpoints, or baseline result archives."
+  running-experiments:
+    - "Use smoke/debug configs before full training."
+    - "Do not launch long training unless the human explicitly approves."
+    - "Write any new outputs into a clearly named experiment folder."
+  results-interpretation:
+    - "Compare against the same baseline split and config."
+    - "Report failures and regressions directly."
+  report-writing:
+    - "Keep the report grounded in actual run logs and produced artifacts."
+    - "Separate confirmed results from planned or inferred claims."
+

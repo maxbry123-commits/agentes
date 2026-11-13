@@ -1,0 +1,13 @@
+{
+  "seconds": 33.7,
+  "axe": {
+    "serious": 0,
+    "critical": 0,
+    "moderate": 0,
+    "minor": 0
+  },
+  "contrastFailures": 0,
+  "worstContrast": null,
+  "failures": [],
+  "notes": []
+}

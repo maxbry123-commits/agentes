@@ -1,0 +1,302 @@
+import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
+import { db } from "../db/client";
+import {
+  integrationConnections,
+  slackWorkspaces,
+  type IntegrationConnectionAuthMethod,
+  type IntegrationConnectionStatus,
+} from "../db/schema";
+import {
+  ownerColumns,
+  readSafeIntegrationAccount,
+  readSafeIntegrationScopes,
+  requireNonEmptyIntegrationIdentifier,
+  type ConnectionOwner,
+  type ConnectionProjection,
+  type IntegrationConnectionScope,
+} from "./types";
+import { deleteIntegrationCredential } from "./credential-repo";
+
+export type IntegrationConnectionRecord = typeof integrationConnections.$inferSelect;
+
+export interface CreateIntegrationConnectionInput extends IntegrationConnectionScope {
+  readonly provider: string;
+  readonly runtimeBindingId: string;
+  readonly externalConnectionId: string;
+  readonly externalConnectionName?: string | null;
+  readonly status: IntegrationConnectionStatus;
+  readonly authMethod: IntegrationConnectionAuthMethod;
+  readonly account: unknown;
+  readonly scopes: unknown;
+  readonly createdByUserId: string;
+  readonly lastVerifiedAt?: Date | null;
+}
+
+export interface UpdateIntegrationConnectionInput extends IntegrationConnectionScope {
+  readonly id: string;
+  readonly status: IntegrationConnectionStatus;
+  readonly account: unknown;
+  readonly scopes: unknown;
+  readonly externalConnectionName?: string | null;
+  readonly lastVerifiedAt?: Date | null;
+}
+
+function ownerPredicate(orgId: string, owner: ConnectionOwner) {
+  const columns = ownerColumns(owner);
+  return and(
+    eq(integrationConnections.orgId, orgId),
+    eq(integrationConnections.ownerType, columns.ownerType),
+    columns.ownerUserId === null
+      ? isNull(integrationConnections.ownerUserId)
+      : eq(integrationConnections.ownerUserId, columns.ownerUserId),
+  );
+}
+
+function visiblePredicate(orgId: string, userId: string) {
+  return and(
+    eq(integrationConnections.orgId, orgId),
+    or(
+      and(
+        eq(integrationConnections.ownerType, "org"),
+        isNull(integrationConnections.ownerUserId),
+      ),
+      and(
+        eq(integrationConnections.ownerType, "user"),
+        eq(integrationConnections.ownerUserId, userId),
+      ),
+    ),
+  );
+}
+
+export function projectIntegrationConnection(
+  row: IntegrationConnectionRecord,
+): ConnectionProjection {
+  return {
+    id: row.id,
+    provider: row.provider,
+    owner: row.ownerType === "org"
+      ? { type: "org" }
+      : { type: "user", userId: row.ownerUserId! },
+    status: row.status,
+    account: readSafeIntegrationAccount(row.accountMetadata),
+    scopes: readSafeIntegrationScopes(row.scopes),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    lastVerifiedAt: row.lastVerifiedAt?.toISOString() ?? null,
+    revokedAt: row.revokedAt?.toISOString() ?? null,
+  };
+}
+
+export async function createIntegrationConnection(
+  input: CreateIntegrationConnectionInput,
+): Promise<ConnectionProjection> {
+  const owner = ownerColumns(input.owner);
+  const status = input.status;
+  const [row] = await db
+    .insert(integrationConnections)
+    .values({
+      orgId: requireNonEmptyIntegrationIdentifier(input.orgId, "orgId"),
+      ...owner,
+      provider: requireNonEmptyIntegrationIdentifier(input.provider, "provider"),
+      runtimeBindingId: requireNonEmptyIntegrationIdentifier(
+        input.runtimeBindingId,
+        "runtimeBindingId",
+      ),
+      externalConnectionId: requireNonEmptyIntegrationIdentifier(
+        input.externalConnectionId,
+        "externalConnectionId",
+      ),
+      externalConnectionName: input.externalConnectionName?.trim() || null,
+      status,
+      authMethod: input.authMethod,
+      accountMetadata: readSafeIntegrationAccount(input.account),
+      scopes: readSafeIntegrationScopes(input.scopes),
+      createdByUserId: requireNonEmptyIntegrationIdentifier(
+        input.createdByUserId,
+        "createdByUserId",
+      ),
+      lastVerifiedAt: input.lastVerifiedAt ?? null,
+      revokedAt: status === "revoked" ? new Date() : null,
+    })
+    .returning();
+  if (!row) throw new Error("integration connection insert returned no row");
+  return projectIntegrationConnection(row);
+}
+
+export async function listVisibleIntegrationConnections(scope: {
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<ConnectionProjection[]> {
+  const rows = await listVisibleIntegrationConnectionRecords(scope);
+  return rows.map(projectIntegrationConnection);
+}
+
+/** Trusted backend list. Raw backend references never cross HTTP projections. */
+export async function listVisibleIntegrationConnectionRecords(scope: {
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<IntegrationConnectionRecord[]> {
+  return db
+    .select()
+    .from(integrationConnections)
+    .where(visiblePredicate(scope.orgId, scope.userId))
+    .orderBy(asc(integrationConnections.provider), asc(integrationConnections.createdAt));
+}
+
+export async function findVisibleIntegrationConnection(scope: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly id: string;
+}): Promise<ConnectionProjection | null> {
+  const [row] = await db
+    .select()
+    .from(integrationConnections)
+    .where(
+      and(
+        visiblePredicate(scope.orgId, scope.userId),
+        eq(integrationConnections.id, scope.id),
+      ),
+    )
+    .limit(1);
+  return row ? projectIntegrationConnection(row) : null;
+}
+
+/** Trusted backend lookup. Raw backend references never cross HTTP projections. */
+export async function findVisibleIntegrationConnectionRecord(scope: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly id: string;
+}): Promise<IntegrationConnectionRecord | null> {
+  const [row] = await db
+    .select()
+    .from(integrationConnections)
+    .where(
+      and(
+        visiblePredicate(scope.orgId, scope.userId),
+        eq(integrationConnections.id, scope.id),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function findConnectedOrgIntegrationRecord(input: {
+  readonly orgId: string;
+  readonly provider: string;
+  readonly runtimeBindingId: string;
+  readonly externalConnectionId?: string;
+}): Promise<IntegrationConnectionRecord | null> {
+  const [row] = await db
+    .select()
+    .from(integrationConnections)
+    .where(
+      and(
+        eq(integrationConnections.orgId, input.orgId),
+        eq(integrationConnections.ownerType, "org"),
+        isNull(integrationConnections.ownerUserId),
+        eq(integrationConnections.provider, input.provider),
+        eq(integrationConnections.runtimeBindingId, input.runtimeBindingId),
+        input.externalConnectionId
+          ? eq(integrationConnections.externalConnectionId, input.externalConnectionId)
+          : undefined,
+        eq(integrationConnections.status, "connected"),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/** Trusted backend lookup for the latest org-owned provider connection in any
+ * lifecycle state. This distinguishes "never connected" from an explicit
+ * disconnect/revocation before callers consider a legacy fallback. */
+export async function findLatestOrgIntegrationRecord(input: {
+  readonly orgId: string;
+  readonly provider: string;
+  readonly runtimeBindingId: string;
+}): Promise<IntegrationConnectionRecord | null> {
+  const [row] = await db
+    .select()
+    .from(integrationConnections)
+    .where(
+      and(
+        eq(integrationConnections.orgId, input.orgId),
+        eq(integrationConnections.ownerType, "org"),
+        isNull(integrationConnections.ownerUserId),
+        eq(integrationConnections.provider, input.provider),
+        eq(integrationConnections.runtimeBindingId, input.runtimeBindingId),
+      ),
+    )
+    .orderBy(desc(integrationConnections.updatedAt))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function updateOwnedIntegrationConnection(
+  input: UpdateIntegrationConnectionInput,
+): Promise<ConnectionProjection | null> {
+  const now = new Date();
+  const [row] = await db
+    .update(integrationConnections)
+    .set({
+      status: input.status,
+      accountMetadata: readSafeIntegrationAccount(input.account),
+      scopes: readSafeIntegrationScopes(input.scopes),
+      externalConnectionName: input.externalConnectionName?.trim() || null,
+      lastVerifiedAt: input.lastVerifiedAt ?? null,
+      revokedAt: input.status === "revoked" ? now : null,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        ownerPredicate(input.orgId, input.owner),
+        eq(integrationConnections.id, input.id),
+      ),
+    )
+    .returning();
+  return row ? projectIntegrationConnection(row) : null;
+}
+
+export async function revokeOwnedIntegrationConnection(input: {
+  readonly orgId: string;
+  readonly owner: ConnectionOwner;
+  readonly id: string;
+  readonly account: unknown;
+  readonly scopes: unknown;
+  readonly externalConnectionName?: string | null;
+  readonly lastVerifiedAt?: Date | null;
+}): Promise<ConnectionProjection | null> {
+  return db.transaction(async (tx) => {
+    const now = new Date();
+    const [row] = await tx
+      .update(integrationConnections)
+      .set({
+        status: "revoked",
+        accountMetadata: readSafeIntegrationAccount(input.account),
+        scopes: readSafeIntegrationScopes(input.scopes),
+        externalConnectionName: input.externalConnectionName?.trim() || null,
+        lastVerifiedAt: input.lastVerifiedAt ?? null,
+        revokedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          ownerPredicate(input.orgId, input.owner),
+          eq(integrationConnections.id, input.id),
+        ),
+      )
+      .returning();
+    if (!row) return null;
+    await deleteIntegrationCredential(row.id, tx);
+    if (row.provider === "slack") {
+      await tx
+        .delete(slackWorkspaces)
+        .where(
+          and(
+            eq(slackWorkspaces.teamId, row.externalConnectionId),
+            eq(slackWorkspaces.orgId, row.orgId),
+          ),
+        );
+    }
+    return projectIntegrationConnection(row);
+  });
+}

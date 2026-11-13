@@ -1,0 +1,22 @@
+# PLAN DSL DAG - REDIRECT / INDEX
+# NO ejecutar este archivo como segundo DAG.
+# Fuente ejecutable canonica:
+#   1) Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml
+#   2) Claude notas/PLAN-DSL-DAG-01-NODOS.yaml
+# Arquitectura/intencion:
+#   3) Claude notas/PLAN-MAESTRO-4-OBJETIVOS.md
+
+dsl_version: "yaiwes.dag/v1"
+status: "REDIRECT_ONLY"
+executable: false
+
+canonical:
+  contrato: "Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml"
+  nodos: "Claude notas/PLAN-DSL-DAG-01-NODOS.yaml"
+  arquitectura: "Claude notas/PLAN-MAESTRO-4-OBJETIVOS.md"
+
+rules:
+  - "NO ejecutar nodos desde este archivo."
+  - "NO mantener una segunda copia del DAG aqui."
+  - "Si hay discrepancia, CONTRACT + NODES son la fuente ejecutable."
+  - "PLAN-MAESTRO define arquitectura/intencion y debe mantenerse sincronizado quirurgicamente con NODES."

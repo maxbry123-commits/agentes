@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 4527835,
+  "bundle_sha256": "0df6c08e47bda3d66909b9d76f728f2ce58caeb80764ec6c94e289bd131a18de",
+  "extracted_tree": {
+    "bytes": 5813381,
+    "files": 43,
+    "sha256": "f8f7838253650cd0c7c96e70238d8c55cd9958a5e456108dec8a5dab683f1a2a"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 4527835,
+      "name": "RecursiveMAS.bundle.zip.part-0001",
+      "sha256": "0df6c08e47bda3d66909b9d76f728f2ce58caeb80764ec6c94e289bd131a18de"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "RecursiveMAS",
+  "source_bytes": 5813381,
+  "source_commit": "38f7da45c1728747979c7a35bf5f66f17e67b1bb",
+  "source_files": 43,
+  "source_ref": "HEAD",
+  "source_repo": "RecursiveMAS/RecursiveMAS",
+  "source_tree": {
+    "bytes": 5813381,
+    "files": 43,
+    "sha256": "f8f7838253650cd0c7c96e70238d8c55cd9958a5e456108dec8a5dab683f1a2a"
+  }
+}

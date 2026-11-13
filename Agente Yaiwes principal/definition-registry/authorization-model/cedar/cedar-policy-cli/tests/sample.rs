@@ -1,0 +1,2253 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#![allow(clippy::expect_used, reason = "tests")]
+#![allow(clippy::unwrap_used, reason = "tests")]
+use std::collections::HashMap;
+use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+
+use cedar_policy::EvalResult;
+use cedar_policy::SlotId;
+use cedar_policy_cli::{
+    authorize, check_parse, evaluate, link, run_tests, validate, Arguments, AuthorizeArgs,
+    CedarExitCode, CheckParseArgs, EvaluateArgs, LinkArgs, OptionalPoliciesArgs,
+    OptionalSchemaArgs, PoliciesArgs, PolicyFormat, RequestArgs, RunTestsArgs, SchemaArgs,
+    SchemaFormat, ValidateArgs,
+};
+
+use assert_cmd::cargo;
+use predicates::prelude::*;
+use rstest::rstest;
+
+#[track_caller]
+fn run_check_parse_test(
+    policies_file: impl Into<String>,
+    schema_file: impl Into<PathBuf>,
+    entities_file: Option<impl Into<PathBuf>>,
+    expected_exit_code: CedarExitCode,
+) {
+    let cmd = CheckParseArgs {
+        policies: OptionalPoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: None,
+        },
+        expression: None,
+        schema: OptionalSchemaArgs {
+            schema_file: Some(schema_file.into()),
+            schema_format: SchemaFormat::Cedar,
+        },
+        entities_file: entities_file.map(Into::into),
+    };
+    let output = check_parse(&cmd);
+    assert_eq!(output, expected_exit_code, "{cmd:#?}");
+}
+
+#[track_caller]
+fn run_authorize_test(
+    policies_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    principal: impl Into<String>,
+    action: impl Into<String>,
+    resource: impl Into<String>,
+    exit_code: CedarExitCode,
+) {
+    run_authorize_test_with_linked_policies(
+        policies_file,
+        entities_file,
+        None::<String>,
+        principal,
+        action,
+        resource,
+        exit_code,
+    );
+}
+
+#[track_caller]
+fn run_authorize_test_with_linked_policies(
+    policies_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    links_file: Option<impl Into<String>>,
+    principal: impl Into<String>,
+    action: impl Into<String>,
+    resource: impl Into<String>,
+    exit_code: CedarExitCode,
+) {
+    let cmd = AuthorizeArgs {
+        request: RequestArgs {
+            principal: Some(principal.into()),
+            action: Some(action.into()),
+            resource: Some(resource.into()),
+            context_json_file: None,
+            request_json_file: None,
+            request_validation: true,
+        },
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: links_file.map(Into::into),
+        },
+        schema: OptionalSchemaArgs {
+            schema_file: None,
+            schema_format: SchemaFormat::default(),
+        },
+        entities_file: entities_file.into(),
+        verbose: true,
+        timing: false,
+    };
+    let output = authorize(&cmd);
+    assert_eq!(exit_code, output, "{cmd:#?}",);
+}
+
+#[track_caller]
+fn run_link_test(
+    policies_file: impl Into<String>,
+    links_file: impl Into<String>,
+    template_id: impl Into<String>,
+    linked_id: impl Into<String>,
+    env: impl IntoIterator<Item = (SlotId, String)>,
+    expected: CedarExitCode,
+) {
+    let cmd = LinkArgs {
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: Some(links_file.into()),
+        },
+        template_id: template_id.into(),
+        new_id: linked_id.into(),
+        arguments: Arguments {
+            data: HashMap::from_iter(env),
+        },
+    };
+    let output = link(&cmd);
+    assert_eq!(output, expected);
+}
+
+#[track_caller]
+fn run_authorize_test_context(
+    policies_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    principal: impl Into<String>,
+    action: impl Into<String>,
+    resource: impl Into<String>,
+    context_file: impl Into<String>,
+    exit_code: CedarExitCode,
+) {
+    let cmd = AuthorizeArgs {
+        request: RequestArgs {
+            principal: Some(principal.into()),
+            action: Some(action.into()),
+            resource: Some(resource.into()),
+            context_json_file: Some(context_file.into()),
+            request_json_file: None,
+            request_validation: true,
+        },
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: None,
+        },
+        schema: OptionalSchemaArgs {
+            schema_file: None,
+            schema_format: SchemaFormat::default(),
+        },
+        entities_file: entities_file.into(),
+        verbose: true,
+        timing: false,
+    };
+    let output = authorize(&cmd);
+    assert_eq!(exit_code, output, "{cmd:#?}",);
+}
+
+#[track_caller]
+fn run_authorize_test_json(
+    policies_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    request_json_file: impl Into<String>,
+    exit_code: CedarExitCode,
+) {
+    let cmd = AuthorizeArgs {
+        request: RequestArgs {
+            principal: None,
+            action: None,
+            resource: None,
+            context_json_file: None,
+            request_json_file: Some(request_json_file.into()),
+            request_validation: true,
+        },
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: None,
+        },
+        schema: OptionalSchemaArgs {
+            schema_file: None,
+            schema_format: SchemaFormat::default(),
+        },
+        entities_file: entities_file.into(),
+        verbose: true,
+        timing: false,
+    };
+    let output = authorize(&cmd);
+    assert_eq!(exit_code, output, "{cmd:#?}",);
+}
+
+#[test]
+fn test_authorize_samples() {
+    run_check_parse_test(
+        "sample-data/sandbox_a/policies_1.cedar",
+        "sample-data/sandbox_a/schema.cedarschema",
+        None::<PathBuf>,
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_1.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Success,
+    );
+    run_check_parse_test(
+        "sample-data/sandbox_a/policies_2.cedar",
+        "sample-data/sandbox_a/schema.cedarschema",
+        None::<PathBuf>,
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_2.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_2.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"alice\"",
+        "Action::\"edit\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_2.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"alice\"",
+        "Action::\"delete\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_2.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"alice\"",
+        "Action::\"comment\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::AuthorizeDeny,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_2.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"bob\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_2.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"bob\"",
+        "Action::\"edit\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::AuthorizeDeny,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_2.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"bob\"",
+        "Action::\"delete\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::AuthorizeDeny,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_2.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"bob\"",
+        "Action::\"comment\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::AuthorizeDeny,
+    );
+    run_check_parse_test(
+        "sample-data/sandbox_a/policies_3.cedar",
+        "sample-data/sandbox_a/schema.cedarschema",
+        None::<PathBuf>,
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_3.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_3.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"bob\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_3.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"tim\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_3.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"alice\"",
+        "Action::\"listPhotos\"",
+        "Album::\"jane_vacation\"",
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_3.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"bob\"",
+        "Action::\"listPhotos\"",
+        "Album::\"jane_vacation\"",
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_a/policies_3.cedar",
+        "sample-data/sandbox_a/entities.json",
+        "User::\"tim\"",
+        "Action::\"listPhotos\"",
+        "Album::\"jane_vacation\"",
+        CedarExitCode::Success,
+    );
+
+    run_check_parse_test(
+        "sample-data/sandbox_b/policies_4.cedar",
+        "sample-data/sandbox_b/schema.cedarschema",
+        None::<PathBuf>,
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_b/policies_4.cedar",
+        "sample-data/sandbox_b/entities.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"prototype_v0.jpg\"",
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_b/policies_4.cedar",
+        "sample-data/sandbox_b/entities.json",
+        "User::\"stacey\"",
+        "Action::\"view\"",
+        "Photo::\"prototype_v0.jpg\"",
+        CedarExitCode::AuthorizeDeny,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_b/policies_4.cedar",
+        "sample-data/sandbox_b/entities.json",
+        "User::\"ahmad\"",
+        "Action::\"view\"",
+        "Photo::\"prototype_v0.jpg\"",
+        CedarExitCode::AuthorizeDeny,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_b/policies_5.cedar",
+        "sample-data/sandbox_b/entities.json",
+        "User::\"stacey\"",
+        "Action::\"view\"",
+        "Photo::\"alice_w2.jpg\"",
+        CedarExitCode::AuthorizeDeny,
+    );
+    run_check_parse_test(
+        "sample-data/sandbox_b/policies_5.cedar",
+        "sample-data/sandbox_b/schema.cedarschema",
+        None::<PathBuf>,
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_b/policies_5.cedar",
+        "sample-data/sandbox_b/entities.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"alice_w2.jpg\"",
+        CedarExitCode::Success,
+    );
+    run_authorize_test(
+        "sample-data/sandbox_b/policies_5.cedar",
+        "sample-data/sandbox_b/entities.json",
+        "User::\"stacey\"",
+        "Action::\"view\"",
+        "Photo::\"vacation.jpg\"",
+        CedarExitCode::Success,
+    );
+    run_authorize_test_context(
+        "sample-data/sandbox_b/policies_6.cedar",
+        "sample-data/sandbox_b/entities.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"vacation.jpg\"",
+        "sample-data/sandbox_b/doesnotexist.json",
+        CedarExitCode::Failure,
+    );
+    run_authorize_test_context(
+        "sample-data/sandbox_b/policies_6.cedar",
+        "sample-data/sandbox_b/entities.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"vacation.jpg\"",
+        "sample-data/sandbox_b/context.json",
+        CedarExitCode::Success,
+    );
+    run_authorize_test_context(
+        "sample-data/sandbox_b/policies_6.cedar",
+        "sample-data/sandbox_b/entities.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"vacation.jpg\"",
+        "sample-data/sandbox_b/context_deny.json",
+        CedarExitCode::AuthorizeDeny,
+    );
+
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample1/policy.cedar",
+        "sample-data/tiny_sandboxes/sample1/entity.json",
+        "sample-data/tiny_sandboxes/sample1/request.json",
+        CedarExitCode::Success,
+    );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample2/policy.cedar",
+        "sample-data/tiny_sandboxes/sample2/entity.json",
+        "sample-data/tiny_sandboxes/sample2/request.json",
+        CedarExitCode::Success,
+    );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample3/policy.cedar",
+        "sample-data/tiny_sandboxes/sample3/entity.json",
+        "sample-data/tiny_sandboxes/sample3/request.json",
+        CedarExitCode::AuthorizeDeny,
+    );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample4/policy.cedar",
+        "sample-data/tiny_sandboxes/sample4/entity.json",
+        "sample-data/tiny_sandboxes/sample4/request.json",
+        CedarExitCode::Success,
+    );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample5/policy.cedar",
+        "sample-data/tiny_sandboxes/sample5/entity.json",
+        "sample-data/tiny_sandboxes/sample5/request.json",
+        CedarExitCode::Success,
+    );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample6/policy.cedar",
+        "sample-data/tiny_sandboxes/sample6/entity.json",
+        "sample-data/tiny_sandboxes/sample6/request.json",
+        CedarExitCode::AuthorizeDeny,
+    );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample7/policy.cedar",
+        "sample-data/tiny_sandboxes/sample7/entity.json",
+        "sample-data/tiny_sandboxes/sample7/request.json",
+        CedarExitCode::Success,
+    );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample8/policy.cedar",
+        "sample-data/tiny_sandboxes/sample8/entity.json",
+        "sample-data/tiny_sandboxes/sample8/request.json",
+        CedarExitCode::Success,
+    );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample9/policy.cedar",
+        "sample-data/tiny_sandboxes/sample9/entity.json",
+        "sample-data/tiny_sandboxes/sample9/request.json",
+        CedarExitCode::Success,
+    );
+}
+
+#[rstest]
+#[case(
+    "sample-data/doesnotexist.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/sandbox_a/policies_1.cedar",
+    "sample-data/doesnotexist.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/sandbox_a/policies_1.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+// Contains misspelled entity type.
+#[case(
+    "sample-data/sandbox_a/policies_1_bad.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/sandbox_a/policies_2.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/sandbox_a/policies_3.cedar",
+    "sample-data/sandbox_a/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/sandbox_b/policies_4.cedar",
+    "sample-data/sandbox_b/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+// Contains an access to an optional attribute without a `has` check.
+#[case(
+    "sample-data/sandbox_b/policies_5_bad.cedar",
+    "sample-data/sandbox_b/schema.cedarschema.json",
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/sandbox_b/policies_5.cedar",
+    "sample-data/sandbox_b/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/sandbox_b/policies_6.cedar",
+    "sample-data/sandbox_b/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample2/policy.cedar",
+    "sample-data/tiny_sandboxes/sample2/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample3/policy.cedar",
+    "sample-data/tiny_sandboxes/sample3/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample4/policy.cedar",
+    "sample-data/tiny_sandboxes/sample4/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample5/policy.cedar",
+    "sample-data/tiny_sandboxes/sample5/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample6/policy.cedar",
+    "sample-data/tiny_sandboxes/sample6/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample7/policy.cedar",
+    "sample-data/tiny_sandboxes/sample7/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample8/policy.cedar",
+    "sample-data/tiny_sandboxes/sample8/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample9/policy.cedar",
+    "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample9/policy_bad.cedar",
+    "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+    CedarExitCode::ValidationFailure
+)]
+#[track_caller]
+fn test_validate_samples(
+    #[case] policies_file: impl Into<String>,
+    #[case] schema_file: impl AsRef<Path>,
+    #[case] exit_code: CedarExitCode,
+) {
+    let policies_file = policies_file.into();
+    let schema_file = schema_file.as_ref();
+
+    // Run with JSON schema
+    let cmd = ValidateArgs {
+        schema: SchemaArgs {
+            schema_file: schema_file.into(),
+            schema_format: SchemaFormat::Json,
+        },
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.clone()),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: None,
+        },
+        deny_warnings: false,
+        validation_mode: cedar_policy_cli::ValidationMode::Strict,
+        level: None,
+    };
+    let output = validate(&cmd);
+    assert_eq!(exit_code, output, "{cmd:#?}");
+
+    // Run with Cedar schema
+    let cmd = ValidateArgs {
+        schema: SchemaArgs {
+            schema_file: schema_file.with_extension(""), // remove the `.json` extension to get the filename of the Cedar schema
+            schema_format: SchemaFormat::Cedar,
+        },
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: None,
+        },
+        deny_warnings: false,
+        validation_mode: cedar_policy_cli::ValidationMode::Strict,
+        level: None,
+    };
+    let output = validate(&cmd);
+    assert_eq!(exit_code, output, "{cmd:#?}")
+}
+
+#[rstest]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-0.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    0,
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-1.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    0,
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-1.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    1,
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-1.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    0,
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-1.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    1,
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-2.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    0,
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-2.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    1,
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-2.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    2,
+    CedarExitCode::Success
+)]
+#[track_caller]
+fn test_level_validate_samples(
+    #[case] policies_file: impl Into<String>,
+    #[case] schema_file: impl AsRef<Path>,
+    #[case] level: u32,
+    #[case] exit_code: CedarExitCode,
+) {
+    let policies_file = policies_file.into();
+    let schema_file = schema_file.as_ref();
+
+    let cmd = ValidateArgs {
+        schema: SchemaArgs {
+            schema_file: schema_file.into(),
+            schema_format: SchemaFormat::Cedar,
+        },
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: None,
+        },
+        deny_warnings: false,
+        validation_mode: cedar_policy_cli::ValidationMode::Strict,
+        level: Some(level),
+    };
+    let output = validate(&cmd);
+    assert_eq!(exit_code, output, "{cmd:#?}");
+}
+
+#[rstest]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/doesnotexist.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "principal in UserGroup::\"jane_friends\"",
+    CedarExitCode::Failure,
+    EvalResult::Bool(false)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/doesnotexist.json",
+    "principal in UserGroup::\"jane_friends\"",
+    CedarExitCode::Failure,
+    EvalResult::Bool(false)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "parse error",
+    CedarExitCode::Failure,
+    EvalResult::Bool(false)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "1 + \"type error\"",
+    CedarExitCode::Failure,
+    EvalResult::Bool(false)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "principal in UserGroup::\"jane_friends\"",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "[\"a\",true,10].contains(10)",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/request.json",
+    "sample-data/tiny_sandboxes/sample1/entity.json",
+    "principal.age >= 17",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case("sample-data/tiny_sandboxes/sample2/request.json",
+        "sample-data/tiny_sandboxes/sample2/entity.json",
+        "resource.owner",
+        CedarExitCode::Success,
+        EvalResult::EntityUid("User::\"bob\"".parse().unwrap()),)]
+#[case("sample-data/tiny_sandboxes/sample3/request.json",
+        "sample-data/tiny_sandboxes/sample3/entity.json",
+        "if 10 > 5 then \"good\" else \"bad\"",
+        CedarExitCode::Success,
+        EvalResult::String("good".to_owned()),)]
+#[case(
+    "sample-data/tiny_sandboxes/sample4/request.json",
+    "sample-data/tiny_sandboxes/sample4/entity.json",
+    "resource.owner == User::\"bob\"",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample5/request.json",
+    "sample-data/tiny_sandboxes/sample5/entity.json",
+    "principal.addr.isLoopback()",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample6/request.json",
+    "sample-data/tiny_sandboxes/sample6/entity.json",
+    "principal.account.age >= 17",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample7/request.json",
+    "sample-data/tiny_sandboxes/sample7/entity.json",
+    "context.role.contains(\"admin\")",
+    CedarExitCode::Success,
+    EvalResult::Bool(true)
+)]
+fn test_evaluate_samples(
+    #[case] request_json_file: impl Into<String>,
+    #[case] entities_file: impl Into<String>,
+    #[case] expression: impl Into<String>,
+    #[case] exit_code: CedarExitCode,
+    #[case] expected: EvalResult,
+) {
+    let cmd = EvaluateArgs {
+        schema: OptionalSchemaArgs {
+            schema_file: None,
+            schema_format: SchemaFormat::default(),
+        },
+        entities_file: Some(entities_file.into()),
+        request: RequestArgs {
+            principal: None,
+            action: None,
+            resource: None,
+            context_json_file: None,
+            request_json_file: Some(request_json_file.into()),
+            request_validation: true,
+        },
+        expression: expression.into(),
+    };
+    let output = evaluate(&cmd);
+    assert_eq!(exit_code, output.0, "{cmd:#?}",);
+    assert_eq!(expected, output.1, "{cmd:#?}",);
+}
+
+#[test]
+fn test_link_samples() {
+    run_authorize_test(
+        "sample-data/sandbox_c/doesnotexist.cedar",
+        "sample-data/sandbox_c/entities.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Failure,
+    );
+
+    run_authorize_test(
+        "sample-data/sandbox_c/policies.cedar",
+        "sample-data/sandbox_c/doesnotexist.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Failure,
+    );
+
+    run_authorize_test(
+        "sample-data/sandbox_c/policies.cedar",
+        "sample-data/sandbox_c/entities.json",
+        "invalid",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Failure,
+    );
+
+    run_authorize_test(
+        "sample-data/sandbox_c/policies.cedar",
+        "sample-data/sandbox_c/entities.json",
+        "User::\"alice\"",
+        "invalid",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Failure,
+    );
+
+    run_authorize_test(
+        "sample-data/sandbox_c/policies.cedar",
+        "sample-data/sandbox_c/entities.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "invalid",
+        CedarExitCode::Failure,
+    );
+
+    run_authorize_test(
+        "sample-data/sandbox_c/policies.cedar",
+        "sample-data/sandbox_c/entities.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::AuthorizeDeny,
+    );
+
+    run_authorize_test(
+        "sample-data/sandbox_c/policies.cedar",
+        "sample-data/sandbox_c/entities.json",
+        "User::\"bob\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::AuthorizeDeny,
+    );
+
+    let linked_file = tempfile::NamedTempFile::new().expect("Failed to create linked file");
+    let linked_file_name = linked_file.path().as_os_str().to_string_lossy().to_string();
+
+    run_link_test(
+        "sample-data/sandbox_c/doesnotexist.cedar",
+        &linked_file_name,
+        "AccessVacation",
+        "AliceAccess",
+        [(SlotId::principal(), "User::\"alice\"".to_string())],
+        CedarExitCode::Failure,
+    );
+
+    run_link_test(
+        "sample-data/sandbox_c/policies.cedar",
+        &linked_file_name,
+        "AccessVacation",
+        "AliceAccess",
+        [(SlotId::principal(), "invalid".to_string())],
+        CedarExitCode::Failure,
+    );
+
+    run_link_test(
+        "sample-data/sandbox_c/policies.cedar",
+        &linked_file_name,
+        "AccessVacation",
+        "AliceAccess",
+        [(SlotId::principal(), "User::\"alice\"".to_string())],
+        CedarExitCode::Success,
+    );
+
+    run_authorize_test_with_linked_policies(
+        "sample-data/sandbox_c/policies.cedar",
+        "sample-data/sandbox_c/entities.json",
+        Some(&linked_file_name),
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Success,
+    );
+
+    run_authorize_test_with_linked_policies(
+        "sample-data/sandbox_c/policies.cedar",
+        "sample-data/sandbox_c/entities.json",
+        Some(&linked_file_name),
+        "User::\"bob\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::AuthorizeDeny,
+    );
+
+    run_link_test(
+        "sample-data/sandbox_c/policies.cedar",
+        &linked_file_name,
+        "AccessVacation",
+        "BobAccess",
+        [(SlotId::principal(), "User::\"bob\"".to_string())],
+        CedarExitCode::Success,
+    );
+
+    run_authorize_test_with_linked_policies(
+        "sample-data/sandbox_c/policies.cedar",
+        "sample-data/sandbox_c/entities.json",
+        Some(&linked_file_name),
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Success,
+    );
+
+    run_authorize_test_with_linked_policies(
+        "sample-data/sandbox_c/policies.cedar",
+        "sample-data/sandbox_c/entities.json",
+        Some(&linked_file_name),
+        "User::\"bob\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Success,
+    );
+
+    run_authorize_test_with_linked_policies(
+        "sample-data/sandbox_c/policies_edited.cedar",
+        "sample-data/sandbox_c/entities.json",
+        Some(&linked_file_name),
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::AuthorizeDeny,
+    );
+
+    run_authorize_test_with_linked_policies(
+        "sample-data/sandbox_c/policies_edited.cedar",
+        "sample-data/sandbox_c/entities.json",
+        Some(&linked_file_name),
+        "User::\"bob\"",
+        "Action::\"view\"",
+        "Photo::\"VacationPhoto94.jpg\"",
+        CedarExitCode::Success,
+    );
+}
+
+#[rstest]
+#[track_caller]
+fn test_format_samples(#[files("sample-data/**/polic*.cedar")] path: PathBuf) {
+    let policies_file = path.to_str().unwrap();
+    let original = std::fs::read_to_string(policies_file).unwrap();
+    let format_cmd = cargo::cargo_bin_cmd!("cedar")
+        .arg("format")
+        .arg("-p")
+        .arg(policies_file)
+        .assert();
+    let formatted =
+        std::str::from_utf8(&format_cmd.get_output().stdout).expect("output should be decodable");
+    assert_eq!(
+        original, formatted,
+        "\noriginal:\n{original}\n\nformatted:\n{formatted}",
+    );
+}
+
+#[test]
+fn test_format_write() {
+    const POLICY_SOURCE: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
+    // See https://doc.rust-lang.org/cargo/reference/environment-variables.html for the
+    // CARGO_TARGET_TMPDIR environment variable.
+    let tmp_dir = env!("CARGO_TARGET_TMPDIR");
+    let unformatted_file = format!("{tmp_dir}/unformatted.cedar");
+    std::fs::copy(POLICY_SOURCE, &unformatted_file).unwrap();
+    let original = std::fs::read_to_string(&unformatted_file).unwrap();
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("format")
+        .arg("-p")
+        .arg(&unformatted_file)
+        .assert()
+        .success();
+    let formatted = std::fs::read_to_string(&unformatted_file).unwrap();
+    assert_eq!(
+        original, formatted,
+        "original and formatted should be the same without -w\noriginal:{original}\n\nformatted:{formatted}"
+    );
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("format")
+        .arg("-p")
+        .arg(&unformatted_file)
+        .arg("-w")
+        .assert()
+        .success();
+    let formatted = std::fs::read_to_string(&unformatted_file).unwrap();
+    assert_ne!(
+        original, formatted,
+        "original and formatted should differ under -w\noriginal:{original}\n\nformatted:{formatted}"
+    );
+}
+
+#[test]
+fn test_format_check() {
+    const POLICY_REQUIRING_FORMAT: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
+    const POLICY_ALREADY_FORMATTED: &str = "sample-data/tiny_sandboxes/format/formatted.cedar";
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("format")
+        .arg("-p")
+        .arg(POLICY_REQUIRING_FORMAT)
+        .arg("-c")
+        .assert()
+        .code(1);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("format")
+        .arg("-p")
+        .arg(POLICY_ALREADY_FORMATTED)
+        .arg("-c")
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_write_check_are_mutually_exclusive() {
+    const POLICY_SOURCE: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("format")
+        .arg("-p")
+        .arg(POLICY_SOURCE)
+        .arg("-w")
+        .arg("-c")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "the argument '--write' cannot be used with '--check'",
+        ));
+}
+
+#[test]
+fn test_require_policies_for_write() {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("format")
+        .arg("-w")
+        .write_stdin("permit (principal, action, resource);")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "the following required arguments were not provided:\n  --policies <FILE>",
+        ));
+}
+
+#[test]
+fn test_check_parse_json_static_policy() {
+    let json_policy: &str = "sample-data/tiny_sandboxes/json-check-parse/static_policy.cedar.json";
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_check_parse_json_policy_template() {
+    let json_policy: &str =
+        "sample-data/tiny_sandboxes/json-check-parse/policy_template.cedar.json";
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_check_parse_json_policy_set() {
+    let json_policy: &str = "sample-data/tiny_sandboxes/json-check-parse/policy_set.cedar.json";
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_check_parse_json_policy_mixed_properties() {
+    let json_policy: &str =
+        "sample-data/tiny_sandboxes/json-check-parse/policy_mixed_properties.cedar.json";
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "matching properties from both formats",
+        ));
+}
+
+#[test]
+fn test_check_parse_json_policy_no_matching_properties() {
+    let json_policy: &str =
+        "sample-data/tiny_sandboxes/json-check-parse/policy_no_matching_properties.cedar.json";
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("no matching properties"));
+}
+
+#[test]
+fn test_authorize_json_policy() {
+    let json_policy: &str = "sample-data/tiny_sandboxes/json-authorize/policy.cedar.json";
+    let entities: &str = "sample-data/tiny_sandboxes/json-authorize/entity.json";
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("authorize")
+        .arg("--policy-format")
+        .arg("json")
+        .arg("-p")
+        .arg(json_policy)
+        .arg("--entities")
+        .arg(entities)
+        .arg("--principal")
+        .arg(r#"User::"bob""#)
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource")
+        .arg(r#"Photo::"VacationPhoto94.jpg""#)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_authorize_allow_with_errors() {
+    let dir = tempfile::tempdir().expect("failed to create tempdir");
+    let policies = dir.path().join("policies.cedar");
+    std::fs::write(
+        &policies,
+        "permit(principal, action, resource);\nforbid(principal, action, resource) when { resource.isPublic };",
+    )
+    .unwrap();
+    let entities = dir.path().join("entities.json");
+    std::fs::write(&entities, r#"[]"#).unwrap();
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("authorize")
+        .arg("--principal")
+        .arg(r#"User::"alice""#)
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource")
+        .arg(r#"Photo::"pic""#)
+        .arg("--policies")
+        .arg(&policies)
+        .arg("--entities")
+        .arg(&entities)
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    insta::assert_snapshot!(stdout, @r###"
+
+    ALLOW
+
+    error while evaluating policy `policy1`: entity `Photo::"pic"` does not exist
+    "###);
+    assert!(output.status.success());
+}
+
+#[test]
+fn test_translate_policy() {
+    let cedar_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar";
+    let json_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar.json";
+    let cedar = std::fs::read_to_string(cedar_filename).unwrap();
+    let json = std::fs::read_to_string(json_filename).unwrap();
+    let to_json_command = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-policy")
+        .arg("--direction")
+        .arg("cedar-to-json")
+        .arg("-p")
+        .arg(cedar_filename)
+        .assert();
+
+    let translated_json = std::str::from_utf8(&to_json_command.get_output().stdout)
+        .expect("output should be decodable");
+
+    assert_eq!(
+        translated_json, json,
+        "\noriginal:\n{cedar}\n\ttranslated:\n{translated_json}",
+    );
+
+    let translate_to_cedar = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-policy")
+        .arg("--direction")
+        .arg("json-to-cedar")
+        .arg("-p")
+        .arg(json_filename)
+        .assert();
+
+    let translated_cedar = std::str::from_utf8(&translate_to_cedar.get_output().stdout)
+        .expect("output should be decodable");
+
+    let expected_translated_cedar = r#"permit(
+  principal == User::"alice",
+  action == Action::"update",
+  resource == Photo::"VacationPhoto94.jpg"
+);
+"#;
+
+    assert_eq!(
+        translated_cedar, expected_translated_cedar,
+        "\noriginal:\n{cedar}\n\ttranslated:\n{translated_cedar}",
+    );
+}
+
+#[test]
+fn test_translate_schema() {
+    let cedar_filename = "sample-data/tiny_sandboxes/translate-schema/tinytodo.cedarschema";
+    let json_filename = "sample-data/tiny_sandboxes/translate-schema/tinytodo.cedarschema.json";
+
+    // json -> cedar
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json")
+        .arg("-s")
+        .arg(cedar_filename)
+        .assert()
+        .code(0);
+
+    // cedar -> json
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("json-to-cedar")
+        .arg("-s")
+        .arg(json_filename)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_translate_schema_with_resolved_types() {
+    let cedar_filename = "sample-data/tiny_sandboxes/translate-schema/tinytodo.cedarschema";
+
+    // Test cedar -> json with resolved types
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json-with-resolved-types")
+        .arg("-s")
+        .arg(cedar_filename)
+        .assert()
+        .code(0);
+
+    let json_output =
+        std::str::from_utf8(&output.get_output().stdout).expect("output should be decodable");
+
+    // Parse the JSON to ensure it's valid
+    let parsed_json: serde_json::Value =
+        serde_json::from_str(json_output).expect("output should be valid JSON");
+
+    // Verify that the output contains resolved types (no "EntityOrCommon" strings)
+    let json_str = serde_json::to_string(&parsed_json).unwrap();
+    assert!(
+        !json_str.contains("EntityOrCommon"),
+        "Output should not contain unresolved EntityOrCommon types: {}",
+        json_str
+    );
+
+    // Verify that the output contains expected entity types
+    assert!(
+        json_str.contains("List"),
+        "Output should contain List entity type"
+    );
+    assert!(
+        json_str.contains("User"),
+        "Output should contain User entity type"
+    );
+    assert!(
+        json_str.contains("Team"),
+        "Output should contain Team entity type"
+    );
+    assert!(
+        json_str.contains("Application"),
+        "Output should contain Application entity type"
+    );
+}
+#[test]
+
+fn test_translate_schema_with_resolved_types_stdin() {
+    // Test with stdin input
+    let stdin_output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json-with-resolved-types")
+        .write_stdin("entity User; action \"view\";")
+        .assert()
+        .code(0);
+
+    let stdin_json = std::str::from_utf8(&stdin_output.get_output().stdout)
+        .expect("stdin output should be decodable");
+
+    // Parse and verify stdin JSON
+    let stdin_parsed: serde_json::Value =
+        serde_json::from_str(stdin_json).expect("stdin output should be valid JSON");
+
+    let stdin_json_str = serde_json::to_string(&stdin_parsed).unwrap();
+    assert!(
+        !stdin_json_str.contains("EntityOrCommon"),
+        "Stdin output should not contain unresolved EntityOrCommon types"
+    );
+    assert!(
+        stdin_json_str.contains("User"),
+        "Stdin output should contain User entity type"
+    );
+}
+
+#[test]
+fn test_translate_schema_with_resolved_types_invalid_input() {
+    // Test with invalid Cedar schema syntax
+    let invalid_output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json-with-resolved-types")
+        .write_stdin("invalid cedar syntax {")
+        .assert()
+        .code(1); // Should fail with non-zero exit code
+
+    let stderr = std::str::from_utf8(&invalid_output.get_output().stderr)
+        .expect("stderr should be decodable");
+
+    // Should contain error message about parsing failure
+    assert!(
+        stderr.contains("error parsing schema"),
+        "Error message should indicate parsing failure: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_translate_schema_with_resolved_types_warnings() {
+    // Create a schema that generates warnings (Shadowing a primitive type with an entity)
+    let schema_with_warnings = r#"
+        entity String;
+    "#;
+
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json-with-resolved-types")
+        .write_stdin(schema_with_warnings)
+        .assert()
+        .code(0); // Should succeed despite warnings
+
+    let json_output =
+        std::str::from_utf8(&output.get_output().stdout).expect("output should be decodable");
+
+    // Should produce valid JSON
+    let _parsed_json: serde_json::Value =
+        serde_json::from_str(json_output).expect("output should be valid JSON");
+
+    // Warnings should be output to stderr (if any)
+    let _stderr =
+        std::str::from_utf8(&output.get_output().stderr).expect("stderr should be decodable");
+
+    assert!(_stderr.contains("The name `String` shadows a builtin Cedar name"));
+}
+
+#[test]
+fn test_translate_schema_with_resolved_types_file_errors() {
+    // Test with non-existent input file
+    let nonexistent_output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json-with-resolved-types")
+        .arg("-s")
+        .arg("nonexistent-file.cedarschema")
+        .assert()
+        .code(1); // Should fail with non-zero exit code
+
+    let stderr = std::str::from_utf8(&nonexistent_output.get_output().stderr)
+        .expect("stderr should be decodable");
+
+    // Should contain error message about file not found
+    assert!(
+        stderr.contains("nonexistent-file.cedarschema") || stderr.contains("No such file"),
+        "Error message should indicate file not found: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_translate_schema_with_resolved_types_unresolvable_references() {
+    // Test with schema that has unresolvable type references
+    let unresolvable_schema = r#"
+        entity User = { "manager": Manager };
+        // Manager entity type is not defined
+        action "view";
+    "#;
+
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json-with-resolved-types")
+        .write_stdin(unresolvable_schema)
+        .assert()
+        .code(1); // Should fail with non-zero exit code
+
+    let stderr =
+        std::str::from_utf8(&output.get_output().stderr).expect("stderr should be decodable");
+
+    // Should contain error message about unresolvable references
+    assert!(
+        stderr.contains("Failed to resolve schema types")
+            || stderr.contains("Manager")
+            || stderr.contains("resolve"),
+        "Error message should indicate unresolvable type reference: {}",
+        stderr
+    );
+}
+
+#[rstest]
+fn visualize_entities_parses_as_dot(
+    #[files("sample-data/**/entities.json")]
+    #[files("sample-data/**/entity.json")]
+    path: PathBuf,
+) {
+    let visualize = cargo::cargo_bin_cmd!("cedar")
+        .arg("visualize")
+        .arg("--entities")
+        .arg(path)
+        .assert()
+        .code(0);
+    let visualized = std::str::from_utf8(&visualize.get_output().stdout).unwrap();
+    graphviz_rust::parse(visualized).unwrap();
+}
+
+#[rstest]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-missing-reason.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-unexpected-error.json",
+    CedarExitCode::Failure
+)]
+// Evaluation produces a runtime error, but the test does not expect one
+#[case(
+    "sample-data/tiny_sandboxes/sample2/policy.cedar",
+    "sample-data/tiny_sandboxes/sample2/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample2/tests-unexpected-error.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-named.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-fail.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-format-error.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-format-error2.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/no-such-file.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample2/policy.cedar",
+    "sample-data/tiny_sandboxes/sample2/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample2/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample3/policy.cedar",
+    "sample-data/tiny_sandboxes/sample3/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample3/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample4/policy.cedar",
+    "sample-data/tiny_sandboxes/sample4/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample4/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample6/policy.cedar",
+    "sample-data/tiny_sandboxes/sample6/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample6/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample7/policy.cedar",
+    "sample-data/tiny_sandboxes/sample7/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample7/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample9/policy.cedar",
+    "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample9/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample10/policy.cedar",
+    "sample-data/tiny_sandboxes/sample10/schema.cedarschema",
+    "sample-data/tiny_sandboxes/sample10/tests-error.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample11/valid_policy.cedar",
+    "sample-data/tiny_sandboxes/sample11/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample11/test-schema-error.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample11/invalid_policy.cedar",
+    "sample-data/tiny_sandboxes/sample11/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample11/test-policy-error.json",
+    CedarExitCode::Failure
+)]
+#[track_caller]
+fn test_run_tests_samples(
+    #[case] policies_file: impl Into<String>,
+    #[case] schema_file: impl Into<PathBuf>,
+    #[case] test_file: impl Into<String>,
+    #[case] exit_code: CedarExitCode,
+) {
+    let policies_file = policies_file.into();
+    let test_file = test_file.into();
+
+    // Run with JSON schema
+    let cmd = RunTestsArgs {
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: None,
+        },
+        tests: test_file,
+        schema: OptionalSchemaArgs {
+            schema_file: Some(schema_file.into()),
+            schema_format: SchemaFormat::Json,
+        },
+    };
+    let output = run_tests(&cmd);
+    assert_eq!(exit_code, output, "{cmd:#?}")
+}
+
+#[test]
+#[cfg(feature = "tpe")]
+fn test_tpe() {
+    let policies: &str = "sample-data/tpe_rfc/policies.cedar";
+    let entities: &str = "sample-data/tpe_rfc/entities.json";
+    let schema: &str = "sample-data/tpe_rfc/schema.cedarschema";
+    let request_json_file: &str = "sample-data/tpe_rfc/request.json";
+    let context_file: &str = "sample-data/tpe_rfc/context.json";
+
+    let contains_residuals = || {
+        use predicate::str::contains;
+        contains("UNKNOWN")
+            .and(contains("permit(principal, action, resource) when { resource.isPublic };"))
+            .and(contains("permit(principal, action, resource) when { false };"))
+            .and(contains(r#"permit(principal, action, resource) when { context.hasMFA && (resource.owner == User::"Alice") };"#))
+    };
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(policies)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(contains_residuals())
+        .code(4);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"Delete""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(policies)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .arg("--context")
+        .arg(context_file)
+        .assert()
+        .stdout(predicate::str::contains("DENY"))
+        .code(2);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--request-json")
+        .arg(request_json_file)
+        .arg("-p")
+        .arg(policies)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(contains_residuals())
+        .code(4);
+}
+
+#[test]
+#[cfg(feature = "tpe")]
+fn test_tpe_link() {
+    let entities: &str = "sample-data/tpe_rfc/entities.json";
+    let schema: &str = "sample-data/tpe_rfc/schema.cedarschema";
+
+    let mut template_file = tempfile::NamedTempFile::new().expect("Failed to create template file");
+    writeln!(
+        template_file,
+        r#"@id("ViewTemplate")
+permit (
+  principal == ?principal,
+  action == Action::"View",
+  resource
+)
+when {{ resource.isPublic }};"#
+    )
+    .expect("Failed to write template file");
+
+    let links_file = tempfile::NamedTempFile::new().expect("Failed to create links file");
+    let template_path = template_file.path().to_str().unwrap();
+    let links_path = links_file.path().to_str().unwrap();
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("link")
+        .arg("-p")
+        .arg(&template_path)
+        .arg("--template-linked")
+        .arg(&links_path)
+        .arg("--template-id")
+        .arg("ViewTemplate")
+        .arg("--new-id")
+        .arg("AliceView")
+        .arg("-a")
+        .arg(r#"{"?principal": "User::\"Alice\""}"#)
+        .assert()
+        .code(0);
+
+    // Template link value has been substituted in residual
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(template_path)
+        .arg("--template-linked")
+        .arg(links_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(
+            predicate::str::contains("UNKNOWN").and(predicate::str::contains(
+                r#"permit(principal, action, resource) when { (principal == User::"Alice") && resource.isPublic };"#
+            )),
+        )
+        .code(4);
+
+    // Now providing principal eid, equality between slot and principal
+    // evaluates, but we still have a residual
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(template_path)
+        .arg("--template-linked")
+        .arg(links_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(
+            predicate::str::contains("UNKNOWN").and(predicate::str::contains(
+                "permit(principal, action, resource) when { resource.isPublic };",
+            )),
+        )
+        .code(4);
+
+    // Still no resource eid, but slot/principal equality is false for Bob, so deny
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Bob")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(template_path)
+        .arg("--template-linked")
+        .arg(links_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(predicate::str::contains("DENY"))
+        .code(2);
+
+    // Fully concrete request for Alice and a public doc, so allow
+    let entities = serde_json::json!(
+    [{
+        "uid": { "type": "Document", "id": "public" },
+        "attrs": {
+            "isPublic": true,
+            "owner": { "__entity": { "type": "User", "id": "Alice" } }
+        },
+        "parents": []
+    }]);
+    let mut entities_file = tempfile::NamedTempFile::new().expect("Failed to create entities file");
+    serde_json::to_writer(&mut entities_file, &entities).unwrap();
+    let entities_path = entities_file.path().to_str().unwrap();
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("--resource-eid")
+        .arg("public")
+        .arg("-p")
+        .arg(template_path)
+        .arg("--template-linked")
+        .arg(links_path)
+        .arg("--entities")
+        .arg(entities_path)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(predicate::str::contains("ALLOW"))
+        .code(0);
+}
+
+#[test]
+#[cfg(feature = "tpe")]
+fn test_tpe_invalid_policies() {
+    let entities: &str = "sample-data/tpe_rfc/entities.json";
+    let schema: &str = "sample-data/tpe_rfc/schema.cedarschema";
+
+    let mut policies_file = tempfile::NamedTempFile::new().expect("Failed to create policies file");
+    writeln!(
+        policies_file,
+        r#"permit ( principal, action == Action::"View", resource) when {{ resource.nonexistent }};"#
+    ).expect("Failed to write policies file");
+    let policies_path = policies_file.path().to_str().unwrap();
+
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(policies_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    insta::assert_snapshot!(stdout, @r#"
+
+      × policy failed to validate against the schema
+
+    Error: 
+      × for policy `policy0`, attribute `nonexistent` on entity type `Document`
+      │ not found
+       ╭────
+     1 │ permit ( principal, action == Action::"View", resource) when { resource.nonexistent };
+       ·                                                                ────────────────────
+       ╰────
+      help: did you mean `owner`?
+    "#);
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+#[cfg(feature = "tpe")]
+fn test_tpe_invalid_entities() {
+    let policies: &str = "sample-data/tpe_rfc/policies.cedar";
+    let schema: &str = "sample-data/tpe_rfc/schema.cedarschema";
+
+    // `isPublic` is declared as `Bool` in the schema, but this entity gives it a
+    // string value, so entity parsing fails schema conformance.
+    let entities = serde_json::json!(
+    [{
+        "uid": { "type": "Document", "id": "d1" },
+        "attrs": {
+            "isPublic": "not_a_bool",
+            "owner": { "__entity": { "type": "User", "id": "Alice" } }
+        },
+        "parents": []
+    }]);
+    let mut entities_file = tempfile::NamedTempFile::new().expect("Failed to create entities file");
+    serde_json::to_writer(&mut entities_file, &entities).unwrap();
+    let entities_path = entities_file.path().to_str().unwrap();
+
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(policies)
+        .arg("--entities")
+        .arg(entities_path)
+        .arg("-s")
+        .arg(schema)
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut settings = insta::Settings::clone_current();
+    settings.add_filter(r"/tmp/\S+", "[TEMPFILE]");
+    settings.bind(|| {
+        insta::assert_snapshot!(stdout, @r#"
+
+        × failed to parse entities from file [TEMPFILE]
+        ╰─▶ in attribute `isPublic` on `Document::"d1"`, type mismatch: value was
+            expected to have type bool, but it actually has type string:
+            `"not_a_bool"`
+        "#);
+    });
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[rstest]
+#[case("principal")]
+#[case("1 + 1")]
+fn check_parse_expr_ok(#[case] expr: &str) {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .arg("--expression")
+        .arg(expr)
+        .assert()
+        .code(0);
+}
+
+#[rstest]
+#[case("")]
+#[case("1+foo")]
+fn check_parse_expr_err(#[case] expr: &str) {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .arg("--expression")
+        .arg(expr)
+        .assert()
+        .code(1);
+}
+
+#[test]
+fn test_cedar_policy_from_stdin_success() {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .write_stdin("permit(principal, action, resource);")
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_json_policy_from_stdin_success() {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .write_stdin(r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[]}"#)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_cedar_policy_from_stdin_parse_error() {
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .write_stdin("not a valid policy")
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(stdout, @r"
+     × failed to parse policy set
+     ╰─▶ unexpected token `a`
+      ╭────
+    1 │ not a valid policy
+      ·     ┬
+      ·     ╰── expected `(`
+      ╰────
+    ");
+}
+
+#[test]
+fn test_json_policy_from_stdin_parse_error() {
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .write_stdin(r#"{"effect":"forbid","principal":{"op":"bogus"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[]}"#)
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(stdout, @r"
+    × failed to parse JSON policy
+    ├─▶ error deserializing a policy/template from JSON
+    ╰─▶ unknown variant `bogus`, expected one of `All`, `all`, `==`, `in`, `is`
+    ");
+}
+
+#[test]
+fn test_check_parse_invalid_entities() {
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .arg("--entities")
+        .arg("sample-data/sandbox_a/policies_1.cedar") // not valid entities JSON
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(stdout, @r"
+    × failed to parse entities from file sample-data/sandbox_a/policies_1.cedar
+    ├─▶ error during entity deserialization
+    ╰─▶ expected value at line 1 column 1
+    ");
+}
+
+#[test]
+fn test_check_parse_invalid_schema() {
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .arg("--schema")
+        .arg("sample-data/sandbox_a/policies_1.cedar") // not a valid schema
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(stdout, @r#"
+     × failed to parse schema from file sample-data/sandbox_a/policies_1.cedar
+     ╰─▶ error parsing schema: unexpected token `permit`
+      ╭─[3:1]
+    2 │ @id("jane's friends view-permission policy")
+    3 │ permit (
+      · ───┬──
+      ·    ╰── expected `@`, `action`, `entity`, `namespace`, or `type`
+    4 │   principal in UserGroup::"jane_friends",
+      ╰────
+    "#);
+}
+
+#[test]
+fn test_check_parse_warning_schema() {
+    let mut schema = tempfile::NamedTempFile::new().expect("Failed to create linked file");
+    schema.write(b"entity Long;").unwrap();
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .arg("--schema")
+        .arg(schema.path())
+        .output()
+        .expect("failed to run cedar");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success());
+    insta::assert_snapshot!(stderr, @r###"
+     ⚠ The name `Long` shadows a builtin Cedar name. You'll have to refer to the
+     │ builtin as `__cedar::Long`.
+      ╭────
+    1 │ entity Long;
+      ·        ────
+      ╰────
+    "###);
+}
+
+#[test]
+fn link_file_does_not_exist() {
+    // linking into a file that does not exist should create it
+    let dir = tempfile::tempdir().expect("failed to create tempdir");
+    let linked = dir.path().join("linked");
+    assert!(
+        !linked.exists(),
+        "trying to test behavior when file doesn't exist"
+    );
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("link")
+        .arg("--template-id")
+        .arg("")
+        .arg("--new-id")
+        .arg("l")
+        .arg("--arguments")
+        .arg(r#"{"?principal": "User::\"alice\""}"#)
+        .arg("--template-linked")
+        .arg(&linked)
+        .write_stdin("@id permit(principal == ?principal, action, resource);")
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    insta::assert_snapshot!(stdout, @r###"
+    Template-linked policy added: @id
+    permit(principal == User::"alice", action, resource);
+    "###);
+    assert!(output.status.success());
+    assert!(linked.exists());
+}
+
+#[test]
+fn link_file_cant_read() {
+    let dir = tempfile::tempdir().expect("failed to create tempdir");
+    let linked = dir.path().join("linked");
+    std::fs::write(
+        &linked,
+        r#"[{"template_id":"foo","link_id":"bar","args":{"?principal":"User::\"alice\""}}]"#,
+    )
+    .unwrap();
+    // Remove read permissions. The file exists, trying to read it will fail.
+    std::fs::set_permissions(&linked, PermissionsExt::from_mode(200)).unwrap();
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("link")
+        .arg("--template-id")
+        .arg("")
+        .arg("--new-id")
+        .arg("l")
+        .arg("--arguments")
+        .arg(r#"{"?principal": "User::\"alice\""}"#)
+        .arg("--template-linked")
+        .arg(&linked)
+        .write_stdin("@id permit(principal == ?principal, action, resource);")
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut settings = insta::Settings::clone_current();
+    settings.add_filter(r"/tmp/[^ ']+/linked", "[TEMPDIR]/linked");
+    settings.bind(|| {
+        insta::assert_snapshot!(stdout, @"
+        × failed to open links file '[TEMPDIR]/linked'
+        ╰─▶ Permission denied (os error 13)
+        ");
+    });
+    assert!(!output.status.success());
+}
+
+#[test]
+fn test_license() {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("license")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Cedar is licensed under the Apache License, Version 2.0.",
+        ))
+        .stdout(predicate::str::contains("Third-party dependency licenses"));
+}
+
+#[test]
+fn auth_link_file_does_not_exist() {
+    // authorizing with a link file that does not exist should error
+    let dir = tempfile::tempdir().expect("failed to create tempdir");
+    let entities = dir.path().join("entities.json");
+    std::fs::write(&entities, r#"[]"#).unwrap();
+    let linked = dir.path().join("linked");
+    assert!(
+        !linked.exists(),
+        "trying to test behavior when file doesn't exist"
+    );
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("authorize")
+        .arg("--template-linked")
+        .arg(&linked)
+        .arg("--entities")
+        .arg(entities)
+        .arg("--principal")
+        .arg(r#"User::"bob""#)
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource")
+        .arg(r#"Photo::"VacationPhoto94.jpg""#)
+        .write_stdin("permit(principal == ?principal, action, resource);")
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut settings = insta::Settings::clone_current();
+    settings.add_filter(r"/tmp/[^ ']+/linked", "[TEMPDIR]/linked");
+    settings.bind(|| {
+        insta::assert_snapshot!(stdout, @"
+
+        × failed to open links file '[TEMPDIR]/linked'
+        ╰─▶ No such file or directory (os error 2)
+        ");
+    });
+    assert!(!output.status.success());
+    assert!(
+        !linked.exists(),
+        "authorize shouldn't create the missing link file"
+    );
+}

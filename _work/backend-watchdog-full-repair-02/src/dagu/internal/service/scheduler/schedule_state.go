@@ -1,0 +1,247 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package scheduler
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/dagucloud/dagu/v2/internal/ir"
+	"github.com/dagucloud/dagu/v2/internal/schedulerstate"
+)
+
+func isZeroDAGWatermark(w schedulerstate.DAGWatermark) bool {
+	return w.LastScheduledTime.IsZero() &&
+		w.StartScheduleFingerprint == "" &&
+		w.SkipSuccessResetAt.IsZero() &&
+		len(w.OneOffs) == 0 &&
+		w.NextRun == nil
+}
+
+func sameTimePtr(a, b *time.Time) bool {
+	switch {
+	case a == nil || b == nil:
+		return a == b
+	default:
+		return a.Equal(*b)
+	}
+}
+
+func reconcileNextRunState(current schedulerstate.DAGWatermark, schedules []ir.Schedule, now time.Time, suspended bool) schedulerstate.DAGWatermark {
+	next := schedulerstate.CloneDAGWatermark(current)
+	var projected *time.Time
+	if !suspended {
+		nextRun := nextPlannedRunFromSchedules(schedules, now, next)
+		if !nextRun.IsZero() {
+			projected = &nextRun
+		}
+	}
+	if sameTimePtr(next.NextRun, projected) {
+		return next
+	}
+	next.NextRun = projected
+	return next
+}
+
+func oneOffSchedules(all []ir.Schedule) []ir.Schedule {
+	var result []ir.Schedule
+	for _, schedule := range all {
+		if schedule.IsOneOff() {
+			result = append(result, schedule)
+		}
+	}
+	return result
+}
+
+func reconcileOneOffState(current schedulerstate.DAGWatermark, schedules []ir.Schedule, now time.Time) (schedulerstate.DAGWatermark, bool) {
+	next := schedulerstate.CloneDAGWatermark(current)
+	active := make(map[string]struct{})
+	changed := false
+
+	for _, schedule := range oneOffSchedules(schedules) {
+		fingerprint := schedule.Fingerprint()
+		if fingerprint == "" {
+			continue
+		}
+		active[fingerprint] = struct{}{}
+
+		scheduledTime, ok := schedule.OneOffTime()
+		if !ok {
+			continue
+		}
+
+		if next.OneOffs == nil {
+			next.OneOffs = make(map[string]schedulerstate.OneOffScheduleState)
+		}
+
+		if existing, ok := next.OneOffs[fingerprint]; ok {
+			if existing.ScheduledTime.IsZero() {
+				existing.ScheduledTime = scheduledTime
+				next.OneOffs[fingerprint] = existing
+				changed = true
+			}
+			continue
+		}
+
+		status := schedulerstate.OneOffStatusConsumed
+		if !scheduledTime.Before(now) {
+			status = schedulerstate.OneOffStatusPending
+		}
+		next.OneOffs[fingerprint] = schedulerstate.OneOffScheduleState{
+			ScheduledTime: scheduledTime,
+			Status:        status,
+		}
+		changed = true
+	}
+
+	for fingerprint := range next.OneOffs {
+		if _, ok := active[fingerprint]; ok {
+			continue
+		}
+		delete(next.OneOffs, fingerprint)
+		changed = true
+	}
+
+	if len(next.OneOffs) == 0 {
+		next.OneOffs = nil
+	}
+
+	return next, changed
+}
+
+func startScheduleFingerprint(schedules []ir.Schedule, skipIfSuccessful bool) string {
+	fingerprints := make([]string, 0, len(schedules))
+	for _, schedule := range schedules {
+		if !schedule.IsCron() {
+			continue
+		}
+		fingerprint := schedule.Fingerprint()
+		if fingerprint == "" {
+			continue
+		}
+		fingerprints = append(fingerprints, fingerprint)
+	}
+	if len(fingerprints) == 0 {
+		return ""
+	}
+
+	slices.Sort(fingerprints)
+	return fmt.Sprintf("skip:%t|%s", skipIfSuccessful, strings.Join(fingerprints, ","))
+}
+
+func reconcileStartScheduleState(current schedulerstate.DAGWatermark, schedules []ir.Schedule, skipIfSuccessful bool, observedAt time.Time) (schedulerstate.DAGWatermark, bool) {
+	next := schedulerstate.CloneDAGWatermark(current)
+	fingerprint := startScheduleFingerprint(schedules, skipIfSuccessful)
+
+	if next.StartScheduleFingerprint == fingerprint {
+		return next, false
+	}
+	if fingerprint == "" {
+		if next.StartScheduleFingerprint == "" && next.SkipSuccessResetAt.IsZero() {
+			return next, false
+		}
+		next.StartScheduleFingerprint = ""
+		next.SkipSuccessResetAt = time.Time{}
+		return next, true
+	}
+
+	// Empty fingerprints come from pre-v3 watermark state where schedule identity
+	// was not persisted, so seed the current fingerprint without forcing a reset.
+	if next.StartScheduleFingerprint == "" {
+		next.StartScheduleFingerprint = fingerprint
+		return next, true
+	}
+
+	next.StartScheduleFingerprint = fingerprint
+	next.SkipSuccessResetAt = observedAt
+	return next, true
+}
+
+func nextPlannedRunFromSchedules(schedules []ir.Schedule, now time.Time, dagState schedulerstate.DAGWatermark) time.Time {
+	var next time.Time
+	for _, schedule := range schedules {
+		var candidate time.Time
+		switch {
+		case schedule.IsCron():
+			candidate = schedule.Next(now)
+		case schedule.IsOneOff():
+			fingerprint := schedule.Fingerprint()
+			if oneOff, ok := dagState.OneOffs[fingerprint]; ok {
+				if oneOff.Status != schedulerstate.OneOffStatusPending {
+					continue
+				}
+				candidate = oneOff.ScheduledTime
+			} else {
+				candidate = schedule.Next(now)
+			}
+		}
+
+		if candidate.IsZero() {
+			continue
+		}
+		if next.IsZero() || candidate.Before(next) {
+			next = candidate
+		}
+	}
+	return next
+}
+
+// ProjectedNextRun returns the scheduler-owned next-run projection for a DAG.
+func ProjectedNextRun(dag *ir.DAG, state *schedulerstate.State) (time.Time, bool) {
+	if dag == nil || state == nil {
+		return time.Time{}, false
+	}
+	dagState, ok := state.DAGs[dag.Name]
+	if !ok {
+		return time.Time{}, false
+	}
+	if dagState.NextRun == nil {
+		return time.Time{}, true
+	}
+	return *dagState.NextRun, true
+}
+
+// NextPlannedRun projects the next scheduler-aware run time for DAG listing/sorting.
+func NextPlannedRun(dag *ir.DAG, now time.Time, state *schedulerstate.State) time.Time {
+	if dag == nil {
+		return time.Time{}
+	}
+	var dagState schedulerstate.DAGWatermark
+	if state != nil {
+		dagState = state.DAGs[dag.Name]
+	}
+	return nextPlannedRunFromSchedules(dag.Schedule, now, dagState)
+}
+
+// NewNextRunProjection returns a scheduler-aware next-run projection for DAG listings.
+func NewNextRunProjection(location *time.Location, state *schedulerstate.State) func(*ir.DAG, time.Time) time.Time {
+	if location == nil {
+		location = time.Local
+	}
+	return func(dag *ir.DAG, now time.Time) time.Time {
+		if state != nil {
+			if nextRun, ok := ProjectedNextRun(dag, state); ok {
+				return nextRun
+			}
+			if hasProfileSchedule(dag) {
+				return time.Time{}
+			}
+		}
+		return NextPlannedRun(dag, now.In(location), state)
+	}
+}
+
+func hasProfileSchedule(dag *ir.DAG) bool {
+	if dag == nil {
+		return false
+	}
+	for _, schedule := range dag.Schedule {
+		if schedule.Profile != "" {
+			return true
+		}
+	}
+	return false
+}

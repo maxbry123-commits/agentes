@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
+		"skipLibCheck": true,
+		"esModuleInterop": true,
+		"strict": true,
+		"declaration": true,
+		"resolveJsonModule": true,
+		"outDir": "dist",
+		"sourceMap": true
+	},
+	"include": ["src/**/*"]
+}

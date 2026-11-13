@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: opa
+  namespace: production
+  labels:
+    owner: me.agilebank.demo
+spec:
+  containers:
+    - name: opa
+      image: openpolicyagent/opa:0.9.2
+      args:
+        - "run"
+        - "--server"
+        - "--addr=localhost:8080"
+      livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+      readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 9090
+      resources:
+        limits:
+          cpu: "100m"
+          memory: "30Mi"

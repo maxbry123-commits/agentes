@@ -1,0 +1,558 @@
+#!/usr/bin/env bash
+
+# Copyright (c) 2023 Microsoft Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+
+set -o errexit
+set -o nounset
+set -o pipefail
+
+DEBUG="${DEBUG:-}"
+[[ -n "${DEBUG}" ]] && set -x
+
+kubernetes_dir="${kubernetes_dir:-$(dirname "$(readlink -f "$0")")}"
+# shellcheck source=/dev/null
+source "${kubernetes_dir}/../../gha-run-k8s-common.sh"
+# shellcheck source=/dev/null
+source "${kubernetes_dir}/confidential_kbs.sh"
+# shellcheck disable=SC2154
+export tools_dir="${repo_root_dir}/tools"
+export kata_tarball_dir="${2:-kata-artifacts}"
+
+export DOCKER_REGISTRY="${DOCKER_REGISTRY:-quay.io}"
+export DOCKER_REPO="${DOCKER_REPO:-kata-containers/kata-deploy-ci}"
+export DOCKER_TAG="${DOCKER_TAG:-kata-containers-latest}"
+export SNAPSHOTTER_DEPLOY_WAIT_TIMEOUT="${SNAPSHOTTER_DEPLOY_WAIT_TIMEOUT:-8m}"
+export KATA_HYPERVISOR="${KATA_HYPERVISOR:-qemu-runtime-rs}"
+export CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-containerd}"
+export KBS="${KBS:-false}"
+export KBS_INGRESS="${KBS_INGRESS:-}"
+export KUBERNETES="${KUBERNETES:-}"
+export SNAPSHOTTER="${SNAPSHOTTER:-}"
+export HTTPS_PROXY="${HTTPS_PROXY:-${https_proxy:-}}"
+export NO_PROXY="${NO_PROXY:-${no_proxy:-}}"
+export PULL_TYPE="${PULL_TYPE:-default}"
+export TEST_CLUSTER_NAMESPACE="${TEST_CLUSTER_NAMESPACE:-kata-containers-k8s-tests}"
+export GENPOLICY_PULL_METHOD="${GENPOLICY_PULL_METHOD:-oci-distribution}"
+export TARGET_ARCH="${TARGET_ARCH:-x86_64}"
+export RUNS_ON_AKS="${RUNS_ON_AKS:-false}"
+
+function configure_devmapper() {
+	sudo mkdir -p /var/lib/containerd/devmapper
+	sudo truncate --size 10G /var/lib/containerd/devmapper/data-disk.img
+	sudo truncate --size 10G /var/lib/containerd/devmapper/meta-disk.img
+
+	cat<<EOF | sudo tee /etc/systemd/system/containerd-devmapper.service
+[Unit]
+Description=Setup containerd devmapper device
+DefaultDependencies=no
+After=systemd-udev-settle.service
+Before=lvm2-activation-early.service
+Wants=systemd-udev-settle.service
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=-/sbin/losetup /dev/loop20 /var/lib/containerd/devmapper/data-disk.img
+ExecStart=-/sbin/losetup /dev/loop21 /var/lib/containerd/devmapper/meta-disk.img
+[Install]
+WantedBy=local-fs.target
+EOF
+
+	sudo systemctl daemon-reload
+	sudo systemctl enable --now containerd-devmapper
+
+	# Time to setup the thin pool for consumption.
+	# The table arguments are such.
+	# start block in the virtual device
+	# length of the segment (block device size in bytes / Sector size (512)
+	# metadata device
+	# block data device
+	# data_block_size Currently set it 512 (128KB)
+	# low_water_mark. Copied this from containerd snapshotter test setup
+	# no. of feature arguments
+	# Skip zeroing blocks for new volumes.
+	sudo dmsetup create contd-thin-pool \
+		--table "0 20971520 thin-pool /dev/loop21 /dev/loop20 512 32768 1 skip_block_zeroing"
+
+	case "${KUBERNETES}" in
+		k3s)
+			containerd_config_file="/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl"
+			sudo cp /var/lib/rancher/k3s/agent/etc/containerd/config.toml "${containerd_config_file}"
+			;;
+		kubeadm)
+			containerd_config_file="/etc/containerd/config.toml"
+			;;
+		*) >&2 echo "${KUBERNETES} flavour is not supported"; exit 2 ;;
+	esac
+
+	# We need to use tomlq to update the containerd config with the devmapper configuration,
+	# as it's a more complex update that involves adding new entries and modifying existing ones
+	# for two different containerd versions.
+	install_tomlq
+
+	containerd_arch="$(uname -m)"
+	case "${containerd_arch}" in
+		x86_64) containerd_arch="amd64" ;;
+		aarch64|arm64) containerd_arch="arm64" ;;
+	esac
+
+	echo "Updating containerd config with tomlq..."
+	config_tmp_file="$(sudo mktemp)"
+	# shellcheck disable=SC2016
+	sudo cat "${containerd_config_file}" | tomlq -t --arg platform "linux/${containerd_arch}" '
+		.plugins["io.containerd.snapshotter.v1.devmapper"].pool_name = "contd-thin-pool"
+		| .plugins["io.containerd.snapshotter.v1.devmapper"].base_image_size = "4096MB"
+		| .plugins["io.containerd.transfer.v1.local"].unpack_config =
+			[((.plugins["io.containerd.transfer.v1.local"].unpack_config[0] // {}) + {platform: $platform, snapshotter: "devmapper"})]
+		| if (.version // 0) >= 3 then
+			.plugins["io.containerd.cri.v1.images"].snapshotter = "devmapper"
+		  else
+			.plugins["io.containerd.grpc.v1.cri"].containerd.snapshotter = "devmapper"
+		  end
+	' | sudo tee "${config_tmp_file}" > /dev/null
+	sudo mv "${config_tmp_file}" "${containerd_config_file}"
+
+	# We only need tomlq for this configuration.
+	# yq, installed by install_tomlq, might cause an issue with go-based yq used by CI.
+	# So we uninstall tomlq to remove the yq from PATH and avoid any potential conflict.
+	uninstall_tomlq
+
+	case "${KUBERNETES}" in
+		k3s)
+			sudo systemctl restart k3s ;;
+		kubeadm)
+			sudo systemctl restart containerd ;;
+		*) >&2 echo "${KUBERNETES} flavour is not supported"; exit 2 ;;
+	esac
+
+	sleep 60s
+	sudo cat "${containerd_config_file}"
+
+	if [[ "${KUBERNETES}" = 'k3s' ]]
+	then
+		local ctr_dm_status
+		local result
+
+		ctr_dm_status=$(sudo ctr \
+			--address '/run/k3s/containerd/containerd.sock' \
+			plugins ls |\
+			awk '$2 ~ /^devmapper$/ { print $0 }' || true)
+
+		result=$(echo "${ctr_dm_status}" | awk '{print $4}' || true)
+
+		[[ "${result}" = 'ok' ]] || die "k3s containerd device mapper not configured: '${ctr_dm_status}'"
+	fi
+
+	info "devicemapper (DM) devices"
+	sudo dmsetup ls --tree
+	sudo dmsetup status -v
+}
+
+function configure_snapshotter() {
+	echo "::group::Configuring ${SNAPSHOTTER}"
+
+	case "${SNAPSHOTTER}" in
+		devmapper) configure_devmapper ;;
+		*) >&2 echo "${SNAPSHOTTER} flavour is not supported"; exit 2 ;;
+	esac
+
+	echo "::endgroup::"
+}
+
+function delete_coco_kbs() {
+	kbs_k8s_delete
+}
+
+# Deploy the CoCo KBS in Kubernetes
+#
+# Environment variables:
+#	KBS_INGRESS - (optional) specify the ingress implementation to expose the
+#	              service externally
+#	NVIDIA_VERIFIER_MODE - (optional) remote (default) | local: overrides the
+#	                       NVIDIA verifier type for nvidia-gpu hypervisors.
+#
+function deploy_coco_kbs() {
+	kbs_k8s_deploy "${KBS_INGRESS}"
+}
+
+function deploy_kata() {
+	platform="${1:-}"
+
+	if ! is_supported_hypervisor "${KATA_HYPERVISOR}" ; then
+		# shellcheck disable=SC2154
+		die "Unsupported KATA_HYPERVISOR=${KATA_HYPERVISOR}. Supported values: ${ALL_HYPERVISORS[*]}"
+	fi
+
+	[[ "${platform}" = "kcli" ]] && \
+	export KUBECONFIG="${HOME}/.kcli/clusters/${CLUSTER_NAME:-kata-k8s}/auth/kubeconfig"
+
+	if [[ "${K8S_TEST_HOST_TYPE}" = "baremetal"* ]]; then
+		cleanup_kata_deploy || true
+	fi
+
+	set_default_cluster_namespace
+
+	# Workaround to avoid modifying the workflow yaml files
+	if is_tdx_hypervisor "${KATA_HYPERVISOR}" || is_snp_hypervisor "${KATA_HYPERVISOR}" || is_confidential_gpu_hypervisor "${KATA_HYPERVISOR}"; then
+		export USE_EXPERIMENTAL_SETUP_SNAPSHOTTER=true
+		SNAPSHOTTER="nydus"
+		EXPERIMENTAL_FORCE_GUEST_PULL=false
+	fi
+
+	if [[ "${KATA_HYPERVISOR}" == "qemu-nvidia-cpu-runtime-rs" || "${KATA_HYPERVISOR}" == "qemu-nvidia-gpu-runtime-rs" ]] && [[ -z "${SNAPSHOTTER}" ]]; then
+		SNAPSHOTTER="erofs"
+	fi
+
+	ANNOTATIONS="default_vcpus"
+	if [[ "${KATA_HYPERVISOR}" == *azure* ]]; then
+		ANNOTATIONS="image kernel default_vcpus cc_init_data"
+	fi
+	if [[ "${KATA_HYPERVISOR}" = "qemu" ]]; then
+		ANNOTATIONS="image initrd kernel default_vcpus"
+	fi
+	if [[ "${KATA_HYPERVISOR}" = "clh-runtime-rs" ]]; then
+		ANNOTATIONS+=" cc_init_data"
+	fi
+	# The NVIDIA runtime classes ship with the hypervisor annotations disabled,
+	# so the ones a few tests depend on have to be opted into here.
+	if is_nvidia_hypervisor "${KATA_HYPERVISOR}" || is_confidential_gpu_hypervisor "${KATA_HYPERVISOR}"; then
+		if is_confidential_runtime_class "${KATA_HYPERVISOR}"; then
+			# k8s-confidential-attestation.bats and the NIM TEE pods pass the
+			# KBS address and the guest components setup on the kernel cmdline.
+			ANNOTATIONS+=" kernel_params"
+		elif is_verity_enabled_runtime_class "${KATA_HYPERVISOR}"; then
+			# k8s-measured-rootfs.bats corrupts the verity root hash.
+			ANNOTATIONS+=" kernel_verity_params"
+		fi
+	fi
+
+	SNAPSHOTTER_HANDLER_MAPPING=""
+	if [[ -n "${SNAPSHOTTER}" ]]; then
+		SNAPSHOTTER_HANDLER_MAPPING="${KATA_HYPERVISOR}:${SNAPSHOTTER}"
+	fi
+
+	PULL_TYPE_MAPPING=""
+	if [[ "${PULL_TYPE}" != "default" ]]; then
+		PULL_TYPE_MAPPING="${KATA_HYPERVISOR}:${PULL_TYPE}"
+	fi
+
+	# nydus and erofs are always deployed by kata-deploy; set this unconditionally
+	# based on the snapshotter so that all architectures and hypervisors work
+	# without needing per-workflow USE_EXPERIMENTAL_SETUP_SNAPSHOTTER overrides.
+	EXPERIMENTAL_SETUP_SNAPSHOTTER=""
+	case "${SNAPSHOTTER}" in
+		nydus|erofs) EXPERIMENTAL_SETUP_SNAPSHOTTER="${SNAPSHOTTER}" ;;
+		*) ;;
+	esac
+
+	EXPERIMENTAL_FORCE_GUEST_PULL="${EXPERIMENTAL_FORCE_GUEST_PULL:-}"
+
+	export HELM_K8S_DISTRIBUTION="${KUBERNETES}"
+	export HELM_IMAGE_REFERENCE="${DOCKER_REGISTRY}/${DOCKER_REPO}"
+	export HELM_IMAGE_TAG="${DOCKER_TAG}"
+	export HELM_DEBUG="true"
+	# Deploy the devkit debug extension for the (non-confidential) runtime-rs
+	# class that k8s-devkit-debug-console.bats exercises. Restricted to
+	# x86_64/aarch64: the devkit image and kata-ctl (its debug-console client)
+	# are not shipped on s390x/ppc64le, so devkit is neither built nor testable
+	# there.
+	export HELM_DEVKIT="false"
+	case "${TARGET_ARCH}" in
+		x86_64 | aarch64)
+			case "${KATA_HYPERVISOR}" in
+				qemu-nvidia-cpu-runtime-rs) export HELM_DEVKIT="true" ;;
+			esac
+			;;
+	esac
+	export HELM_SHIMS="${KATA_HYPERVISOR}"
+	export HELM_DEFAULT_SHIM="${KATA_HYPERVISOR}"
+	export HELM_CREATE_DEFAULT_RUNTIME_CLASS="true"
+	export HELM_ALLOWED_HYPERVISOR_ANNOTATIONS="${ANNOTATIONS}"
+	export HELM_SNAPSHOTTER_HANDLER_MAPPING="${SNAPSHOTTER_HANDLER_MAPPING}"
+	export HELM_AGENT_HTTPS_PROXY="${HTTPS_PROXY}"
+	export HELM_AGENT_NO_PROXY="${NO_PROXY}"
+	export HELM_PULL_TYPE_MAPPING="${PULL_TYPE_MAPPING}"
+	export HELM_EXPERIMENTAL_SETUP_SNAPSHOTTER="${EXPERIMENTAL_SETUP_SNAPSHOTTER}"
+	export HELM_EXPERIMENTAL_FORCE_GUEST_PULL="${EXPERIMENTAL_FORCE_GUEST_PULL}"
+	helm_helper
+}
+
+function install_kbs_client() {
+	kbs_install_cli
+}
+
+function uninstall_kbs_client() {
+	kbs_uninstall_cli
+}
+
+function run_tests() {
+	if [[ "${K8S_TEST_HOST_TYPE}" = "baremetal"* ]]; then
+		# Baremetal self-hosted runners end up accumulating way too much log
+		# and when those get displayed it's very hard to understand what's
+		# part of the current run and what's something from the past coming
+		# to haunt us.
+		#
+		# With this in mind, let's ensure we do rotate the logs on every single
+		# run of the tests, as its first step.
+		sudo journalctl --vacuum-time 1s --rotate
+	fi
+
+	ensure_yq
+	platform="${1:-}"
+
+	[[ "${platform}" = "kcli" ]] && \
+		export KUBECONFIG="${HOME}/.kcli/clusters/${CLUSTER_NAME:-kata-k8s}/auth/kubeconfig"
+
+	if [[ "${AUTO_GENERATE_POLICY}" = "yes" ]] && [[ "${GENPOLICY_PULL_METHOD}" = "containerd" ]]; then
+		# containerd's config on the local machine (where kubectl and genpolicy are executed by CI),
+		# might have been provided by a distro-specific package that disables the cri plug-in by using:
+		#
+		# disabled_plugins = ["cri"]
+		#
+		# When testing genpolicy's container image pull through containerd the cri plug-in must be
+		# enabled. Therefore, use containerd's default settings instead of distro's defaults. Note that
+		# the k8s test cluster nodes have their own containerd settings (created by kata-deploy),
+		# independent from the local settings being created here.
+		PATH="${PATH}:/usr/local/bin:/usr/local/sbin" containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+		echo "containerd config has been set to default"
+		ensure_containerd_conf_d_rootful_api_sockets
+		require_containerd_config_schema_v3_plus
+		sudo systemctl restart containerd && sudo systemctl is-active containerd
+
+		# Allow genpolicy to access the containerd image pull APIs without sudo.
+		local socket_wait_time
+		local socket_sleep_time
+		local cmd
+
+		socket_wait_time=30
+		socket_sleep_time=3
+		cmd="sudo chmod a+rw /var/run/containerd/containerd.sock"
+
+		waitForProcess "${socket_wait_time}" "${socket_sleep_time}" "${cmd}"
+	fi
+
+	set_test_cluster_namespace
+
+	pushd "${kubernetes_dir}"
+	bash setup.sh
+
+	# In case of running on Github workflow it needs to save the start time
+	# on the environment variables file so that the variable is exported on
+	# next workflow steps.
+	if [[ -n "${GITHUB_ENV:-}" ]]; then
+		start_time=$(date '+%Y-%m-%d %H:%M:%S')
+		export start_time
+		echo "start_time=${start_time}" >> "${GITHUB_ENV}"
+	fi
+
+	if [[ "${KATA_HYPERVISOR}" =~ ^clh(-azure)?-runtime-rs$ ]] && [[ "${SNAPSHOTTER}" = "devmapper" ]]; then
+		if [[ -n "${GITHUB_ENV}" ]]; then
+			KATA_TEST_VERBOSE=true
+			export KATA_TEST_VERBOSE
+			echo "KATA_TEST_VERBOSE=${KATA_TEST_VERBOSE}" >> "${GITHUB_ENV}"
+		fi
+	fi
+
+	if [[ "${KATA_HYPERVISOR}" = "dragonball" ]] && [[ "${SNAPSHOTTER}" = "devmapper" ]]; then
+		echo "Skipping tests for ${KATA_HYPERVISOR} using devmapper"
+	else
+		bash "${K8STESTS}"
+	fi
+	popd
+}
+
+# Print a report about tests executed.
+#
+# Crawl over the output files found on each "reports/yyyy-mm-dd-hh:mm:ss"
+# directory.
+#
+function report_tests() {
+	report_bats_tests "${kubernetes_dir}"
+}
+
+function collect_artifacts() {
+	if [[ -z "${start_time:-}" ]]; then
+		warn "tests start time is not defined. Cannot gather journal information"
+		return
+	fi
+
+	local artifacts_dir
+	artifacts_dir="/tmp/artifacts"
+	if [[ -d "${artifacts_dir}" ]]; then
+		rm -rf "${artifacts_dir}"
+	fi
+	mkdir -p "${artifacts_dir}"
+	info "Collecting artifacts using ${KATA_HYPERVISOR} hypervisor"
+	local journalctl_log_filename
+	local journalctl_log_path
+
+	journalctl_log_filename="journalctl-${RANDOM}.log"
+	journalctl_log_path="${artifacts_dir}/${journalctl_log_filename}"
+
+	# As we want to call journalctl with sudo, we're safe to ignore SC2024 here
+	# shellcheck disable=SC2024
+	sudo journalctl --since="${start_time}" > "${journalctl_log_path}"
+
+	local k3s_dir
+	k3s_dir='/var/lib/rancher/k3s/agent'
+
+	if [[ -d "${k3s_dir}" ]]
+	then
+		info "Collecting k3s artifacts"
+
+		local -a files=()
+
+		files+=('etc/containerd/config.toml')
+		files+=('etc/containerd/config.toml.tmpl')
+
+		files+=('containerd/containerd.log')
+
+		# Add any rotated containerd logs
+		files+=("$(sudo find "${k3s_dir}/containerd/" -type f -name 'containerd*\.log\.gz')")
+
+		local file
+
+		for file in "${files[@]}"
+		do
+			local path="${k3s_dir}/${file}"
+			sudo [[ ! -e "${path}" ]] && continue
+
+			local encoded
+			encoded="$(echo "${path}" | tr '/' '-' | sed 's/^-//g')"
+
+			local from
+			local to
+
+			from="${path}"
+			to="${artifacts_dir}/${encoded}"
+
+			if [[ ${path} = *.gz ]]
+			then
+				sudo cp "${from}" "${to}"
+			else
+				to="${to}.gz"
+				# As we want to call gzip with sudo, we're safe to ignore SC2024 here
+				# shellcheck disable=SC2024
+				sudo gzip -c "${from}" > "${to}"
+			fi
+
+			info "  Collected k3s file '${from}' to '${to}'"
+		done
+	fi
+}
+
+function cleanup_kata_deploy() {
+	ensure_helm
+
+	local release_name="kata-deploy"
+	local namespace="kube-system"
+
+	# Avoid helm uninstall --wait (up to 10m) on fresh clusters: free-runner jobs
+	# set K8S_TEST_HOST_TYPE=baremetal-* for test selection only and often have
+	# no prior release in kube-system.
+	if ! helm status "${release_name}" -n "${namespace}" &>/dev/null; then
+		info "No Helm release '${release_name}' in '${namespace}'; skipping kata-deploy uninstall"
+		return 0
+	fi
+
+	# Do not return after deleting only the parent object cascade=foreground
+	# means also wait for child/dependent object deletion
+	helm uninstall "${release_name}" --ignore-not-found --wait --cascade foreground --timeout 10m --namespace "${namespace}" --debug || true
+
+	wait_for_api_and_retry_uninstall "${release_name}" "${namespace}"
+}
+
+function cleanup() {
+	platform="${1:-}"
+	test_type="${2:-k8s}"
+	ensure_yq
+
+	[[ "${platform}" = "kcli" ]] && \
+		export KUBECONFIG="${HOME}/.kcli/clusters/${CLUSTER_NAME:-kata-k8s}/auth/kubeconfig"
+
+	echo "Gather information about the nodes and pods before cleaning up the node"
+	get_nodes_and_pods_info
+
+	if [[ "${platform}" = "aks" ]]; then
+		delete_cluster "${test_type}"
+		return
+	fi
+
+	# In case of canceling workflow manually, 'run_kubernetes_tests.sh' continues running and triggers new tests,
+	# resulting in the CI being in an unexpected state. So we need kill all running test scripts before cleaning up the node.
+	# See issue https://github.com/kata-containers/kata-containers/issues/9980
+	delete_test_runners || true
+	# Switch back to the default namespace and delete the tests one
+	delete_test_cluster_namespace || true
+
+	cleanup_kata_deploy
+}
+
+function main() {
+	export KATA_HOST_OS="${KATA_HOST_OS:-}"
+	export K8S_TEST_HOST_TYPE="${K8S_TEST_HOST_TYPE:-}"
+
+	AUTO_GENERATE_POLICY="${AUTO_GENERATE_POLICY:-}"
+
+	# Auto-generate policy on some Host types, if the caller didn't specify an AUTO_GENERATE_POLICY value.
+	if [[ -z "${AUTO_GENERATE_POLICY}" ]]; then
+		# https://github.com/kata-containers/kata-containers/issues/12839
+		if [[ "${KATA_HOST_OS}" = "cbl-mariner" && \
+			  "${KATA_HYPERVISOR}" =~ ^clh(-azure)?$ ]]; then
+			AUTO_GENERATE_POLICY="yes"
+		elif [[ "${KATA_HYPERVISOR}" = qemu-coco-dev* && \
+		        ( "${TARGET_ARCH}" = "x86_64" || "${TARGET_ARCH}" = "aarch64" ) && \
+		        "${PULL_TYPE}" != "experimental-force-guest-pull" ]]; then
+			AUTO_GENERATE_POLICY="yes"
+		elif is_confidential_gpu_hypervisor "${KATA_HYPERVISOR}"; then
+			AUTO_GENERATE_POLICY="yes"
+		fi
+	fi
+
+	info "Exporting AUTO_GENERATE_POLICY=${AUTO_GENERATE_POLICY}"
+	export AUTO_GENERATE_POLICY
+
+	action="${1:-}"
+
+	case "${action}" in
+		create-cluster) create_cluster "" ;;
+		create-cluster-kcli) create_cluster_kcli ;;
+		configure-snapshotter) configure_snapshotter ;;
+		deploy-coco-kbs) deploy_coco_kbs ;;
+		deploy-k8s) deploy_k8s "${CONTAINER_ENGINE:-}" "${CONTAINER_ENGINE_VERSION:-}";;
+		install-bats) install_bats ;;
+		install-kata-tools) install_kata_tools "${2:-}" ;;
+		install-kbs-client) install_kbs_client ;;
+		get-cluster-credentials) get_cluster_credentials ;;
+		deploy-kata) deploy_kata ;;
+		deploy-kata-aks) deploy_kata "aks" ;;
+		deploy-kata-kcli) deploy_kata "kcli" ;;
+		deploy-kata-kubeadm) deploy_kata "kubeadm" ;;
+		deploy-kata-garm) deploy_kata "garm" ;;
+		deploy-kata-zvsi) deploy_kata "zvsi" ;;
+		report-tests) report_tests ;;
+		run-tests)
+			K8STESTS=run_kubernetes_tests.sh
+			run_tests
+			;;
+		run-nv-tests)
+			K8STESTS=run_kubernetes_nv_tests.sh
+			run_tests
+			;;
+		run-tests-kcli) run_tests "kcli" ;;
+		collect-artifacts) collect_artifacts ;;
+		cleanup) cleanup ;;
+		cleanup-kcli) cleanup "kcli" ;;
+		cleanup-kubeadm) cleanup "kubeadm" ;;
+		cleanup-garm) cleanup "garm" ;;
+		cleanup-zvsi) cleanup "zvsi" ;;
+		delete-coco-kbs) delete_coco_kbs ;;
+		delete-cluster) cleanup "aks" ;;
+		delete-cluster-kcli) delete_cluster_kcli ;;
+		uninstall-kbs-client) uninstall_kbs_client ;;
+		*) >&2 echo "Invalid argument"; exit 2 ;;
+	esac
+}
+
+main "$@"

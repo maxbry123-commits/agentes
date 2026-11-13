@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=../.jsonschema/IndexBuilderTestCase.schema.json
+---
+wantErrList:
+  loadFailures:
+    - file: derived.yaml
+      error: "derivedRoles.definitions: value is required"
+      errorDetails:
+        kind: KIND_VALIDATION_ERROR
+        message: "derivedRoles.definitions: value is required"
+
+    - file: resource.yaml
+      error: "policyType: exactly one field is required in oneof"
+      errorDetails:
+        kind: KIND_VALIDATION_ERROR
+        message: "policyType: exactly one field is required in oneof"
+files:
+  "resource.yaml": |-
+    ---
+    apiVersion: api.cerbos.dev/v1
+
+  "derived.yaml": |-
+    ---
+    apiVersion: "api.cerbos.dev/v1"
+    derivedRoles:
+      name: my_derived_roles
+
+  "foo.yaml": |-
+    apiVersion: api.cerbos.dev/v1
+    resourcePolicy:
+      resource: foo
+      version: yes

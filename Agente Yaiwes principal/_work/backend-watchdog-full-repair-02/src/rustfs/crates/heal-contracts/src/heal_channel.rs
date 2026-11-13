@@ -1,0 +1,792 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use serde::{Deserialize, Serialize};
+use std::{
+    fmt::{self, Display},
+    sync::OnceLock,
+};
+use tokio::sync::{broadcast, mpsc, oneshot};
+use uuid::Uuid;
+
+pub const HEAL_DELETE_DANGLING: bool = true;
+pub const RUSTFS_RESERVED_BUCKET: &str = "rustfs";
+pub const RUSTFS_RESERVED_BUCKET_PATH: &str = "/rustfs";
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum HealItemType {
+    Metadata,
+    Bucket,
+    BucketMetadata,
+    Object,
+}
+
+impl HealItemType {
+    pub fn to_str(&self) -> &str {
+        match self {
+            HealItemType::Metadata => "metadata",
+            HealItemType::Bucket => "bucket",
+            HealItemType::BucketMetadata => "bucket-metadata",
+            HealItemType::Object => "object",
+        }
+    }
+}
+
+impl Display for HealItemType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum DriveState {
+    Ok,
+    Offline,
+    Corrupt,
+    Missing,
+    PermissionDenied,
+    Faulty,
+    RootMount,
+    Unknown(String),
+    Unformatted, // only returned by disk
+}
+
+impl DriveState {
+    pub fn to_str(&self) -> &str {
+        match self {
+            DriveState::Ok => "ok",
+            DriveState::Offline => "offline",
+            DriveState::Corrupt => "corrupt",
+            DriveState::Missing => "missing",
+            DriveState::PermissionDenied => "permission-denied",
+            DriveState::Faulty => "faulty",
+            DriveState::RootMount => "root-mount",
+            DriveState::Unknown(reason) => reason,
+            DriveState::Unformatted => "unformatted",
+        }
+    }
+}
+
+impl Clone for DriveState {
+    fn clone(&self) -> Self {
+        match self {
+            DriveState::Unknown(reason) => DriveState::Unknown(reason.clone()),
+            DriveState::Ok => DriveState::Ok,
+            DriveState::Offline => DriveState::Offline,
+            DriveState::Corrupt => DriveState::Corrupt,
+            DriveState::Missing => DriveState::Missing,
+            DriveState::PermissionDenied => DriveState::PermissionDenied,
+            DriveState::Faulty => DriveState::Faulty,
+            DriveState::RootMount => DriveState::RootMount,
+            DriveState::Unformatted => DriveState::Unformatted,
+        }
+    }
+}
+
+impl Display for DriveState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum HealScanMode {
+    Unknown = 0,
+    #[default]
+    Normal = 1,
+    Deep = 2,
+}
+
+impl HealScanMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Normal => "normal",
+            Self::Deep => "deep",
+        }
+    }
+
+    pub const fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::Unknown),
+            1 => Some(Self::Normal),
+            2 => Some(Self::Deep),
+            _ => None,
+        }
+    }
+}
+
+impl Serialize for HealScanMode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_u8(*self as u8)
+    }
+}
+
+impl<'de> Deserialize<'de> for HealScanMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct HealScanModeVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for HealScanModeVisitor {
+            type Value = HealScanMode;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an integer between 0 and 2")
+            }
+
+            fn visit_u8<E>(self, value: u8) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                HealScanMode::from_u8(value).ok_or_else(|| E::custom(format!("invalid HealScanMode value: {value}")))
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if value > u8::MAX as u64 {
+                    return Err(E::custom(format!("HealScanMode value too large: {value}")));
+                }
+                self.visit_u8(value as u8)
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if value < 0 || value > u8::MAX as i64 {
+                    return Err(E::custom(format!("invalid HealScanMode value: {value}")));
+                }
+                self.visit_u8(value as u8)
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                // Try parsing as number string first (for URL-encoded values)
+                if let Ok(num) = value.parse::<u8>() {
+                    return self.visit_u8(num);
+                }
+                // Try parsing as named string
+                match value {
+                    "Unknown" | "unknown" => Ok(HealScanMode::Unknown),
+                    "Normal" | "normal" => Ok(HealScanMode::Normal),
+                    "Deep" | "deep" => Ok(HealScanMode::Deep),
+                    _ => Err(E::custom(format!("invalid HealScanMode string: {value}"))),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(HealScanModeVisitor)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+pub struct HealOpts {
+    pub recursive: bool,
+    #[serde(rename = "dryRun")]
+    pub dry_run: bool,
+    pub remove: bool,
+    pub recreate: bool,
+    #[serde(rename = "scanMode")]
+    pub scan_mode: HealScanMode,
+    #[serde(rename = "updateParity")]
+    pub update_parity: bool,
+    #[serde(rename = "nolock")]
+    pub no_lock: bool,
+    #[serde(rename = "readRepair", default)]
+    pub read_repair: bool,
+    #[serde(rename = "pool", default)]
+    pub pool: Option<usize>,
+    #[serde(rename = "set", default)]
+    pub set: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HealAdmissionDropReason {
+    QueueFull,
+    PolicyDropped,
+    /// HS-06: an admin heal start overlaps (same bucket with mutually
+    /// containing prefixes, or the same erasure set) an already running or
+    /// queued task. Only produced when RUSTFS_HEAL_OVERLAP_POLICY=minio_error.
+    AlreadyRunning,
+    /// HS-06: same as [`Self::AlreadyRunning`] but for paths that merely
+    /// contain (or are contained by) the active task's path.
+    OverlappingPaths,
+}
+
+impl HealAdmissionDropReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::QueueFull => "queue_full",
+            Self::PolicyDropped => "policy_dropped",
+            Self::AlreadyRunning => "already_running",
+            Self::OverlappingPaths => "overlapping_paths",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HealAdmissionResult {
+    Accepted,
+    Merged,
+    Full,
+    Dropped(HealAdmissionDropReason),
+}
+
+/// Admission decision together with the canonical task identifier.
+///
+/// A merged request must return the identifier of the task that already owns
+/// the work instead of exposing the discarded request identifier as a new
+/// client token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HealAdmissionReceipt {
+    /// Admission decision for the submitted request.
+    pub result: HealAdmissionResult,
+    /// Canonical identifier of the accepted or merged task.
+    pub task_id: String,
+}
+
+impl HealAdmissionResult {
+    pub fn result_label(self) -> &'static str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::Merged => "merged",
+            Self::Full => "full",
+            Self::Dropped(_) => "dropped",
+        }
+    }
+
+    pub fn reason_label(self) -> &'static str {
+        match self {
+            Self::Dropped(reason) => reason.as_str(),
+            _ => "none",
+        }
+    }
+
+    pub fn is_admitted(self) -> bool {
+        matches!(self, Self::Accepted | Self::Merged)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HealRequestSource {
+    #[default]
+    Internal,
+    Admin,
+    Scanner,
+    AutoHeal,
+    ReadRepair,
+    /// Mission Repair Feed: intents delivered by error paths and replayed
+    /// from the durable MRF journal.
+    Mrf,
+}
+
+impl HealRequestSource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Internal => "internal",
+            Self::Admin => "admin",
+            Self::Scanner => "scanner",
+            Self::AutoHeal => "auto_heal",
+            Self::ReadRepair => "read_repair",
+            Self::Mrf => "mrf",
+        }
+    }
+}
+
+/// Heal channel command type
+#[derive(Debug)]
+pub enum HealChannelCommand {
+    /// Start a new heal task
+    Start {
+        request: HealChannelRequest,
+        response_tx: oneshot::Sender<Result<HealAdmissionResult, String>>,
+    },
+    /// Query heal task status
+    Query {
+        heal_path: String,
+        client_token: String,
+        /// Incremental result cursor (HS-06): only items with a sequence
+        /// greater than this are returned; `None` keeps the full snapshot.
+        since_seq: Option<u64>,
+        response_tx: oneshot::Sender<Result<HealChannelResponse, String>>,
+    },
+    /// Cancel heal task
+    Cancel {
+        heal_path: String,
+        client_token: String,
+        response_tx: oneshot::Sender<Result<HealChannelResponse, String>>,
+    },
+}
+
+/// Heal request from admin to ahm
+#[derive(Debug, Clone, Default)]
+pub struct HealChannelRequest {
+    /// Unique request ID
+    pub id: String,
+    /// Disk ID for heal disk/erasure set task
+    pub disk: Option<String>,
+    /// Exact endpoints of replacement disks for an automatic erasure-set
+    /// rebuild. An empty list retains the generic erasure-set heal behavior.
+    pub heal_endpoints: Vec<String>,
+    /// Bucket name
+    pub bucket: String,
+    /// Object prefix (optional)
+    pub object_prefix: Option<String>,
+    /// Object version ID (optional)
+    pub object_version_id: Option<String>,
+    /// Force start heal
+    pub force_start: bool,
+    /// Priority
+    pub priority: HealChannelPriority,
+    /// Pool index (optional)
+    pub pool_index: Option<usize>,
+    /// Set index (optional)
+    pub set_index: Option<usize>,
+    /// Scan mode (optional)
+    pub scan_mode: Option<HealScanMode>,
+    /// Whether to remove corrupted data
+    pub remove_corrupted: Option<bool>,
+    /// Whether to recreate missing data
+    pub recreate_missing: Option<bool>,
+    /// Whether to update parity
+    pub update_parity: Option<bool>,
+    /// Whether to recursively process
+    pub recursive: Option<bool>,
+    /// Whether to dry run
+    pub dry_run: Option<bool>,
+    /// Whether to skip namespace locking
+    pub no_lock: Option<bool>,
+    /// Timeout in seconds (optional)
+    pub timeout_seconds: Option<u64>,
+    /// Origin of the request for operational status and queue accounting
+    pub source: HealRequestSource,
+}
+
+/// Heal response from ahm to admin
+#[derive(Debug, Clone)]
+pub struct HealChannelResponse {
+    /// Request ID
+    pub request_id: String,
+    /// Success status
+    pub success: bool,
+    /// Response data (if successful)
+    pub data: Option<Vec<u8>>,
+    /// Error message (if failed)
+    pub error: Option<String>,
+}
+
+/// Heal priority
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum HealChannelPriority {
+    /// Low priority
+    Low,
+    /// Normal priority
+    #[default]
+    Normal,
+    /// High priority
+    High,
+    /// Critical priority
+    Critical,
+}
+
+/// Heal channel sender
+pub type HealChannelSender = mpsc::UnboundedSender<HealChannelCommand>;
+
+/// Heal channel receiver
+pub type HealChannelReceiver = mpsc::UnboundedReceiver<HealChannelCommand>;
+
+/// Canonical-receipt start command kept separate from the legacy public enum.
+#[derive(Debug)]
+pub struct HealReceiptCommand {
+    /// Heal request to admit.
+    pub request: HealChannelRequest,
+    /// Completion channel for the admission receipt.
+    pub response_tx: oneshot::Sender<Result<HealAdmissionReceipt, String>>,
+}
+
+/// Canonical-receipt command receiver.
+pub type HealReceiptReceiver = mpsc::UnboundedReceiver<HealReceiptCommand>;
+
+struct HealChannelSenders {
+    command: HealChannelSender,
+    receipt: mpsc::UnboundedSender<HealReceiptCommand>,
+}
+
+/// Global heal channel sender
+static GLOBAL_HEAL_CHANNEL_SENDERS: OnceLock<HealChannelSenders> = OnceLock::new();
+
+type HealResponseSender = broadcast::Sender<HealChannelResponse>;
+
+/// Global heal response broadcaster
+static GLOBAL_HEAL_RESPONSE_SENDER: OnceLock<HealResponseSender> = OnceLock::new();
+
+/// Initialize global heal channel
+pub fn init_heal_channel() -> Result<HealChannelReceiver, &'static str> {
+    let (receiver, receipt_receiver) = init_heal_channels()?;
+    drop(receipt_receiver);
+    Ok(receiver)
+}
+
+/// Initialize the legacy command and canonical-receipt channels atomically.
+pub fn init_heal_channels() -> Result<(HealChannelReceiver, HealReceiptReceiver), &'static str> {
+    let (command, command_receiver) = mpsc::unbounded_channel();
+    let (receipt, receipt_receiver) = mpsc::unbounded_channel();
+    GLOBAL_HEAL_CHANNEL_SENDERS
+        .set(HealChannelSenders { command, receipt })
+        .map_err(|_| "Heal channel sender already initialized")?;
+    Ok((command_receiver, receipt_receiver))
+}
+
+/// Get global heal channel sender
+pub fn get_heal_channel_sender() -> Option<&'static HealChannelSender> {
+    GLOBAL_HEAL_CHANNEL_SENDERS.get().map(|senders| &senders.command)
+}
+
+/// Send heal command through global channel
+pub async fn send_heal_command(command: HealChannelCommand) -> Result<(), String> {
+    if let Some(sender) = get_heal_channel_sender() {
+        sender
+            .send(command)
+            .map_err(|e| format!("Failed to send heal command: {e}"))?;
+        Ok(())
+    } else {
+        Err("Heal channel not initialized".to_string())
+    }
+}
+
+fn heal_response_sender() -> &'static HealResponseSender {
+    GLOBAL_HEAL_RESPONSE_SENDER.get_or_init(|| {
+        let (tx, _rx) = broadcast::channel(1024);
+        tx
+    })
+}
+
+/// Publish a heal response to subscribers.
+pub fn publish_heal_response(response: HealChannelResponse) -> Result<(), broadcast::error::SendError<HealChannelResponse>> {
+    let sender = heal_response_sender();
+    let _ = sender.send(response);
+    Ok(())
+}
+
+/// Subscribe to heal responses.
+pub fn subscribe_heal_responses() -> broadcast::Receiver<HealChannelResponse> {
+    heal_response_sender().subscribe()
+}
+
+/// Send heal start request and wait for structured admission feedback.
+pub async fn send_heal_request_with_receipt(request: HealChannelRequest) -> Result<HealAdmissionReceipt, String> {
+    let (response_tx, response_rx) = oneshot::channel();
+    let senders = GLOBAL_HEAL_CHANNEL_SENDERS
+        .get()
+        .ok_or_else(|| "Heal channel not initialized".to_string())?;
+    senders
+        .receipt
+        .send(HealReceiptCommand { request, response_tx })
+        .map_err(|err| format!("Failed to send heal receipt command: {err}"))?;
+    response_rx
+        .await
+        .map_err(|e| format!("Failed to receive heal admission response: {e}"))?
+}
+
+/// Send heal start request and wait for structured admission feedback.
+pub async fn send_heal_request_with_admission(request: HealChannelRequest) -> Result<HealAdmissionResult, String> {
+    let (response_tx, response_rx) = oneshot::channel();
+    send_heal_command(HealChannelCommand::Start { request, response_tx }).await?;
+    response_rx
+        .await
+        .map_err(|e| format!("Failed to receive heal admission response: {e}"))?
+}
+
+/// Send heal start request
+pub async fn send_heal_request(request: HealChannelRequest) -> Result<(), String> {
+    match send_heal_request_with_admission(request).await? {
+        HealAdmissionResult::Accepted | HealAdmissionResult::Merged => Ok(()),
+        HealAdmissionResult::Full => Err("Heal request queue is full".to_string()),
+        HealAdmissionResult::Dropped(reason) => Err(format!("Heal request dropped: {}", reason.as_str())),
+    }
+}
+
+async fn receive_heal_channel_response(
+    response_rx: oneshot::Receiver<Result<HealChannelResponse, String>>,
+) -> Result<HealChannelResponse, String> {
+    response_rx
+        .await
+        .map_err(|e| format!("Failed to receive heal channel response: {e}"))?
+}
+
+/// Send heal query request
+pub async fn query_heal_status(heal_path: String, client_token: String) -> Result<HealChannelResponse, String> {
+    query_heal_status_since(heal_path, client_token, None).await
+}
+
+/// Incremental heal query (HS-06): pass the client's last seen sequence
+/// number to receive only newer result items.
+pub async fn query_heal_status_since(
+    heal_path: String,
+    client_token: String,
+    since_seq: Option<u64>,
+) -> Result<HealChannelResponse, String> {
+    let (response_tx, response_rx) = oneshot::channel();
+    send_heal_command(HealChannelCommand::Query {
+        heal_path,
+        client_token,
+        since_seq,
+        response_tx,
+    })
+    .await?;
+    receive_heal_channel_response(response_rx).await
+}
+
+/// Send heal cancel request
+pub async fn cancel_heal_task(heal_path: String, client_token: String) -> Result<HealChannelResponse, String> {
+    let (response_tx, response_rx) = oneshot::channel();
+    send_heal_command(HealChannelCommand::Cancel {
+        heal_path,
+        client_token,
+        response_tx,
+    })
+    .await?;
+    receive_heal_channel_response(response_rx).await
+}
+
+/// Create a new heal request
+pub fn create_heal_request(
+    bucket: String,
+    object_prefix: Option<String>,
+    force_start: bool,
+    priority: Option<HealChannelPriority>,
+) -> HealChannelRequest {
+    HealChannelRequest {
+        id: Uuid::new_v4().to_string(),
+        bucket,
+        object_prefix,
+        object_version_id: None,
+        force_start,
+        priority: priority.unwrap_or_default(),
+        pool_index: None,
+        set_index: None,
+        scan_mode: None,
+        remove_corrupted: None,
+        recreate_missing: None,
+        update_parity: None,
+        recursive: None,
+        dry_run: None,
+        no_lock: None,
+        timeout_seconds: None,
+        source: HealRequestSource::Internal,
+        disk: None,
+        heal_endpoints: Vec::new(),
+    }
+}
+
+/// Create a new heal request with advanced options
+pub fn create_heal_request_with_options(
+    bucket: String,
+    object_prefix: Option<String>,
+    force_start: bool,
+    priority: Option<HealChannelPriority>,
+    pool_index: Option<usize>,
+    set_index: Option<usize>,
+) -> HealChannelRequest {
+    HealChannelRequest {
+        id: Uuid::new_v4().to_string(),
+        bucket,
+        object_prefix,
+        object_version_id: None,
+        force_start,
+        priority: priority.unwrap_or_default(),
+        pool_index,
+        set_index,
+        ..Default::default()
+    }
+}
+
+/// Create a heal response
+pub fn create_heal_response(
+    request_id: String,
+    success: bool,
+    data: Option<Vec<u8>>,
+    error: Option<String>,
+) -> HealChannelResponse {
+    HealChannelResponse {
+        request_id,
+        success,
+        data,
+        error,
+    }
+}
+
+fn create_auto_heal_disk_request(set_disk_id: String, priority: Option<HealChannelPriority>) -> HealChannelRequest {
+    HealChannelRequest {
+        id: Uuid::new_v4().to_string(),
+        bucket: "".to_string(),
+        object_prefix: None,
+        disk: Some(set_disk_id),
+        heal_endpoints: Vec::new(),
+        object_version_id: None,
+        force_start: false,
+        priority: priority.unwrap_or(HealChannelPriority::Low),
+        pool_index: None,
+        set_index: None,
+        scan_mode: None,
+        remove_corrupted: None,
+        recreate_missing: None,
+        update_parity: None,
+        recursive: None,
+        dry_run: None,
+        no_lock: None,
+        timeout_seconds: None,
+        source: HealRequestSource::AutoHeal,
+    }
+}
+
+fn create_auto_replacement_disk_request(
+    pool_index: usize,
+    set_index: usize,
+    replacement_endpoint: String,
+    priority: Option<HealChannelPriority>,
+) -> HealChannelRequest {
+    let mut request = create_auto_heal_disk_request(format!("pool_{pool_index}_set_{set_index}"), priority);
+    request.heal_endpoints = vec![replacement_endpoint];
+    request.pool_index = Some(pool_index);
+    request.set_index = Some(set_index);
+    request
+}
+
+/// Submit the legacy generic erasure-set auto-heal request.
+pub async fn send_heal_disk(set_disk_id: String, priority: Option<HealChannelPriority>) -> Result<(), String> {
+    send_heal_request(create_auto_heal_disk_request(set_disk_id, priority)).await
+}
+
+/// Submit an automatic replacement heal for one known disk endpoint.
+///
+/// The endpoint makes the request eligible for the durable replacement intent
+/// and completion-proof path in the heal task.
+pub async fn send_heal_replacement_disk(
+    pool_index: usize,
+    set_index: usize,
+    replacement_endpoint: String,
+    priority: Option<HealChannelPriority>,
+) -> Result<(), String> {
+    send_heal_request(create_auto_replacement_disk_request(
+        pool_index,
+        set_index,
+        replacement_endpoint,
+        priority,
+    ))
+    .await
+}
+
+#[cfg(test)]
+mod auto_heal_disk_request_tests {
+    use super::*;
+
+    #[test]
+    fn replacement_disk_request_carries_its_exact_endpoint() {
+        let request =
+            create_auto_replacement_disk_request(2, 3, "http://node2:9000/drive3".to_string(), Some(HealChannelPriority::Normal));
+
+        assert_eq!(request.disk.as_deref(), Some("pool_2_set_3"));
+        assert_eq!(request.heal_endpoints, ["http://node2:9000/drive3"]);
+        assert_eq!(request.pool_index, Some(2));
+        assert_eq!(request.set_index, Some(3));
+        assert_eq!(request.source, HealRequestSource::AutoHeal);
+    }
+
+    #[test]
+    fn legacy_auto_heal_disk_request_has_no_replacement_endpoint() {
+        let request = create_auto_heal_disk_request("pool_2_set_3".to_string(), None);
+
+        assert!(request.heal_endpoints.is_empty());
+        assert_eq!(request.pool_index, None);
+        assert_eq!(request.set_index, None);
+        assert_eq!(request.source, HealRequestSource::AutoHeal);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn heal_request_source_labels_are_stable() {
+        assert_eq!(HealRequestSource::Scanner.as_str(), "scanner");
+        assert_eq!(HealRequestSource::Admin.as_str(), "admin");
+        assert_eq!(HealRequestSource::AutoHeal.as_str(), "auto_heal");
+        assert_eq!(HealRequestSource::Internal.as_str(), "internal");
+        assert_eq!(HealRequestSource::ReadRepair.as_str(), "read_repair");
+
+        let request = HealChannelRequest::default();
+        assert_eq!(request.source, HealRequestSource::Internal);
+    }
+
+    #[test]
+    fn heal_opts_deserializes_missing_read_repair_as_false() {
+        let opts: HealOpts = serde_json::from_str(
+            r#"{
+                "recursive": false,
+                "dryRun": false,
+                "remove": false,
+                "recreate": false,
+                "scanMode": "normal",
+                "updateParity": false,
+                "nolock": false
+            }"#,
+        )
+        .expect("old heal options without readRepair should decode");
+
+        assert!(!opts.read_repair);
+    }
+
+    #[test]
+    fn heal_admission_result_labels_are_stable() {
+        assert_eq!(HealAdmissionResult::Accepted.result_label(), "accepted");
+        assert_eq!(HealAdmissionResult::Merged.result_label(), "merged");
+        assert_eq!(HealAdmissionResult::Full.result_label(), "full");
+        assert_eq!(
+            HealAdmissionResult::Dropped(HealAdmissionDropReason::QueueFull).reason_label(),
+            "queue_full"
+        );
+        assert!(HealAdmissionResult::Merged.is_admitted());
+        assert!(!HealAdmissionResult::Full.is_admitted());
+    }
+
+    #[tokio::test]
+    async fn heal_response_broadcast_reaches_subscriber() {
+        let mut receiver = subscribe_heal_responses();
+        let response = create_heal_response("req-1".to_string(), true, None, None);
+
+        publish_heal_response(response.clone()).expect("publish should succeed");
+
+        let received = receiver.recv().await.expect("should receive heal response");
+        assert_eq!(received.request_id, response.request_id);
+        assert!(received.success);
+
+        drop(receiver);
+        let response = create_heal_response("req-no-subscriber".to_string(), true, None, None);
+
+        publish_heal_response(response).expect("publish without subscribers should be ignored");
+    }
+}

@@ -1,0 +1,714 @@
+import { deepEqual as equal } from 'fast-equals'
+import { MakeLogicType, actions, connect, events, kea, key, listeners, path, props, reducers, selectors } from 'kea'
+
+import { convertPropertyGroupToProperties } from 'lib/components/PropertyFilters/utils'
+import { defaultDataWarehousePopoverFields } from 'lib/components/TaxonomicFilter/taxonomicFilterLogic'
+import { DataWarehousePopoverField } from 'lib/components/TaxonomicFilter/types'
+import { uuid } from 'lib/utils/dom'
+import { GraphSeriesAddedSource, eventUsageLogic } from 'lib/utils/eventUsageLogic'
+import { getDefaultEventLabel, getDefaultEventName } from 'lib/utils/getAppContext'
+import { assignField } from 'lib/utils/guards'
+
+import {
+    ActionFilter,
+    AnyPropertyFilter,
+    AnyDataWarehouseFilter,
+    Entity,
+    EntityFilter,
+    EntityType,
+    EntityTypes,
+    FilterLogicalOperator,
+    FilterType,
+    PropertyFilterType,
+    PropertyMathType,
+} from '~/types'
+
+import type { TaxonomicFilterGroupType } from '../../../../lib/components/TaxonomicFilter/types'
+
+export type LocalFilter = ActionFilter & {
+    order: number
+    uuid: string
+    table_name?: string
+    [key: string]: any
+}
+
+export type BareEntity = Pick<Entity, 'id' | 'name'>
+
+export function toLocalFilters(filters: Partial<FilterType>): LocalFilter[] {
+    const localFilters = [
+        ...(filters[EntityTypes.ACTIONS] || []),
+        ...(filters[EntityTypes.EVENTS] || []),
+        ...(filters[EntityTypes.DATA_WAREHOUSE] || []),
+        ...(filters[EntityTypes.GROUPS] || []),
+    ]
+        .sort((a, b) => a.order - b.order)
+        .map((filter, order) => ({ ...(filter as ActionFilter), order }))
+    return localFilters.map((filter) =>
+        filter.properties && Array.isArray(filter.properties)
+            ? {
+                  ...filter,
+                  uuid: uuid(),
+                  properties: convertPropertyGroupToProperties(filter.properties),
+              }
+            : { ...filter, uuid: uuid() }
+    )
+}
+
+const PROPERTY_VALUE_MATHS = new Set<string>(Object.values(PropertyMathType))
+
+// math_property names a column or property on the entity the series aggregates, so it cannot
+// survive an entity switch. Property-value math (sum, avg, percentiles) is dropped with it —
+// the backend errors out on that math without a math_property.
+function dropStaleMath(filter: LocalFilter): void {
+    if (filter.math && PROPERTY_VALUE_MATHS.has(filter.math)) {
+        filter.math = undefined
+    }
+    filter.math_property = undefined
+    filter.math_property_type = undefined
+}
+
+export function toFilters(localFilters: LocalFilter[]): FilterType {
+    const filters = localFilters.map((filter, index) => ({
+        ...filter,
+        order: index,
+        // The first step of a funnel cannot be optional
+        optionalInFunnel: index == 0 ? undefined : filter.optionalInFunnel,
+    }))
+
+    return {
+        [EntityTypes.ACTIONS]: filters.filter((filter) => filter.type === EntityTypes.ACTIONS),
+        [EntityTypes.EVENTS]: filters.filter((filter) => filter.type === EntityTypes.EVENTS),
+        [EntityTypes.DATA_WAREHOUSE]: filters.filter((filter) => filter.type === EntityTypes.DATA_WAREHOUSE),
+        [EntityTypes.GROUPS]: filters.filter((filter) => filter.type === EntityTypes.GROUPS),
+    } as FilterType
+}
+
+/**
+ * Convert a single LocalFilter into a group filter
+ * Preserves the original filter in the values array for full reversibility
+ */
+export function singleFilterToGroupFilter(filter: LocalFilter): LocalFilter {
+    return {
+        id: null,
+        name: filter.name, // for debugging
+        type: EntityTypes.GROUPS,
+        order: filter.order,
+        uuid: uuid(),
+        operator: FilterLogicalOperator.Or,
+        nestedFilters: [filter],
+        // Preserve math properties from the original filter at the group level
+        ...(filter.math && { math: filter.math }),
+        ...(filter.math_property && { math_property: filter.math_property }),
+        ...(filter.math_property_type && { math_property_type: filter.math_property_type }),
+        ...(filter.math_hogql && { math_hogql: filter.math_hogql }),
+        ...(filter.math_group_type_index !== undefined && { math_group_type_index: filter.math_group_type_index }),
+    } as LocalFilter
+}
+
+/**
+ * Convert a group filter back into individual LocalFilters
+ * Each nested value in the group becomes a separate filter in the parent list
+ * Preserves order and all filter properties
+ */
+export function splitGroupFilterToLocalFilters(groupFilter: LocalFilter, baseOrder: number): LocalFilter[] {
+    const nested = (groupFilter.nestedFilters as LocalFilter[] | null | undefined) || []
+    return nested.map((nestedFilter, index) => ({
+        ...nestedFilter,
+        order: baseOrder + index,
+        uuid: uuid(),
+    }))
+}
+
+export interface EntityFilterProps {
+    setFilters?: (filters: FilterType) => void
+    filters?: Record<string, any>
+    typeKey: string
+    singleMode?: boolean
+    addFilterDefaultOptions?: Record<string, any>
+    dataWarehousePopoverFields?: DataWarehousePopoverField[]
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface entityFilterLogicValues {
+    entityFilterVisible: boolean[]
+    filters: FilterType
+    localFilters: LocalFilter[]
+    modalVisible: boolean
+    selectedFilter: ActionFilter | EntityFilter | null
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface entityFilterLogicActions {
+    addFilter: () => {
+        value: true
+    }
+    convertFilterToGroup: (index: number) => {
+        index: number
+    }
+    duplicateFilter: (filter: ActionFilter | EntityFilter) => {
+        filter: ActionFilter | EntityFilter
+    }
+    hideModal: () => {
+        value: true
+    }
+    removeLocalFilter: (
+        filter: Partial<EntityFilter> & {
+            index: number
+        }
+    ) => {
+        index: number
+        type: EntityType | undefined
+    }
+    renameFilter: (custom_name: string) => {
+        custom_name: string
+    }
+    renameLocalFilter: (
+        index: number,
+        custom_name: string
+    ) => {
+        custom_name: string
+        index: number
+    }
+    selectFilter: (filter: ActionFilter | EntityFilter | null) => {
+        filter: ActionFilter | EntityFilter | null
+    }
+    setEntityFilterVisibility: (
+        index: number,
+        value: boolean
+    ) => {
+        index: number
+        value: boolean
+    }
+    setFilters: (filters: LocalFilter[]) => {
+        filters: LocalFilter[]
+    }
+    setLocalFilters: (filters: FilterType) => {
+        filters: FilterType
+    }
+    showModal: () => {
+        value: true
+    }
+    splitLocalFilter: (index: number) => {
+        index: number
+    }
+    updateFilter: (
+        filter: (ActionFilter | AnyDataWarehouseFilter | EntityFilter) & {
+            index: number
+            table_name?: string
+            [key: string]: any
+        }
+    ) =>
+        | {
+              custom_name?: string | null | undefined
+              id: number | string | null
+              index: number
+              name?: string | null | undefined
+              optionalInFunnel?: boolean | undefined
+              order?: number | undefined
+              table_name?: string | undefined
+              type?: EntityType | undefined
+              [key: string]: any
+          }
+        | {
+              custom_name?: string | null | undefined
+              days?: string[] | undefined
+              id: number | string | null
+              index: number
+              math?: string | undefined
+              math_group_type_index?: number | null | undefined
+              math_hogql?: string | null | undefined
+              math_property?: string | null | undefined
+              math_property_type?: TaxonomicFilterGroupType | null | undefined
+              name?: string | null | undefined
+              negation?: boolean | undefined
+              nestedFilters?: EntityFilter[] | null | undefined
+              operator?: FilterLogicalOperator | null | undefined
+              optionalInFunnel?: boolean | undefined
+              order?: number | undefined
+              properties?: AnyPropertyFilter[] | undefined
+              table_name?: string | undefined
+              type: EntityType
+              [key: string]: any
+          }
+        | {
+              aggregation_target_field: string
+              custom_name?: string | null | undefined
+              days?: string[] | undefined
+              id: number | string | null
+              id_field: string
+              index: number
+              math?: string | undefined
+              math_group_type_index?: number | null | undefined
+              math_hogql?: string | null | undefined
+              math_property?: string | null | undefined
+              math_property_type?: TaxonomicFilterGroupType | null | undefined
+              name?: string | null | undefined
+              negation?: boolean | undefined
+              nestedFilters?: EntityFilter[] | null | undefined
+              operator?: FilterLogicalOperator | null | undefined
+              optionalInFunnel?: boolean | undefined
+              order?: number | undefined
+              properties?: AnyPropertyFilter[] | undefined
+              table_name: string
+              timestamp_field: string
+              type: EntityType
+              [key: string]: any
+          }
+        | {
+              custom_name?: string | null | undefined
+              days?: string[] | undefined
+              distinct_id_field: string
+              id: number | string | null
+              id_field: string
+              index: number
+              math?: string | undefined
+              math_group_type_index?: number | null | undefined
+              math_hogql?: string | null | undefined
+              math_property?: string | null | undefined
+              math_property_type?: TaxonomicFilterGroupType | null | undefined
+              name?: string | null | undefined
+              negation?: boolean | undefined
+              nestedFilters?: EntityFilter[] | null | undefined
+              operator?: FilterLogicalOperator | null | undefined
+              optionalInFunnel?: boolean | undefined
+              order?: number | undefined
+              properties?: AnyPropertyFilter[] | undefined
+              table_name: string
+              timestamp_field: string
+              type: EntityType
+              [key: string]: any
+          }
+        | {
+              aggregation_target_field: string
+              created_at_field: string
+              custom_name?: string | null | undefined
+              days?: string[] | undefined
+              id: number | string | null
+              index: number
+              math?: string | undefined
+              math_group_type_index?: number | null | undefined
+              math_hogql?: string | null | undefined
+              math_property?: string | null | undefined
+              math_property_type?: TaxonomicFilterGroupType | null | undefined
+              name?: string | null | undefined
+              negation?: boolean | undefined
+              nestedFilters?: EntityFilter[] | null | undefined
+              operator?: FilterLogicalOperator | null | undefined
+              optionalInFunnel?: boolean | undefined
+              order?: number | undefined
+              properties?: AnyPropertyFilter[] | undefined
+              table_name: string
+              timestamp_field: string
+              type: EntityType
+              [key: string]: any
+          }
+    updateFilterMath: (
+        filter: Partial<ActionFilter> & {
+            index: number
+        }
+    ) => {
+        index: number
+        math: string | undefined
+        math_group_type_index: number | null | undefined
+        math_hogql: string | null | undefined
+        math_property: string | null | undefined
+        math_property_type: TaxonomicFilterGroupType | null | undefined
+        type: EntityType
+    }
+    updateFilterOptional: (
+        filter: Partial<ActionFilter> & {
+            index: number
+        }
+    ) => {
+        index: number
+        optionalInFunnel: boolean | undefined
+        type: EntityType
+    }
+    updateFilterProperty: (
+        filter: Partial<EntityFilter> & {
+            index?: number
+            properties: AnyPropertyFilter[]
+        }
+    ) => {
+        index: number | undefined
+        properties: AnyPropertyFilter[]
+    }
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface entityFilterLogicMeta {
+    key: string
+    __keaTypeGenInternalSelectorTypes: {
+        filters: (localFilters: LocalFilter[]) => FilterType
+    }
+}
+
+export type entityFilterLogicType = MakeLogicType<
+    entityFilterLogicValues,
+    entityFilterLogicActions,
+    EntityFilterProps,
+    entityFilterLogicMeta
+>
+
+export const entityFilterLogic = kea<entityFilterLogicType>([
+    props({} as EntityFilterProps),
+    key((props) => props.typeKey),
+    path((key) => ['scenes', 'insights', 'ActionFilter', 'entityFilterLogic', key]),
+    connect(() => ({
+        logic: [eventUsageLogic],
+    })),
+    actions({
+        selectFilter: (filter: EntityFilter | ActionFilter | null) => ({ filter }),
+        updateFilterMath: (
+            filter: Partial<ActionFilter> & {
+                index: number
+            }
+        ) => ({
+            type: filter.type as EntityType,
+            math: filter.math,
+            math_property: filter.math_property,
+            math_property_type: filter.math_property_type,
+            math_hogql: filter.math_hogql,
+            index: filter.index,
+            math_group_type_index: filter.math_group_type_index,
+        }),
+        updateFilterOptional: (
+            filter: Partial<ActionFilter> & {
+                index: number
+            }
+        ) => ({
+            type: filter.type as EntityType,
+            index: filter.index,
+            optionalInFunnel: filter.optionalInFunnel,
+        }),
+        updateFilter: (
+            filter: (EntityFilter | ActionFilter | AnyDataWarehouseFilter) & {
+                index: number
+                table_name?: string
+                [key: string]: any
+            }
+        ) => ({
+            ...filter,
+        }),
+        renameFilter: (custom_name: string) => ({ custom_name }),
+        removeLocalFilter: (
+            filter: Partial<EntityFilter> & {
+                index: number
+            }
+        ) => ({
+            type: filter.type,
+            index: filter.index,
+        }),
+        splitLocalFilter: (index: number) => ({ index }),
+        addFilter: true,
+        duplicateFilter: (filter: EntityFilter | ActionFilter) => ({ filter }),
+        convertFilterToGroup: (index: number) => ({ index }),
+        updateFilterProperty: (
+            filter: Partial<EntityFilter> & {
+                index?: number
+                properties: AnyPropertyFilter[]
+            }
+        ) => ({
+            properties: filter.properties,
+            index: filter.index,
+        }),
+        setFilters: (filters: LocalFilter[]) => ({ filters }),
+        setLocalFilters: (filters: FilterType) => ({ filters }),
+        setEntityFilterVisibility: (index: number, value: boolean) => ({ index, value }),
+        renameLocalFilter: (index: number, custom_name: string) => ({ index, custom_name }),
+        showModal: true,
+        hideModal: true,
+    }),
+
+    reducers(({ props }) => ({
+        selectedFilter: [
+            null as EntityFilter | ActionFilter | null,
+            {
+                selectFilter: (_, { filter }) => filter,
+            },
+        ],
+        localFilters: [
+            toLocalFilters(props.filters ?? {}),
+            {
+                setFilters: (_, { filters }) => filters,
+                setLocalFilters: (currentFilters, { filters }) => {
+                    if (equal(toFilters(currentFilters), filters)) {
+                        return currentFilters
+                    }
+                    const newFilters = toLocalFilters(filters)
+                    const usedUuids = new Set<string>()
+                    return newFilters.map((newFilter) => {
+                        const isSameFilter = (f: LocalFilter): boolean =>
+                            f.id === newFilter.id && f.type === newFilter.type && !usedUuids.has(f.uuid)
+                        const existing =
+                            currentFilters.find((f) => isSameFilter(f) && f.order === newFilter.order) ??
+                            currentFilters.find(isSameFilter)
+                        if (existing) {
+                            usedUuids.add(existing.uuid)
+                            return { ...newFilter, uuid: existing.uuid }
+                        }
+                        return newFilter
+                    })
+                },
+            },
+        ],
+        entityFilterVisible: [
+            [] as boolean[],
+            {
+                setEntityFilterVisibility: (state, { index, value }) => ({
+                    ...state,
+                    [index]: value,
+                }),
+            },
+        ],
+        modalVisible: [
+            false,
+            {
+                showModal: () => true,
+                hideModal: () => false,
+            },
+        ],
+    })),
+
+    selectors({
+        filters: [(s) => [s.localFilters], (localFilters: LocalFilter[]): FilterType => toFilters(localFilters)],
+    }),
+
+    listeners(({ actions, values, props }) => ({
+        renameFilter: ({ custom_name }) => {
+            const selectedFilter = values.selectedFilter as LocalFilter | null
+            if (selectedFilter) {
+                const index = selectedFilter.uuid
+                    ? values.localFilters.findIndex((filter) => filter.uuid === selectedFilter.uuid)
+                    : selectedFilter.order
+
+                if (index !== -1) {
+                    actions.updateFilter({
+                        ...selectedFilter,
+                        index,
+                        custom_name,
+                    } as EntityFilter & {
+                        index: number
+                    })
+                }
+            }
+            actions.hideModal()
+        },
+        hideModal: () => {
+            actions.selectFilter(null)
+        },
+        updateFilter: async ({ type, index, name, id, custom_name, table_name, ...fieldValues }) => {
+            actions.setFilters(
+                values.localFilters.map((filter, i) => {
+                    if (i === index) {
+                        const dataWarehousePopoverFields =
+                            props.dataWarehousePopoverFields ?? defaultDataWarehousePopoverFields
+                        if (type === EntityTypes.DATA_WAREHOUSE) {
+                            const updatedFilter = {
+                                ...filter,
+                                id: typeof id === 'undefined' ? filter.id : id,
+                                name: typeof name === 'undefined' ? filter.name : name,
+                                type: typeof type === 'undefined' ? filter.type : type,
+                                custom_name: typeof custom_name === 'undefined' ? filter.custom_name : custom_name,
+                                table_name: typeof table_name === 'undefined' ? filter.table_name : table_name,
+                            }
+
+                            // Dynamically handle fields from dataWarehousePopoverFields
+                            dataWarehousePopoverFields.forEach(({ key }) => {
+                                const fieldValue = fieldValues[key]
+                                assignField(
+                                    updatedFilter,
+                                    key as keyof typeof updatedFilter,
+                                    typeof fieldValue === 'undefined' ? filter[key] : fieldValue
+                                )
+                            })
+
+                            // A data warehouse series resolves property filters against its own
+                            // table: there is no person in scope, so person-scoped filters carried
+                            // over from a previous event entity cannot resolve, and column filters
+                            // from a different table cannot either. SQL expression filters are
+                            // user-authored and stay visible in the UI, so they are kept.
+                            if (Array.isArray(filter.properties)) {
+                                updatedFilter.properties = filter.properties.filter(
+                                    (property: AnyPropertyFilter) =>
+                                        property.type === PropertyFilterType.HogQL ||
+                                        (property.type === PropertyFilterType.DataWarehouse &&
+                                            updatedFilter.table_name === filter.table_name)
+                                )
+                            }
+
+                            if (
+                                filter.type !== EntityTypes.DATA_WAREHOUSE ||
+                                updatedFilter.table_name !== filter.table_name
+                            ) {
+                                dropStaleMath(updatedFilter)
+                            }
+
+                            return updatedFilter
+                        }
+
+                        // Handle group filters: preserve all group-specific fields (values, operator)
+                        if (type === EntityTypes.GROUPS) {
+                            const newFilter = {
+                                ...filter,
+                                id: typeof id === 'undefined' ? filter.id : id,
+                                name: typeof name === 'undefined' ? filter.name : name,
+                                type: typeof type === 'undefined' ? filter.type : type,
+                                custom_name: typeof custom_name === 'undefined' ? filter.custom_name : custom_name,
+                                ...fieldValues,
+                            } as LocalFilter
+
+                            return newFilter
+                        }
+
+                        // For non-DATA_WAREHOUSE types, remove any data warehouse specific fields
+                        const cleanedFilter = { ...filter }
+                        dataWarehousePopoverFields.forEach(({ key }) => {
+                            delete cleanedFilter[key]
+                        })
+
+                        // Data warehouse column filters reference the warehouse table, which an
+                        // event or action series does not select from, so they cannot carry over.
+                        if (Array.isArray(cleanedFilter.properties)) {
+                            cleanedFilter.properties = cleanedFilter.properties.filter(
+                                (property: AnyPropertyFilter) => property.type !== PropertyFilterType.DataWarehouse
+                            )
+                        }
+
+                        if (filter.type === EntityTypes.DATA_WAREHOUSE) {
+                            dropStaleMath(cleanedFilter)
+                        }
+
+                        return {
+                            ...cleanedFilter,
+                            id: typeof id === 'undefined' ? filter.id : id,
+                            name: typeof name === 'undefined' ? filter.name : name,
+                            type: typeof type === 'undefined' ? filter.type : type,
+                            custom_name: typeof custom_name === 'undefined' ? filter.custom_name : custom_name,
+                        }
+                    }
+
+                    return filter
+                })
+            )
+            !props.singleMode && actions.selectFilter(null)
+        },
+        updateFilterProperty: async ({ properties, index }) => {
+            actions.setFilters(
+                values.localFilters.map((filter, i) => (i === index ? { ...filter, properties } : filter))
+            )
+        },
+        updateFilterMath: async ({ index, ...mathProperties }) => {
+            actions.setFilters(
+                values.localFilters.map((filter, i) => (i === index ? { ...filter, ...mathProperties } : filter))
+            )
+        },
+        updateFilterOptional: async ({ index, optionalInFunnel }) => {
+            actions.setFilters(
+                values.localFilters.map((filter, i) => (i === index ? { ...filter, optionalInFunnel } : filter))
+            )
+        },
+        removeLocalFilter: async ({ index }) => {
+            const newFilters = values.localFilters.filter((_, i) => i !== index)
+            actions.setFilters(newFilters)
+            actions.setLocalFilters(toFilters(newFilters))
+            eventUsageLogic.actions.reportInsightFilterRemoved(index)
+        },
+        splitLocalFilter: ({ index }) => {
+            const filter = values.localFilters[index]
+            if (!filter || filter.type !== EntityTypes.GROUPS) {
+                return
+            }
+
+            // Convert group filter into individual filters
+            const splitFilters = splitGroupFilterToLocalFilters(filter, filter.order)
+
+            // Replace the group filter with individual filters
+            // and adjust orders for filters after it
+            const newFilters = values.localFilters.reduce<LocalFilter[]>((acc, f, i) => {
+                if (i === index) {
+                    // Replace group filter with split filters
+                    acc.push(...splitFilters)
+                } else if (i > index) {
+                    // Adjust order for filters that come after
+                    acc.push({
+                        ...f,
+                        order: f.order + splitFilters.length - 1,
+                    })
+                } else {
+                    acc.push(f)
+                }
+                return acc
+            }, [])
+
+            actions.setFilters(newFilters)
+        },
+        addFilter: async () => {
+            const previousLength = values.localFilters.length
+            const newLength = previousLength + 1
+            const precedingEntity = values.localFilters[previousLength - 1] as LocalFilter | undefined
+            const order = precedingEntity ? precedingEntity.order + 1 : 0
+            const newFilter: LocalFilter = {
+                id: getDefaultEventName(),
+                name: getDefaultEventLabel(),
+                uuid: uuid(),
+                type: EntityTypes.EVENTS,
+                order: order,
+                ...props.addFilterDefaultOptions,
+            }
+            actions.setFilters([...values.localFilters, newFilter])
+            actions.selectFilter({ ...newFilter, index: order })
+            eventUsageLogic.actions.reportInsightFilterAdded(newLength, GraphSeriesAddedSource.Default)
+        },
+        duplicateFilter: async ({ filter }) => {
+            const previousLength = values.localFilters.length
+            const newLength = previousLength + 1
+            const order = filter.order ?? values.localFilters[previousLength - 1].order
+            const newFilters = [...values.localFilters]
+            for (const _filter of newFilters) {
+                // Because duplicate filters are inserted within the current filters we need to move over the remaining filers
+                if (_filter.order >= order + 1) {
+                    _filter.order = _filter.order + 1
+                }
+            }
+            newFilters.splice(order + 1, 0, {
+                ...filter,
+                uuid: uuid(),
+                order: order + 1,
+            } as LocalFilter)
+            actions.setFilters(newFilters)
+            actions.setEntityFilterVisibility(order + 1, values.entityFilterVisible[order])
+            eventUsageLogic.actions.reportInsightFilterAdded(newLength, GraphSeriesAddedSource.Duplicate)
+        },
+        convertFilterToGroup: async ({ index }) => {
+            const filter = values.localFilters[index]
+            if (!filter) {
+                return
+            }
+            const groupFilter = singleFilterToGroupFilter(filter)
+            const newFilters = [...values.localFilters]
+            newFilters[index] = groupFilter
+            actions.setFilters(newFilters)
+        },
+        setFilters: async ({ filters }) => {
+            if (typeof props.setFilters === 'function') {
+                props.setFilters(toFilters(filters))
+            }
+            const sanitizedFilters = filters?.map(({ id, type }) => ({ id, type }))
+            eventUsageLogic.actions.reportInsightFilterSet(sanitizedFilters)
+        },
+        setEntityFilterVisibility: async ({ index, value }) => {
+            const entityName = values.localFilters[index]?.name || undefined
+            eventUsageLogic.actions.reportEntityFilterVisibilitySet(index, value, entityName)
+        },
+    })),
+    events(({ actions, props, values }) => ({
+        afterMount: () => {
+            if (props.singleMode) {
+                const filter = { id: null, type: EntityTypes.EVENTS, order: values.localFilters.length }
+                actions.setLocalFilters({ [`${EntityTypes.EVENTS}`]: [filter] })
+                actions.selectFilter({ ...filter, index: 0 })
+            }
+        },
+    })),
+])

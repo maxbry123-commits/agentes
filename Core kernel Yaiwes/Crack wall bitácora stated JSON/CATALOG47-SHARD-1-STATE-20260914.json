@@ -1,0 +1,352 @@
+{
+  "created_at": 1789368764,
+  "items": {
+    "C47-002": {
+      "attempts": 2,
+      "result": {
+        "bundle_bytes": 12055224,
+        "bundle_sha256": "64d05837e2d4d77e0a8425d85a5f1fccec7607f986dd98ad44d4f43d7dd3a8c4",
+        "elapsed_seconds": 29.67,
+        "extracted_tree": {
+          "bytes": 14099679,
+          "files": 1027,
+          "sha256": "3e7cac986c2e049a59330c9254330a4a7da3385fcdedb68825e0563c68f54759"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 12055224,
+            "name": "Claude-Code.bundle.zip.part-0001",
+            "sha256": "64d05837e2d4d77e0a8425d85a5f1fccec7607f986dd98ad44d4f43d7dd3a8c4"
+          }
+        ],
+        "publish": {
+          "commit": "84fac5aec360cb6e8130c09136de6e1956a3e32f",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "Claude-Code",
+        "source_bytes": 14099679,
+        "source_commit": "18be13be81538c38efa5cb157fb2fc8da7469855",
+        "source_files": 1027,
+        "source_ref": "HEAD",
+        "source_repo": "anthropics/claude-code",
+        "source_tree": {
+          "bytes": 14099679,
+          "files": 1027,
+          "sha256": "3e7cac986c2e049a59330c9254330a4a7da3385fcdedb68825e0563c68f54759"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "Claude-Code",
+      "source_repo": "anthropics/claude-code",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-007": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 138, in publish\n    run(['git','push','origin',f'HEAD:{DEST_BRANCH}'],dst,env=env); commit=run(['git','rev-parse','HEAD'],dst)\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 16, in run\n    if check and p.returncode: raise RuntimeError(f'COMMAND_FAILED:{argv[0]}:{p.returncode}:{p.stdout[-3000:]}')\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: COMMAND_FAILED:git:1:To https://github.com/maxbry123-commits/agentes.git\n ! [remote rejected]     HEAD -> main (cannot lock ref 'refs/heads/main': is at 14b74939a506c9f76253df55c4d716e86ec98e93 but expected f0726b3eb9a8cc6fed71e083d58c4ed6a4262701)\nerror: failed to push some refs to 'https://github.com/maxbry123-commits/agentes.git'\n\n",
+      "slug": "Bayesian-Agent",
+      "source_repo": "DataArcTech/Bayesian-Agent",
+      "status": "FAILED"
+    },
+    "C47-012": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 17745001,
+        "bundle_sha256": "da64903f068568d805a0948679ee4e1a5ac6114587d196f480ebe004eb887782",
+        "elapsed_seconds": 32.98,
+        "extracted_tree": {
+          "bytes": 27542780,
+          "files": 1496,
+          "sha256": "57ba55f82dbc90d12d4a5cc2678edb64afce3ed203b8d39758b869531218673b"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 12582912,
+            "name": "OpenAgentd.bundle.zip.part-0001",
+            "sha256": "fecc512517c13c1facc3a76116b37781dfb930ce69f3d4618c4367e0115726d3"
+          },
+          {
+            "bytes": 5162089,
+            "name": "OpenAgentd.bundle.zip.part-0002",
+            "sha256": "c882ca45fbc48dcac7721213213c910fd505fda594360dcbceae35b799b1b851"
+          }
+        ],
+        "publish": {
+          "commit": "b37c73b5714b54a523762dd9d5047b507da09134",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "OpenAgentd",
+        "source_bytes": 27542780,
+        "source_commit": "a05350f3141488268b018824bb04c2fcd3bf8022",
+        "source_files": 1496,
+        "source_ref": "HEAD",
+        "source_repo": "lthoangg/openagentd",
+        "source_tree": {
+          "bytes": 27542780,
+          "files": 1496,
+          "sha256": "57ba55f82dbc90d12d4a5cc2678edb64afce3ed203b8d39758b869531218673b"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "OpenAgentd",
+      "source_repo": "lthoangg/openagentd",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-017": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/WooAgent-OS\n",
+      "slug": "WooAgent-OS",
+      "source_repo": "Automattic/wooagent-os",
+      "status": "FAILED"
+    },
+    "C47-022": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 1487073,
+        "bundle_sha256": "19561f35e217bfecf2278e2c222b0c478b714e6afdbcb1ee2214eb3d47c40022",
+        "elapsed_seconds": 37.07,
+        "extracted_tree": {
+          "bytes": 2179305,
+          "files": 135,
+          "sha256": "ec943398b405d43e851195df3db20c6da2b0a3187acbdc3927ffa635b18d69aa"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 1487073,
+            "name": "A2A-Protocol.bundle.zip.part-0001",
+            "sha256": "19561f35e217bfecf2278e2c222b0c478b714e6afdbcb1ee2214eb3d47c40022"
+          }
+        ],
+        "publish": {
+          "commit": "fc5f20516a50a694b2a88a3332d597710082bc7b",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "A2A-Protocol",
+        "source_bytes": 2179305,
+        "source_commit": "6d6640c29b102f7a8d23784901351b5d2454fe71",
+        "source_files": 135,
+        "source_ref": "HEAD",
+        "source_repo": "a2aproject/A2A",
+        "source_tree": {
+          "bytes": 2179305,
+          "files": 135,
+          "sha256": "ec943398b405d43e851195df3db20c6da2b0a3187acbdc3927ffa635b18d69aa"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "A2A-Protocol",
+      "source_repo": "a2aproject/A2A",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-027": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 652915,
+        "bundle_sha256": "8356047741b14ef57b06b903d5ac2b497e79be8a3cdc6505463eb8070b4e585e",
+        "elapsed_seconds": 37.82,
+        "extracted_tree": {
+          "bytes": 2216161,
+          "files": 190,
+          "sha256": "63785bcccce36aa39f9c496e02528b31f1b3d6f30cf9b1817b905d7205172d5a"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 652915,
+            "name": "MemForge.bundle.zip.part-0001",
+            "sha256": "8356047741b14ef57b06b903d5ac2b497e79be8a3cdc6505463eb8070b4e585e"
+          }
+        ],
+        "publish": {
+          "commit": "82903ccf9771c03ec15d86b243d65d44ff9873c4",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "MemForge",
+        "source_bytes": 2216161,
+        "source_commit": "16e2f15c5881a38911f64ca81b3dc0b25d6207ec",
+        "source_files": 190,
+        "source_ref": "HEAD",
+        "source_repo": "salishforge/memforge",
+        "source_tree": {
+          "bytes": 2216161,
+          "files": 190,
+          "sha256": "63785bcccce36aa39f9c496e02528b31f1b3d6f30cf9b1817b905d7205172d5a"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "MemForge",
+      "source_repo": "salishforge/memforge",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-032": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 14104158,
+        "bundle_sha256": "fd88d973f49fadbb4b844bf6c2b4577452c273b127c35e43fdf505a368f8e2a2",
+        "elapsed_seconds": 43.96,
+        "extracted_tree": {
+          "bytes": 29771086,
+          "files": 961,
+          "sha256": "dcd6c81f64a8409c8970e93540a769e9a01399a673096e1bb1aa212e7d29c935"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 12582912,
+            "name": "SafeHarbor.bundle.zip.part-0001",
+            "sha256": "8aaeb5d21fbfa81ac2a5c5047925a718fc1270f58f9461df403836d0eac454ef"
+          },
+          {
+            "bytes": 1521246,
+            "name": "SafeHarbor.bundle.zip.part-0002",
+            "sha256": "e1d2f57912ed5f5022d4a761071f06166afae0eb64a8d906d6e41339937cf899"
+          }
+        ],
+        "publish": {
+          "commit": "550abd28ff23ddae7e74c745837074be1de76e92",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "SafeHarbor",
+        "source_bytes": 29771086,
+        "source_commit": "4aa2be3bce7117739950b0de8ad4a5cebd1f81d7",
+        "source_files": 961,
+        "source_ref": "HEAD",
+        "source_repo": "ljj-cyber/SafeHarbor",
+        "source_tree": {
+          "bytes": 29771086,
+          "files": 961,
+          "sha256": "dcd6c81f64a8409c8970e93540a769e9a01399a673096e1bb1aa212e7d29c935"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "SafeHarbor",
+      "source_repo": "ljj-cyber/SafeHarbor",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-037": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/Godel-Agent\n",
+      "slug": "Godel-Agent",
+      "source_repo": "Arvid-pku/Godel_Agent",
+      "status": "FAILED"
+    },
+    "C47-042": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 3730673,
+        "bundle_sha256": "83704b0c1ab8035dbeb499b32400305bccdadda72cfda64b782ff6e28206f5d7",
+        "elapsed_seconds": 37.7,
+        "extracted_tree": {
+          "bytes": 5791052,
+          "files": 119,
+          "sha256": "af52d089973e4cf52aa3a32dddf18c3ad9c19a7d0427caaef9873432e6e6b307"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 3730673,
+            "name": "DR-WELL.bundle.zip.part-0001",
+            "sha256": "83704b0c1ab8035dbeb499b32400305bccdadda72cfda64b782ff6e28206f5d7"
+          }
+        ],
+        "publish": {
+          "commit": "7f6a179b76ece3e9c32b4d74754b9e2a1f4adc4a",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "DR-WELL",
+        "source_bytes": 5791052,
+        "source_commit": "aece9ea3d71ef5a7b8214c90def12ead28f2cfea",
+        "source_files": 119,
+        "source_ref": "HEAD",
+        "source_repo": "HappyEureka/dr-well",
+        "source_tree": {
+          "bytes": 5791052,
+          "files": 119,
+          "sha256": "af52d089973e4cf52aa3a32dddf18c3ad9c19a7d0427caaef9873432e6e6b307"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "DR-WELL",
+      "source_repo": "HappyEureka/dr-well",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-047": {
+      "attempts": 2,
+      "result": {
+        "bundle_bytes": 8306311,
+        "bundle_sha256": "af3927b74d047f4f7423aa5332dad6a9c71bf901ba07b7b9662be1666645108a",
+        "elapsed_seconds": 40.94,
+        "extracted_tree": {
+          "bytes": 28327847,
+          "files": 24,
+          "sha256": "2a369d5b005cd407cad46b743e30d50d3c86ffcf249aa2733394cca574cdd931"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 8306311,
+            "name": "LatentMAS.bundle.zip.part-0001",
+            "sha256": "af3927b74d047f4f7423aa5332dad6a9c71bf901ba07b7b9662be1666645108a"
+          }
+        ],
+        "publish": {
+          "commit": "c44f882e5eb62b1a767bbabd90d64b108500a321",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "LatentMAS",
+        "source_bytes": 28327847,
+        "source_commit": "9a9e4d331eb11430bd9e64754c6b252b06d73031",
+        "source_files": 24,
+        "source_ref": "HEAD",
+        "source_repo": "Gen-Verse/LatentMAS",
+        "source_tree": {
+          "bytes": 28327847,
+          "files": 24,
+          "sha256": "2a369d5b005cd407cad46b743e30d50d3c86ffcf249aa2733394cca574cdd931"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "LatentMAS",
+      "source_repo": "Gen-Verse/LatentMAS",
+      "status": "VERIFIED_CLOSED"
+    }
+  },
+  "schema": "yaiwes.frontend.download-extract-queue.v1"
+}

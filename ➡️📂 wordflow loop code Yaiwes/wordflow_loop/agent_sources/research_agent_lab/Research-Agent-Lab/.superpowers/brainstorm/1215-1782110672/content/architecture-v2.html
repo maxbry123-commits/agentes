@@ -1,0 +1,83 @@
+<h2>实验执行链路架构（方案 A）</h2>
+<p class="subtitle">外循环：每个 agent 独立运行，artifact 可审计；内循环：CodeWriter ↔ AutoDebugger 最多 3 轮修复</p>
+
+<div class="section">
+  <h3>整体数据流</h3>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">Experiment Execution Pipeline</div>
+  <div class="mockup-body">
+    <div style="display:flex;flex-direction:column;gap:8px;font-family:monospace;font-size:13px;">
+
+      <div style="background:#1a3a5c;border-left:4px solid #64b5f6;padding:12px;border-radius:4px;color:#e0e0e0;">
+        <strong style="color:#90caf9;">1. ExperimentPlanner</strong> (已有，增强)<br>
+        输入: synthesis + method_cards + codebase_report<br>
+        输出: ExperimentPlan (新增 success_criteria 字段)
+      </div>
+      <div style="text-align:center;color:#888;">↓</div>
+      <div style="background:#1b3d1b;border-left:4px solid #66bb6a;padding:12px;border-radius:4px;color:#e0e0e0;">
+        <strong style="color:#81c784;">2. DeveloperAgent</strong> (已有，保留)<br>
+        输入: ExperimentPlan<br>
+        输出: CodeTask (implementation_notes, proposed_files)
+      </div>
+      <div style="text-align:center;color:#888;">↓</div>
+      <div style="background:#4a3f00;border-left:4px solid #fdd835;padding:12px;border-radius:4px;color:#e0e0e0;">
+        <strong style="color:#ffee58;">3. CodeWriterAgent</strong> NEW<br>
+        输入: CodeTask + ExperimentPlan + TopicPack.codebase<br>
+        操作: 副本/沙箱模式下编辑代码文件<br>
+        输出: CodePatch (diff, changed_files, backup_paths)
+      </div>
+      <div style="text-align:center;color:#888;">↓</div>
+      <div style="background:#1b3d1b;border-left:4px solid #66bb6a;padding:12px;border-radius:4px;color:#e0e0e0;">
+        <strong style="color:#81c784;">4. AutonomousExperimentAgent</strong> (已有，增强)<br>
+        输入: CodePatch + ExperimentPlan.commands<br>
+        操作: 在代码副本/沙箱中运行实验命令<br>
+        输出: ExperimentRun (stdout, stderr, exit_code, duration, metrics)
+      </div>
+      <div style="text-align:center;color:#888;">↓</div>
+      <div style="background:#4a3f00;border-left:4px solid #fdd835;padding:12px;border-radius:4px;color:#e0e0e0;">
+        <strong style="color:#ffee58;">5. ResultParserAgent</strong> NEW<br>
+        输入: ExperimentRun + ExperimentPlan.success_criteria<br>
+        操作: 正则提取指标 → 与目标对比；无指标时 LLM Judge<br>
+        输出: ParseResult (status: pass/fail, parsed_metrics, judge_reason)
+      </div>
+      <div style="text-align:center;color:#888;">↓</div>
+
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;background:#1b3d1b;border:2px solid #66bb6a;padding:12px;border-radius:4px;text-align:center;color:#a5d6a7;">
+          <strong style="color:#81c784;">✅ pass</strong><br>→ ExperimentDecisionAgent
+        </div>
+        <div style="flex:2;background:#4a1a2a;border:2px solid #ef5350;padding:12px;border-radius:4px;color:#e0e0e0;">
+          <strong style="color:#ef9a9a;">❌ fail → AutoDebuggerAgent</strong> NEW<br>
+          失败日志 + 代码 + 计划 → LLM 分析 → 生成修复 patch<br>
+          → 回到 CodeWriterAgent（应用修复，最多 3 轮）
+        </div>
+      </div>
+
+      <div style="text-align:center;color:#888;">↓ pass</div>
+
+      <div style="background:#1b3d1b;border-left:4px solid #66bb6a;padding:12px;border-radius:4px;color:#e0e0e0;">
+        <strong style="color:#81c784;">6. ExperimentDecisionAgent</strong> (已有，增强)<br>
+        输入: ParseResult + 历史实验记录<br>
+        输出: decision (investigate / continue / rollback / hold)
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>与现有 P10 实验树的集成</h3>
+  <p>ExperimentDecisionAgent 的 <code>continue</code> 决策 → TreeSearchAgent 创建新分支节点 → BranchSelectionAgent 选择下一批实验 → 循环</p>
+</div>
+
+<div class="section">
+  <h3>关键设计约束</h3>
+  <table>
+    <tr><td>修复轮次上限</td><td>3 轮（AutoDebugger → CodeWriter → Experiment → ResultParser）</td></tr>
+    <tr><td>安全模型</td><td>默认代码副本；codebase.copy_can_modify=true 时沙箱模式</td></tr>
+    <tr><td>代码变更范围</td><td>限制在 allowed_paths 白名单，排除 protected_paths</td></tr>
+    <tr><td>LLM 路由</td><td>CodeWriter 用 experiment_planner 路由；AutoDebugger 用 paper_triage flash 路由</td></tr>
+    <tr><td>每步 artifact</td><td>code_patches/、experiment_runs/、parse_results/、auto_debug_records/</td></tr>
+  </table>
+</div>

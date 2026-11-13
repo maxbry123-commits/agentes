@@ -1,0 +1,5 @@
+p, role_top, domainx, data_top, read
+p, role_solo, domainx, data_solo, read
+g, alice, role_mid, domainx, _, _
+g, role_mid, role_top, domainx, 0000-01-01 00:00:00, 0000-01-02 00:00:00
+g, alice, role_solo, domainx, 0000-01-01 00:00:00, 0000-01-02 00:00:00

@@ -1,0 +1,65 @@
+name: Security Scan
+
+on:
+  schedule:
+    # Daily scan at 6:00 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  gosec:
+    name: Gosec Security Scanner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run Gosec
+        run: |
+          # Keep only globally noisy rules here.
+          # G602 (slice bounds check) is excluded globally due persistent false positives.
+          # Use inline '#nosec Gxxx -- justification' suppressions for specific findings.
+          go tool gosec -fmt sarif -out gosec-results.sarif -stdout -exclude-generated -track-suppressions \
+            -nosec-require-rules -nosec-require-justification \
+            -exclude=G602 \
+            ./...
+
+      - name: Upload Gosec SARIF
+        uses: github/codeql-action/upload-sarif@4248455a6f2335bc3b7a8a62932f000050ec8f13 # v3
+        if: always()
+        with:
+          sarif_file: gosec-results.sarif
+          category: gosec
+
+  govulncheck:
+    name: Go Vulnerability Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run govulncheck
+        run: go tool govulncheck -format sarif ./... > govulncheck-results.sarif; ret=$?; [ $ret -eq 0 ] || [ $ret -eq 3 ]
+
+      - name: Upload govulncheck SARIF
+        uses: github/codeql-action/upload-sarif@4248455a6f2335bc3b7a8a62932f000050ec8f13 # v3
+        if: always()
+        with:
+          sarif_file: govulncheck-results.sarif
+          category: govulncheck

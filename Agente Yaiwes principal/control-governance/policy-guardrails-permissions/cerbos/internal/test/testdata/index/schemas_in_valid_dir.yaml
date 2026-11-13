@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=../.jsonschema/IndexBuilderTestCase.schema.json
+---
+files:
+  "_schemas/principal.json": |-
+    {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "department": {
+          "type": "string",
+          "enum": [
+            "marketing",
+            "engineering"
+          ]
+        }
+      },
+      "required": [
+        "department"
+      ]
+    }

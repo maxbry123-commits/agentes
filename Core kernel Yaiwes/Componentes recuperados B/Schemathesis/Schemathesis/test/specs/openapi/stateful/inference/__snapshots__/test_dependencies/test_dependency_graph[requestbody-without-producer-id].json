@@ -1,0 +1,60 @@
+{
+  "operations": {
+    "POST /customers": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Customer",
+          "status_code": "201"
+        }
+      ]
+    },
+    "POST /products": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Product",
+          "status_code": "201"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Customer": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    },
+    "Product": {
+      "fields": [
+        "id",
+        "name",
+        "price"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ],
+        "name": [
+          "string"
+        ],
+        "price": [
+          "number"
+        ]
+      }
+    }
+  }
+}

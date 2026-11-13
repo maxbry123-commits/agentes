@@ -1,0 +1,637 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package runtime
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/dagucloud/dagu/v2/internal/cmn/config"
+	"github.com/dagucloud/dagu/v2/internal/cmn/fileutil"
+	"github.com/dagucloud/dagu/v2/internal/cmn/logger"
+	"github.com/dagucloud/dagu/v2/internal/cmn/logger/tag"
+	"github.com/dagucloud/dagu/v2/internal/cmn/procutil"
+	"github.com/dagucloud/dagu/v2/internal/cmn/sock"
+	"github.com/dagucloud/dagu/v2/internal/cmn/stringutil"
+	"github.com/dagucloud/dagu/v2/internal/dagrun"
+	"github.com/dagucloud/dagu/v2/internal/ir"
+	"github.com/dagucloud/dagu/v2/internal/launcher"
+	"github.com/dagucloud/dagu/v2/internal/persis"
+	"github.com/dagucloud/dagu/v2/internal/proc"
+)
+
+const staleLocalRunStartupGrace = 2 * time.Second
+
+// ManagerOption configures a Manager.
+type ManagerOption func(*Manager)
+
+// WithManagerClock overrides the Manager clock.
+func WithManagerClock(now func() time.Time) ManagerOption {
+	return func(m *Manager) {
+		if now != nil {
+			m.nowFunc = now
+		}
+	}
+}
+
+// WithLatestStatusAllHistory makes latest-status lookups search all retained runs.
+func WithLatestStatusAllHistory() ManagerOption {
+	return func(m *Manager) {
+		m.latestAttemptOptions.AllHistory = true
+	}
+}
+
+// NewManager creates a new Manager instance.
+// The Manager is used to interact with the DAG.
+func NewManager(dagRunRepository *persis.DAGRunRepository, processes processRepository, cfg *config.Config, opts ...ManagerOption) Manager {
+	m := Manager{
+		dagRunRepository: dagRunRepository,
+		procRepository:   processes,
+		subCmdBuilder:    launcher.NewSubCmdBuilder(cfg),
+		nowFunc:          time.Now,
+	}
+	for _, opt := range opts {
+		opt(&m)
+	}
+	return m
+}
+
+// Manager provides methods to interact with DAGs, including starting, stopping,
+// restarting, and retrieving status information. It communicates with the DAG
+// through a socket interface and manages dag-run data.
+type Manager struct {
+	dagRunRepository     *persis.DAGRunRepository // Repository for persisted run data
+	procRepository       processRepository
+	subCmdBuilder        *launcher.SubCmdBuilder // Command builder for constructing command specs
+	nowFunc              func() time.Time
+	latestAttemptOptions persis.DAGRunLatestAttemptOptions
+}
+
+type processRepository interface {
+	ListAlive(ctx context.Context, groupName string) ([]ir.DAGRunRef, error)
+	IsRunAlive(ctx context.Context, groupName string, dagRun ir.DAGRunRef) (bool, error)
+	IsAttemptAlive(ctx context.Context, groupName string, dagRun ir.DAGRunRef, attemptID string) (bool, error)
+	LatestFreshEntryByDAGName(ctx context.Context, groupName, dagName string) (*proc.ProcEntry, error)
+}
+
+// Stop stops running DAG-runs and can cancel an explicit failed DAG-run that is
+// still pending DAG-level auto-retry when dagRunID is provided.
+func (m *Manager) Stop(ctx context.Context, dag *ir.DAG, dagRunID string) error {
+	// Set DAG name in context for all logs in this function
+	ctx = logger.WithValues(ctx, tag.DAG(dag.Name))
+	logger.Info(ctx, "Stopping DAG")
+
+	if dagRunID == "" {
+		// If DAGRunID is not specified, stop all matching DAG runs
+		// Get the list of running DAG runs for the queue proc name
+		aliveRuns, err := m.procRepository.ListAlive(ctx, dag.ProcGroup())
+		if err != nil {
+			return fmt.Errorf("failed to list alive DAG runs: %w", err)
+		}
+
+		// If no runs are alive, nothing to stop
+		if len(aliveRuns) == 0 {
+			logger.Info(ctx, "No running DAG runs found")
+			return nil
+		}
+
+		// Collect all matching DAG run IDs
+		var matchingRunIDs []string
+		for _, runRef := range aliveRuns {
+			// Find the attempt for this run
+			attempt, err := m.dagRunRepository.FindAttempt(ctx, runRef)
+			if err != nil {
+				logger.Warn(ctx, "Failed to find attempt for running DAG",
+					slog.String("run-ref", runRef.String()),
+					tag.Error(err),
+				)
+				continue
+			}
+
+			// Read the DAG to check if it matches
+			runDAG, err := attempt.ReadDAG(ctx)
+			if err != nil {
+				logger.Warn(ctx, "Failed to read DAG for running attempt",
+					slog.String("run-ref", runRef.String()),
+					tag.Error(err),
+				)
+				continue
+			}
+
+			// Check if the DAG name matches
+			if runDAG.Name == dag.Name {
+				matchingRunIDs = append(matchingRunIDs, runRef.ID)
+				logger.Info(ctx, "Found matching DAG run to stop",
+					tag.RunID(runRef.ID),
+				)
+			}
+		}
+
+		// If no matching DAGs were found
+		if len(matchingRunIDs) == 0 {
+			logger.Info(ctx, "No matching DAG run found to stop")
+			return nil
+		}
+
+		// Stop all matching DAG runs
+		var stopErrors []error
+		for _, runID := range matchingRunIDs {
+			if err := m.stopSingleDAGRun(ctx, dag, runID); err != nil {
+				stopErrors = append(stopErrors, fmt.Errorf("failed to stop DAG run %s: %w", runID, err))
+			}
+		}
+
+		// If any errors occurred, return them
+		if len(stopErrors) > 0 {
+			return fmt.Errorf("errors occurred while stopping DAG runs: %v", stopErrors)
+		}
+
+		return nil
+	}
+
+	// If dagRunID is specified, stop just that specific run
+	return m.stopSingleDAGRun(ctx, dag, dagRunID)
+}
+
+// stopSingleDAGRun stops a single DAG run by its ID. For explicit run IDs, it
+// can also cancel a failed root run that is waiting for DAG-level auto-retry.
+func (m *Manager) stopSingleDAGRun(ctx context.Context, dag *ir.DAG, dagRunID string) error {
+	// Set run ID in context for all logs in this function
+	ctx = logger.WithValues(ctx, tag.RunID(dagRunID))
+	runRef := ir.NewDAGRunRef(dag.Name, dagRunID)
+	run, findErr := m.dagRunRepository.FindAttempt(ctx, runRef)
+
+	if findErr == nil {
+		status, statusErr := run.ReadStatus(ctx)
+		if statusErr == nil && dagrun.CanCancelFailedAutoRetryPendingRun(status) {
+			if err := m.dagRunRepository.CancelFailedAutoRetryPendingRun(ctx, status); err != nil {
+				return fmt.Errorf("failed to cancel pending auto-retry for dag-run %s: %w", dagRunID, err)
+			}
+			logger.Info(ctx, "Canceled pending auto-retry for failed DAG run")
+			return nil
+		}
+	}
+
+	// Check if the process is running locally using proc store
+	alive, err := m.procRepository.IsRunAlive(ctx, dag.ProcGroup(), runRef)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve status from proc store: %w", err)
+	}
+
+	abortRequested := false
+	requestAbort := func() error {
+		if abortRequested {
+			return nil
+		}
+		if err := run.Abort(ctx); err != nil {
+			return fmt.Errorf("failed to request cancel for dag-run %s: %w", dagRunID, err)
+		}
+		abortRequested = true
+		logger.Info(ctx, "Abort flag created for DAG run")
+		return nil
+	}
+
+	// Running local attempts receive a durable cancel request before the
+	// live socket is notified for immediate process termination.
+	if alive {
+		if findErr == nil {
+			if err := requestAbort(); err != nil {
+				return err
+			}
+		}
+		for _, addr := range dagSocketCandidates(runRef, dag) {
+			if !fileutil.FileExists(addr) {
+				continue
+			}
+			client := sock.NewClient(addr)
+			_, requestErr := client.Request("POST", "/stop")
+			if requestErr == nil {
+				logger.Info(ctx, "Successfully stopped DAG via socket")
+				return nil
+			}
+			logger.Debug(ctx, "Socket stop request failed",
+				tag.Addr(addr),
+				tag.Error(requestErr))
+		}
+	}
+
+	if findErr == nil {
+		// Request cancel for active runs (works for both local and distributed
+		// execution). This creates an abort flag that the runner or coordinator
+		// can detect on heartbeat.
+		return requestAbort()
+	}
+
+	// If we couldn't find the attempt and the process isn't running locally, nothing to do
+	if !alive {
+		logger.Info(ctx, "The DAG is not running locally and no attempt found")
+		return nil
+	}
+
+	// Process is alive but we couldn't find the attempt - this shouldn't happen
+	return fmt.Errorf("failed to find dag-run attempt: %w", findErr)
+}
+
+// IsRunning checks if a dag-run is currently running. It prefers the live socket
+// status and falls back to a fresh proc heartbeat plus persisted running status.
+func (m *Manager) IsRunning(ctx context.Context, dag *ir.DAG, dagRunID string) bool {
+	runRef := ir.NewDAGRunRef(dag.Name, dagRunID)
+	st, _ := m.currentStatus(ctx, runRef, dag)
+	if st != nil && st.DAGRunID == dagRunID && st.Status == ir.Running {
+		return true
+	}
+	if m.procRepository == nil || m.dagRunRepository == nil {
+		return false
+	}
+
+	if alive, err := m.procRepository.IsRunAlive(ctx, dag.ProcGroup(), runRef); err == nil && alive {
+		st, err := m.getPersistedOrCurrentStatus(ctx, dag, dagRunID)
+		if err != nil {
+			return false
+		}
+		return st.DAGRunID == dagRunID && st.Status == ir.Running
+	}
+
+	return false
+}
+
+// GetCurrentStatus retrieves the current status of a dag-run by its run ID.
+// If the run ID is empty, it resolves the latest run first.
+// If the dag-run is running, it queries the socket for the current status.
+// If the socket doesn't exist or times out, it falls back to stored status or creates an initial status.
+func (m *Manager) GetCurrentStatus(ctx context.Context, dag *ir.DAG, dagRunID string) (*ir.DAGRunStatus, error) {
+	if dagRunID == "" {
+		status, err := m.GetLatestStatus(ctx, dag)
+		if err != nil {
+			return nil, err
+		}
+		return &status, nil
+	}
+	status, err := m.getPersistedOrCurrentStatus(ctx, dag, dagRunID)
+	if err == nil {
+		return status, nil
+	}
+	currentStatus, currentErr := m.currentStatus(ctx, ir.NewDAGRunRef(dag.Name, dagRunID), dag)
+	if currentErr == nil {
+		return currentStatus, nil
+	}
+	return nil, err
+}
+
+// GetSavedStatus retrieves the saved status of a dag-run by its ir.DAGRun reference.
+// For stale local runs, it repairs the persisted status before returning it.
+func (m *Manager) GetSavedStatus(ctx context.Context, dagRun ir.DAGRunRef) (*ir.DAGRunStatus, error) {
+	attempt, err := m.dagRunRepository.FindAttempt(ctx, dagRun)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find status by run reference: %w", err)
+	}
+	st, err := attempt.ReadStatus(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read status: %w", err)
+	}
+
+	if dagRun.ID == st.DAGRunID && st.Status == ir.Running {
+		var dag *ir.DAG
+		if isLocalWorkerID(st.WorkerID) {
+			dag, err = attempt.ReadDAG(ctx)
+			if err != nil {
+				logger.Error(ctx, "Failed to read DAG for stale status check", tag.Error(err))
+			}
+		}
+		st = m.resolveRunningStatus(ctx, dag, attempt, st, true)
+	}
+
+	return st, nil
+}
+
+// getPersistedOrCurrentStatus retrieves the persisted status of a dag-run by its ID.
+// If the stored status indicates the DAG is running, it attempts to get the current status.
+// If current status retrieval fails and the local proc is dead, it repairs the stale run.
+func (m *Manager) getPersistedOrCurrentStatus(ctx context.Context, dag *ir.DAG, dagRunID string) (
+	*ir.DAGRunStatus, error,
+) {
+	dagRunRef := ir.NewDAGRunRef(dag.Name, dagRunID)
+	attempt, err := m.dagRunRepository.FindAttempt(ctx, dagRunRef)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find status by dag-run ID: %w", err)
+	}
+	st, err := attempt.ReadStatus(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read status: %w", err)
+	}
+
+	if st.Status == ir.Running {
+		st = m.resolveRunningStatus(ctx, dag, attempt, st, true)
+	}
+
+	return st, nil
+}
+
+// FindSubDAGRunStatus retrieves the status of a sub dag-run by its ID.
+// It repairs stale local child runs before returning their status.
+func (m *Manager) FindSubDAGRunStatus(ctx context.Context, rootDAGRun ir.DAGRunRef, subRunID string) (*ir.DAGRunStatus, error) {
+	if m == nil || m.dagRunRepository == nil {
+		return nil, dagrun.ErrNoStatusData
+	}
+
+	attempt, err := m.dagRunRepository.FindSubAttempt(ctx, rootDAGRun, subRunID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find sub dag-run attempt: %w", err)
+	}
+	status, err := attempt.ReadStatus(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read status: %w", err)
+	}
+	if status == nil {
+		return nil, dagrun.ErrNoStatusData
+	}
+	if status.Status != ir.Running || !isLocalWorkerID(status.WorkerID) {
+		return status, nil
+	}
+
+	dag, err := attempt.ReadDAG(ctx)
+	if err != nil {
+		logger.Error(ctx, "Failed to read sub DAG for stale status check",
+			tag.SubRunID(subRunID),
+			tag.Error(err),
+		)
+		return status, nil
+	}
+
+	return m.resolveRunningStatus(ctx, dag, attempt, status, false), nil
+}
+
+// currentStatus retrieves the current status of a running DAG by querying its socket.
+// This is a private method used internally by other status-related methods.
+func (*Manager) currentStatus(_ context.Context, dagRun ir.DAGRunRef, dag *ir.DAG) (*ir.DAGRunStatus, error) {
+	for _, addr := range dagSocketCandidates(dagRun, dag) {
+		if !fileutil.FileExists(addr) {
+			continue
+		}
+		statusJSON, err := sock.NewClient(addr).Request("GET", "/status")
+		if err != nil {
+			if errors.Is(err, sock.ErrTransport) {
+				continue
+			}
+			return nil, fmt.Errorf("failed to get current status: %w", err)
+		}
+		return ir.StatusFromJSON(statusJSON)
+	}
+	return nil, fmt.Errorf("socket file does not exist for dag-run ID %s", dagRun.ID)
+}
+
+func dagSocketCandidates(dagRun ir.DAGRunRef, dag *ir.DAG) []string {
+	canonical := proc.DAGSocketAddr(dagRun)
+	addrs := []string{canonical}
+	if dag == nil || dag.Location == "" {
+		return addrs
+	}
+	legacy := sock.Addr(dag.Location, dagRun.ID)
+	if legacy != canonical {
+		addrs = append(addrs, legacy)
+	}
+	return addrs
+}
+
+func isLocalWorkerID(workerID string) bool {
+	return workerID == "" || workerID == "local"
+}
+
+func (m *Manager) findAttemptForProcEntry(ctx context.Context, entry proc.ProcEntry) (dagrun.Attempt, error) {
+	if entry.IsRoot() {
+		return m.dagRunRepository.FindAttempt(ctx, entry.DAGRun())
+	}
+	return m.dagRunRepository.FindSubAttempt(ctx, entry.Meta.Root(), entry.Meta.DAGRunID)
+}
+
+func (m *Manager) resolveRunningStatus(
+	ctx context.Context,
+	dag *ir.DAG,
+	attempt dagrun.Attempt,
+	status *ir.DAGRunStatus,
+	isRoot bool,
+) *ir.DAGRunStatus {
+	if status == nil || status.Status != ir.Running || !isLocalWorkerID(status.WorkerID) {
+		return status
+	}
+
+	if isRoot {
+		currentStatus, err := m.currentStatus(ctx, status.DAGRun(), dag)
+		if err == nil {
+			return currentStatus
+		}
+		logger.Debug(ctx, "Failed to get current status from socket", tag.Error(err))
+	}
+
+	repaired, repairErr := m.repairStaleLocalRunIfDead(ctx, attempt, dag, status)
+	if repairErr != nil {
+		logger.Error(ctx, "Failed to repair stale running status", tag.Error(repairErr))
+		return status
+	}
+	return repaired
+}
+
+// GetLatestStatus retrieves the latest status of a DAG.
+// If the DAG is running, it attempts to get the current status from the socket.
+// If that fails and the local proc is dead, it repairs the stale run before returning it.
+func (m *Manager) GetLatestStatus(ctx context.Context, dag *ir.DAG) (ir.DAGRunStatus, error) {
+	if m.dagRunRepository == nil {
+		return ir.InitialStatus(dag), nil
+	}
+
+	if m.procRepository != nil {
+		if entry, err := m.procRepository.LatestFreshEntryByDAGName(ctx, dag.ProcGroup(), dag.Name); err == nil && entry != nil {
+			attempt, findErr := m.findAttemptForProcEntry(ctx, *entry)
+			if findErr == nil {
+				st, readErr := attempt.ReadStatus(ctx)
+				if readErr == nil && st.AttemptID == entry.Meta.AttemptID {
+					st = m.resolveRunningStatus(ctx, dag, attempt, st, entry.IsRoot())
+					return *st, nil
+				}
+			}
+		} else if err != nil {
+			logger.Debug(ctx, "Failed to resolve freshest proc entry for latest status", tag.Error(err))
+		}
+	}
+
+	// Find the latest status by name
+	attempt, err := m.dagRunRepository.LatestAttempt(ctx, dag.Name, m.latestAttemptOptions)
+	if err != nil {
+		// If the latest status is not found, return the default status
+		ret := ir.InitialStatus(dag)
+		return ret, nil
+	}
+
+	// Read the latest status
+	st, err := attempt.ReadStatus(ctx)
+	if err != nil {
+		// If the latest status is not found, return the default status
+		ret := ir.InitialStatus(dag)
+		return ret, nil
+	}
+
+	if st.Status == ir.Running && isLocalWorkerID(st.WorkerID) {
+		runDAG, err := attempt.ReadDAG(ctx)
+		if err != nil {
+			logger.Debug(ctx, "Failed to read DAG for current status lookup", tag.Error(err))
+		} else {
+			dag = runDAG
+		}
+	}
+	if st.Status == ir.Running {
+		st = m.resolveRunningStatus(ctx, dag, attempt, st, st.Parent.Zero())
+	}
+
+	return *st, nil
+}
+
+// repairStaleLocalRunIfDead repairs a persisted local Running status only when
+// the run has no matching fresh proc heartbeat and its recorded local process
+// is no longer alive. Distributed runs are excluded because local proc
+// heartbeats are not authoritative for remote workers.
+func (m *Manager) repairStaleLocalRunIfDead(
+	ctx context.Context,
+	attempt dagrun.Attempt,
+	dag *ir.DAG,
+	st *ir.DAGRunStatus,
+) (*ir.DAGRunStatus, error) {
+	if !isLocalWorkerID(st.WorkerID) {
+		return st, nil
+	}
+	if shouldDelayStaleLocalRunRepair(st, m.currentTime()) {
+		logger.Debug(ctx, "Skipping stale local run repair during startup grace window",
+			tag.RunID(st.DAGRunID),
+			slog.String("started-at", st.StartedAt),
+			slog.Duration("grace", staleLocalRunStartupGrace),
+		)
+		return st, nil
+	}
+	if m.procRepository == nil {
+		return st, nil
+	}
+	procGroup := st.ProcGroup
+	if procGroup == "" && dag != nil {
+		procGroup = dag.ProcGroup()
+	}
+	if procGroup == "" {
+		return st, nil
+	}
+
+	alive, err := m.procRepository.IsAttemptAlive(ctx, procGroup, st.DAGRun(), st.AttemptID)
+	if err != nil {
+		return nil, fmt.Errorf("check alive: %w", err)
+	}
+	if alive {
+		return st, nil
+	}
+
+	runAlive, err := m.procRepository.IsRunAlive(ctx, procGroup, st.DAGRun())
+	if err != nil {
+		return nil, fmt.Errorf("check run alive: %w", err)
+	}
+	if runAlive {
+		logger.Debug(ctx, "Skipping stale local run repair because DAG run still has a fresh proc heartbeat",
+			tag.RunID(st.DAGRunID),
+			tag.AttemptID(st.AttemptID),
+		)
+		return st, nil
+	}
+
+	if st.PID > 0 && st.PIDStartedAt > 0 {
+		matched, actualStartedAt, ok := procutil.MatchesStartTime(int(st.PID), st.PIDStartedAt)
+		if matched {
+			logger.Debug(ctx, "Skipping stale local run repair because local process identity is still alive despite stale proc heartbeat",
+				tag.RunID(st.DAGRunID),
+				tag.AttemptID(st.AttemptID),
+				tag.PID(int(st.PID)),
+			)
+			return st, nil
+		}
+		if ok {
+			logger.Debug(ctx, "Not skipping stale local run repair because PID start time does not match persisted run status",
+				tag.RunID(st.DAGRunID),
+				tag.AttemptID(st.AttemptID),
+				tag.PID(int(st.PID)),
+				slog.Int64("expected-pid-started-at", st.PIDStartedAt),
+				slog.Int64("actual-pid-started-at", actualStartedAt),
+			)
+		}
+	}
+
+	repaired, _, err := RepairStaleLocalRun(ctx, attempt, dag)
+	if err != nil {
+		return nil, fmt.Errorf("repair stale local run: %w", err)
+	}
+	return repaired, nil
+}
+
+func shouldDelayStaleLocalRunRepair(st *ir.DAGRunStatus, now time.Time) bool {
+	startedAt, ok := statusStartTime(st)
+	if !ok {
+		return false
+	}
+	age := now.Sub(startedAt)
+	return age >= 0 && age < staleLocalRunStartupGrace
+}
+
+func statusStartTime(st *ir.DAGRunStatus) (time.Time, bool) {
+	if startedAt, err := stringutil.ParseTime(st.StartedAt); err == nil && !startedAt.IsZero() {
+		return startedAt, true
+	}
+	if st.CreatedAt > 0 {
+		return time.UnixMilli(st.CreatedAt), true
+	}
+	return time.Time{}, false
+}
+
+func (m *Manager) currentTime() time.Time {
+	if m.nowFunc == nil {
+		return time.Now()
+	}
+	return m.nowFunc()
+}
+
+// UpdateStatus updates the status of a dag-run.
+func (m *Manager) UpdateStatus(ctx context.Context, rootDAGRun ir.DAGRunRef, newStatus ir.DAGRunStatus) error {
+	// Find the attempt for the status.
+	var attempt dagrun.Attempt
+
+	if rootDAGRun.ID == newStatus.DAGRunID {
+		// If the dag-run ID matches the root dag-run ID, find the attempt by the root dag-run ID
+		att, err := m.dagRunRepository.FindAttempt(ctx, rootDAGRun)
+		if err != nil {
+			return fmt.Errorf("failed to find the dag-run: %w", err)
+		}
+		attempt = att
+	} else {
+		// If the dag-run ID does not match the root dag-run ID,
+		// find the attempt by the sub dag-run ID
+		att, err := m.dagRunRepository.FindSubAttempt(ctx, rootDAGRun, newStatus.DAGRunID)
+		if err != nil {
+			return fmt.Errorf("failed to find sub dag-run: %w", err)
+		}
+		attempt = att
+	}
+
+	// Open, write, and close the run
+	if err := attempt.Open(ctx); err != nil {
+		return fmt.Errorf("failed to open dag-run data: %w", err)
+	}
+
+	// Ensure the run data is closed even if write fails
+	defer func() {
+		if closeErr := attempt.Close(ctx); closeErr != nil {
+			logger.Errorf(ctx, "Failed to close dag-run data: %v", closeErr)
+		}
+	}()
+
+	if err := attempt.Write(ctx, newStatus); err != nil {
+		return fmt.Errorf("failed to write status: %w", err)
+	}
+
+	return nil
+}

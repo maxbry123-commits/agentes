@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 60240,
+  "bundle_sha256": "62e2c7efa7f0dbb9d401528ef935123a04ff554a47e5a51e7e27db3058e030da",
+  "extracted_tree": {
+    "bytes": 184513,
+    "files": 53,
+    "sha256": "f6bf90ed480ce45acfbb146cc948892301aded68b9e90e5ca36cd2044f4afe1a"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 60240,
+      "name": "ipyhop.bundle.zip.part-0001",
+      "sha256": "62e2c7efa7f0dbb9d401528ef935123a04ff554a47e5a51e7e27db3058e030da"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "ipyhop",
+  "source_bytes": 184513,
+  "source_commit": "bdda21012b2396aed9a91980af8fbb71dbcb7075",
+  "source_files": 53,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/YashBansod/IPyHOP.git",
+  "source_tree": {
+    "bytes": 184513,
+    "files": 53,
+    "sha256": "f6bf90ed480ce45acfbb146cc948892301aded68b9e90e5ca36cd2044f4afe1a"
+  }
+}

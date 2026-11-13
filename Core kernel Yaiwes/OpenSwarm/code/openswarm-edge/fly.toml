@@ -1,0 +1,41 @@
+# openswarm-edge: serves *.openswarm.host. Public-facing, least-privileged. The
+# only secrets it gets (via `fly secrets`, never here) are a READ-ONLY Tigris key
+# and EDGE_AUTH_TOKEN. Its call to the cloud rides the private 6PN mesh, not the
+# public internet. Wildcard cert: `fly certs create "*.openswarm.host" -a openswarm-edge`.
+app = 'openswarm-edge'
+primary_region = 'iad'
+kill_signal = 'SIGINT'
+kill_timeout = '30s'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  PORT = '8080'
+  APPS_BASE_DOMAIN = 'openswarm.host'
+  EDGE_PUBLIC_HOST = 'openswarm-edge.fly.dev'
+  # Private 6PN address of the cloud app (same org). Not public.
+  OPENSWARM_CLOUD_INTERNAL_URL = 'http://openswarm-cloud.internal:8080'
+  TIGRIS_ENDPOINT = 'https://fly.storage.tigris.dev'
+  TIGRIS_BUCKET = 'openswarm-app-bundles'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'off'
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = 'requests'
+    hard_limit = 250
+    soft_limit = 200
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'get'
+    path = '/__edge/health'
+
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 512

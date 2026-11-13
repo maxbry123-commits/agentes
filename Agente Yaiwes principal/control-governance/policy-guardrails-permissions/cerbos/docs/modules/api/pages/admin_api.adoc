@@ -1,0 +1,454 @@
+include::ROOT:partial$attributes.adoc[]
+
+= The Cerbos PDP Admin API
+
+include::ROOT:partial$version-check.adoc[]
+
+
+The Admin API is an optional component of the Cerbos PDP that must be enabled by setting the `server.adminAPI.enabled` to `true` in the configuration. (See xref:configuration:server.adoc#admin-api[Admin API configuration] for details).
+
+Authentication is mandatory for the Admin API. Currently only basic authentication with a single admin user is supported. If no credentials are configured using the xref:configuration:server.adoc#admin-api[configuration], the default username and password is `cerbos` and `cerbosAdmin`.
+
+IMPORTANT: Always change the default credentials and enable TLS for the endpoint when enabling the Admin API. See xref:configuration:server.adoc[Server configuration] for more information.
+
+NOTE: The Admin API is still under development and might include breaking changes in future releases.
+
+== Audit Logs
+
+=== List Audit Log Entries
+
+----
+GET /admin/auditlog/list/{kind}
+----
+
+When xref:configuration:audit.adoc[audit logging is enabled] you can view the audit log entries using this API endpoint.
+
+There are two kinds of audit logs:
+
+`KIND_ACCESS`:: Captured Cerbos API access logs. These records are only available if `accessLogsEnabled` is set to `true` in the  xref:configuration:audit.adoc[configuration].
+`KIND_DECISION`:: Decision logs captured by the engine. These records are only available if `decisionLogsEnabled` is set to `true` in the  xref:configuration:audit.adoc[configuration].
+
+Supported filters are:
+
+`tail`:: View the last N entries
+`between`:: View entries captured between two timestamps. The time range is specified by providing two ISO-8601 timestamps using the `between.start` and `between.end` query parameters.
+`since`:: View entries captured since N hours/minutes/seconds ago
+`lookup`:: View a specific entry by call ID
+
+
+.View last 5 decision log entries
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin \
+    'https://localhost:3592/admin/auditlog/list/KIND_DECISION?tail=5'
+----
+
+.View decision logs from 2 hours ago up to now
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin \
+    'https://localhost:3592/admin/auditlog/list/KIND_DECISION?since=2h'
+----
+
+.View access log entries between midnight 2021-07-01 and midnight 2021-07-02
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin \
+    'https://localhost:3592/admin/auditlog/list/KIND_ACCESS?between.start=2021-07-01T00:00:00Z&between.end=2021-07-02T00:00:00Z'
+----
+
+.View specific access log entry
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin \
+    'https://localhost:3592/admin/auditlog/list/KIND_ACCESS?lookup=01F9VS1N77S83MTSBBX44GYSJ6'
+----
+
+
+[#policy-management]
+== Policy Management
+
+=== Add/update policies
+
+----
+POST /admin/policy
+PUT /admin/policy
+----
+
+NOTE: This endpoint requires a mutable storage driver such as xref:configuration:storage.adoc#sqlite3[sqlite3] to be configured.
+
+.Request
+[source,json,linenums]
+----
+{
+  "policies": [ <1>
+    {
+      "apiVersion": "api.cerbos.dev/v1",
+      "principalPolicy": {
+        "principal": "donald_duck",
+        "version": "20210210",
+        "rules": [
+          {
+            "resource": "leave_request",
+            "actions": [
+              {
+                "action": "*",
+                "condition": {
+                  "match": {
+                    "expr": "request.resource.attr.dev_record == true"
+                  }
+                },
+                "effect": "EFFECT_ALLOW"
+              }
+            ]
+          },
+          {
+            "resource": "salary_record",
+            "actions": [
+              {
+                "action": "*",
+                "effect": "EFFECT_DENY"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
+----
+<1> List of policy definitions
+
+
+.Response
+[source,json,linenums]
+----
+{"success":{}}
+----
+
+=== List Policies
+
+----
+GET /admin/policies
+----
+
+Issue a GET request to the endpoint to list the policies available in the store. If the policy store supports filtering, you can optionally pass filter parameters to reduce the result set.
+
+Use `includeDisabled=true` query parameter in order to include disabled policies in the response.
+
+Use `policyId` query parameter to provide a list of policy IDs to be included in the result.
+
+Use `nameRegexp`, `scopeRegexp` and `versionRegexp` to filter using the policy name, scope or version with case insensitive regular expressions.
+
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin \
+    'https://localhost:3592/admin/policies?pretty'
+----
+
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin \
+    'https://localhost:3592/admin/policies?pretty&includeDisabled=true&nameRegexp=%5Efoo&scopeRegexp=bar%24&versionRegexp=default'
+----
+
+=== Get Policies
+
+----
+GET /admin/policy?id=policy_id
+----
+
+Issue a GET request to the endpoint with the list of IDs (the `id` query parameter can be repeated multiple times) to retrieve. The list of IDs available in the store can be retrieved using the `ListPolicies` API call described above.
+
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin \
+    'https://localhost:3592/admin/policy?id=x.yaml&id=y.yaml'
+----
+
+=== Inspect Policies
+
+----
+GET /admin/policies/inspect
+----
+
+Issue a GET request to the endpoint to list actions and variables covered by the policies in the store. If the policy
+store supports filtering, you can optionally pass filter parameters to reduce the result set.
+
+Use `includeDisabled=true` query parameter in order to include disabled policies in the response.
+
+Use `policyId` query parameter to provide a list of policy IDs to inspect.
+
+Use `nameRegexp`, `scopeRegexp` and `versionRegexp` to filter using the policy name, scope or version with
+case-insensitive regular expressions.
+
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin \
+    'https://localhost:3592/admin/policies/inspect'
+----
+
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin \
+    'https://localhost:3592/admin/policies/inspect?policyId=x.yaml&policyId=y.yaml
+----
+
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin \
+    'https://localhost:3592/admin/policies/inspect?includeDisabled=true&nameRegexp=%5Efoo&scopeRegexp=bar%24&versionRegexp=default'
+----
+
+[#delete-policies]
+=== Delete Policies
+
+----
+POST   /admin/policy/delete?id=policy_id
+----
+
+NOTE: This endpoint requires a mutable storage driver such as xref:configuration:storage.adoc#sqlite3[sqlite3] to be configured.
+
+Issue a POST request to the endpoint with the list of IDs (the `id` query parameter can be repeated multiple times) to delete.
+IDs follow the same format as the output of `ListPolicies` (`<kind>.<name>.v<version>/<scope>`). For example, a resource policy for `leave_request` with version `default` and scope `acme.hr` would have the ID `resource.leave_request.vdefault/acme.hr`.
+
+----
+curl -k -u cerbos:cerbosAdmin -X POST \
+    'https://localhost:3592/admin/policy/delete?id=principal.donald_duck.vdefault&id=derived_roles.my_derived_roles'
+----
+
+.Response
+[source,json,linenums]
+----
+{
+  "deletedPolicies": 2 <1>
+}
+----
+<1> Number of policies deleted
+
+[#disable-policies]
+=== Disable Policies
+
+----
+POST   /admin/policy/disable?id=policy_id
+PUT    /admin/policy/disable?id=policy_id
+DELETE /admin/policy?id=policy_id [DEPRECATED]
+----
+
+NOTE: This endpoint requires a mutable storage driver such as xref:configuration:storage.adoc#sqlite3[sqlite3] to be configured.
+
+Issue a POST request to the endpoint with the list of IDs (the `id` query parameter can be repeated multiple times) to disable.
+IDs follow the same format as the output of `ListPolicies` (`<kind>.<name>.v<version>/<scope>`). For example, a resource policy for `leave_request` with version `default` and scope `acme.hr` would have the ID `resource.leave_request.vdefault/acme.hr`.
+
+----
+curl -k -u cerbos:cerbosAdmin -X POST \
+    'https://localhost:3592/admin/policy/disable?id=principal.donald_duck.vdefault&id=derived_roles.my_derived_roles'
+----
+
+.Response
+[source,json,linenums]
+----
+{
+  "disabledPolicies": 2 <1>
+}
+----
+<1> Number of policies disabled
+
+[#enable-policies]
+=== Enable Policies
+
+----
+POST /admin/policy/enable?id=policy_id
+PUT  /admin/policy/enable?id=policy_id
+----
+
+NOTE: This endpoint requires a mutable storage driver such as xref:configuration:storage.adoc#sqlite3[sqlite3] to be configured.
+
+Issue a POST request to the endpoint with the list of IDs (the `id` query parameter can be repeated multiple times) to enable.
+IDs follow the same format as the output of `ListPolicies` (`<kind>.<name>.v<version>/<scope>`). For example, a resource policy for `leave_request` with version `default` and scope `acme.hr` would have the ID `resource.leave_request.vdefault/acme.hr`.
+
+----
+curl -k -u cerbos:cerbosAdmin -X POST \
+    'https://localhost:3592/admin/policy/enable?id=principal.donald_duck.vdefault&id=derived_roles.my_derived_roles'
+----
+
+.Response
+[source,json,linenums]
+----
+{
+  "enabledPolicies": 2 <1>
+}
+----
+<1> Number of policies enabled
+
+== Schema Management
+
+=== Add/update schemas
+----
+POST /admin/schema
+PUT /admin/schema
+----
+
+NOTE: This endpoint requires a mutable storage driver such as xref:configuration:storage.adoc#sqlite3[sqlite3] to be configured.
+
+.Request
+[source,json,linenums]
+----
+{
+  "schemas": [ <1>
+    {
+      "id": "principal.json",
+      "definition": "ewogICIkc2NoZW1hIjogImh0dHBzOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LzIwMjAtMTIvc2NoZW1hIiwKICAidHlwZSI6ICJvYmplY3QiLAogICJwcm9wZXJ0aWVzIjogewogICAgImRlcGFydG1lbnQiOiB7CiAgICAgICJ0eXBlIjogInN0cmluZyIsCiAgICAgICJlbnVtIjogWwogICAgICAgICJtYXJrZXRpbmciLAogICAgICAgICJlbmdpbmVlcmluZyIKICAgICAgXQogICAgfSwKICAgICJnZW9ncmFwaHkiOiB7CiAgICAgICJ0eXBlIjogInN0cmluZyIKICAgIH0sCiAgICAidGVhbSI6IHsKICAgICAgInR5cGUiOiAic3RyaW5nIgogICAgfSwKICAgICJtYW5hZ2VkX2dlb2dyYXBoaWVzIjogewogICAgICAidHlwZSI6ICJzdHJpbmciCiAgICB9LAogICAgIm9yZ0lkIjogewogICAgICAidHlwZSI6ICJzdHJpbmciCiAgICB9LAogICAgImpvYlJvbGVzIjogewogICAgICAidHlwZSI6ICJhcnJheSIsCiAgICAgICJpdGVtcyI6IHsKICAgICAgICAgICJ0eXBlIjogInN0cmluZyIKICAgICAgfQogICAgfSwKICAgICJ0YWdzIjogewogICAgICAidHlwZSI6ICJvYmplY3QiLAogICAgICAicHJvcGVydGllcyI6IHsKICAgICAgICAiYnJhbmRzIjogewogICAgICAgICAgInR5cGUiOiAiYXJyYXkiLAogICAgICAgICAgIml0ZW1zIjogewogICAgICAgICAgICAgICJ0eXBlIjogInN0cmluZyIKICAgICAgICAgIH0KICAgICAgICB9LAogICAgICAgICJjbGFzc2VzIjogewogICAgICAgICAgInR5cGUiOiAiYXJyYXkiLAogICAgICAgICAgIml0ZW1zIjogewogICAgICAgICAgICAgICJ0eXBlIjogInN0cmluZyIKICAgICAgICAgIH0KICAgICAgICB9LAogICAgICAgICJyZWdpb25zIjogewogICAgICAgICAgInR5cGUiOiAiYXJyYXkiLAogICAgICAgICAgIml0ZW1zIjogewogICAgICAgICAgICAgICJ0eXBlIjogInN0cmluZyIKICAgICAgICAgIH0KICAgICAgICB9CiAgICAgIH0KICAgIH0KICB9LAogICJyZXF1aXJlZCI6IFsKICAgICJkZXBhcnRtZW50IiwKICAgICJnZW9ncmFwaHkiLAogICAgInRlYW0iCiAgXQp9Cg==" <2>
+    }
+  ]
+}
+----
+<1> List of schema definitions
+<2> base64 encoded link:http://json-schema.org[JSON schema] definition
+
+.Response
+[source,json,linenums]
+----
+{}
+----
+
+=== List schemas
+
+----
+GET /admin/schemas
+----
+
+Issue a GET request to the endpoint to list the schemas available in the store.
+
+NOTE: Only the schema IDs will be returned from this request. Use the `GetSchema` endpoint to retrieve the full  definition of a schema.
+
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin \
+    'https://localhost:3592/admin/schemas'
+----
+
+.Response
+[source,json,linenums]
+----
+{
+    "schemaIds": [ <1>
+        "principal.json",
+        "leave_request.json"
+    ]
+}
+----
+<1> List of schema ids
+
+=== Get schema(s)
+
+----
+GET /admin/schema
+----
+
+Issue a GET request to the endpoint to get the schema(s) stated in the query parameters.
+
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin \
+    'https://localhost:3592/admin/schema?id=principal.json&id=leave_request.json'
+----
+
+.Response
+[source,json,linenums]
+----
+{
+    "schemas": [ <1>
+        {
+            "id": "principal.json",
+            "definition": "ewogICIkc2NoZW1hIjogImh0dHBzOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LzIwMjAtMTIvc2NoZW1hIiwKICAidHlwZSI6ICJvYmplY3QiLAogICJwcm9wZXJ0aWVzIjogewogICAgImRlcGFydG1lbnQiOiB7CiAgICAgICJ0eXBlIjogInN0cmluZyIsCiAgICAgICJlbnVtIjogWwogICAgICAgICJtYXJrZXRpbmciLAogICAgICAgICJlbmdpbmVlcmluZyIKICAgICAgXQogICAgfSwKICAgICJnZW9ncmFwaHkiOiB7CiAgICAgICJ0eXBlIjogInN0cmluZyIKICAgIH0sCiAgICAidGVhbSI6IHsKICAgICAgInR5cGUiOiAic3RyaW5nIgogICAgfSwKICAgICJtYW5hZ2VkX2dlb2dyYXBoaWVzIjogewogICAgICAidHlwZSI6ICJzdHJpbmciCiAgICB9LAogICAgIm9yZ0lkIjogewogICAgICAidHlwZSI6ICJzdHJpbmciCiAgICB9LAogICAgImpvYlJvbGVzIjogewogICAgICAidHlwZSI6ICJhcnJheSIsCiAgICAgICJpdGVtcyI6IHsKICAgICAgICAgICJ0eXBlIjogInN0cmluZyIKICAgICAgfQogICAgfSwKICAgICJ0YWdzIjogewogICAgICAidHlwZSI6ICJvYmplY3QiLAogICAgICAicHJvcGVydGllcyI6IHsKICAgICAgICAiYnJhbmRzIjogewogICAgICAgICAgInR5cGUiOiAiYXJyYXkiLAogICAgICAgICAgIml0ZW1zIjogewogICAgICAgICAgICAgICJ0eXBlIjogInN0cmluZyIKICAgICAgICAgIH0KICAgICAgICB9LAogICAgICAgICJjbGFzc2VzIjogewogICAgICAgICAgInR5cGUiOiAiYXJyYXkiLAogICAgICAgICAgIml0ZW1zIjogewogICAgICAgICAgICAgICJ0eXBlIjogInN0cmluZyIKICAgICAgICAgIH0KICAgICAgICB9LAogICAgICAgICJyZWdpb25zIjogewogICAgICAgICAgInR5cGUiOiAiYXJyYXkiLAogICAgICAgICAgIml0ZW1zIjogewogICAgICAgICAgICAgICJ0eXBlIjogInN0cmluZyIKICAgICAgICAgIH0KICAgICAgICB9CiAgICAgIH0KICAgIH0KICB9LAogICJyZXF1aXJlZCI6IFsKICAgICJkZXBhcnRtZW50IiwKICAgICJnZW9ncmFwaHkiLAogICAgInRlYW0iCiAgXQp9Cg=="
+        },
+        {
+            "id": "leave_request.json",
+            "definition": "ewogICIkc2NoZW1hIjogImh0dHBzOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LzIwMjAtMTIvc2NoZW1hIiwKICAidHlwZSI6ICJvYmplY3QiLAogICJwcm9wZXJ0aWVzIjogewogICAgImRlcGFydG1lbnQiOiB7CiAgICAgICJ0eXBlIjogInN0cmluZyIsCiAgICAgICJlbnVtIjogWwogICAgICAgICJtYXJrZXRpbmciLAogICAgICAgICJlbmdpbmVlcmluZyIKICAgICAgXQogICAgfSwKICAgICJnZW9ncmFwaHkiOiB7CiAgICAgICJ0eXBlIjogInN0cmluZyIKICAgIH0sCiAgICAidGVhbSI6IHsKICAgICAgInR5cGUiOiAic3RyaW5nIgogICAgfSwKICAgICJpZCI6IHsKICAgICAgInR5cGUiOiAic3RyaW5nIgogICAgfSwKICAgICJvd25lciI6IHsKICAgICAgInR5cGUiOiAic3RyaW5nIgogICAgfSwKICAgICJzdGF0dXMiOiB7CiAgICAgICJ0eXBlIjogInN0cmluZyIKICAgIH0sCiAgICAiZGV2X3JlY29yZCI6IHsKICAgICAgInR5cGUiOiAiYm9vbGVhbiIKICAgIH0KICB9LAogICJyZXF1aXJlZCI6IFsKICAgICJkZXBhcnRtZW50IiwKICAgICJnZW9ncmFwaHkiLAogICAgInRlYW0iLAogICAgImlkIgogIF0KfQo="
+        }
+    ]
+}
+----
+<1> List of schemas
+
+=== Delete schema(s)
+
+----
+DELETE /admin/schema
+----
+
+Issue a DELETE request to the endpoint to delete the schema(s) stated in the query parameters.
+
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin -X DELETE \
+    'https://localhost:3592/admin/schema?id=principal.json&id=leave_request.json'
+----
+
+.Response
+[source,json,linenums]
+----
+{
+  "deletedSchemas": 2 <1>
+}
+----
+<1> Number of schemas deleted
+
+[#store-management]
+== Store Management
+
+=== Purge store revisions
+
+----
+DELETE /admin/store/revisions
+----
+
+Issue a DELETE request to the endpoint to delete rows from the `policy_revision` table.
+
+Use `keepLast=N` query parameter to keep the last N revisions for each policy. If not specified, the entire table will be truncated.
+
+.Purge the store revisions
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin -X DELETE \
+    'https://localhost:3592/admin/store/revisions'
+----
+
+.Response
+[source,json,linenums]
+----
+{}
+----
+
+NOTE: This endpoint requires a mutable storage driver such as xref:configuration:storage.adoc#sqlite3[sqlite3] to be configured.
+
+=== Reload store
+
+----
+GET /admin/store/reload
+----
+
+Issue a GET request to the endpoint to force a reload of the store.
+
+.Reload the store
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin -X GET \
+    'https://localhost:3592/admin/store/reload'
+----
+
+.Reload the store and block until it finishes
+[source,shell]
+----
+curl -k -u cerbos:cerbosAdmin -X GET \
+    'https://localhost:3592/admin/store/reload?wait=true'
+----
+
+.Response
+[source,json,linenums]
+----
+{}
+----
+
+NOTE: This endpoint requires a reloadable storage driver such as xref:configuration:storage.adoc#blob[blob], xref:configuration:storage.adoc#disk[disk] and xref:configuration:storage.adoc#git[git] to be configured.

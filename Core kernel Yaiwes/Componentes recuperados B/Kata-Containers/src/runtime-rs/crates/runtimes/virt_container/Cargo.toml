@@ -1,0 +1,54 @@
+[package]
+name = "virt_container"
+version = "0.1.0"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+awaitgroup = { workspace = true }
+containerd-shim-protos = { workspace = true }
+libc = { workspace = true }
+nix = { workspace = true }
+protobuf = { workspace = true }
+sendfd = { version = "0.4.3", features = ["tokio"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+slog = { workspace = true }
+slog-scope = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+url = { workspace = true }
+tracing = { workspace = true }
+oci-spec = { workspace = true }
+strum = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
+
+# Local dependencies
+agent = { workspace = true }
+common = { workspace = true }
+hypervisor = { workspace = true, features = ["cloud-hypervisor"] }
+kata-sys-util = { workspace = true }
+pod-resources-rs = { workspace = true }
+kata-types = { workspace = true }
+logging = { workspace = true }
+runtime-spec = { workspace = true }
+persist = { workspace = true }
+resource = { workspace = true }
+
+[features]
+default = ["cloud-hypervisor"]
+
+# Enable the Cloud Hypervisor driver
+cloud-hypervisor = ["hypervisor/cloud-hypervisor"]
+
+# Enable the build-in VMM Dragtonball
+dragonball = ["hypervisor/dragonball"]
+
+# Enable the OpenVMM driver
+openvmm = ["hypervisor/openvmm"]
+
+[package.metadata.cargo-machete]
+ignored = ["slog-scope"]

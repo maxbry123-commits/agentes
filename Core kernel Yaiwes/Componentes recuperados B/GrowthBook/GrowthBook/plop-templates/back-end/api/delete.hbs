@@ -1,0 +1,17 @@
+import { delete{{pascalCase object}}Validator } from "shared/validators";
+import { createApiRequestHandler } from "back-end/src/util/handler";
+
+export const delete{{pascalCase object}} = createApiRequestHandler(delete{{pascalCase object}}Validator)(
+  async (req) => {
+    const {{camelCase object}} = await req.context.models.{{camelCase object}}s.getById(req.params.id);
+    if (!{{camelCase object}}) {
+      throw new Error("Could not find {{camelCase object}} with that id");
+    }
+
+    await req.context.models.{{camelCase object}}s.delete({{camelCase object}});
+
+    return {
+      deletedId: req.params.id,
+    };
+  }
+);

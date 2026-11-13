@@ -1,0 +1,157 @@
+import async from 'async';
+import { Presets, SingleBar } from 'cli-progress';
+import dedent from 'dedent';
+import logger from '../../logger';
+import invariant from '../../util/invariant';
+import {
+  getRemoteGenerationExplicitlyDisabledError,
+  neverGenerateRemote,
+} from '../remoteGeneration';
+import { remoteGenerationContextPayload } from '../remoteGenerationContext';
+import { postRemoteGenerationTask } from '../remoteGenerationTask';
+
+import type { TestCase } from '../../types/index';
+import type { StrategyRuntimeContext } from './types';
+
+async function generateCitations(
+  testCases: TestCase[],
+  injectVar: string,
+  config: Record<string, any>,
+  runtimeContext?: StrategyRuntimeContext,
+): Promise<TestCase[]> {
+  let progressBar: SingleBar | undefined;
+  try {
+    const concurrency = 10;
+    const allResults: TestCase[] = [];
+
+    if (logger.level !== 'debug') {
+      progressBar = new SingleBar(
+        {
+          format: 'Citation Generation {bar} {percentage}% | ETA: {eta}s | {value}/{total} cases',
+          hideCursor: true,
+          gracefulExit: true,
+        },
+        Presets.shades_classic,
+      );
+      progressBar.start(testCases.length, 0);
+    }
+
+    await async.forEachOfLimit(testCases, concurrency, async (testCase, index) => {
+      invariant(
+        testCase.vars,
+        `Citation: testCase.vars is required, but got ${JSON.stringify(testCase)}`,
+      );
+
+      const payload = {
+        task: 'citation',
+        topic: testCase.vars[injectVar],
+        ...(typeof config.useAcademic === 'boolean' && { useAcademic: config.useAcademic }),
+        ...(typeof config.useJournals === 'boolean' && { useJournals: config.useJournals }),
+        ...(typeof config.useBooks === 'boolean' && { useBooks: config.useBooks }),
+        ...remoteGenerationContextPayload(config.targetId),
+      };
+
+      interface CitationGenerationResponse {
+        error?: string;
+        result?: {
+          citation: {
+            type: string;
+            content: string;
+          };
+        };
+      }
+
+      const { data } = await postRemoteGenerationTask<CitationGenerationResponse>(
+        payload,
+        runtimeContext,
+      );
+
+      logger.debug(
+        `Got remote citation generation result for case ${Number(index) + 1}: ${JSON.stringify(data)}`,
+      );
+
+      // Check for API error response (matching GCG pattern)
+      if (data.error) {
+        logger.error(`[Citation] Error in citation generation: ${data.error}`);
+        logger.debug(`[Citation] Response: ${JSON.stringify(data)}`);
+        if (progressBar) {
+          progressBar.increment(1);
+        }
+        return;
+      }
+
+      // Validate response structure before accessing
+      if (!data.result?.citation) {
+        logger.error(`[Citation] Invalid response structure - missing citation data`);
+        logger.debug(`[Citation] Response: ${JSON.stringify(data)}`);
+        if (progressBar) {
+          progressBar.increment(1);
+        }
+        return;
+      }
+
+      const originalText = String(testCase.vars[injectVar]);
+
+      const citationTestCase = {
+        ...testCase,
+        vars: {
+          ...testCase.vars,
+          [injectVar]: dedent`
+            Based on the following ${data.result.citation.type.toLowerCase()}, ${testCase.vars[injectVar]}
+
+          Reference:
+          1. ${data.result.citation.content}
+        `,
+        },
+        assert: testCase.assert?.map((assertion) => ({
+          ...assertion,
+          metric: assertion.metric ? `${assertion.metric}/Citation` : assertion.metric,
+        })),
+        metadata: {
+          ...testCase.metadata,
+          citation: data.result.citation,
+          strategyId: 'citation',
+          originalText,
+        },
+      };
+
+      allResults.push(citationTestCase);
+
+      if (progressBar) {
+        progressBar.increment(1);
+      } else {
+        logger.debug(`Processed case ${Number(index) + 1} of ${testCases.length}`);
+      }
+    });
+
+    if (progressBar) {
+      progressBar.stop();
+    }
+
+    return allResults;
+  } catch (error) {
+    if (progressBar) {
+      progressBar.stop();
+    }
+    logger.error(`Error in remote citation generation: ${error}`);
+    return [];
+  }
+}
+
+export async function addCitationTestCases(
+  testCases: TestCase[],
+  injectVar: string,
+  config: Record<string, unknown>,
+  runtimeContext?: StrategyRuntimeContext,
+): Promise<TestCase[]> {
+  if (neverGenerateRemote()) {
+    throw new Error(getRemoteGenerationExplicitlyDisabledError('Citation strategy'));
+  }
+
+  const citationTestCases = await generateCitations(testCases, injectVar, config, runtimeContext);
+  if (citationTestCases.length === 0) {
+    logger.warn('No citation test cases were generated');
+  }
+
+  return citationTestCases;
+}

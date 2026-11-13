@@ -1,0 +1,126 @@
+site_name: Schemathesis
+repo_url: https://github.com/schemathesis/schemathesis
+
+nav:
+  - Introduction: index.md
+  - Quick Start Guide: quick-start.md
+  - Tutorials:
+      - Command-Line Interface: tutorials/cli.md
+      - Pytest: tutorials/pytest.md
+
+  - Configuration: configuration.md
+
+  - How-To Guides:
+      - guides/index.md
+      - Triaging Failures: guides/triage.md
+      - Replaying Failures: guides/crash-reproduction.md
+      - Optimizing for Maximum Bug Detection: guides/config-optimization.md
+      - guides/auth.md
+      - guides/schema-conformance.md
+      - guides/cicd.md
+      - Allure Integration: guides/allure.md
+      - Docker: guides/docker.md
+      - guides/coverage.md
+      - guides/python-apps.md
+      - guides/custom-media-types.md
+      - guides/custom-serializers.md
+      - guides/custom-response-deserializers.md
+      - Server-Sent Events: guides/server-sent-events.md
+      - guides/graphql-custom-scalars.md
+      - guides/extending.md
+      - guides/extending-cli.md
+      - Continuous Fuzzing: guides/continuous-fuzzing.md
+      - guides/stateful-testing.md
+      - Hypothesis Strategies: guides/hypothesis-strategies.md
+      - guides/targeted.md
+      - Fuzz Dictionaries: guides/fuzz-dictionary.md
+
+  - Core Concepts:
+      - explanations/data-generation.md
+      - Adaptive Testing: explanations/adaptive-testing.md
+      - explanations/examples.md
+      - explanations/stateful.md
+      - Pytest Integration: explanations/pytest.md
+
+  - Reference:
+      - reference/python.md
+      - CLI Options: reference/cli.md
+      - reference/configuration.md
+      - Hooks: reference/hooks.md
+      - Checks: reference/checks.md
+      - reference/warnings.md
+
+  - Trophy Case: reference/trophy-case.md
+  - External Resources: resources.md
+  - FAQ: faq.md
+  - Migration from v3: migration.md
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.footer
+    - content.code.copy
+    - content.tabs.link
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/schemathesis/schemathesis
+      name: GitHub
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/R9ASRAmHnA
+      name: Discord
+
+markdown_extensions:
+  - pymdownx.highlight:
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.blocks.caption
+  - admonition
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+- mkdocstrings:
+    handlers:
+      python:
+        paths: [src]
+        options:
+          show_source: false
+- search
+
+copyright: Copyright &copy; 2020-2025 Dmitry Dygalo & Schemathesis.io

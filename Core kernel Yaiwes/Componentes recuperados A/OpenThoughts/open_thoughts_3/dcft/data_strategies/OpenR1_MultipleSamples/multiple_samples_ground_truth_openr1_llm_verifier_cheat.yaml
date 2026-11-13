@@ -1,0 +1,35 @@
+operators:
+  - id: load_preexisting
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/multiple_samples_ground_truth_openr1_llm_verifier
+      split: train
+  - id: extract_math_answer
+    config:
+      type: generic_resource_function
+      memory: 600
+      num_cpus: 40
+      function: data_strategies.OpenR1_MultipleSamples.etash_is_tired.multiple_samples_ground_truth_openr1_llm_verifier.process_ground_truth
+    input_ids:
+      - load_preexisting
+  - id: load_preexisting_all_proofs
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/open_r1_hf_get_all_proofs
+      split: train
+  - id: remove_columns_proof
+    config:
+      type: function
+      sharded: true
+      function: data_strategies.commons.keep_only_columns
+      function_config:
+        columns_to_keep:
+          - conversations
+    input_ids:
+      - load_preexisting_all_proofs
+  - id: mix
+    config:
+      type: mix
+    input_ids:
+      - remove_columns_proof
+      - extract_math_answer

@@ -1,0 +1,16 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"YAIWES Recipe",
+  "type":"object",
+  "required":["id","source_url","source_commit","license","mode","sha256","destination"],
+  "properties":{
+    "id":{"type":"string","pattern":"^[a-z0-9][a-z0-9._-]+$"},
+    "source_url":{"type":"string","format":"uri"},
+    "source_commit":{"type":"string","pattern":"^[0-9a-f]{40}$"},
+    "license":{"type":"string","minLength":1},
+    "mode":{"enum":["EXECUTABLE","ADAPTER_REQUIRED","REFERENCE_ONLY","DOCUMENTATION_ONLY"]},
+    "sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "destination":{"type":"string","minLength":1}
+  },
+  "additionalProperties":false
+}

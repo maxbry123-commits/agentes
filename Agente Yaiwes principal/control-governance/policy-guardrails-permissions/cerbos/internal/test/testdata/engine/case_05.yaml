@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=../.jsonschema/EngineTestCase.schema.json
+---
+description: Explicit deny from Donald Duck principal policy
+
+config:
+  lenientScopeSearch:
+    - false
+    - true
+  schemaEnforcement:
+    - ENFORCEMENT_NONE
+    - ENFORCEMENT_WARN
+    - ENFORCEMENT_REJECT
+  strictEvaluation:
+    - false
+    - true
+
+inputs: &inputs
+  - requestId: test
+    actions:
+      - view:public
+    principal:
+      id: donald_duck
+      policyVersion: "20210210"
+      roles:
+        - employee
+      attr:
+        department: marketing
+        geography: GB
+        team: design
+        managed_geographies: GB
+    resource:
+      kind: salary_record
+      policyVersion: "20210210"
+      id: XX125
+      attr:
+        department: marketing
+        geography: GB
+        id: XX125
+        owner: john
+        team: design
+        dev_record: true
+
+wantOutputs: &outputs
+  - requestId: test
+    resourceId: XX125
+    actions:
+      view:public:
+        effect: EFFECT_DENY
+        policy: principal.donald_duck.v20210210
+
+wantDecisionLogs:
+  - checkResources:
+      inputs: *inputs
+      outputs: *outputs
+    auditTrail:
+      effectivePolicies:
+        principal.donald_duck.v20210210:
+          attributes:
+            driver: disk
+            source: principal_policies/policy_01.yaml
+    policySource:
+      disk: {}

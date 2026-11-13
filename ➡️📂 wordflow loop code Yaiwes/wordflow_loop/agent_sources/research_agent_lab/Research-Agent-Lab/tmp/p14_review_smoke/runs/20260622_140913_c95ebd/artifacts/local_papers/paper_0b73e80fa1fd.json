@@ -1,0 +1,21 @@
+{
+  "title": "Shi Trajectory Unified Transformer for Pedestrian Trajectory Prediction ICCV 2023 paper",
+  "abstract": "Local library file: C:\\Users\\duyul\\Desktop\\work\\Essay\\轨迹预测\\SPK\\2025.12\\Shi_Trajectory_Unified_Transformer_for_Pedestrian_Trajectory_Prediction_ICCV_2023_paper.pdf",
+  "paper_id": "paper_0b73e80fa1fd",
+  "authors": [],
+  "year": null,
+  "venue": "",
+  "url": "",
+  "pdf_path": "C:\\Users\\duyul\\Desktop\\work\\Essay\\轨迹预测\\SPK\\2025.12\\Shi_Trajectory_Unified_Transformer_for_Pedestrian_Trajectory_Prediction_ICCV_2023_paper.pdf",
+  "local_path": "C:\\Users\\duyul\\Desktop\\work\\Essay\\轨迹预测\\SPK\\2025.12\\Shi_Trajectory_Unified_Transformer_for_Pedestrian_Trajectory_Prediction_ICCV_2023_paper.pdf",
+  "library": "SPK",
+  "keywords": [
+    "trajectory",
+    "pedestrian",
+    "transformer"
+  ],
+  "citation_count": 0,
+  "source": "local_paper",
+  "relevance_score": 0.32999999999999996,
+  "triage_reason": "local paper library match"
+}

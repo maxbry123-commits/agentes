@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../../.jsonschema/ServerTestCase.schema.json
+---
+description: "Missing derived roles definition"
+wantStatus:
+  httpStatusCode: 400
+  grpcStatusCode: 0
+playgroundValidate:
+  input:
+    {
+      "playgroundId": "test",
+      "files":
+        [
+          {
+            "fileName": "resource.yaml",
+            "contents": "{{ fileString `store/resource_policies/policy_04.yaml` | b64enc }}",
+          },
+        ],
+    }
+  wantResponse:
+    {
+      "playgroundId": "test",
+      "failure":
+        {
+          "errors":
+            [
+              {
+                "file": "resource.yaml",
+                "error": "cannot find derived roles 'apatr_common_roles' imported by policy resource.album_object.vdefault",
+                "details": { "line": 7, "column": 7 },
+              },
+            ],
+        },
+    }

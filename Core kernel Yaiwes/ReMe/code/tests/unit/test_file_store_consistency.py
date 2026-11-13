@@ -1,0 +1,2398 @@
+"""Regression tests for LocalFileStore / FaissLocalFileStore consistency."""
+
+# pylint: disable=protected-access,too-many-lines
+
+import asyncio
+import base64
+import datetime
+import json
+import os
+import tempfile
+import threading
+import time
+from unittest.mock import AsyncMock
+
+import numpy as np
+import pytest
+
+from reme.components.file_store import (
+    FaissLocalFileStore,
+    LocalFileStore,
+    ZvecLocalFileStore,
+)
+from reme.components.file_store import local_file_store as local_file_store_module
+from reme.components.file_graph import local_file_graph as local_file_graph_module
+from reme.components.keyword_index import bm25_index as bm25_index_module
+from reme.components.embedding_store import LocalEmbeddingStore
+from reme.schema import FileChunk, FileNode
+from reme.utils.jsonl_zst import read_jsonl_zst, write_jsonl_zst
+
+
+class temp_chdir:
+    """Temporarily chdir into a test workspace."""
+
+    def __init__(self, path):
+        self.path = path
+        self.old = None
+
+    def __enter__(self):
+        self.old = os.getcwd()
+        os.chdir(self.path)
+        return self
+
+    def __exit__(self, *exc):
+        os.chdir(self.old)
+
+
+class FakeEmbeddingStore:
+    """Small deterministic embedding provider used by file-store tests."""
+
+    dimensions = 2
+    max_batch_size = 10
+    is_healthy = True
+
+    def _embed(self, text: str) -> np.ndarray:
+        if "beta" in text or "fresh" in text:
+            return np.array([0.0, 1.0], dtype=np.float16)
+        return np.array([1.0, 0.0], dtype=np.float16)
+
+    async def health_check(self, _timeout: float = 2.0) -> bool:
+        """Report the fake embedding service as healthy."""
+        return True
+
+    async def get_embedding(self, input_text: str, **_kwargs) -> np.ndarray:
+        """Return a deterministic embedding for a single text."""
+        return self._embed(input_text)
+
+    async def get_node_embeddings(self, nodes: list[FileChunk], **_kwargs) -> list[FileChunk]:
+        """Attach deterministic embeddings to file chunks."""
+        for chunk_node in nodes:
+            chunk_node.embedding = self._embed(chunk_node.text)
+        return nodes
+
+    async def dump(self) -> None:
+        """Persist no state for the in-memory fake."""
+
+
+class CountingFakeEmbeddingStore(FakeEmbeddingStore):
+    """Fake embedding store that records node backfill requests."""
+
+    def __init__(self):
+        self.node_embedding_calls: list[list[str]] = []
+        self.is_healthy = True
+
+    async def get_node_embeddings(self, nodes: list[FileChunk], **_kwargs) -> list[FileChunk]:
+        self.node_embedding_calls.append([node.id for node in nodes])
+        return await super().get_node_embeddings(nodes, **_kwargs)
+
+
+class UnhealthyCountingEmbeddingStore(CountingFakeEmbeddingStore):
+    """Fake embedding store that fails the backfill health gate."""
+
+    def __init__(self):
+        super().__init__()
+        self.is_healthy = False
+
+    async def health_check(self, _timeout: float = 2.0) -> bool:
+        return False
+
+
+class RecoveringEmbeddingStore(CountingFakeEmbeddingStore):
+    """Fake provider that starts unhealthy and records real recoveries."""
+
+    def __init__(self):
+        super().__init__()
+        self.is_healthy = False
+        self.health_calls = 0
+
+    async def health_check(self, _timeout: float = 2.0) -> bool:
+        self.health_calls += 1
+        return False
+
+    async def get_embedding(self, input_text: str, **kwargs) -> np.ndarray:
+        self.is_healthy = True
+        return await super().get_embedding(input_text, **kwargs)
+
+    async def get_node_embeddings(self, nodes: list[FileChunk], **kwargs) -> list[FileChunk]:
+        self.is_healthy = True
+        return await super().get_node_embeddings(nodes, **kwargs)
+
+
+class HealthCountingEmbeddingStore(FakeEmbeddingStore):
+    """Fake provider that records eager health checks."""
+
+    def __init__(self):
+        self.health_calls = 0
+
+    async def health_check(self, _timeout: float = 2.0) -> bool:
+        self.health_calls += 1
+        return True
+
+
+class BlockingEmbeddingStore(FakeEmbeddingStore):
+    """Fake provider that proves startup does not await remote backfill."""
+
+    def __init__(self):
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def get_node_embeddings(self, nodes: list[FileChunk], **kwargs) -> list[FileChunk]:
+        self.started.set()
+        await self.release.wait()
+        return await super().get_node_embeddings(nodes, **kwargs)
+
+
+class BlockingQueryEmbeddingStore(FakeEmbeddingStore):
+    """Fake provider that holds a query request across a vector-space change."""
+
+    def __init__(self):
+        self.query_started = asyncio.Event()
+        self.release_query = asyncio.Event()
+
+    async def get_embedding(self, input_text: str, **kwargs) -> np.ndarray:
+        self.query_started.set()
+        await self.release_query.wait()
+        return await super().get_embedding(input_text, **kwargs)
+
+
+class CancellationResistantHealthStore(CountingFakeEmbeddingStore):
+    """Startup probe that completes stale after cancellation is requested."""
+
+    def __init__(self):
+        super().__init__()
+        self.is_healthy = True
+        self.health_started = asyncio.Event()
+        self.release_health = asyncio.Event()
+
+    async def health_check(self, _timeout: float = 2.0) -> bool:
+        self.health_started.set()
+        try:
+            await self.release_health.wait()
+        except asyncio.CancelledError:
+            await self.release_health.wait()
+        self.is_healthy = False
+        return False
+
+
+class DelayedOldVectorStore(CountingFakeEmbeddingStore):
+    """First batch returns an old-space vector after rebuild was requested."""
+
+    def __init__(self):
+        super().__init__()
+        self.first_batch_started = asyncio.Event()
+        self.release_first_batch = asyncio.Event()
+
+    async def get_node_embeddings(self, nodes: list[FileChunk], **_kwargs) -> list[FileChunk]:
+        self.node_embedding_calls.append([node.id for node in nodes])
+        if len(self.node_embedding_calls) == 1:
+            self.first_batch_started.set()
+            await self.release_first_batch.wait()
+            for chunk_node in nodes:
+                chunk_node.embedding = np.array([0.0, 1.0], dtype=np.float16)
+            return nodes
+        return await FakeEmbeddingStore.get_node_embeddings(self, nodes)
+
+
+class WrongDimEmbeddingStore(FakeEmbeddingStore):
+    """Fake embedding store that returns vectors with the wrong dimension."""
+
+    async def get_embedding(self, input_text: str, **_kwargs) -> np.ndarray:
+        return np.array([1.0], dtype=np.float16)
+
+    async def get_node_embeddings(self, nodes: list[FileChunk], **_kwargs) -> list[FileChunk]:
+        for chunk_node in nodes:
+            chunk_node.embedding = np.array([1.0], dtype=np.float16)
+        return nodes
+
+
+class CountOnlyKeywordIndex:
+    """Keyword backend that knows its size but cannot expose document IDs."""
+
+    def __init__(self, n_docs: int):
+        self.n_docs = n_docs
+        self.reset_docs = None
+
+    @property
+    def document_ids(self):
+        """Signal that exact live IDs are unavailable."""
+        raise NotImplementedError
+
+    async def reset_index(self, docs):
+        """Record the documents requested for rebuilding."""
+        self.reset_docs = docs
+
+
+def run(coro):
+    """Run an async test body."""
+    return asyncio.run(coro)
+
+
+def node(path: str) -> FileNode:
+    """Build a minimal file node."""
+    return FileNode(path=path, st_mtime=1.0)
+
+
+def chunk(chunk_id: str, path: str, text: str, **metadata) -> FileChunk:
+    """Build a minimal file chunk."""
+    return FileChunk(id=chunk_id, path=path, text=text, start_line=1, end_line=1, metadata=metadata)
+
+
+def _new_local_store(name, **kwargs):
+    """Construct a LocalFileStore with embedding disabled at bind time."""
+    return LocalFileStore(name=name, embedding_store="", **kwargs)
+
+
+def _new_faiss_store(name, **kwargs):
+    """Construct a FAISS store when the optional backend is installed."""
+    try:
+        store = FaissLocalFileStore(name=name, embedding_store="", **kwargs)
+    except ImportError:
+        pytest.skip("faiss is not installed")
+    return store
+
+
+def _new_zvec_store(name, **kwargs):
+    """Construct a zvec store with embedding disabled at bind time."""
+    try:
+        store = ZvecLocalFileStore(name=name, embedding_store="", **kwargs)
+    except ImportError:
+        pytest.skip("zvec is not installed")
+    return store
+
+
+def _ensure_zvec_collection(store):
+    """Materialize the zvec collection once an embedding backend is attached.
+
+    Fresh zvec stores start with no collection because ``embedding_store=""``.
+    Tests that attach a fake provider after ``start()`` must explicitly create
+    the collection before the first upsert, otherwise vectors are accepted by
+    the parent but never synced into zvec.
+    """
+    if isinstance(store, ZvecLocalFileStore) and store._collection is None and store.embedding_store is not None:
+        store._collection = store._create_collection()
+
+
+async def set_chunks_with_graph(store: LocalFileStore, chunks: dict[str, FileChunk]) -> None:
+    """Seed a graph/chunk snapshot that satisfies the persistence invariant."""
+    store.file_chunks = chunks
+    chunk_ids_by_path: dict[str, list[str]] = {}
+    for chunk_node in chunks.values():
+        chunk_ids_by_path.setdefault(chunk_node.path, []).append(chunk_node.id)
+    nodes = []
+    for path, chunk_ids in chunk_ids_by_path.items():
+        file_node = node(path)
+        file_node.chunk_ids = chunk_ids
+        nodes.append(file_node)
+    await store.file_graph.upsert_nodes(nodes)
+
+
+def test_keyword_only_upsert_removes_old_chunks_and_docs():
+    """Keyword-only upsert removes stale chunks and keyword documents."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = LocalFileStore(name="t_keyword_only", embedding_store="")
+            await store.start()
+
+            await store.upsert([(node("note.md"), [chunk("old", "note.md", "obsoleteword only")])])
+            assert [c.id for c in await store.keyword_search("obsoleteword", 5, {})] == ["old"]
+
+            await store.upsert([(node("note.md"), [chunk("new", "note.md", "freshword only")])])
+
+            assert "old" not in store.file_chunks
+            assert await store.keyword_search("obsoleteword", 5, {}) == []
+            assert [c.id for c in await store.keyword_search("freshword", 5, {})] == ["new"]
+            await store.close()
+
+    run(go())
+
+
+def test_close_persists_each_component_once(monkeypatch):
+    """Store and owned dependency shutdown each persist their own state once."""
+    bm25_writes = 0
+    graph_writes = 0
+    real_pickle_dump = bm25_index_module.pickle.dump
+    real_graph_write = local_file_graph_module.write_jsonl_zst
+
+    def count_bm25_write(*args, **kwargs):
+        nonlocal bm25_writes
+        bm25_writes += 1
+        return real_pickle_dump(*args, **kwargs)
+
+    def count_graph_write(*args, **kwargs):
+        nonlocal graph_writes
+        graph_writes += 1
+        return real_graph_write(*args, **kwargs)
+
+    monkeypatch.setattr(bm25_index_module.pickle, "dump", count_bm25_write)
+    monkeypatch.setattr(local_file_graph_module, "write_jsonl_zst", count_graph_write)
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_local_store("t_single_close_dump")
+            await store.start()
+            await store.upsert([(node("note.md"), [chunk("note", "note.md", "persist once")])])
+
+            await store.close()
+
+            assert bm25_writes == 1
+            assert graph_writes == 1
+
+    run(go())
+
+
+def test_close_preserves_subclass_dump_override():
+    """Third-party stores using the historical dump hook still persist sidecars."""
+
+    class SidecarFileStore(LocalFileStore):
+        """Local store extension that persists an additional sidecar."""
+
+        def __init__(self):
+            super().__init__(name="t_sidecar_dump", embedding_store="")
+            self.dump_calls = 0
+            self.sidecar_path = self.component_metadata_path / "sidecar.txt"
+
+        async def dump(self) -> None:
+            self.dump_calls += 1
+            await super().dump()
+            self.sidecar_path.write_text("persisted", encoding="utf-8")
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = SidecarFileStore()
+            await store.start()
+            await store.close()
+
+            assert store.dump_calls == 1
+            assert store.sidecar_path.read_text(encoding="utf-8") == "persisted"
+
+    run(go())
+
+
+def test_start_does_not_health_check_embedding_without_backfill():
+    """Hot startup keeps local vector retrieval independent of provider health."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = LocalFileStore(name="t_lazy_embedding_health", embedding_store="")
+            embedding_store = HealthCountingEmbeddingStore()
+            store.embedding_store = embedding_store
+            await store.start()
+
+            assert embedding_store.health_calls == 0
+            assert store.embedding_store is embedding_store
+            await store.close()
+
+    run(go())
+
+
+def test_load_rebuilds_keyword_index_from_persisted_chunks_when_missing():
+    """Loading persisted chunks repairs a missing keyword index."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = LocalFileStore(name="t_keyword_repair", embedding_store="")
+            await store.start()
+
+            await store.upsert(
+                [
+                    (node("a.md"), [chunk("a", "a.md", "uniquerepairword stock")]),
+                    (node("b.md"), [chunk("b", "b.md", "work preference")]),
+                ],
+            )
+            await store.dump()
+
+            await store.keyword_index.clear()
+            assert not store.keyword_index.index_file.exists()
+            assert await store.keyword_search("uniquerepairword", 5, {}) == []
+
+            store.file_chunks.clear()
+            await store.load()
+
+            assert store.keyword_index.index_file.exists()
+            assert [c.id for c in await store.keyword_search("uniquerepairword", 5, {})] == ["a"]
+            await store.close()
+
+    run(go())
+
+
+def test_load_clears_graph_when_persisted_chunks_are_missing():
+    """A surviving graph must not hide a missing chunk store from automatic file ingestion."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            seed = LocalFileStore(name="t_missing_chunks", embedding_store="")
+            await seed.start()
+            indexed_node = node("memory.md")
+            await seed.upsert(
+                [(indexed_node, [chunk("memory-chunk", "memory.md", "remember this")])],
+            )
+            await seed.close()
+
+            seed.chunks_path.unlink()
+            store = LocalFileStore(name="t_missing_chunks", embedding_store="")
+            await store.start()
+
+            assert store.file_chunks == {}
+            assert await store.get_nodes() == []
+            assert set(store.keyword_index.document_ids) == set()
+            await store.close()
+
+    run(go())
+
+
+def test_load_clears_graph_and_chunks_when_chunk_sets_partially_diverge():
+    """Missing and orphaned chunks invalidate the atomic derived snapshot."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = LocalFileStore(name="t_torn_chunks", embedding_store="")
+            await store.start()
+            indexed_node = node("memory.md")
+            indexed_node.chunk_ids = ["kept", "missing"]
+            await store.file_graph.upsert_nodes([indexed_node])
+            store.file_chunks = {
+                "kept": chunk("kept", "memory.md", "kept text"),
+                "orphaned": chunk("orphaned", "old.md", "orphaned text"),
+            }
+
+            repaired = await store._repair_graph_chunk_consistency()
+
+            assert repaired is True
+            assert store.file_chunks == {}
+            assert await store.get_nodes() == []
+            await store.close()
+
+    run(go())
+
+
+def test_load_clears_stale_keyword_index_when_chunks_are_empty():
+    """An empty chunk store is still an exact state BM25 must mirror."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            seed = LocalFileStore(name="t_empty_chunk_keyword", embedding_store="")
+            await seed.start()
+            await seed.keyword_index.add_docs({"stale": "stale keyword document"})
+            await seed.close()
+
+            store = LocalFileStore(name="t_empty_chunk_keyword", embedding_store="")
+            await store.start()
+
+            assert store.file_chunks == {}
+            assert set(store.keyword_index.document_ids) == set()
+            assert not store.keyword_index.index_file.exists()
+            await store.close()
+
+    run(go())
+
+
+def test_keyword_sync_rebuilds_when_backend_only_exposes_matching_count():
+    """Matching counts cannot prove that a backend contains the expected IDs."""
+
+    async def go():
+        store = LocalFileStore(name="t_count_only_keyword", embedding_store="")
+        store.file_chunks = {
+            "expected": chunk("expected", "expected.md", "expected content"),
+        }
+        keyword_index = CountOnlyKeywordIndex(n_docs=1)
+        store.keyword_index = keyword_index
+
+        await store._sync_keyword_index_from_chunks()
+
+        assert keyword_index.reset_docs == {"expected": "expected content"}
+
+    run(go())
+
+
+def test_keyword_sync_ignores_nonempty_chunk_with_no_indexable_tokens(monkeypatch):
+    """A tokenless chunk omitted by BM25 must not trigger a perpetual rebuild."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = LocalFileStore(name="t_tokenless_keyword", embedding_store="")
+            await store.start()
+            store.file_chunks = {
+                "indexed": chunk("indexed", "data.jsonl", "searchable content"),
+                "tokenless": chunk("tokenless", "data.jsonl", "\u2028"),
+            }
+            await store.keyword_index.clear()
+            await store.keyword_index.add_docs({cid: item.text for cid, item in store.file_chunks.items()})
+            assert set(store.keyword_index.document_ids) == {"indexed"}
+
+            async def unexpected_rebuild(_docs):
+                raise AssertionError("tokenless BM25 content must not trigger a rebuild")
+
+            monkeypatch.setattr(store, "_rebuild_keyword_index", unexpected_rebuild)
+            await store._sync_keyword_index_from_chunks()
+            await store.close()
+
+    run(go())
+
+
+def test_keyword_sync_rebuilds_in_progress_batches(monkeypatch):
+    """Foreground keyword repair uses bounded batches suitable for progress reporting."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = LocalFileStore(name="t_keyword_progress", embedding_store="")
+            await store.start()
+            store.file_chunks = {str(index): chunk(str(index), f"{index}.md", f"content {index}") for index in range(5)}
+            await store.keyword_index.clear()
+
+            batch_sizes = []
+            original_add_docs = store.keyword_index.add_docs
+
+            async def recording_add_docs(docs):
+                batch_sizes.append(len(docs))
+                await original_add_docs(docs)
+
+            monkeypatch.setattr(local_file_store_module, "_KEYWORD_REBUILD_BATCH_SIZE", 2)
+            monkeypatch.setattr(store.keyword_index, "add_docs", recording_add_docs)
+
+            await store._sync_keyword_index_from_chunks()
+
+            assert batch_sizes == [2, 2, 1]
+            assert set(store.keyword_index.document_ids) == set(store.file_chunks)
+            await store.close()
+
+    run(go())
+
+
+def test_chunk_persistence_uses_compact_embedding_and_round_trips():
+    """Chunk persistence avoids JSON float lists while preserving float16 vectors."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = LocalFileStore(name="t_compact_embedding", embedding_store="")
+            await store.start()
+            original = chunk("a", "a.md", "alpha text", source="test")
+            original.embedding = np.array([0.25, -1.5, 3.0], dtype=np.float16)
+            await set_chunks_with_graph(store, {original.id: original})
+            await store.dump()
+
+            payload = json.loads(next(read_jsonl_zst(store.chunks_path)))
+            assert "embedding" not in payload
+            assert isinstance(payload["_embedding_f16_b64"], str)
+            assert base64.b64decode(payload["_embedding_f16_b64"]) == original.embedding.astype("<f2").tobytes()
+
+            store.file_chunks.clear()
+            await store.load()
+            restored = store.file_chunks[original.id]
+            np.testing.assert_array_equal(restored.embedding, original.embedding)
+            assert restored.embedding.dtype == np.float16
+            assert restored.metadata == {"source": "test"}
+            await store.close()
+
+    run(go())
+
+
+def test_vector_search_batches_candidates_and_preserves_stable_ties(monkeypatch):
+    """Local vector search limits matrix size and retains insertion order for ties."""
+
+    async def go():
+        store = LocalFileStore(name="t_vector_batches", embedding_store="")
+        store.embedding_store = FakeEmbeddingStore()
+        for index in range(5):
+            candidate = chunk(str(index), f"{index}.md", "alpha")
+            candidate.embedding = np.array([1.0, 0.0], dtype=np.float16)
+            store.file_chunks[candidate.id] = candidate
+
+        batch_sizes = []
+        original_similarity = local_file_store_module.batch_cosine_similarity
+
+        def recording_similarity(query, matrix):
+            batch_sizes.append(len(matrix))
+            return original_similarity(query, matrix)
+
+        monkeypatch.setattr(local_file_store_module, "_VECTOR_SEARCH_BATCH_SIZE", 2)
+        monkeypatch.setattr(local_file_store_module, "batch_cosine_similarity", recording_similarity)
+
+        results = await store.vector_search("alpha", 3, {})
+
+        assert batch_sizes == [2, 2, 1]
+        assert [result.id for result in results] == ["0", "1", "2"]
+
+    run(go())
+
+
+def test_chunk_persistence_loads_legacy_json_embedding_list():
+    """Existing indexes with JSON float-list embeddings remain readable."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = LocalFileStore(name="t_legacy_embedding", embedding_store="")
+            await store.start()
+            original = chunk("legacy", "legacy.md", "legacy text")
+            original.embedding = np.array([0.5, 1.5], dtype=np.float16)
+            write_jsonl_zst(store.chunks_path, [original.model_dump_json()])
+            await set_chunks_with_graph(store, {})
+            legacy_node = node("legacy.md")
+            legacy_node.chunk_ids = [original.id]
+            await store.file_graph.upsert_nodes([legacy_node])
+
+            await store.load()
+            restored = store.file_chunks[original.id]
+            np.testing.assert_array_equal(restored.embedding, original.embedding)
+            assert restored.embedding.dtype == np.float16
+            await store.close()
+
+    run(go())
+
+
+@pytest.mark.parametrize("store_factory", [_new_local_store, _new_zvec_store])
+def test_same_chunk_id_with_changed_text_gets_new_embedding(store_factory):
+    """Changing a chunk text refreshes its embedding."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory(name="t_embedding_reuse")
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            _ensure_zvec_collection(store)
+
+            await store.upsert([(node("note.md"), [chunk("same", "note.md", "alpha text")])])
+            assert store.file_chunks["same"].embedding.tolist() == [1.0, 0.0]
+
+            await store.upsert([(node("note.md"), [chunk("same", "note.md", "beta text")])])
+
+            assert store.file_chunks["same"].embedding.tolist() == [0.0, 1.0]
+            await store.close()
+
+    run(go())
+
+
+@pytest.mark.parametrize("store_factory", [_new_local_store, _new_zvec_store])
+def test_load_backfills_missing_embeddings_from_persisted_chunks(store_factory):
+    """Startup backfills old chunks in the background and persists vectors."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory(name="t_embedding_backfill")
+            await store.start()
+            await store.upsert(
+                [
+                    (node("a.md"), [chunk("a", "a.md", "alpha text")]),
+                    (node("b.md"), [chunk("b", "b.md", "fresh beta text")]),
+                ],
+            )
+            await store.close()
+
+            store = store_factory(name="t_embedding_backfill")
+            store.embedding_store = FakeEmbeddingStore()
+            await store.start()
+            await store._embedding_backfill_task
+
+            assert store.file_chunks["a"].embedding.tolist() == [1.0, 0.0]
+            assert store.file_chunks["b"].embedding.tolist() == [0.0, 1.0]
+            await store.close()
+
+            store = store_factory(name="t_embedding_backfill")
+            await store.start()
+            assert store.file_chunks["a"].embedding.tolist() == [1.0, 0.0]
+            assert store.file_chunks["b"].embedding.tolist() == [0.0, 1.0]
+            await store.close()
+
+    run(go())
+
+
+def test_start_does_not_wait_for_embedding_backfill():
+    """Remote embedding repair runs after the file store becomes ready."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            seed = LocalFileStore(name="t_background_embedding", embedding_store="")
+            await seed.start()
+            await set_chunks_with_graph(seed, {"a": chunk("a", "a.md", "alpha text")})
+            await seed.dump()
+            await seed.close()
+
+            store = LocalFileStore(name="t_background_embedding", embedding_store="")
+            fake = BlockingEmbeddingStore()
+            store.embedding_store = fake
+            await store.start()
+
+            await asyncio.wait_for(fake.started.wait(), timeout=1)
+            assert store.is_started
+            assert store.file_chunks["a"].embedding is None
+
+            fake.release.set()
+            await store._embedding_backfill_task
+            assert store.file_chunks["a"].embedding.tolist() == [1.0, 0.0]
+            await store.close()
+
+    run(go())
+
+
+def test_background_embedding_backfill_uses_provider_batch_size():
+    """Embedding repair reports progress over the provider's bounded batches."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            seed = LocalFileStore(name="t_embedding_batches", embedding_store="")
+            await seed.start()
+            await set_chunks_with_graph(
+                seed,
+                {str(index): chunk(str(index), f"{index}.md", f"content {index}") for index in range(5)},
+            )
+            await seed.dump()
+            await seed.close()
+
+            store = LocalFileStore(name="t_embedding_batches", embedding_store="")
+            fake = CountingFakeEmbeddingStore()
+            fake.max_batch_size = 2
+            store.embedding_store = fake
+            await store.start()
+            await store._embedding_backfill_task
+
+            assert [len(batch) for batch in fake.node_embedding_calls] == [2, 2, 1]
+            assert all(chunk.embedding is not None for chunk in store.file_chunks.values())
+            await store.close()
+
+    run(go())
+
+
+def test_load_skips_backfill_when_embedding_health_check_fails():
+    """Background backfill preserves an unhealthy provider for later recovery."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = LocalFileStore(name="t_embedding_backfill_unhealthy", embedding_store="")
+            await store.start()
+            await set_chunks_with_graph(store, {"a": chunk("a", "a.md", "alpha text")})
+            await store.dump()
+            await store.close()
+
+            store = LocalFileStore(name="t_embedding_backfill_unhealthy", embedding_store="")
+            fake = UnhealthyCountingEmbeddingStore()
+            store.embedding_store = fake
+            await store.start()
+            await store._embedding_backfill_task
+
+            assert not fake.node_embedding_calls
+            assert store.embedding_store is fake
+            assert fake.is_healthy is False
+            assert store.file_chunks["a"].embedding is None
+            await store.close()
+
+    run(go())
+
+
+def test_verified_resume_supersedes_inflight_startup_health_check():
+    """A stale startup probe cannot consume or overwrite verified recovery."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_local_store("t_embedding_verified_resume_race")
+            await store.start()
+            await set_chunks_with_graph(store, {"a": chunk("a", "a.md", "alpha text")})
+            fake = CancellationResistantHealthStore()
+            store.embedding_store = fake
+            store._start_embedding_backfill()
+            startup_task = store._embedding_backfill_task
+            await fake.health_started.wait()
+
+            recovery = asyncio.create_task(store.resume_embedding(verified=True))
+            await asyncio.sleep(0)
+            assert await recovery is True
+            assert store._embedding_backfill_pending is True
+            fake.release_health.set()
+
+            await startup_task
+            assert store._embedding_backfill_task is not startup_task
+            if store._embedding_backfill_task is not None:
+                await store._embedding_backfill_task
+            assert fake.is_healthy is True
+            assert fake.node_embedding_calls == [["a"]]
+            assert store.file_chunks["a"].embedding.tolist() == [1.0, 0.0]
+            await store.close()
+
+    run(go())
+
+
+def test_verified_resume_without_chunks_supersedes_inflight_health_check():
+    """A newer verified state survives a stale probe even after chunks are cleared."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_local_store("t_embedding_empty_verified_resume_race")
+            await store.start()
+            await set_chunks_with_graph(store, {"a": chunk("a", "a.md", "alpha text")})
+            fake = CancellationResistantHealthStore()
+            store.embedding_store = fake
+            store._start_embedding_backfill()
+            startup_task = store._embedding_backfill_task
+            await fake.health_started.wait()
+
+            await store.clear()
+            assert await store.resume_embedding(verified=True) is True
+            assert store._embedding_backfill_pending is True
+            fake.release_health.set()
+
+            await startup_task
+            assert fake.is_healthy is True
+            assert not fake.node_embedding_calls
+            assert store._embedding_backfill_task is None
+            await store.close()
+
+    run(go())
+
+
+@pytest.mark.parametrize("store_factory", [_new_local_store, _new_faiss_store, _new_zvec_store])
+def test_embedding_reindex_is_explicit_and_keeps_vectors_disabled_until_success(
+    store_factory,
+):
+    """A pending vector-space change can only be completed by scoped reindex."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory("t_explicit_embedding_reindex")
+            await store.start()
+            stale = chunk("a", "a.md", "alpha text")
+            stale.embedding = np.array([0.0, 1.0], dtype=np.float16)
+            await set_chunks_with_graph(store, {"a": stale})
+            fake = CountingFakeEmbeddingStore()
+            store.embedding_store = fake
+            _ensure_zvec_collection(store)
+            if isinstance(store, FaissLocalFileStore):
+                store._rebuild_index()
+            elif isinstance(store, ZvecLocalFileStore):
+                store._rebuild_collection()
+
+            await store.require_embedding_rebuild()
+            assert await store.vector_search("alpha", 5, {}) == []
+            assert await store.resume_embedding(verified=True) is True
+            assert store._embedding_backfill_task is None
+
+            result = await store.reindex("embedding")
+
+            assert result == {"indexed": 1, "scope": "embedding"}
+            assert store._embedding_rebuild_pending is False
+            assert fake.node_embedding_calls == [["a"]]
+            assert [item.id for item in await store.vector_search("alpha", 5, {})] == ["a"]
+            await store.close()
+
+    run(go())
+
+
+@pytest.mark.parametrize("store_factory", [_new_local_store, _new_faiss_store, _new_zvec_store])
+def test_embedding_gate_rejects_query_that_started_in_previous_vector_space(
+    store_factory,
+):
+    """A query crossing the gate boundary cannot return results from the old index."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory("t_query_crosses_embedding_gate")
+            await store.start()
+            indexed = chunk("a", "a.md", "alpha")
+            indexed.embedding = np.array([1.0, 0.0], dtype=np.float16)
+            await set_chunks_with_graph(store, {"a": indexed})
+            blocking = BlockingQueryEmbeddingStore()
+            store.embedding_store = blocking
+            _ensure_zvec_collection(store)
+            if isinstance(store, FaissLocalFileStore):
+                store._rebuild_index()
+            elif isinstance(store, ZvecLocalFileStore):
+                store._rebuild_collection()
+
+            search_task = asyncio.create_task(store.vector_search("alpha", 5, {}))
+            await blocking.query_started.wait()
+            await store.require_embedding_rebuild()
+            blocking.release_query.set()
+
+            assert await search_task == []
+            await store.close()
+
+    run(go())
+
+
+def test_embedding_reindex_retries_if_a_new_vector_space_is_required_while_finishing():
+    """A new gate request cannot be cleared by an older reindex generation."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_local_store("t_reindex_new_embedding_generation")
+            await store.start()
+            await set_chunks_with_graph(store, {"a": chunk("a", "a.md", "alpha")})
+            store.embedding_store = CountingFakeEmbeddingStore()
+            first_dump_started = asyncio.Event()
+            release_first_dump = asyncio.Event()
+            dump_calls = 0
+            finalize_calls = 0
+            real_dump = store._dump_owned_state
+            real_finalize = store._finalize_embedding_reindex
+
+            async def blocking_dump():
+                nonlocal dump_calls
+                dump_calls += 1
+                if dump_calls == 1:
+                    first_dump_started.set()
+                    await release_first_dump.wait()
+                await real_dump()
+
+            async def counting_finalize():
+                nonlocal finalize_calls
+                finalize_calls += 1
+                await real_finalize()
+
+            store._dump_owned_state = blocking_dump
+            store._finalize_embedding_reindex = counting_finalize
+            reindex_task = asyncio.create_task(store.reindex("embedding"))
+            await first_dump_started.wait()
+
+            await store.require_embedding_rebuild()
+            release_first_dump.set()
+
+            assert await reindex_task == {"indexed": 1, "scope": "embedding"}
+            assert finalize_calls == 2
+            assert store._embedding_rebuild_pending is False
+            await store.close()
+
+    run(go())
+
+
+def test_upsert_discards_provider_result_from_previous_vector_space():
+    """A late foreground embedding write is repaired in the current vector space."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_local_store("t_upsert_previous_embedding_generation")
+            await store.start()
+            old_space = DelayedOldVectorStore()
+            store.embedding_store = old_space
+            upsert_task = asyncio.create_task(store.upsert([(node("a.md"), [chunk("a", "a.md", "alpha")])]))
+            await old_space.first_batch_started.wait()
+
+            current_space = CountingFakeEmbeddingStore()
+            store.embedding_store = current_space
+            await store.require_embedding_rebuild()
+            old_space.release_first_batch.set()
+            await upsert_task
+            await store.reindex("embedding")
+
+            assert store.file_chunks["a"].embedding.tolist() == [1.0, 0.0]
+            assert current_space.node_embedding_calls == [["a"]]
+            await store.close()
+
+    run(go())
+
+
+def test_embedding_requirement_cancels_backfill_without_clearing_gate():
+    """Cancelling automatic repair must leave manual-reindex mode enabled."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_local_store("t_cancel_backfill_for_manual_reindex")
+            await store.start()
+            await set_chunks_with_graph(store, {"a": chunk("a", "a.md", "alpha")})
+            fake = BlockingEmbeddingStore()
+            store.embedding_store = fake
+            store._start_embedding_backfill(skip_health_check=True)
+            await fake.started.wait()
+
+            await store.require_embedding_rebuild()
+
+            assert store._embedding_backfill_task is None
+            assert store._embedding_rebuild_pending is True
+            assert store.file_chunks["a"].embedding is None
+            await store.close()
+
+    run(go())
+
+
+def test_bm25_reindex_does_not_change_embedding_gate():
+    """BM25 maintenance is independent from the embedding state machine."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_local_store("t_scoped_bm25_reindex")
+            await store.start()
+            await set_chunks_with_graph(store, {"a": chunk("a", "a.md", "uniquebm25word")})
+            await store.keyword_index.clear()
+            await store.require_embedding_rebuild()
+
+            result = await store.reindex("bm25")
+
+            assert result == {"indexed": 1, "scope": "bm25"}
+            assert store._embedding_rebuild_pending is True
+            assert [item.id for item in await store.keyword_search("uniquebm25word", 5, {})] == ["a"]
+            await store.close()
+
+    run(go())
+
+
+def test_all_reindex_composes_bm25_then_embedding_under_one_lock():
+    """The all scope is exactly the ordered composition of both scopes."""
+
+    async def go():
+        store = _new_local_store("t_all_reindex")
+        calls = []
+
+        async def rebuild(scope):
+            calls.append(scope)
+            return {"scope": scope, "indexed": 1}
+
+        async def rebuild_bm25():
+            return await rebuild("bm25")
+
+        async def rebuild_embedding():
+            return await rebuild("embedding")
+
+        async def rebuild_tag():
+            return await rebuild("tag")
+
+        store._reindex_bm25 = rebuild_bm25
+        store._reindex_embedding = rebuild_embedding
+        store._reindex_tag = rebuild_tag
+
+        result = await store.reindex("all")
+
+        assert calls == ["bm25", "embedding", "tag"]
+        assert result["scope"] == "all"
+
+    run(go())
+
+
+@pytest.mark.parametrize("store_factory", [_new_local_store, _new_faiss_store, _new_zvec_store])
+def test_embedding_reindex_clears_vectors_when_embedding_is_disabled(store_factory):
+    """Disabling embedding can explicitly discard the obsolete vectors."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory("t_disable_embedding_reindex")
+            await store.start()
+            stale = chunk("a", "a.md", "alpha")
+            stale.embedding = np.array([1.0, 0.0], dtype=np.float16)
+            await set_chunks_with_graph(store, {"a": stale})
+
+            result = await store.reindex("embedding")
+
+            assert result == {
+                "indexed": 0,
+                "scope": "embedding",
+            }
+            assert stale.embedding is None
+            assert store._embedding_rebuild_pending is False
+            if isinstance(store, ZvecLocalFileStore):
+                assert store._collection is None
+                assert not store.zvec_path.exists()
+                assert not store.zvec_sidecar_path.exists()
+            await store.close()
+
+    run(go())
+
+
+@pytest.mark.parametrize("store_factory", [_new_local_store, _new_zvec_store])
+def test_clear_waits_for_in_flight_chunk_dump(store_factory):
+    """An older chunk snapshot cannot be published after clear() returns."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory("t_chunk_dump_clear_lock")
+            await store.start()
+            if isinstance(store, ZvecLocalFileStore):
+                store.embedding_store = FakeEmbeddingStore()
+                _ensure_zvec_collection(store)
+            await store.upsert([(node("a.md"), [chunk("a", "a.md", "alpha")])])
+
+            dump_started = threading.Event()
+            release_dump = threading.Event()
+            original_dump_chunks_sync = store._dump_chunks_sync
+
+            def blocking_dump_chunks_sync(chunks):
+                dump_started.set()
+                release_dump.wait()
+                original_dump_chunks_sync(chunks)
+
+            store._dump_chunks_sync = blocking_dump_chunks_sync
+            dump_task = asyncio.create_task(store.dump())
+            assert await asyncio.to_thread(dump_started.wait, 1)
+
+            clear_task = asyncio.create_task(store.clear())
+            await asyncio.sleep(0.02)
+            assert not clear_task.done()
+
+            release_dump.set()
+            await asyncio.gather(dump_task, clear_task)
+            assert store.file_chunks == {}
+            assert not store.chunks_path.exists()
+
+            store._dump_chunks_sync = original_dump_chunks_sync
+            await store.close()
+
+    run(go())
+
+
+@pytest.mark.parametrize("store_factory", [_new_faiss_store, _new_zvec_store])
+def test_embedding_reindex_keeps_gate_when_backend_checkpoint_fails(store_factory):
+    """A derived-index checkpoint failure must make the maintenance job fail."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory("t_embedding_reindex_checkpoint_failure")
+            await store.start()
+            await set_chunks_with_graph(store, {"a": chunk("a", "a.md", "alpha")})
+            store.embedding_store = CountingFakeEmbeddingStore()
+            _ensure_zvec_collection(store)
+            if isinstance(store, FaissLocalFileStore):
+                store._faiss_index = store._new_index()
+            store._write_sidecar = AsyncMock(side_effect=OSError("disk full"))
+
+            with pytest.raises(OSError, match="disk full"):
+                await store.reindex("embedding")
+
+            assert store._embedding_rebuild_pending is True
+            store.embedding_store = None
+            await store.close()
+
+    run(go())
+
+
+@pytest.mark.parametrize("store_factory", [_new_local_store, _new_faiss_store, _new_zvec_store])
+def test_embedding_gate_discards_caller_supplied_vectors(store_factory):
+    """Upserts cannot inject vectors from an unverified space while gated."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory("t_embedding_gate_supplied_vector")
+            await store.start()
+            store.embedding_store = CountingFakeEmbeddingStore()
+            _ensure_zvec_collection(store)
+            if isinstance(store, FaissLocalFileStore):
+                store._faiss_index = store._new_index()
+            await store.require_embedding_rebuild()
+            supplied = chunk("a", "a.md", "alpha")
+            supplied.embedding = np.array([1.0, 0.0], dtype=np.float16)
+
+            await store.upsert([(node("a.md"), [supplied])])
+
+            assert supplied.embedding is None
+            if isinstance(store, FaissLocalFileStore):
+                assert "a" not in store._id_to_row
+            elif isinstance(store, ZvecLocalFileStore):
+                assert "a" not in store._indexed_ids
+            store.embedding_store = None
+            await store.close()
+
+    run(go())
+
+
+def test_embedding_reindex_retries_when_chunks_change_during_rebuild():
+    """A rebuild only succeeds after one stable authoritative chunk generation."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_local_store("t_embedding_reindex_generation_retry")
+            await store.start()
+            await set_chunks_with_graph(store, {"a": chunk("a", "a.md", "alpha")})
+            store.embedding_store = CountingFakeEmbeddingStore()
+            finalize_calls = 0
+
+            async def mutate_once():
+                nonlocal finalize_calls
+                finalize_calls += 1
+                if finalize_calls == 1:
+                    store.file_chunks["b"] = chunk("b", "b.md", "beta")
+                    store._mutation_generation += 1
+
+            store._finalize_embedding_reindex = mutate_once
+
+            result = await store.reindex("embedding")
+
+            assert finalize_calls == 2
+            assert result == {"indexed": 2, "scope": "embedding"}
+            assert all(item.embedding is not None for item in store.file_chunks.values())
+            await store.close()
+
+    run(go())
+
+
+def test_upsert_waits_for_embedding_reindex():
+    """A write cannot slip through the gate while reindex is finishing."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_local_store("t_upsert_waits_for_reindex")
+            await store.start()
+            await set_chunks_with_graph(store, {"a": chunk("a", "a.md", "alpha")})
+            store.embedding_store = CountingFakeEmbeddingStore()
+            dump_started = asyncio.Event()
+            release_dump = asyncio.Event()
+            real_dump = store._dump_owned_state
+
+            async def blocking_dump():
+                dump_started.set()
+                await release_dump.wait()
+                await real_dump()
+
+            store._dump_owned_state = blocking_dump
+            reindex_task = asyncio.create_task(store.reindex("embedding"))
+            await dump_started.wait()
+            upsert_task = asyncio.create_task(store.upsert([(node("b.md"), [chunk("b", "b.md", "beta")])]))
+            await asyncio.sleep(0)
+            assert "b" not in store.file_chunks
+
+            release_dump.set()
+            await reindex_task
+            await upsert_task
+
+            assert store.file_chunks["b"].embedding.tolist() == [0.0, 1.0]
+            await store.close()
+
+    run(go())
+
+
+def test_faiss_explicit_finalizer_retries_stale_snapshot():
+    """Explicit FAISS publication consumes the retry signal without a worker."""
+
+    async def go():
+        store = _new_faiss_store("t_faiss_explicit_retry")
+        calls = 0
+
+        async def rebuild():
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                store._reindex_event.set()
+
+        store._reindex_async = rebuild
+        await store._finalize_embedding_reindex()
+        assert calls == 2
+
+    run(go())
+
+
+def test_checkpoint_dump_keeps_event_loop_responsive(monkeypatch):
+    """Compression and file writes execute outside the request event loop."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_local_store("t_nonblocking_dump")
+            await store.start()
+            store.file_chunks["a"] = chunk("a", "a.md", "alpha")
+            entered = threading.Event()
+            release = threading.Event()
+
+            def blocking_dump(_chunks):
+                assert _chunks[0] is not store.file_chunks["a"]
+                entered.set()
+                assert release.wait(timeout=2)
+
+            monkeypatch.setattr(store, "_dump_chunks_sync", blocking_dump)
+            dump_task = asyncio.create_task(store._dump_owned_state())
+            assert await asyncio.to_thread(entered.wait, 1)
+            ticks = 0
+            for _ in range(5):
+                await asyncio.sleep(0)
+                ticks += 1
+            store.file_chunks["a"].text = "changed while dumping"
+            assert ticks == 5
+            assert not dump_task.done()
+            release.set()
+            await dump_task
+            await store.close()
+
+    run(go())
+
+
+def test_checkpoint_dump_finishes_before_propagating_cancellation(monkeypatch):
+    """Cancellation cannot leave an old checkpoint writer running in the background."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_local_store("t_cancelled_dump")
+            await store.start()
+            store.file_chunks["a"] = chunk("a", "a.md", "alpha")
+            entered = threading.Event()
+            release = threading.Event()
+
+            def blocking_dump(_chunks):
+                entered.set()
+                release.wait()
+
+            monkeypatch.setattr(store, "_dump_chunks_sync", blocking_dump)
+            dump_task = asyncio.create_task(store._dump_owned_state())
+            assert await asyncio.to_thread(entered.wait, 1)
+            dump_task.cancel()
+            await asyncio.sleep(0)
+            assert not dump_task.done()
+
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await dump_task
+            await store.close()
+
+    run(go())
+
+
+@pytest.mark.parametrize("store_factory", [_new_local_store, _new_faiss_store, _new_zvec_store])
+def test_search_recovery_schedules_backfill_without_another_health_check(store_factory):
+    """A successful real search request repairs historical missing vectors."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory(name="t_embedding_search_recovery")
+            await store.start()
+            await set_chunks_with_graph(store, {"a": chunk("a", "a.md", "alpha text")})
+            fake = RecoveringEmbeddingStore()
+            store.embedding_store = fake
+
+            assert await store.vector_search("alpha", 5, {}) == []
+            await store._embedding_backfill_task
+
+            assert fake.is_healthy is True
+            assert fake.health_calls == 0
+            assert fake.node_embedding_calls == [["a"]]
+            assert store.file_chunks["a"].embedding.tolist() == [1.0, 0.0]
+            assert [item.id for item in await store.vector_search("alpha", 5, {})] == ["a"]
+            await store.close()
+
+    run(go())
+
+
+def test_cache_only_search_does_not_mark_provider_recovered():
+    """Cached vectors do not prove that the remote provider is available."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            embedding_store = LocalEmbeddingStore(name="t_embedding_cache_only_recovery")
+            embedding_store.as_embedding = type(
+                "CachedProvider",
+                (),
+                {
+                    "dimensions": 2,
+                    "vector_space_id": "cached-provider",
+                    "__call__": lambda self, texts, **_kwargs: asyncio.sleep(
+                        0,
+                        result=[[1.0, 0.0] for _ in texts],
+                    ),
+                },
+            )()
+            await embedding_store.get_embedding("alpha")
+            embedding_store.is_healthy = False
+
+            store = LocalFileStore(name="t_embedding_cache_only_recovery", embedding_store="")
+            await store.start()
+            await set_chunks_with_graph(store, {"a": chunk("a", "a.md", "historical text")})
+            store.embedding_store = embedding_store
+
+            assert await store.vector_search("alpha", 5, {}) == []
+            assert embedding_store.is_healthy is False
+            assert store._embedding_backfill_task is None
+            await store.close()
+
+    run(go())
+
+
+@pytest.mark.parametrize("store_factory", [_new_local_store, _new_zvec_store])
+def test_load_reembeds_persisted_chunks_with_stale_embedding_dimensions(store_factory):
+    """Loading persisted chunks re-embeds vectors that do not match current dimensions."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory(name="t_embedding_stale_dim")
+            await store.start()
+            stale = chunk("a", "a.md", "alpha text")
+            stale.embedding = np.array([1.0], dtype=np.float16)
+            await set_chunks_with_graph(store, {"a": stale})
+            await store.dump()
+            await store.close()
+
+            store = store_factory(name="t_embedding_stale_dim")
+            fake = CountingFakeEmbeddingStore()
+            store.embedding_store = fake
+            await store.start()
+            await store._embedding_backfill_task
+
+            assert fake.node_embedding_calls == [["a"]]
+            assert store.file_chunks["a"].embedding.tolist() == [1.0, 0.0]
+            await store.close()
+
+    run(go())
+
+
+def test_drop_stale_embedding_noops_without_embedding_store():
+    """The helper should not clear embeddings when vector search is disabled."""
+
+    with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+        store = LocalFileStore(name="t_embedding_no_store_drop", embedding_store="")
+        stale = chunk("a", "a.md", "alpha text")
+        stale.embedding = np.array([1.0], dtype=np.float16)
+
+        assert store._drop_stale_embedding(stale, "test") is False
+        assert stale.embedding.tolist() == [1.0]
+
+
+def test_upsert_does_not_reuse_cached_embedding_with_stale_dimensions():
+    """Re-upsert queues a fresh embedding when cached same-text vector has old dimensions."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = LocalFileStore(name="t_embedding_stale_reuse", embedding_store="")
+            await store.start()
+            fake = CountingFakeEmbeddingStore()
+            store.embedding_store = fake
+
+            await store.upsert([(node("note.md"), [chunk("same", "note.md", "alpha text")])])
+            store.file_chunks["same"].embedding = np.array([1.0], dtype=np.float16)
+            await store.file_graph.upsert_nodes([FileNode(path="note.md", st_mtime=1.0, chunk_ids=["same"])])
+
+            await store.upsert([(node("note.md"), [chunk("same", "note.md", "alpha text")])])
+
+            assert fake.node_embedding_calls == [["same"], ["same"]]
+            assert store.file_chunks["same"].embedding.tolist() == [1.0, 0.0]
+            await store.close()
+
+    run(go())
+
+
+def test_upsert_drops_wrong_dimension_from_custom_embedding_store():
+    """Wrong-dimensional embeddings from custom stores are not persisted on chunks."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = LocalFileStore(name="t_embedding_wrong_dim_custom", embedding_store="")
+            await store.start()
+            store.embedding_store = WrongDimEmbeddingStore()
+
+            await store.upsert([(node("note.md"), [chunk("a", "note.md", "alpha text")])])
+
+            assert store.file_chunks["a"].embedding is None
+            assert await store.vector_search("alpha", 5, {}) == []
+            assert store.embedding_store is not None
+            assert store.embedding_store.is_healthy is False
+            await store.close()
+
+    run(go())
+
+
+def test_upsert_reembeds_prefilled_chunk_with_stale_dimension():
+    """Incoming chunks with stale embeddings are re-embedded before persistence."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = LocalFileStore(name="t_embedding_prefilled_stale", embedding_store="")
+            await store.start()
+            fake = CountingFakeEmbeddingStore()
+            store.embedding_store = fake
+            prefilled = chunk("a", "note.md", "alpha text")
+            prefilled.embedding = np.array([1.0], dtype=np.float16)
+
+            await store.upsert([(node("note.md"), [prefilled])])
+
+            assert fake.node_embedding_calls == [["a"]]
+            assert store.file_chunks["a"].embedding.tolist() == [1.0, 0.0]
+            await store.close()
+
+    run(go())
+
+
+@pytest.mark.parametrize("store_factory", [_new_local_store, _new_zvec_store])
+def test_search_filter_applies_to_vector_and_keyword_results(store_factory):
+    """Search filters apply consistently to vector and keyword results."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory(name="t_filter")
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            _ensure_zvec_collection(store)
+
+            await store.upsert(
+                [
+                    (
+                        node("daily/a.md"),
+                        [chunk("a", "daily/a.md", "fresh topic", kind="daily")],
+                    ),
+                    (
+                        node("resource/b.md"),
+                        [chunk("b", "resource/b.md", "fresh topic", kind="resource")],
+                    ),
+                ],
+            )
+
+            filt = {"path_prefix": "daily/", "metadata": {"kind": "daily"}}
+            assert [c.path for c in await store.vector_search("fresh", 5, filt)] == ["daily/a.md"]
+            assert [c.path for c in await store.keyword_search("fresh", 5, filt)] == ["daily/a.md"]
+            await store.close()
+
+    run(go())
+
+
+def test_empty_exact_path_filter_matches_nothing():
+    """An explicitly empty path domain must not widen into an unfiltered search."""
+    candidate = chunk("a", "daily/a.md", "fresh topic")
+
+    assert LocalFileStore._matches_search_filter(candidate, {"paths": []}) is False
+
+
+@pytest.mark.parametrize("store_factory", [_new_local_store, _new_zvec_store])
+def test_path_filter_uses_one_domain_for_vector_and_keyword(store_factory):
+    """Vector and BM25 branches apply the same ordinary path and metadata filters."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory(name="t_filtered_domain")
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            _ensure_zvec_collection(store)
+            await store.upsert(
+                [
+                    (node("daily/a.md"), [chunk("a", "daily/a.md", "fresh topic", kind="daily")]),
+                    (node("daily/b.md"), [chunk("b", "daily/b.md", "fresh topic", kind="other")]),
+                    (node("resource/c.md"), [chunk("c", "resource/c.md", "fresh topic", kind="daily")]),
+                ],
+            )
+
+            search_filter = {
+                "paths": ["daily/a.md", "daily/b.md"],
+                "metadata": {"kind": "daily"},
+            }
+            assert [item.id for item in await store.vector_search("fresh", 5, search_filter)] == ["a"]
+            assert [item.id for item in await store.keyword_search("fresh", 5, search_filter)] == ["a"]
+            await store.close()
+
+    run(go())
+
+
+def test_faiss_rebuilds_stale_sidecar_and_updates_same_id_text():
+    """FAISS sidecar rebuilds when persisted rows no longer match chunks."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            try:
+                store = FaissLocalFileStore(name="t_faiss", embedding_store="")
+            except ImportError:
+                pytest.skip("faiss is not installed")
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+
+            await store.upsert([(node("note.md"), [chunk("same", "note.md", "alpha text")])])
+            assert [c.id for c in await store.vector_search("alpha", 5, {})] == ["same"]
+
+            await store.upsert([(node("note.md"), [chunk("same", "note.md", "beta text")])])
+            assert [c.id for c in await store.vector_search("beta", 5, {})] == ["same"]
+            assert store._id_to_row["same"] == 1
+
+            await store.dump()
+            store.file_chunks = {"other": chunk("other", "other.md", "alpha text")}
+            store.file_chunks["other"].embedding = np.array([1.0, 0.0], dtype=np.float16)
+
+            assert await store._try_load_sidecar() is False
+            store._rebuild_index()
+            assert set(store._id_to_row) == {"other"}
+            await store.close()
+
+    run(go())
+
+
+def test_faiss_concurrent_dumps_are_serialized(monkeypatch):
+    """Concurrent persistence must not interleave writes to the FAISS sidecar pair."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            try:
+                store = FaissLocalFileStore(name="t_faiss_dump_lock", embedding_store="")
+            except ImportError:
+                pytest.skip("faiss is not installed")
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+
+            first_started = asyncio.Event()
+            release_first = asyncio.Event()
+            active_writers = 0
+            max_active_writers = 0
+            write_count = 0
+            original_write_sidecar = store._write_sidecar
+
+            async def blocking_write_sidecar():
+                nonlocal active_writers, max_active_writers, write_count
+                active_writers += 1
+                max_active_writers = max(max_active_writers, active_writers)
+                write_count += 1
+                if write_count == 1:
+                    first_started.set()
+                    await release_first.wait()
+                active_writers -= 1
+
+            monkeypatch.setattr(store, "_write_sidecar", blocking_write_sidecar)
+
+            first = asyncio.create_task(store.dump())
+            await first_started.wait()
+            second = asyncio.create_task(store.dump())
+            await asyncio.sleep(0)
+
+            assert active_writers == 1
+            assert max_active_writers == 1
+
+            release_first.set()
+            await asyncio.gather(first, second)
+            assert write_count == 2
+            assert max_active_writers == 1
+            monkeypatch.setattr(store, "_write_sidecar", original_write_sidecar)
+            await store.close()
+
+    run(go())
+
+
+def test_faiss_rebuild_skips_wrong_dimension_chunks():
+    """FAISS rebuild should ignore chunks whose embedding dimensions do not match."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            try:
+                store = FaissLocalFileStore(name="t_faiss_dim_filter", embedding_store="")
+            except ImportError:
+                pytest.skip("faiss is not installed")
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store.file_chunks = {
+                "good": chunk("good", "good.md", "alpha text"),
+                "bad": chunk("bad", "bad.md", "alpha text"),
+            }
+            store.file_chunks["good"].embedding = np.array([1.0, 0.0], dtype=np.float16)
+            store.file_chunks["bad"].embedding = np.array([1.0], dtype=np.float16)
+
+            store._rebuild_index()
+
+            assert set(store._id_to_row) == {"good"}
+            assert store._faiss_index.ntotal == 1
+            await store.close()
+
+    run(go())
+
+
+# -- Date filter tests -------------------------------------------------------
+
+
+def test_date_filter_extract_and_match():
+    """_extract_date_from_path and _matches_search_filter date filtering."""
+    # Extract from various path formats
+    assert LocalFileStore._extract_date_from_path("daily/2026-05-18/note.md") == "2026-05-18"
+    assert LocalFileStore._extract_date_from_path("daily/2026-05-18.md") == "2026-05-18"
+    assert LocalFileStore._extract_date_from_path("resource/2026-06-06/report.pdf") == "2026-06-06"
+    assert LocalFileStore._extract_date_from_path("digest/personal/topic.md") is None
+    assert LocalFileStore._extract_date_from_path("daily/9999-99-99/note.md") is None
+    assert LocalFileStore._extract_date_from_path("note.md") is None
+
+    # start_date / end_date boundary checks
+    filt = {"start_date": "2026-02-01", "end_date": "2026-02-28"}
+    assert LocalFileStore._matches_search_filter(chunk("a", "daily/2026-01-31/n.md", "t"), filt) is False
+    assert LocalFileStore._matches_search_filter(chunk("b", "daily/2026-02-01/n.md", "t"), filt) is True
+    assert LocalFileStore._matches_search_filter(chunk("c", "daily/2026-02-15/n.md", "t"), filt) is True
+    assert LocalFileStore._matches_search_filter(chunk("d", "daily/2026-02-28/n.md", "t"), filt) is True
+    assert LocalFileStore._matches_search_filter(chunk("e", "daily/2026-03-01/n.md", "t"), filt) is False
+
+    # No date in path → not excluded (non-strict, default)
+    assert LocalFileStore._matches_search_filter(chunk("x", "digest/personal/topic.md", "t"), filt) is True
+
+    # strict_date_filter=True → no-date paths excluded when date filter is active
+    strict_filt = {**filt, "strict_date_filter": True}
+    assert LocalFileStore._matches_search_filter(chunk("x", "digest/personal/topic.md", "t"), strict_filt) is False
+    assert LocalFileStore._matches_search_filter(chunk("b", "daily/2026-02-15/n.md", "t"), strict_filt) is True
+
+    # strict_date_filter=True but no date bounds → no-date paths still pass
+    strict_no_bounds = {"strict_date_filter": True}
+    assert LocalFileStore._matches_search_filter(chunk("x", "digest/personal/topic.md", "t"), strict_no_bounds) is True
+
+    # start_date/end_date stay in reserved, not leaked to metadata
+    c = chunk("z", "daily/2026-05-18/note.md", "text")
+    assert LocalFileStore._matches_search_filter(c, {"start_date": "2026-01-01", "end_date": "2026-12-31"}) is True
+
+
+@pytest.mark.parametrize("store_factory", [_new_local_store, _new_zvec_store])
+def test_date_filter_with_vector_and_keyword_search(store_factory):
+    """vector_search and keyword_search respect start_date/end_date filters."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = store_factory(name="t_date_search")
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            _ensure_zvec_collection(store)
+
+            await store.upsert(
+                [
+                    (
+                        node("daily/2026-01-10/a.md"),
+                        [chunk("a", "daily/2026-01-10/a.md", "alpha topic")],
+                    ),
+                    (
+                        node("daily/2026-02-15/b.md"),
+                        [chunk("b", "daily/2026-02-15/b.md", "alpha topic")],
+                    ),
+                    (
+                        node("daily/2026-03-20/c.md"),
+                        [chunk("c", "daily/2026-03-20/c.md", "alpha topic")],
+                    ),
+                ],
+            )
+
+            filt = {"start_date": "2026-02-01", "end_date": "2026-02-28"}
+            assert [c.id for c in await store.vector_search("alpha", 5, filt)] == ["b"]
+            assert [c.id for c in await store.keyword_search("alpha", 5, filt)] == ["b"]
+
+            # start_date only
+            assert sorted(c.id for c in await store.vector_search("alpha", 5, {"start_date": "2026-02-01"})) == [
+                "b",
+                "c",
+            ]
+            # end_date only
+            assert sorted(c.id for c in await store.keyword_search("alpha", 5, {"end_date": "2026-02-28"})) == [
+                "a",
+                "b",
+            ]
+
+            await store.close()
+
+    run(go())
+
+
+def test_faiss_date_filter_progressive_recall():
+    """FaissLocalFileStore progressive recall collects enough results with date filter."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            try:
+                store = FaissLocalFileStore(name="t_faiss_date", embedding_store="")
+            except ImportError:
+                pytest.skip("faiss is not installed")
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+
+            files = []
+            for i in range(10):
+                day = f"2026-01-{i + 10:02d}"
+                path = f"daily/{day}/note.md"
+                files.append((node(path), [chunk(f"c{i}", path, "alpha topic")]))
+            await store.upsert(files)
+
+            # Enough matches exist
+            results = await store.vector_search("alpha", 3, {"start_date": "2026-01-15", "end_date": "2026-01-17"})
+            assert len(results) == 3
+
+            # Fewer matches than limit → returns all matching
+            results = await store.vector_search("alpha", 5, {"start_date": "2026-01-18", "end_date": "2026-01-19"})
+            assert len(results) == 2
+
+            await store.close()
+
+    run(go())
+
+
+def test_faiss_vector_search_survives_concurrent_index_drop():
+    """vector_search returns [] (not AttributeError) if a concurrent clear()
+    drops _faiss_index while the query embedding is being computed (TOCTOU)."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_faiss_store("t_faiss_search_drop")
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+            await store.upsert([(node("a.md"), [chunk("a", "a.md", "alpha text")])])
+
+            real_get_embedding = store.embedding_store.get_embedding
+
+            async def dropping_get_embedding(text, **kwargs):
+                emb = await real_get_embedding(text, **kwargs)
+                # Simulate a concurrent clear() landing during the await.
+                store._faiss_index = None
+                return emb
+
+            store.embedding_store.get_embedding = dropping_get_embedding
+
+            # Must return [] rather than raising AttributeError on None.ntotal.
+            assert await store.vector_search("alpha", 5, {}) == []
+            await store.close()
+
+    run(go())
+
+
+# -- HNSW construction parameter persistence tests ---------------------------
+
+
+def test_faiss_rebuilds_on_hnsw_m_mismatch():
+    """Reopening with a different hnsw_m must rebuild: M is structural and the
+    persisted graph topology cannot serve the new configuration."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            # Phase 1: build and persist with hnsw_m=8.
+            store_a = _new_faiss_store("t_faiss_m_mismatch", hnsw_m=8)
+            await store_a.start()
+            store_a.embedding_store = FakeEmbeddingStore()
+            store_a._faiss_index = store_a._new_index()
+            await store_a.upsert([(node("a.md"), [chunk("a", "a.md", "alpha text")])])
+            assert store_a._faiss_index.hnsw.nb_neighbors(0) // 2 == 8
+            await store_a.close()  # _close() → dump() writes sidecar
+
+            # Phase 2: reopen the same workspace with hnsw_m=32.
+            store_b = _new_faiss_store("t_faiss_m_mismatch", hnsw_m=32)
+            await store_b.start()  # loads chunks; FAISS skipped (embedding_store is None)
+            store_b.embedding_store = FakeEmbeddingStore()
+
+            # The sidecar was built with M=8; config says 32 → reject and rebuild.
+            assert await store_b._try_load_sidecar() is False
+            assert not store_b.faiss_path.exists()  # sidecar wiped on rejection
+            store_b._rebuild_index()
+
+            # Rebuilt index honors the new M.
+            assert store_b._faiss_index.hnsw.nb_neighbors(0) // 2 == 32
+            assert [c.id for c in await store_b.vector_search("alpha", 5, {})] == ["a"]
+            await store_b.close()
+
+    run(go())
+
+
+def test_faiss_rebuilds_on_hnsw_m_mismatch_empty_index():
+    """An empty sidecar must not bypass the M check: M is baked into the
+    serialized graph, so later insertions would use stale connectivity."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            # Phase 1: persist an *empty* index built with hnsw_m=8.
+            store_a = _new_faiss_store("t_faiss_m_mismatch_empty", hnsw_m=8)
+            await store_a.start()
+            store_a.embedding_store = FakeEmbeddingStore()
+            store_a._faiss_index = store_a._new_index()
+            assert store_a._faiss_index.ntotal == 0
+            await store_a.close()  # _close() → dump() writes sidecar
+
+            # Phase 2: reopen with hnsw_m=32; the empty M=8 sidecar must be rejected.
+            store_b = _new_faiss_store("t_faiss_m_mismatch_empty", hnsw_m=32)
+            await store_b.start()
+            store_b.embedding_store = FakeEmbeddingStore()
+
+            assert await store_b._try_load_sidecar() is False
+            assert not store_b.faiss_path.exists()  # sidecar wiped on rejection
+            store_b._rebuild_index()
+
+            # New insertions use the configured M, not the stale persisted one.
+            await store_b.upsert([(node("a.md"), [chunk("a", "a.md", "alpha text")])])
+            assert store_b._faiss_index.hnsw.nb_neighbors(0) // 2 == 32
+            await store_b.close()
+
+    run(go())
+
+
+def test_faiss_rejects_stale_sidecar_after_partial_dump():
+    """A sidecar whose vectors belong to an older chunk generation must be
+    rejected even when the live ID set is unchanged (same-ID in-place update).
+
+    Reproduces the crash window inside dump(): the authoritative chunk JSONL
+    is written, then the process dies before _write_sidecar(). On restart the
+    stale sidecar passes every shape check (type/dim/M/rows/live-ID set); only
+    the embedding content digest can tell its vectors are a generation behind.
+    """
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            # t0: consistent state on disk (c1 = alpha -> [1,0]).
+            store_a = _new_faiss_store("t_faiss_stale_sidecar")
+            await store_a.start()
+            store_a.embedding_store = FakeEmbeddingStore()
+            store_a._faiss_index = store_a._new_index()
+            await store_a.upsert([(node("a.md"), [chunk("c1", "a.md", "alpha topic")])])
+            await store_a.dump()
+
+            # t1: same-ID in-place update (c1 = beta -> [0,1]).
+            await store_a.upsert([(node("a.md"), [chunk("c1", "a.md", "beta topic")])])
+
+            # t2: simulate a crash between the two writes in dump(): only the
+            # parent's JSONL write lands; the sidecar stays at the alpha
+            # generation. (No close() -- the process is presumed dead.)
+            await LocalFileStore._dump_owned_state(store_a)
+
+            # t3: restart. The stale sidecar must be rejected by the digest.
+            store_b = _new_faiss_store("t_faiss_stale_sidecar")
+            await store_b.start()
+            store_b.embedding_store = FakeEmbeddingStore()
+            assert store_b.file_chunks["c1"].text == "beta topic"
+
+            assert await store_b._try_load_sidecar() is False
+            assert not store_b.faiss_path.exists()  # sidecar wiped on rejection
+            store_b._rebuild_index()
+
+            # t4: the rebuilt index serves the current generation: a beta query
+            # scores ~1.0 instead of 0.0 against the stale alpha vector.
+            results = await store_b.vector_search("beta", 5, {})
+            assert [c.id for c in results] == ["c1"]
+            assert results[0].scores["vector"] > 0.5
+            await store_b.close()
+
+    run(go())
+
+
+def test_faiss_ef_construction_hot_update_without_rebuild():
+    """Reopening with a different hnsw_ef_construction must NOT rebuild: it only
+    affects future add() edge formation; the live efConstruction is hot-updated."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            # Phase 1: build and persist with efConstruction=40.
+            store_a = _new_faiss_store("t_faiss_ef_hot", hnsw_ef_construction=40)
+            await store_a.start()
+            store_a.embedding_store = FakeEmbeddingStore()
+            store_a._faiss_index = store_a._new_index()
+            await store_a.upsert([(node("a.md"), [chunk("a", "a.md", "alpha text")])])
+            assert store_a._faiss_index.hnsw.efConstruction == 40
+            await store_a.close()
+
+            # Phase 2: reopen with efConstruction=128 (M unchanged).
+            store_b = _new_faiss_store("t_faiss_ef_hot", hnsw_ef_construction=128)
+            await store_b.start()
+            store_b.embedding_store = FakeEmbeddingStore()
+
+            # Sidecar loads successfully — M matches, only efConstruction differs.
+            assert await store_b._try_load_sidecar() is True
+            assert store_b.faiss_path.exists()  # sidecar retained (no rebuild)
+
+            # efConstruction was hot-updated to the new config value.
+            assert store_b._faiss_index.hnsw.efConstruction == 128
+
+            # Search still works on the loaded (not rebuilt) index.
+            assert [c.id for c in await store_b.vector_search("alpha", 5, {})] == ["a"]
+            await store_b.close()
+
+    run(go())
+
+
+def test_faiss_small_index_uses_brute_force_scan():
+    """Below the brute-force threshold, vector_search does an exact scan via
+    index.storage; the HNSW path (_set_ef_search) is used only when large enough."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_faiss_store("t_faiss_brute_force")
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+
+            # 80 chunks with valid date paths so we can test filtered search too.
+            # With M=32 (default): limit=5 -> threshold=sqrt(25)*32=160 > 80
+            # -> brute-force.  limit=1 -> threshold=sqrt(5)*32~=72 < 80 -> HNSW.
+            base = datetime.date(2026, 1, 1)
+            files = []
+            for i in range(80):
+                d = base + datetime.timedelta(days=i)
+                path = f"daily/{d.isoformat()}/note.md"
+                files.append((node(path), [chunk(f"c{i}", path, "alpha text")]))
+            await store.upsert(files)
+
+            # _set_ef_search is only called on the HNSW path.  Spying on it
+            # tells us which branch vector_search took.
+            ef_calls: list[int] = []
+            original_set_ef = store._set_ef_search
+
+            def spy_set_ef(idx, lim):
+                ef_calls.append(lim)
+                original_set_ef(idx, lim)
+
+            store._set_ef_search = spy_set_ef
+
+            # ntotal=80, limit=5 -> threshold=sqrt(25)*32=160 -> 80 < 160 -> brute-force.
+            results = await store.vector_search("alpha", 5, {})
+            assert len(results) == 5
+            assert not ef_calls  # brute-force path taken
+
+            # Brute-force + filter: scans all vectors, _collect_hits filters.
+            filt = {"start_date": "2026-01-15", "end_date": "2026-01-17"}
+            results = await store.vector_search("alpha", 5, filt)
+            assert {r.id for r in results} == {"c14", "c15", "c16"}
+            assert not ef_calls  # still brute-force
+
+            # ntotal=80, limit=1 -> threshold=sqrt(5)*32~=72 -> 80 >= 72 -> HNSW graph search.
+            results = await store.vector_search("alpha", 1, {})
+            assert len(results) == 1
+            assert len(ef_calls) >= 1  # HNSW path taken, efSearch was set
+
+            store._set_ef_search = original_set_ef
+            await store.close()
+
+    run(go())
+
+
+# -- Async reindex tests -----------------------------------------------------
+
+
+def _new_faiss_store(name, **kwargs):
+    """Construct a started FAISS store with a fake embedding backend and empty index."""
+    try:
+        store = FaissLocalFileStore(name=name, embedding_store="", **kwargs)
+    except ImportError:
+        pytest.skip("faiss is not installed")
+    return store
+
+
+async def _settle_reindex(store, timeout=5.0):
+    """Wait until no async reindex is pending or in flight."""
+    deadline = time.monotonic() + timeout
+    while store._reindex_event.is_set() or store._reindex_busy:
+        if time.monotonic() > deadline:
+            raise AssertionError("async reindex did not settle in time")
+        await asyncio.sleep(0.005)
+
+
+def test_faiss_async_reindex_disabled_by_default():
+    """Default store keeps the synchronous compaction path: no background worker."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_faiss_store("t_faiss_sync_default", max_tombstones=2)
+            assert store.async_reindex is False
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+
+            files = [(node(f"n{i}.md"), [chunk(f"c{i}", f"n{i}.md", "alpha text")]) for i in range(4)]
+            await store.upsert(files)
+            await store.delete([f"n{i}.md" for i in range(3)])
+
+            # Synchronous rebuild ran inline; no background worker was created.
+            assert store._reindex_worker_task is None
+            assert store._tombstones == set()
+            assert set(store._id_to_row) == {"c3"}
+            assert [c.id for c in await store.vector_search("alpha", 10, {})] == ["c3"]
+            await store.close()
+
+    run(go())
+
+
+def test_faiss_async_reindex_triggered_by_compaction():
+    """Crossing the tombstone threshold submits a background rebuild whose result
+    matches a synchronous rebuild (deleted ids gone, tombstones cleared)."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_faiss_store("t_faiss_async_compact", async_reindex=True, max_tombstones=2)
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+
+            files = [(node(f"n{i}.md"), [chunk(f"c{i}", f"n{i}.md", "alpha text")]) for i in range(4)]
+            await store.upsert(files)
+            assert store._reindex_worker_task is None  # below threshold, nothing submitted yet
+
+            await store.delete([f"n{i}.md" for i in range(3)])  # 3 tombstones >= 2 -> submit
+            assert store._reindex_worker_task is not None
+            await _settle_reindex(store)
+
+            assert set(store._id_to_row) == {"c3"}
+            assert store._tombstones == set()
+            assert [c.id for c in await store.vector_search("alpha", 10, {})] == ["c3"]
+            await store.close()
+
+    run(go())
+
+
+def test_faiss_async_reindex_no_lost_writes_during_build():
+    """Writes that land while an async rebuild is in flight are not lost: a
+    follow-up rebuild folds them in (eventual consistency)."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_faiss_store("t_faiss_async_nolost", async_reindex=True)
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+
+            await store.upsert([(node("a.md"), [chunk("a", "a.md", "alpha text")])])
+            assert [c.id for c in await store.vector_search("alpha", 5, {})] == ["a"]
+
+            started = threading.Event()
+            release = threading.Event()
+            real_build = store._build_index_blocking
+
+            def gated_build(dim, vectors):
+                started.set()
+                release.wait()
+                return real_build(dim, vectors)
+
+            store._build_index_blocking = gated_build
+
+            store._submit_reindex()  # snapshot == {a}
+            while not started.is_set():
+                await asyncio.sleep(0.005)
+
+            # Concurrent writes on the live index while the build is blocked:
+            await store.upsert([(node("b.md"), [chunk("b", "b.md", "beta text")])])  # brand new
+            await store.upsert([(node("a.md"), [chunk("a", "a.md", "beta text")])])  # changed text
+
+            release.set()
+            await _settle_reindex(store)
+
+            # After the follow-up rebuild the index reflects both concurrent writes;
+            # the changed chunk now embeds as "beta".
+            assert set(store._id_to_row) == {"a", "b"}
+            assert {c.id for c in await store.vector_search("beta", 5, {})} == {
+                "a",
+                "b",
+            }
+            await store.close()
+
+    run(go())
+
+
+def test_faiss_async_reindex_single_worker_coalesces():
+    """Only one reindex runs at a time; repeated submissions coalesce and the
+    worker stays a single long-lived task."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_faiss_store("t_faiss_async_single", async_reindex=True)
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+            await store.upsert([(node("a.md"), [chunk("a", "a.md", "alpha text")])])
+
+            started = threading.Event()
+            release = threading.Event()
+            active = {"n": 0}
+            peak = {"n": 0}
+            real_build = store._build_index_blocking
+
+            def gated_build(dim, vectors):
+                active["n"] += 1
+                peak["n"] = max(peak["n"], active["n"])
+                started.set()
+                release.wait()
+                try:
+                    return real_build(dim, vectors)
+                finally:
+                    active["n"] -= 1
+
+            store._build_index_blocking = gated_build
+
+            store._submit_reindex()
+            while not started.is_set():
+                await asyncio.sleep(0.005)
+            worker = store._reindex_worker_task
+
+            # Several more submissions while the first build is blocked collapse into
+            # the flag rather than spawning parallel builds or a second worker.
+            for _ in range(5):
+                store._submit_reindex()
+            assert store._reindex_worker_task is worker
+
+            release.set()
+            await _settle_reindex(store)
+
+            assert peak["n"] == 1  # never two builds at once
+            assert set(store._id_to_row) == {"a"}
+            await store.close()
+
+    run(go())
+
+
+def test_faiss_async_reindex_cancelled_on_close():
+    """close() stops an in-flight reindex without hanging on the worker thread."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_faiss_store("t_faiss_async_close", async_reindex=True)
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+            await store.upsert([(node("a.md"), [chunk("a", "a.md", "alpha text")])])
+
+            started = threading.Event()
+
+            def slow_build(_dim, _vectors):
+                started.set()
+                while not store._closing:
+                    time.sleep(0.005)
+
+            store._build_index_blocking = slow_build
+            store._submit_reindex()
+            while not started.is_set():
+                await asyncio.sleep(0.005)
+
+            await store.close()  # sets _closing, cancels the worker; the build thread exits
+            assert store._reindex_worker_task is None
+
+    run(go())
+
+
+def test_faiss_close_does_not_leave_orphan_reindex():
+    """The final dump in _close() must not submit a background reindex."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_faiss_store("t_faiss_close_orphan", async_reindex=True, max_tombstones=2)
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+
+            files = [(node(f"n{i}.md"), [chunk(f"c{i}", f"n{i}.md", "alpha text")]) for i in range(4)]
+            await store.upsert(files)
+
+            # Block the build so the reindex is still in flight (tombstones uncompacted)
+            # when close runs.
+            started = threading.Event()
+
+            def slow_build(_dim, _vectors):
+                started.set()
+                while not store._closing:
+                    time.sleep(0.005)
+
+            store._build_index_blocking = slow_build
+            await store.delete([f"n{i}.md" for i in range(3)])  # 3 tombstones >= 2 -> submit
+            while not started.is_set():
+                await asyncio.sleep(0.005)
+            assert len(store._tombstones) >= store.max_tombstones  # not compacted yet
+
+            # Closing cancels the in-flight worker; the _closing guard stops the
+            # final dump from submitting an orphan reindex.
+            await store.close()
+            assert store._reindex_worker_task is None
+
+    run(go())
+
+
+def test_faiss_async_close_persists_stale_snapshot_on_same_id_update():
+    """Regression: close() during a follow-up rebuild can persist a stale snapshot.
+
+    Bug: async rebuild snapshots alpha; "a" is updated to beta; the first build
+    swaps stale alpha back; close() cancels the follow-up rebuild before it can
+    swap beta; the stale alpha index is persisted and accepted on reopen.
+
+    Expected after fix: searching with the beta vector scores ~1.0.
+    """
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_faiss_store("t_faiss_stale_close", async_reindex=True)
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+
+            # Chunk "a" with alpha text -> embedding [1.0, 0.0].
+            await store.upsert([(node("note.md"), [chunk("a", "note.md", "alpha text")])])
+            assert [c.id for c in await store.vector_search("alpha", 5, {})] == ["a"]
+
+            first_started = threading.Event()
+            release_first = threading.Event()
+            second_started = threading.Event()
+            real_build = store._build_index_blocking
+            build_count = {"n": 0}
+
+            def gated_build(dim, vectors):
+                build_count["n"] += 1
+                if build_count["n"] == 1:
+                    # First build: hold the alpha snapshot.
+                    first_started.set()
+                    release_first.wait()
+                else:
+                    # Follow-up build: signal started, then hold until close().
+                    second_started.set()
+                    while not store._closing:
+                        time.sleep(0.005)
+                return real_build(dim, vectors)
+
+            store._build_index_blocking = gated_build
+
+            # Step 1: submit the first rebuild (snapshot == {a: alpha}).
+            store._submit_reindex()
+            while not first_started.is_set():
+                await asyncio.sleep(0.005)
+
+            await store.upsert([(node("note.md"), [chunk("a", "note.md", "beta text")])])
+            release_first.set()
+            while not second_started.is_set():
+                await asyncio.sleep(0.005)
+            await store.close()
+            assert store._reindex_worker_task is None
+
+            # Step 6: reopen and verify the persisted state.
+            reopened = _new_faiss_store("t_faiss_stale_close", async_reindex=True)
+            await reopened.start()
+            reopened.embedding_store = FakeEmbeddingStore()
+
+            # The authoritative chunk JSONL has "beta text".
+            assert reopened.file_chunks["a"].text == "beta text"
+
+            # The stale sidecar is accepted because the ID set is unchanged.
+            assert await reopened._try_load_sidecar() is True
+
+            results = await reopened.vector_search("beta", 5, {})
+            assert len(results) == 1
+            assert results[0].id == "a"
+            score = results[0].scores["vector"]
+            assert score > 0.5, (
+                f"BUG: persisted FAISS index has stale alpha vector; " f"beta query scored {score:.4f} instead of ~1.0"
+            )
+            await reopened.close()
+
+    run(go())
+
+
+def test_faiss_clear_waits_for_in_flight_dump():
+    """clear() serializes with dump() through _faiss_dump_lock."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_faiss_store("t_faiss_clear_lock")
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+            await store.upsert([(node("a.md"), [chunk("a", "a.md", "alpha text")])])
+
+            first_started = asyncio.Event()
+            release = asyncio.Event()
+            original_write_sidecar = store._write_sidecar
+
+            async def blocking_write_sidecar():
+                first_started.set()
+                await release.wait()
+
+            store._write_sidecar = blocking_write_sidecar
+            dump_task = asyncio.create_task(store.dump())
+            await first_started.wait()
+
+            clear_task = asyncio.create_task(store.clear())
+            await asyncio.sleep(0.02)
+            assert not clear_task.done()  # blocked on _faiss_dump_lock held by dump
+
+            release.set()
+            await asyncio.gather(dump_task, clear_task)
+            assert store._id_to_row == {}
+
+            store._write_sidecar = original_write_sidecar
+            await store.close()
+
+    run(go())
+
+
+def test_faiss_delete_queries_graph_once():
+    """delete() resolves nodes once and reuses them (no redundant get_nodes)."""
+
+    async def go():
+        with tempfile.TemporaryDirectory() as tmp, temp_chdir(tmp):
+            store = _new_faiss_store("t_faiss_delete_once")
+            await store.start()
+            store.embedding_store = FakeEmbeddingStore()
+            store._faiss_index = store._new_index()
+            await store.upsert([(node("a.md"), [chunk("a", "a.md", "alpha text")])])
+
+            calls: list = []
+            original_get_nodes = store.file_graph.get_nodes
+
+            async def counting_get_nodes(paths=None):
+                calls.append(paths)
+                return await original_get_nodes(paths)
+
+            store.file_graph.get_nodes = counting_get_nodes
+            await store.delete("a.md")
+
+            assert len(calls) == 1
+            assert "a" not in store._id_to_row
+
+            store.file_graph.get_nodes = original_get_nodes
+            await store.close()
+
+    run(go())

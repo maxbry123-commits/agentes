@@ -1,0 +1,563 @@
+---
+id: evaluation-unit-testing-in-ci-cd
+title: Unit Testing in CI/CD
+sidebar_label: Unit Testing in CI/CD
+languages: [python, typescript]
+---
+
+import { ASSETS } from "@site/src/assets";
+
+Integrate LLM evaluations into your CI/CD pipeline with `deepeval` to catch regressions before they ship. `deepeval` plugs into <Term py="pytest" ts="vitest"/> via <Term py="assert_test()" ts="expect(testCase).toPass()"/> and the <Term py="deepeval test run" ts="npx deepeval test run"/> command, so every push (or every PR) runs the same evals you'd run locally — single-turn or multi-turn, end-to-end or component-level.
+
+## How It Works
+
+Unit testing in CI/CD is the same three steps regardless of which flavor of evaluation you're running:
+
+1. **Load your dataset** — pull goldens from Confident AI, a CSV, or a JSON file. This step is identical for every flavor.
+2. **Construct test cases & write your test** — this is where the flavor matters. End-to-end vs component-level, single-turn vs multi-turn, and (for single-turn) instrumented vs un-instrumented all change what you put inside the <Term py="pytest" ts="vitest"/> test.
+3. **Run your test file** — same command for every flavor. Drops into a `.yml` file unchanged.
+
+`deepeval`'s <Term py="pytest" ts="vitest"/> integration allows you to leverage all of its flags and functionalities, as well as capabilities offered by `deepeval`, which you can learn more about below.
+
+:::tip
+If you haven't already, we recommend reading the end-to-end and component-level guides first to understand what we're doing — `deepeval`'s <Term py="pytest" ts="vitest"/> integration mirrors those workflows, just inside a test file:
+
+- [Single-turn end-to-end evals](/docs/evaluation-end-to-end-single-turn)
+- [Multi-turn end-to-end evals](/docs/evaluation-end-to-end-multi-turn)
+- [Component-level evals](/docs/evaluation-component-level-llm-evals) (single-turn only)
+  :::
+
+## Step-by-Step Guide
+
+<Steps>
+<Step>
+
+### Load your dataset
+
+`deepeval` loads datasets from Confident AI, a CSV, a JSON file, or directly in code into an `EvaluationDataset`.
+
+<include cwd>snippets/datasets/load-dataset.mdx#single-turn</include>
+
+:::info[Multi-turn datasets]
+For [multi-turn](/docs/evaluation-end-to-end-multi-turn) evals, use `ConversationalGolden` instead of `Golden`. See [the datasets page](/docs/evaluation-datasets#load-dataset) for the full surface.
+:::
+
+</Step>
+
+<Step>
+### Construct test cases
+
+Pick the flavor that matches your application — [single-turn](/docs/evaluation-end-to-end-single-turn) (one input → one output) or [multi-turn](/docs/evaluation-end-to-end-multi-turn) (whole conversations).
+
+<Tabs items={["Single-Turn", "Multi-Turn"]}>
+
+<Tab value="Single-Turn">
+
+Within single-turn, we strongly recommend **instrumenting your app with tracing** so `deepeval` can build the `LLMTestCase` automatically from each run, and you get a full per-test-case trace on Confident AI for free.
+
+The same setup also unlocks [component-level evaluation](/docs/evaluation-component-level-llm-evals), where metrics live on individual spans (retrievers, tool calls, sub-agents) instead of the trace as a whole.
+
+**Instrument/Trace with Evals**
+
+Each example below is a complete <Term py="deepeval test run" ts="npx deepeval test run"/> file with instrumentation:
+
+<include cwd>snippets/evaluation/cicd-agent-framework-tabs.mdx</include>
+
+<Switch>
+
+<Case id="python">
+
+There are **ONE** mandatory and **ONE** optional parameter for `assert_test()` in this mode:
+
+- `golden`: the `Golden` you pass in through your test function.
+- [Optional] `metrics`: a list of `BaseMetric`s that you wish to run on your trace (aka. end-to-end evals).
+
+</Case>
+
+<Case id="typescript">
+
+The golden goes to `expect()`, and `toPass()` takes:
+
+- [Optional] `metrics`: an array of `BaseMetric`s that you wish to run on your trace (aka. end-to-end evals).
+- `options.run`: a callback `(golden) => ...` that runs your app so the matcher can capture and score its trace.
+
+</Case>
+
+</Switch>
+
+:::tip[Going component-level]
+Once your app is instrumented, you can attach metrics directly to individual <Term py="@observe" ts="observe()"/>'d (or framework-emitted) spans to grade internal components — retrievers, tool calls, sub-agents — alongside the end-to-end trace.
+
+See [component-level evaluation](/docs/evaluation-component-level-llm-evals) for the per-integration metric attachment surface; trace-level and span-level metrics coexist in the same test run.
+:::
+
+**Without Tracing**
+
+Use this when you can't (or don't want to) instrument your app — e.g. a QA engineer evaluating a deployed black-box system. You build the `LLMTestCase` yourself inside the test and hand it to <Term py="assert_test()" ts="expect(testCase).toPass()"/> directly. No tracing is involved, so you don't get per-test-case traces in CI.
+
+<Switch>
+
+<Case id="python">
+
+```python title="test_llm_app.py" showLineNumbers
+import pytest
+from deepeval import assert_test
+from deepeval.dataset import EvaluationDataset, Golden
+from deepeval.test_case import LLMTestCase
+from deepeval.metrics import AnswerRelevancyMetric
+
+def your_llm_app(query: str) -> str:
+    return "Pi rounded to 2 decimal places is 3.14."
+
+dataset = EvaluationDataset(goldens=[Golden(input="What is pi rounded to 2 decimal places?")])
+
+@pytest.mark.parametrize("golden", dataset.goldens)
+def test_llm_app(golden: Golden):
+    answer = your_llm_app(golden.input)
+    test_case = LLMTestCase(
+        input=golden.input,
+        actual_output=answer,
+    )
+    assert_test(test_case=test_case, metrics=[AnswerRelevancyMetric()])
+```
+
+There are **TWO** mandatory and **ONE** optional parameter for `assert_test()` in this mode:
+
+- `test_case`: an `LLMTestCase` you constructed inside the test.
+- `metrics`: a list of `BaseMetric`s.
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="llm_app.test.ts" showLineNumbers
+import { it, expect } from "vitest";
+import { EvaluationDataset, Golden } from "deepeval/dataset";
+import { AnswerRelevancyMetric } from "deepeval/metrics";
+import { LLMTestCase } from "deepeval/test-case";
+import "deepeval/vitest";
+
+async function yourLlmApp(query: string): Promise<string> {
+  return "Pi rounded to 2 decimal places is 3.14.";
+}
+
+const dataset = new EvaluationDataset({
+  goldens: [new Golden({ input: "What is pi rounded to 2 decimal places?" })],
+});
+
+it.each(dataset.goldens as Golden[])(
+  "answers the user's question #%$",
+  async (golden) => {
+    const answer = await yourLlmApp(golden.input);
+    const testCase = new LLMTestCase({
+      input: golden.input,
+      actualOutput: answer,
+    });
+    await expect(testCase).toPass([new AnswerRelevancyMetric()]);
+  },
+);
+```
+
+The test case goes to `expect()`, and `toPass()` takes one argument:
+
+- `metrics`: an array of `BaseMetric`s, run concurrently against the test case.
+
+</Case>
+
+</Switch>
+
+The fields you populate on `LLMTestCase` must match what your metrics need (e.g. `FaithfulnessMetric` requires <Term py="retrieval_context" ts="retrievalContext"/>). See [test cases](/docs/evaluation-test-cases#llm-test-cases) for the full parameter list.
+
+</Tab>
+
+<Tab value="Multi-Turn">
+
+Pick this if your app is multi-turn — chatbots, support agents, and any conversational app where the unit of evaluation is the whole conversation rather than a single exchange. You wrap your chatbot in a <Term py="model_callback" ts="modelCallback"/>, simulate conversations against goldens, then evaluate each `ConversationalTestCase`. Multi-turn evaluation is end-to-end by default; for the full standalone walkthrough see the [multi-turn end-to-end guide](/docs/evaluation-end-to-end-multi-turn).
+
+**1. Wrap your chatbot in a callback**
+
+The `ConversationSimulator` needs a way to ask your chatbot for its next reply, given the conversation so far:
+
+<include cwd>snippets/evaluation/model-callback-tabs.mdx</include>
+
+:::info
+Your <Term py="model_callback" ts="modelCallback"/> is handed the `input` (the simulated user's next message), the `turns` so far, and a stable <Term py="thread_id" ts="threadId"/> — take only the ones you need. It must return a `Turn` whose `role` is `assistant`.
+:::
+
+**2. Simulate conversations & write your test**
+
+Run the simulator once at module load to produce `ConversationalTestCase`s, then parametrize over them:
+
+<Switch>
+
+<Case id="python">
+
+```python title="test_chatbot.py" showLineNumbers
+import pytest
+import deepeval
+from deepeval import assert_test
+from deepeval.test_case import ConversationalTestCase
+from deepeval.metrics import TurnRelevancyMetric
+from deepeval.simulator import ConversationSimulator
+from your_app import model_callback
+
+simulator = ConversationSimulator(model_callback=model_callback)
+test_cases = simulator.simulate(
+    conversational_goldens=dataset.goldens,
+    max_user_simulations=10,
+)
+
+@pytest.mark.parametrize("test_case", test_cases)
+def test_chatbot(test_case: ConversationalTestCase):
+    assert_test(test_case=test_case, metrics=[TurnRelevancyMetric()])
+
+@deepeval.log_hyperparameters
+def hyperparameters():
+    return {"model": "gpt-4.1", "system_prompt": "Be concise."}
+```
+
+There are **TWO** mandatory and **ONE** optional parameter for `assert_test()` in this mode:
+
+- `test_case`: a `ConversationalTestCase` produced by the simulator.
+- `metrics`: a list of `BaseConversationalMetric`s. See [multi-turn metrics](/docs/metrics-introduction#multi-turn-metrics) (`TurnRelevancyMetric`, `KnowledgeRetentionMetric`, `RoleAdherenceMetric`, `ConversationCompletenessMetric`).
+- [Optional] `run_async`: defaults to `True`.
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="chatbot.test.ts" showLineNumbers
+import { it, expect } from "vitest";
+import { ConversationalGolden } from "deepeval/dataset";
+import { TurnRelevancyMetric } from "deepeval/metrics";
+import { ConversationSimulator, logHyperparameters } from "deepeval";
+import { modelCallback } from "./your-app";
+import "deepeval/vitest";
+
+const simulator = new ConversationSimulator({ modelCallback });
+const testCases = await simulator.simulate({
+  conversationalGoldens: dataset.goldens as ConversationalGolden[],
+  maxUserSimulations: 10,
+});
+
+logHyperparameters({ model: "gpt-4.1", systemPrompt: "Be concise." });
+
+it.each(testCases)(
+  "stays relevant across the conversation #%$",
+  async (testCase) => {
+    await expect(testCase).toPass([new TurnRelevancyMetric()]);
+  },
+);
+```
+
+The test case goes to `expect()`, and `toPass()` takes one argument:
+
+- `metrics`: an array of `BaseConversationalMetric`s. See [multi-turn metrics](/docs/metrics-introduction#multi-turn-metrics) (`TurnRelevancyMetric`, `KnowledgeRetentionMetric`, `RoleAdherenceMetric`, `ConversationCompletenessMetric`).
+
+`logHyperparameters()` is the counterpart to Python's `@deepeval.log_hyperparameters` decorator — call it once anywhere in the file. Outside of `npx deepeval test run` there's no test run to label, so it's a no-op; pass `hyperparameters` to `evaluate()` instead.
+
+</Case>
+
+</Switch>
+
+</Tab>
+</Tabs>
+
+</Step>
+
+<Step>
+### Run your test file
+
+Whichever flavor you picked above, the command is the same:
+
+<Switch>
+
+<Case id="python">
+
+```bash
+deepeval test run test_llm_app.py
+```
+
+:::caution
+The plain `pytest` command works but is highly not recommended. `deepeval test run` adds a range of functionalities on top of Pytest for unit-testing LLMs, enabled by [8+ optional flags](/docs/evaluation-flags-and-configs#flags-for-deepeval-test-run) — async behavior, error handling, repeats, identifiers, and more.
+:::
+
+</Case>
+
+<Case id="typescript">
+
+```bash
+npx deepeval test run llm_app.test.ts
+```
+
+:::caution
+The plain `vitest` command works but is highly not recommended. `npx deepeval test run` adds a range of functionalities on top of Vitest for unit-testing LLMs, enabled by [8+ optional flags](/docs/evaluation-flags-and-configs#flags-for-deepeval-test-run) — error handling, repeats, identifiers, and more. It also injects the `toPass()` matcher for you.
+:::
+
+</Case>
+
+</Switch>
+
+</Step>
+</Steps>
+
+## Handling Flaky Test Cases
+
+LLM evals are non-deterministic, and some test cases will sit right on a metric's threshold and flip between passing and failing across runs. Instead of removing them from your suite, mark them as flaky:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import LLMTestCase
+
+test_case = LLMTestCase(flaky=True, ...)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { LLMTestCase } from "deepeval/test-case";
+
+const testCase = new LLMTestCase({ flaky: true, ... });
+```
+
+</Case>
+
+</Switch>
+
+When a flaky test case fails, <Switch><Case id="python">`assert_test()` prints a warning instead of raising an `AssertionError`</Case><Case id="typescript">`expect(testCase).toPass()` prints a warning instead of failing the test</Case></Switch>, so your CI pipeline keeps going while the failure is still recorded in your test run results. Both `LLMTestCase` and `ConversationalTestCase` support the `flaky` parameter.
+
+You can also mark individual **metrics** as flaky (<Term py="AnswerRelevancyMetric(flaky=True)" ts="new AnswerRelevancyMetric({ flaky: true })"/>) — a flaky metric's score and verdict are still reported, but its failure never fails the test case it ran on.
+
+## YAML File For CI/CD Evals
+
+Drop <Term py="deepeval test run" ts="npx deepeval test run"/> into a `.yml` to run your unit tests on every push or PR. This example uses `OPENAI_API_KEY` as your LLM judge to run evals locally. Add `CONFIDENT_API_KEY` to send results to Confident AI.
+
+<Switch>
+
+<Case id="python">
+
+```yaml {32-33}
+name: LLM App `deepeval` Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Dependencies
+        run: poetry install --no-root
+
+      - name: Run `deepeval` Unit Tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CONFIDENT_API_KEY: ${{ secrets.CONFIDENT_API_KEY }}
+        run: poetry run deepeval test run test_llm_app.py
+```
+
+</Case>
+
+<Case id="typescript">
+
+```yaml {24-25}
+name: LLM App `deepeval` Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run `deepeval` Unit Tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CONFIDENT_API_KEY: ${{ secrets.CONFIDENT_API_KEY }}
+        run: npx deepeval test run llm_app.test.ts
+```
+
+</Case>
+
+</Switch>
+
+[Click here](/docs/evaluation-flags-and-configs#flags-for-deepeval-test-run) to learn about the optional flags available to <Term py="deepeval test run" ts="npx deepeval test run"/>.
+
+:::tip
+We highly recommend setting up [Confident AI](https://app.confident-ai.com) with your `deepeval` evaluations to get professional test reports and observe trends of your LLM application's performance over time:
+
+<VideoDisplayer
+  src={ASSETS.tracingSpans}
+  confidentUrl="/docs/llm-tracing/introduction"
+  label="Span-level evals in production"
+  description="Keep evaluating components in production after your CI/CD checks pass."
+/>
+:::
+
+## Marking an Official Run
+
+You can designate a test run as the **official** test run on Confident AI — the marked good run that future runs are compared against for regressions. Add the `--official` flag (or `-o`) to mark the run once it completes:
+
+<Switch>
+
+<Case id="python">
+
+```bash
+deepeval test run test_llm_app.py --official
+```
+
+</Case>
+
+<Case id="typescript">
+
+```bash
+npx deepeval test run llm_app.test.ts --official
+```
+
+</Case>
+
+</Switch>
+
+If you evaluate with `evaluate()` rather than <Term py="deepeval test run" ts="npx deepeval test run"/>, pass <Term py="official=True" ts="official: true"/> instead:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval import evaluate
+
+evaluate(test_cases=[...], metrics=[...], official=True)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { evaluate } from "deepeval";
+
+await evaluate([...], [...], { official: true });
+```
+
+</Case>
+
+</Switch>
+
+This is typically done on your main branch so every baseline reflects merged, production-ready code.
+
+:::note
+Marking a run as official requires a `CONFIDENT_API_KEY`, since official runs live on Confident AI.
+:::
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "How does `deepeval` fit into CI/CD?",
+      answer: (
+        <>
+          You write your evals as tests in your language's test runner and run
+          them with the <code>deepeval test run</code> command as a step in your
+          pipeline. Failing metrics fail the build, so regressions get caught
+          before they ship.
+        </>
+      ),
+    },
+    {
+      question: "What's the difference between unit testing and `evaluate()`?",
+      answer: (
+        <>
+          Unit testing is built for CI/CD: when a metric falls below its
+          threshold the assertion fails, so the build goes red. Meanwhile{" "}
+          <code>evaluate()</code> is for scripts and notebooks and collects
+          results without failing anything. Use unit testing for gating.
+        </>
+      ),
+    },
+    {
+      question: "Do I need a Confident AI account to run evals in CI/CD?",
+      answer: (
+        <>
+          No. Provide an LLM judge key such as <code>OPENAI_API_KEY</code> and
+          your tests run entirely locally. Adding <code>CONFIDENT_API_KEY</code>{" "}
+          is optional and only sends results to the cloud.
+        </>
+      ),
+    },
+    {
+      question: "Which CI providers does this work with?",
+      answer: (
+        <>
+          Any provider that runs a shell step. The docs show a GitHub Actions{" "}
+          <code>.yml</code>, but the same <code>deepeval test run</code> command
+          works in GitLab CI, CircleCI, Jenkins, and others.
+        </>
+      ),
+    },
+    {
+      question: "How do I speed up or control test runs in CI?",
+      answer: (
+        <>
+          Use <code>deepeval test run</code> flags like parallelization,
+          caching, and ignore-errors. See{" "}
+          <a href="/docs/evaluation-flags-and-configs#flags-for-deepeval-test-run">
+            flags and configs
+          </a>{" "}
+          for the full list.
+        </>
+      ),
+    },
+    {
+      question:
+        "Can my team see professional test reports on the cloud and track results over time?",
+      answer: (
+        <>
+          Yes — and it's optional. Add <code>CONFIDENT_API_KEY</code> to your CI
+          secrets and the same <code>deepeval test run</code> sends results to{" "}
+          <a href="https://app.confident-ai.com">Confident AI</a> (the platform
+          from the <code>deepeval</code> team), giving your team sharable
+          testing reports, a
+          UI to inspect failing cases, and trend lines of performance across
+          commits. Without the key, the exact same tests still run locally.
+        </>
+      ),
+    },
+  ]}
+/>

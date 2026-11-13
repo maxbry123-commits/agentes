@@ -1,0 +1,26 @@
+# Adapted from
+# https://github.com/woodruffw/gha-hazmat/blob/main/.github/workflows/template-injection.yml
+name: paw-me
+on:
+  issues:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.base_ref == main }}
+
+jobs:
+  not-ok:
+    name: not-ok
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        frob: ["nothing", "special"]
+        dynamic: ${{ github.event.client_payload.mystery_meat }}
+
+    steps:
+      - name: Please dont
+        run: |
+          echo "doing a thing: ${{ matrix.dynamic }}"

@@ -1,0 +1,43 @@
+operators:
+- id: load_preexisting
+  config:
+    type: load_preexisting
+    framework_name: seed_math_multiple_samples_scale_up_base_16K
+- id: merge_together
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.merge_duplicate_rows
+    function_config:
+      diff_columns: 
+        - r1_distill_70b_response
+        - r1_distill_70b_extracted_answer
+  input_ids:
+    - load_preexisting
+- id: annotate
+  config:
+    type: function
+    function:
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 8_000
+  input_ids:
+  - merge_together
+- id: all_verification
+  config:
+    type: function
+    function: data_strategies.MultipleSamples.utils.all_verification
+    function_config:
+      response_column: r1_distill_70b_response
+      verified_response_column: verified_r1_distill_70b_response
+  input_ids:
+  - annotate
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: verified_r1_distill_70b_response
+      output_sharegpt_column: conversations
+  input_ids:
+    - all_verification

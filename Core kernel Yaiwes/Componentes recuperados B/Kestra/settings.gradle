@@ -1,0 +1,40 @@
+plugins {
+    id("io.kestra.gradle.develocity-conventions") version "1.2.6"
+    id("com.gradle.common-custom-user-data-gradle-plugin") version "2.8.0"
+    id("io.github.ben-manes.versions.settings") version "0.61.0"
+}
+
+rootProject.name = "kestra"
+
+
+include 'platform'
+
+include 'cli'
+include 'core'
+include 'tests'
+
+include 'runner-memory'
+include 'repository-memory'
+
+include 'storage-local'
+
+include 'jdbc'
+include 'jdbc-h2'
+include 'jdbc-mysql'
+include 'jdbc-postgres'
+
+include 'queue'
+include 'queue-jdbc'
+
+include 'webserver'
+include 'executor'
+include 'scheduler'
+include 'worker'
+include 'worker-controller'
+include 'indexer'
+
+include 'model'
+include 'processor'
+include 'script'
+
+include 'jmh-benchmarks'

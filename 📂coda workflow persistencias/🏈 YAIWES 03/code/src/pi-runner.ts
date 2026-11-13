@@ -1,0 +1,1187 @@
+import type { ExecutionLog } from "./stores/execution-log.js";
+import type { ArtifactStore } from "./stores/artifact-store.js";
+import type { AgentRole, ArtifactRecord, ExecutionEvent, JsonObject, RuntimeAbortContext } from "./types.js";
+import { RUNTIME_CONTROL_TOOL_NAMES } from "./runtime-control-tools.js";
+import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+
+type SubscribableSession = {
+  prompt(text: string, options?: unknown): Promise<void>;
+  subscribe(listener: (event: unknown) => void): () => void;
+  abort?: () => Promise<void>;
+  clearQueue?: () => unknown;
+};
+
+export type ProviderAdmissionOptions = {
+  key: string;
+  maxConcurrent?: number;
+  signal?: AbortSignal;
+  gate?: ProviderAdmissionGate;
+};
+
+type ProviderAdmissionLease = {
+  release(): void;
+};
+
+type ProviderAdmissionWaiter = {
+  resolve: (lease: ProviderAdmissionLease) => void;
+  reject: (error: unknown) => void;
+  signal?: AbortSignal;
+  abortListener?: () => void;
+};
+
+type ProviderAdmissionState = {
+  active: number;
+  cooldownUntil: number;
+  maxConcurrent: number;
+  recovering: boolean;
+  queue: ProviderAdmissionWaiter[];
+  wakeGeneration: number;
+  wakeScheduled: boolean;
+};
+
+export class ProviderAdmissionCancelledError extends Error {
+  constructor(providerKey: string) {
+    super(`Provider admission cancelled while queued: ${providerKey}`);
+    this.name = "ProviderAdmissionCancelledError";
+  }
+}
+
+export class ProviderAdmissionGate {
+  private readonly states = new Map<string, ProviderAdmissionState>();
+  private readonly defaultMaxConcurrent: number;
+  private readonly now: () => number;
+  private readonly sleep: (delayMs: number) => Promise<void>;
+
+  constructor(input: {
+    defaultMaxConcurrent?: number;
+    now?: () => number;
+    sleep?: (delayMs: number) => Promise<void>;
+  } = {}) {
+    this.defaultMaxConcurrent = positiveInteger(input.defaultMaxConcurrent) ?? 2;
+    this.now = input.now ?? Date.now;
+    this.sleep = input.sleep ?? ((delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)));
+  }
+
+  acquire(input: {
+    key: string;
+    maxConcurrent?: number;
+    signal?: AbortSignal;
+  }): Promise<ProviderAdmissionLease> {
+    const key = input.key.trim();
+    if (!key) {
+      return Promise.reject(new Error("Provider admission key must not be empty"));
+    }
+    if (input.signal?.aborted) {
+      return Promise.reject(new ProviderAdmissionCancelledError(key));
+    }
+    const state = this.getOrCreateState(key);
+    const requestedLimit = positiveInteger(input.maxConcurrent);
+    if (requestedLimit) {
+      state.maxConcurrent = requestedLimit;
+    }
+    return new Promise<ProviderAdmissionLease>((resolve, reject) => {
+      const waiter: ProviderAdmissionWaiter = {
+        resolve,
+        reject,
+        signal: input.signal
+      };
+      if (input.signal) {
+        waiter.abortListener = () => {
+          const index = state.queue.indexOf(waiter);
+          if (index < 0) {
+            return;
+          }
+          state.queue.splice(index, 1);
+          reject(new ProviderAdmissionCancelledError(key));
+          this.pump(key, state);
+        };
+        input.signal.addEventListener("abort", waiter.abortListener, { once: true });
+      }
+      state.queue.push(waiter);
+      this.pump(key, state);
+    });
+  }
+
+  cooldown(key: string, delayMs: number): void {
+    const normalizedKey = key.trim();
+    const normalizedDelayMs = positiveTimeout(delayMs);
+    if (!normalizedKey || !normalizedDelayMs) {
+      return;
+    }
+    const state = this.getOrCreateState(normalizedKey);
+    state.cooldownUntil = Math.max(state.cooldownUntil, this.now() + normalizedDelayMs);
+    this.pump(normalizedKey, state);
+  }
+
+  observe(key: string, event: unknown): void {
+    const normalizedKey = key.trim();
+    if (!normalizedKey) {
+      return;
+    }
+    const state = this.getOrCreateState(normalizedKey);
+    if (isProviderRateLimitEvent(event)) {
+      state.recovering = true;
+    } else if (isSuccessfulProviderEvent(event)) {
+      state.recovering = false;
+    }
+    const delayMs = providerCooldownMsFromEvent(event, this.now());
+    if (delayMs) {
+      this.cooldown(normalizedKey, delayMs);
+      return;
+    }
+    this.pump(normalizedKey, state);
+  }
+
+  private getOrCreateState(key: string): ProviderAdmissionState {
+    const existing = this.states.get(key);
+    if (existing) {
+      return existing;
+    }
+    const state: ProviderAdmissionState = {
+      active: 0,
+      cooldownUntil: 0,
+      maxConcurrent: this.defaultMaxConcurrent,
+      recovering: false,
+      queue: [],
+      wakeGeneration: 0,
+      wakeScheduled: false
+    };
+    this.states.set(key, state);
+    return state;
+  }
+
+  private pump(key: string, state: ProviderAdmissionState): void {
+    if (this.states.get(key) !== state) {
+      return;
+    }
+    const cooldownRemainingMs = state.cooldownUntil - this.now();
+    if (cooldownRemainingMs > 0) {
+      this.scheduleWake(key, state, cooldownRemainingMs);
+      return;
+    }
+    state.cooldownUntil = 0;
+    const concurrencyLimit = state.recovering ? 1 : state.maxConcurrent;
+    while (state.active < concurrencyLimit && state.queue.length > 0) {
+      const waiter = state.queue.shift();
+      if (!waiter) {
+        break;
+      }
+      if (waiter.abortListener) {
+        waiter.signal?.removeEventListener("abort", waiter.abortListener);
+      }
+      if (waiter.signal?.aborted) {
+        waiter.reject(new ProviderAdmissionCancelledError(key));
+        continue;
+      }
+      state.active += 1;
+      let released = false;
+      waiter.resolve({
+        release: () => {
+          if (released) {
+            return;
+          }
+          released = true;
+          state.active = Math.max(0, state.active - 1);
+          this.pump(key, state);
+        }
+      });
+    }
+    if (state.active === 0 && state.queue.length === 0 && state.cooldownUntil === 0 && !state.recovering) {
+      this.states.delete(key);
+    }
+  }
+
+  private scheduleWake(key: string, state: ProviderAdmissionState, delayMs: number): void {
+    if (state.wakeScheduled) {
+      return;
+    }
+    state.wakeScheduled = true;
+    const generation = ++state.wakeGeneration;
+    void this.sleep(delayMs).then(() => {
+      if (this.states.get(key) !== state || state.wakeGeneration !== generation) {
+        return;
+      }
+      state.wakeScheduled = false;
+      this.pump(key, state);
+    });
+  }
+}
+
+export const providerAdmissionGate = new ProviderAdmissionGate();
+
+export function createProviderAdmissionExtension(input: ProviderAdmissionOptions): ExtensionFactory {
+  const key = input.key.trim();
+  if (!key) {
+    throw new Error("Provider admission key must not be empty");
+  }
+  const gate = input.gate ?? providerAdmissionGate;
+  return (pi) => {
+    const lifecycleAbortController = new AbortController();
+    let activeLease: ProviderAdmissionLease | undefined;
+    let activeSignalCleanup: (() => void) | undefined;
+
+    const releaseActiveLease = (): void => {
+      activeSignalCleanup?.();
+      activeSignalCleanup = undefined;
+      activeLease?.release();
+      activeLease = undefined;
+    };
+
+    pi.on("before_provider_request", async (_event, context) => {
+      releaseActiveLease();
+      const linkedSignal = linkAbortSignals([
+        input.signal,
+        context.signal,
+        lifecycleAbortController.signal
+      ]);
+      try {
+        const lease = await gate.acquire({
+          key,
+          maxConcurrent: input.maxConcurrent,
+          signal: linkedSignal.signal
+        });
+        if (linkedSignal.signal?.aborted) {
+          lease.release();
+          context.abort();
+          throw new ProviderAdmissionCancelledError(key);
+        }
+        activeLease = lease;
+        activeSignalCleanup = linkedSignal.dispose;
+        linkedSignal.signal?.addEventListener("abort", () => {
+          releaseActiveLease();
+          context.abort();
+        }, { once: true });
+      } catch (error) {
+        linkedSignal.dispose();
+        context.abort();
+        throw error;
+      }
+    });
+
+    pi.on("after_provider_response", (event) => {
+      gate.observe(key, event);
+    });
+    pi.on("message_end", () => {
+      releaseActiveLease();
+    });
+    pi.on("agent_end", () => {
+      releaseActiveLease();
+    });
+    pi.on("session_shutdown", () => {
+      lifecycleAbortController.abort();
+      releaseActiveLease();
+    });
+  };
+}
+
+export class StructuredInvocationError extends Error {
+  readonly code: "timeout" | "missing_submit" | "tool_error" | "provider_error" | "invalid_submit";
+
+  constructor(
+    message: string,
+    code: StructuredInvocationError["code"]
+  ) {
+    super(message);
+    this.name = "StructuredInvocationError";
+    this.code = code;
+  }
+}
+
+export async function invokeStructured<T>(
+  session: SubscribableSession,
+  prompt: string,
+  input: {
+    toolName: string;
+    timeoutMs?: number;
+    idleTimeoutMs?: number;
+    hardTimeoutMs?: number;
+    maxTruncationSteers?: number;
+    terminateOnToolError?: boolean;
+    maxRepeatedToolErrors?: number;
+    validate?: (value: unknown) => T;
+    admission?: ProviderAdmissionOptions;
+  }
+): Promise<T> {
+  return withProviderAdmissionObservation(input.admission, (observeAdmissionEvent) => invokeStructuredAdmitted(
+    session,
+    prompt,
+    input,
+    observeAdmissionEvent
+  ));
+}
+
+async function invokeStructuredAdmitted<T>(
+  session: SubscribableSession,
+  prompt: string,
+  input: {
+    toolName: string;
+    timeoutMs?: number;
+    idleTimeoutMs?: number;
+    hardTimeoutMs?: number;
+    maxTruncationSteers?: number;
+    terminateOnToolError?: boolean;
+    maxRepeatedToolErrors?: number;
+    validate?: (value: unknown) => T;
+  },
+  observeAdmissionEvent: (event: unknown) => void
+): Promise<T> {
+  let settled = false;
+  let providerError = "";
+  let terminalToolError = "";
+  let repeatedToolErrorKey = "";
+  let repeatedToolErrorCount = 0;
+  const terminalToolArgsByCallId = new Map<string, string>();
+  let lastAssistantStopReason = "";
+  let truncationSteersUsed = 0;
+  let idleTimeout: NodeJS.Timeout | undefined;
+  let hardTimeout: NodeJS.Timeout | undefined;
+  let resolveInvocation: (value: T) => void = () => undefined;
+  let rejectInvocation: (error: unknown) => void = () => undefined;
+  const invocation = new Promise<T>((resolve, reject) => {
+    resolveInvocation = resolve;
+    rejectInvocation = reject;
+  });
+  const idleTimeoutMs = positiveTimeout(input.idleTimeoutMs);
+  const hardTimeoutMs = positiveTimeout(input.hardTimeoutMs ?? input.timeoutMs);
+  const maxTruncationSteers = Math.max(0, Math.floor(input.maxTruncationSteers ?? 2));
+  const maxRepeatedToolErrors = input.maxRepeatedToolErrors === undefined
+    ? Number.POSITIVE_INFINITY
+    : Math.max(1, Math.floor(input.maxRepeatedToolErrors));
+  const rejectOnce = (error: unknown, abortSession = false): void => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    if (abortSession) {
+      void session.abort?.();
+    }
+    rejectInvocation(error);
+  };
+  const resetIdleTimeout = (): void => {
+    if (!idleTimeoutMs || settled) {
+      return;
+    }
+    if (idleTimeout) {
+      clearTimeout(idleTimeout);
+    }
+    idleTimeout = setTimeout(() => rejectOnce(new StructuredInvocationError(
+      `Structured invocation idle timed out after ${idleTimeoutMs}ms`,
+      "timeout"
+    ), true), idleTimeoutMs);
+  };
+  const unsubscribe = session.subscribe((event) => {
+    observeAdmissionEvent(event);
+    if (settled || !isRecord(event)) {
+      return;
+    }
+    if (event.type === "message_end") {
+      const message = isRecord(event.message) ? event.message : undefined;
+      if (isAssistantMessageRole(message?.role)) {
+        lastAssistantStopReason = String(message?.stopReason ?? event.stopReason ?? "").toLowerCase();
+      }
+      const errorMessage = extractPiErrorMessage(event);
+      if (errorMessage) {
+        providerError = errorMessage;
+      } else if (isSuccessfulAssistantMessage(event)) {
+        providerError = "";
+      }
+      resetIdleTimeout();
+      return;
+    }
+    if (event.type === "auto_retry_end" && event.success === true) {
+      providerError = "";
+    }
+    if (event.type === "tool_execution_start" && event.toolName === input.toolName) {
+      terminalToolArgsByCallId.set(
+        String(event.toolCallId ?? ""),
+        stableValueSignature(event.args)
+      );
+    }
+    if (isStructuredInvocationProgressEvent(event.type) && event.type !== "tool_execution_end") {
+      resetIdleTimeout();
+    }
+    if (event.type !== "tool_execution_end" || event.toolName !== input.toolName) {
+      return;
+    }
+    if (event.isError === true) {
+      const nextToolError = extractStructuredToolError(event, input.toolName);
+      const toolErrorKey = `${terminalToolArgsByCallId.get(String(event.toolCallId ?? "")) ?? ""}\n${nextToolError}`;
+      repeatedToolErrorCount = toolErrorKey === repeatedToolErrorKey ? repeatedToolErrorCount + 1 : 1;
+      repeatedToolErrorKey = toolErrorKey;
+      terminalToolError = nextToolError;
+      if (input.terminateOnToolError || repeatedToolErrorCount >= maxRepeatedToolErrors) {
+        session.clearQueue?.();
+        rejectOnce(new StructuredInvocationError(terminalToolError, "invalid_submit"), true);
+        return;
+      }
+      return;
+    }
+    terminalToolError = "";
+    repeatedToolErrorKey = "";
+    repeatedToolErrorCount = 0;
+    const result = isRecord(event.result) ? event.result : undefined;
+    const details = result?.details;
+    try {
+      const value = input.validate ? input.validate(details) : details as T;
+      if (value === undefined) {
+        throw new Error(`Terminal tool ${input.toolName} returned no details`);
+      }
+      session.clearQueue?.();
+      settled = true;
+      resolveInvocation(value);
+    } catch (error) {
+      rejectOnce(new StructuredInvocationError(
+        error instanceof Error ? error.message : String(error),
+        "invalid_submit"
+      ));
+    }
+  });
+  resetIdleTimeout();
+  hardTimeout = hardTimeoutMs
+    ? setTimeout(() => rejectOnce(new StructuredInvocationError(
+      `Structured invocation hard timed out after ${hardTimeoutMs}ms`,
+      "timeout"
+    ), true), hardTimeoutMs)
+    : undefined;
+  const truncationSteerPrompt = `上一次响应因 max_completion_tokens 上限被截断，没有产生有效的 ${input.toolName} 调用。`
+    + `立即直接调用 ${input.toolName}：先输出工具调用，用简洁参数提交当前最佳结论，不要在正文输出推理过程。`;
+  let promptCompletion = session.prompt(prompt);
+  const handlePromptCompletion = (completion: Promise<void>): void => {
+    void completion.then(() => {
+      if (settled) {
+        return;
+      }
+      if (terminalToolError) {
+        rejectOnce(new StructuredInvocationError(terminalToolError, "invalid_submit"));
+        return;
+      }
+      if (!providerError
+        && lastAssistantStopReason === "length"
+        && truncationSteersUsed < maxTruncationSteers) {
+        // The model burned the whole completion budget (typically on reasoning)
+        // before emitting the terminal tool call. Steer the same session into
+        // submitting immediately instead of declaring a missing submit.
+        truncationSteersUsed += 1;
+        lastAssistantStopReason = "";
+        resetIdleTimeout();
+        promptCompletion = session.prompt(truncationSteerPrompt);
+        handlePromptCompletion(promptCompletion);
+        return;
+      }
+      rejectOnce(new StructuredInvocationError(
+        providerError || `Invocation completed without ${input.toolName}`,
+        providerError ? "provider_error" : "missing_submit"
+      ));
+    }, (error) => {
+      if (settled) {
+        return;
+      }
+      rejectOnce(error instanceof Error
+        ? error
+        : new StructuredInvocationError(String(error), "provider_error"));
+    });
+  };
+  handlePromptCompletion(promptCompletion);
+  try {
+    const value = await invocation;
+    try {
+      await promptCompletion;
+    } catch {
+      // A valid terminating tool submission wins; awaiting here only ensures
+      // the Pi session has left its processing state before it is reused.
+    }
+    return value;
+  } finally {
+    if (idleTimeout) {
+      clearTimeout(idleTimeout);
+    }
+    if (hardTimeout) {
+      clearTimeout(hardTimeout);
+    }
+    unsubscribe();
+  }
+}
+
+function isSuccessfulAssistantMessage(event: Record<string, unknown>): boolean {
+  const message = isRecord(event.message) ? event.message : undefined;
+  return isAssistantMessageRole(message?.role)
+    && String(message?.stopReason ?? event.stopReason ?? "").toLowerCase() !== "error";
+}
+
+function extractStructuredToolError(event: Record<string, unknown>, toolName: string): string {
+  const result = isRecord(event.result) ? event.result : undefined;
+  const candidates: unknown[] = [
+    event.errorMessage,
+    isRecord(event.error) ? event.error.message : undefined,
+    result?.errorMessage,
+    result?.message
+  ];
+  if (Array.isArray(result?.content)) {
+    for (const item of result.content) {
+      if (!isRecord(item) || item.type !== "text") {
+        continue;
+      }
+      candidates.push(item.text);
+      if (isRecord(item.text)) {
+        candidates.push(item.text.preview, item.text.message);
+      }
+    }
+  }
+  const message = candidates.find((value) => typeof value === "string" && value.trim().length > 0);
+  return typeof message === "string"
+    ? message.trim().slice(0, 4_000)
+    : `Terminal tool ${toolName} failed validation`;
+}
+
+function isStructuredInvocationProgressEvent(eventType: unknown): boolean {
+  return typeof eventType === "string" && [
+    "message_update",
+    "message_start",
+    "tool_execution_start",
+    "tool_execution_update",
+    "tool_execution_end",
+    "turn_start",
+    "turn_end",
+    "agent_start",
+    "agent_end",
+    "auto_retry_start",
+    "auto_retry_end",
+    "compaction_start",
+    "compaction_end"
+  ].includes(eventType);
+}
+
+function stableValueSignature(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableValueSignature).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${stableValueSignature(nested)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? String(value);
+}
+
+function positiveTimeout(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined;
+}
+
+export class PromptRuntimeError extends Error {
+  readonly errorKind: LlmErrorKind;
+
+  constructor(message: string, errorKind = classifyLlmErrorKind(message)) {
+    super(message);
+    this.name = "PromptRuntimeError";
+    this.errorKind = errorKind;
+  }
+}
+
+export type LlmErrorKind =
+  | "provider_concurrency"
+  | "provider_rate_limit"
+  | "provider_unavailable"
+  | "provider_timeout"
+  | "missing_submit"
+  | "llm_error";
+
+export async function promptAndCollect(
+  session: SubscribableSession,
+  prompt: string,
+  input: { admission?: ProviderAdmissionOptions } = {}
+): Promise<string> {
+  return withProviderAdmissionObservation(input.admission, (observeAdmissionEvent) => promptAndCollectAdmitted(
+    session,
+    prompt,
+    observeAdmissionEvent
+  ));
+}
+
+async function promptAndCollectAdmitted(
+  session: SubscribableSession,
+  prompt: string,
+  observeAdmissionEvent: (event: unknown) => void
+): Promise<string> {
+  let collectedText = "";
+  let finalMessageText = "";
+  let finalErrorMessage = "";
+  const unsubscribe = session.subscribe((event) => {
+    observeAdmissionEvent(event);
+    const typedEvent = event as {
+      type?: string;
+      errorMessage?: string;
+      error?: { message?: string };
+      assistantMessageEvent?: { type?: string; delta?: string };
+      message?: { role?: string; content?: Array<{ type?: string; text?: string }>; errorMessage?: string };
+    };
+    if (typedEvent.type === "message_update" && typedEvent.assistantMessageEvent?.type === "text_delta") {
+      collectedText += typedEvent.assistantMessageEvent.delta ?? "";
+    }
+    if (typedEvent.type === "message_end" && isAssistantMessageRole(typedEvent.message?.role)) {
+      finalMessageText = extractTextContent(typedEvent.message?.content);
+      finalErrorMessage = typedEvent.message?.errorMessage
+        ?? typedEvent.errorMessage
+        ?? typedEvent.error?.message
+        ?? "";
+    }
+  });
+  try {
+    await session.prompt(prompt);
+    const output = collectedText.trim().length > 0 ? collectedText : finalMessageText;
+    if (output.trim().length === 0 && finalErrorMessage.trim().length > 0) {
+      throw new PromptRuntimeError(finalErrorMessage.trim());
+    }
+    if (output.trim().length === 0) {
+      throw new PromptRuntimeError("No assistant output collected from Pi session", "llm_error");
+    }
+    return output;
+  } finally {
+    unsubscribe();
+  }
+}
+
+async function withProviderAdmissionObservation<T>(
+  input: ProviderAdmissionOptions | undefined,
+  run: (observeAdmissionEvent: (event: unknown) => void) => Promise<T>
+): Promise<T> {
+  if (!input) {
+    return run(() => undefined);
+  }
+  const key = input.key.trim();
+  if (!key) {
+    return run(() => undefined);
+  }
+  const gate = input.gate ?? providerAdmissionGate;
+  try {
+    return await run((event) => gate.observe(key, event));
+  } catch (error) {
+    gate.observe(key, error);
+    throw error;
+  }
+}
+
+function linkAbortSignals(signals: Array<AbortSignal | undefined>): {
+  signal?: AbortSignal;
+  dispose(): void;
+} {
+  const activeSignals = signals.filter((signal): signal is AbortSignal => signal !== undefined);
+  if (activeSignals.length === 0) {
+    return { signal: undefined, dispose: () => undefined };
+  }
+  const controller = new AbortController();
+  const listeners: Array<{ signal: AbortSignal; listener: () => void }> = [];
+  for (const signal of activeSignals) {
+    const listener = (): void => controller.abort(signal.reason);
+    if (signal.aborted) {
+      listener();
+      break;
+    }
+    signal.addEventListener("abort", listener, { once: true });
+    listeners.push({ signal, listener });
+  }
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      for (const entry of listeners) {
+        entry.signal.removeEventListener("abort", entry.listener);
+      }
+    }
+  };
+}
+
+function providerCooldownMsFromEvent(event: unknown, now: number): number | undefined {
+  if (event instanceof Error) {
+    return retryAfterMsFromText(event.message);
+  }
+  if (!isRecord(event)) {
+    return undefined;
+  }
+  if (event.type === "auto_retry_start") {
+    const retryDelayMs = positiveTimeout(numberValue(event.delayMs));
+    if (retryDelayMs) {
+      return retryDelayMs;
+    }
+  }
+  const retryAfterMs = positiveTimeout(numberValue(event.retryAfterMs));
+  if (retryAfterMs) {
+    return retryAfterMs;
+  }
+  const retryAfter = firstDefined(
+    event.retryAfter,
+    retryAfterHeader(event.headers),
+    isRecord(event.response) ? retryAfterHeader(event.response.headers) : undefined,
+    isRecord(event.message) ? event.message.retryAfter : undefined,
+    isRecord(event.message) ? retryAfterHeader(event.message.headers) : undefined
+  );
+  const headerDelayMs = retryAfterHeaderMs(retryAfter, now);
+  if (headerDelayMs) {
+    return headerDelayMs;
+  }
+  const errorMessage = extractPiErrorMessage(event);
+  return errorMessage ? retryAfterMsFromText(errorMessage) : undefined;
+}
+
+function isProviderRateLimitEvent(event: unknown): boolean {
+  if (event instanceof Error) {
+    return classifyLlmErrorKind(event.message) === "provider_rate_limit";
+  }
+  if (!isRecord(event)) {
+    return false;
+  }
+  if (numberValue(event.status) === 429 || numberValue(event.statusCode) === 429) {
+    return true;
+  }
+  const message = extractPiErrorMessage(event);
+  return message ? classifyLlmErrorKind(message) === "provider_rate_limit" : false;
+}
+
+function isSuccessfulProviderEvent(event: unknown): boolean {
+  if (!isRecord(event)) {
+    return false;
+  }
+  if (event.type === "auto_retry_end" && event.success === true) {
+    return true;
+  }
+  const status = numberValue(event.status) ?? numberValue(event.statusCode);
+  return status !== undefined && status >= 200 && status < 400;
+}
+
+function retryAfterHeader(headers: unknown): unknown {
+  if (!isRecord(headers)) {
+    return undefined;
+  }
+  return headers["retry-after"] ?? headers["Retry-After"];
+}
+
+function retryAfterHeaderMs(value: unknown, now: number): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.ceil(value * 1000);
+  }
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  const seconds = Number(trimmed);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.ceil(seconds * 1000);
+  }
+  const date = Date.parse(trimmed);
+  return Number.isFinite(date) && date > now ? Math.ceil(date - now) : undefined;
+}
+
+function retryAfterMsFromText(value: string): number | undefined {
+  const match = value.match(/retry[\s_-]*after(?:\s*[:=]|\s+)(\d+(?:\.\d+)?)\s*(ms|milliseconds?|s|seconds?)?/i);
+  if (!match) {
+    return undefined;
+  }
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return undefined;
+  }
+  return /^m/i.test(match[2] ?? "") ? Math.ceil(amount) : Math.ceil(amount * 1000);
+}
+
+function firstDefined(...values: unknown[]): unknown {
+  return values.find((value) => value !== undefined && value !== null);
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}
+
+function positiveInteger(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined;
+}
+
+export function classifyLlmErrorKind(message: string): LlmErrorKind {
+  const normalized = message.toLowerCase();
+  if (/concurrency limit|too many concurrent|concurrent request/.test(normalized)) {
+    return "provider_concurrency";
+  }
+  if (/rate limit|too many requests|\b429\b|quota/.test(normalized)) {
+    return "provider_rate_limit";
+  }
+  if (/timeout|timed out|etimedout|econnreset|socket hang up|network|fetch failed/.test(normalized)) {
+    return "provider_timeout";
+  }
+  if (/\b5\d\d\b|bad gateway|service unavailable|temporarily unavailable|upstream.*unavailable/.test(normalized)) {
+    return "provider_unavailable";
+  }
+  return "llm_error";
+}
+
+export function isRetryableLlmErrorKind(errorKind: LlmErrorKind): boolean {
+  return errorKind !== "llm_error";
+}
+
+export function attachExecutionLogging(input: {
+  session: SubscribableSession;
+  executionLog: ExecutionLog;
+  artifactStore?: ArtifactStore;
+  role: AgentRole;
+  getTaskId?: () => string | undefined;
+  getEpochId?: () => string | undefined;
+  getAbortContext?: () => RuntimeAbortContext | undefined;
+  spillThreshold?: number;
+  onPersistedEvent?: (event: ExecutionEvent) => void | Promise<void>;
+}): (() => void) & { drain: () => Promise<void> } {
+  const pendingWrites = new Set<Promise<void>>();
+  let firstWriteError: unknown;
+  let writeChain: Promise<void> = Promise.resolve();
+  const unsubscribe = input.session.subscribe((event) => {
+    const typedEvent = event as { type?: string; toolName?: string; isError?: boolean };
+    const eventType = typedEvent.type ?? "unknown";
+    if (!shouldPersistEvent(eventType)) {
+      return;
+    }
+    const write = writeChain.then(async () => {
+      const taskId = input.getTaskId?.();
+      const normalized = normalizePiEvent(typedEvent, input.getAbortContext?.());
+      if (!normalized) {
+        return;
+      }
+      const sanitized = await sanitizePiEvent({
+        event: normalized.payload,
+        artifactStore: input.artifactStore,
+        taskId,
+        threshold: input.spillThreshold ?? 4000
+      });
+      const persistedEvent = await input.executionLog.append({
+        epochId: input.getEpochId?.(),
+        taskId,
+        role: input.role,
+        eventType: normalized.eventType,
+        summary: normalized.summary,
+        payload: sanitized.payload,
+        artifactRefs: sanitized.artifactRefs.length > 0 ? sanitized.artifactRefs : undefined
+      });
+      await input.onPersistedEvent?.(persistedEvent);
+    });
+    writeChain = write.then(
+      () => undefined,
+      (error) => {
+        firstWriteError ??= error;
+      }
+    );
+    pendingWrites.add(write);
+    void write.then(
+      () => pendingWrites.delete(write),
+      (error) => {
+        firstWriteError ??= error;
+        pendingWrites.delete(write);
+      }
+    );
+  });
+  const handle = (() => unsubscribe()) as (() => void) & { drain: () => Promise<void> };
+  handle.drain = async () => {
+    while (pendingWrites.size > 0) {
+      await Promise.allSettled([...pendingWrites]);
+    }
+    if (firstWriteError) {
+      throw firstWriteError;
+    }
+  };
+  return handle;
+}
+
+function shouldPersistEvent(eventType: string): boolean {
+  return [
+    "tool_execution_start",
+    "tool_execution_end",
+    "turn_end",
+    "message_end",
+    "auto_retry_start",
+    "auto_retry_end"
+  ].includes(eventType);
+}
+
+function normalizePiEvent(
+  event: Record<string, unknown>,
+  abortContext?: RuntimeAbortContext
+): { eventType: string; summary: string; payload: JsonObject } | undefined {
+  const eventType = String(event.type ?? "unknown");
+  const classification = classifyPiEvent(event, abortContext);
+  if (eventType === "auto_retry_start") {
+    return {
+      eventType: "provider_retry_started",
+      summary: `provider_retry_started:attempt=${String(event.attempt ?? "unknown")}`,
+      payload: {
+        attempt: event.attempt,
+        maxAttempts: event.maxAttempts,
+        delayMs: event.delayMs,
+        errorMessage: event.errorMessage
+      }
+    };
+  }
+  if (eventType === "auto_retry_end") {
+    return {
+      eventType: "provider_retry_completed",
+      summary: `provider_retry_completed:${event.success === true ? "success" : "failed"}`,
+      payload: {
+        success: event.success,
+        attempt: event.attempt,
+        finalError: event.finalError
+      }
+    };
+  }
+  if (eventType === "tool_execution_start") {
+    const toolName = String(event.toolName ?? "unknown");
+    return {
+      eventType: "tool_started",
+      summary: `tool_started:${toolName}`,
+      payload: {
+        toolCallId: event.toolCallId,
+        toolName,
+        args: event.args
+      }
+    };
+  }
+  if (eventType === "tool_execution_end") {
+    const toolName = String(event.toolName ?? "unknown");
+    const runtimeControl = RUNTIME_CONTROL_TOOL_NAMES.has(toolName);
+    const projectionDraft = toolName === "graph_delta_submit";
+    return {
+      eventType: projectionDraft
+        ? "projection_draft_received"
+        : runtimeControl
+          ? "runtime_control"
+          : "tool_finished",
+      summary: projectionDraft
+        ? `projection_draft_received:${event.isError === true ? "rejected" : "accepted_pending_commit"}`
+        : `${runtimeControl ? "runtime_control" : "tool_finished"}:${toolName}:${event.isError === true ? "error" : "ok"}`,
+      payload: {
+        toolCallId: event.toolCallId,
+        toolName,
+        isError: event.isError === true,
+        result: event.result
+      }
+    };
+  }
+  if (eventType === "turn_end") {
+    const message = isRecord(event.message) ? event.message : undefined;
+    return {
+      eventType: "turn_usage",
+      summary: "turn_usage",
+      payload: {
+        usage: message?.usage ?? event.usage,
+        stopReason: message?.stopReason ?? event.stopReason,
+        provider: message?.provider,
+        model: message?.model,
+        responseModel: message?.responseModel,
+        responseId: message?.responseId,
+        api: message?.api,
+        ...(classification?.payloadPatch ?? {})
+      }
+    };
+  }
+  if (eventType === "message_end") {
+    const message = isRecord(event.message) ? event.message : undefined;
+    if (classification) {
+      const runtimeAbort = isRecord(classification.payloadPatch.runtimeAbort)
+        && classification.payloadPatch.runtimeAbort.expected === true;
+      return {
+        eventType: runtimeAbort ? "runtime_control" : "provider_error",
+        summary: `${runtimeAbort ? "runtime_abort" : "provider_error"}:${classification.summarySuffix}`,
+        payload: {
+          stopReason: message?.stopReason ?? event.stopReason,
+          ...classification.payloadPatch
+        }
+      };
+    }
+    if (!isAssistantMessageRole(message?.role)) {
+      return undefined;
+    }
+    const content = Array.isArray(message?.content) ? message.content : [];
+    const text = extractTextContent(content as Array<{ type?: string; text?: string }>);
+    const toolCalls = content
+      .filter(isRecord)
+      .filter((item) => item.type === "toolCall")
+      .map((item) => ({ id: item.id, name: item.name, arguments: item.arguments }));
+    if (!text && toolCalls.length === 0) {
+      return undefined;
+    }
+    return {
+      eventType: "assistant_intent",
+      summary: text ? text.slice(0, 240) : `assistant_intent:${toolCalls.map((call) => call.name).join(",")}`,
+      payload: { text, toolCalls }
+    };
+  }
+  return undefined;
+}
+
+function summarizePiEvent(event: { type?: string; toolName?: string; isError?: boolean }): string {
+  if (event.type?.startsWith("tool_execution")) {
+    return `${event.type}:${event.toolName ?? "unknown"}:${event.isError ? "error" : "ok"}`;
+  }
+  return event.type ?? "unknown";
+}
+
+function classifyPiEvent(
+  event: unknown,
+  abortContext?: RuntimeAbortContext
+): { summarySuffix: string; payloadPatch: JsonObject } | undefined {
+  const errorMessage = extractPiErrorMessage(event);
+  const aborted = isAbortedPiEvent(event, errorMessage);
+  if (!errorMessage && !aborted) {
+    return undefined;
+  }
+  if (aborted && abortContext) {
+    return {
+      summarySuffix: abortContext.kind,
+      payloadPatch: {
+        errorKind: abortContext.kind,
+        runtimeAbort: {
+          expected: true,
+          kind: abortContext.kind,
+          reason: abortContext.reason,
+          controlSignal: abortContext.controlSignal
+        }
+      }
+    };
+  }
+  const errorKind = errorMessage ? classifyLlmErrorKind(errorMessage) : "llm_error";
+  return {
+    summarySuffix: errorKind,
+    payloadPatch: {
+      errorKind,
+      ...(errorMessage
+        ? {
+          llmError: {
+            retryable: isRetryableLlmErrorKind(errorKind),
+            message: errorMessage
+          }
+        }
+        : {}),
+      ...(aborted
+        ? {
+          runtimeAbort: {
+            expected: false,
+            kind: "unclassified_abort",
+            reason: errorMessage ?? "Pi session reported an abort without controller context"
+          }
+        }
+        : {})
+    }
+  };
+}
+
+function extractPiErrorMessage(event: unknown): string | undefined {
+  if (!isRecord(event)) {
+    return undefined;
+  }
+  if (typeof event.errorMessage === "string" && event.errorMessage.trim().length > 0) {
+    return event.errorMessage;
+  }
+  if (isRecord(event.message) && typeof event.message.errorMessage === "string" && event.message.errorMessage.trim().length > 0) {
+    return event.message.errorMessage;
+  }
+  if (isRecord(event.error) && typeof event.error.message === "string" && event.error.message.trim().length > 0) {
+    return event.error.message;
+  }
+  return undefined;
+}
+
+function isAbortedPiEvent(event: unknown, errorMessage?: string): boolean {
+  if (!isRecord(event)) {
+    return false;
+  }
+  if (String(event.stopReason).toLowerCase() === "aborted") {
+    return true;
+  }
+  if (isRecord(event.message) && String(event.message.stopReason).toLowerCase() === "aborted") {
+    return true;
+  }
+  return Boolean(errorMessage && /aborted/i.test(errorMessage));
+}
+
+async function sanitizePiEvent(input: {
+  event: unknown;
+  artifactStore?: ArtifactStore;
+  taskId?: string;
+  threshold: number;
+}): Promise<{ payload: JsonObject; artifactRefs: string[] }> {
+  const artifactRefs: string[] = [];
+  const jsonSafeEvent = JSON.parse(JSON.stringify(input.event)) as unknown;
+  const payload = await spillLargeStrings(jsonSafeEvent, {
+    artifactStore: input.artifactStore,
+    artifactRefs,
+    taskId: input.taskId,
+    threshold: input.threshold
+  });
+  return {
+    payload: payload as JsonObject,
+    artifactRefs
+  };
+}
+
+async function spillLargeStrings(
+  value: unknown,
+  input: {
+    artifactStore?: ArtifactStore;
+    artifactRefs: string[];
+    taskId?: string;
+    threshold: number;
+  }
+): Promise<unknown> {
+  if (typeof value === "string") {
+    if (value.length <= input.threshold) {
+      return value;
+    }
+    if (!input.artifactStore) {
+      return `${value.slice(0, input.threshold)}...[truncated:${value.length}]`;
+    }
+    const record = await input.artifactStore.write({
+      taskId: input.taskId,
+      kind: "text",
+      mediaType: "text/plain",
+      data: value,
+      extension: "txt"
+    });
+    input.artifactRefs.push(record.artifactRef);
+    return artifactPointer(record, value.length);
+  }
+  if (Array.isArray(value)) {
+    return Promise.all(value.map((item) => spillLargeStrings(item, input)));
+  }
+  if (value && typeof value === "object") {
+    const output: JsonObject = {};
+    for (const [key, propertyValue] of Object.entries(value)) {
+      output[key] = await spillLargeStrings(propertyValue, input);
+    }
+    return output;
+  }
+  return value;
+}
+
+function artifactPointer(record: ArtifactRecord, originalLength: number): JsonObject {
+  return {
+    artifactRef: record.artifactRef,
+    byteLength: record.byteLength,
+    originalLength,
+    preview: record.preview,
+    truncated: true
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function extractTextContent(content?: Array<{ type?: string; text?: string }>): string {
+  if (!content) {
+    return "";
+  }
+  return content
+    .filter((item) => item.type === "text" && typeof item.text === "string")
+    .map((item) => item.text)
+    .join("\n");
+}
+
+function isAssistantMessageRole(role: unknown): boolean {
+  return role === undefined || role === "assistant";
+}

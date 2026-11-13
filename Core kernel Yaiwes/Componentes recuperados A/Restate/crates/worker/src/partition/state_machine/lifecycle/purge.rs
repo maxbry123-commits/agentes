@@ -1,0 +1,142 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use tracing::trace;
+
+use restate_clock::UniqueTimestamp;
+use restate_storage_api::invocation_status_table::{
+    CompletedInvocation, InvocationStatus, ReadInvocationStatusTable, WriteInvocationStatusTable,
+};
+use restate_storage_api::journal_events::WriteJournalEventsTable;
+use restate_storage_api::journal_table;
+use restate_storage_api::journal_table_v2::WriteJournalTable;
+use restate_storage_api::lock_table::WriteLockTable;
+use restate_storage_api::promise_table::WritePromiseTable;
+use restate_storage_api::state_table::WriteStateTable;
+use restate_storage_api::vqueue_table::{
+    EntryStatusHeader, ReadVQueueTable, Stage, WriteVQueueTable,
+};
+use restate_types::identifiers::InvocationId;
+use restate_types::invocation::client::PurgeInvocationResponse;
+use restate_types::invocation::{
+    InvocationMutationResponseSink, InvocationTargetType, WorkflowHandlerType,
+};
+use restate_types::sharding::WithPartitionKey;
+use restate_types::vqueues::EntryId;
+use restate_vqueues::VQueue;
+
+use crate::partition::processor::ProcessorContext;
+use crate::partition::state_machine::{CommandHandler, Error, StateMachineApplyContext};
+
+pub struct OnPurgeCommand<'a> {
+    pub invocation_id: &'a InvocationId,
+    pub response_sink: Option<InvocationMutationResponseSink>,
+}
+
+impl<'ctx, 's: 'ctx, S, P> CommandHandler<&'ctx mut StateMachineApplyContext<'s, S, P>>
+    for OnPurgeCommand<'_>
+where
+    S: WriteJournalTable
+        + ReadInvocationStatusTable
+        + ReadVQueueTable
+        + WriteVQueueTable
+        + WriteLockTable
+        + WriteInvocationStatusTable
+        + WriteStateTable
+        + journal_table::WriteJournalTable
+        + WritePromiseTable
+        + WriteJournalEventsTable,
+    P: ProcessorContext,
+{
+    async fn apply(self, ctx: &'ctx mut StateMachineApplyContext<'s, S, P>) -> Result<(), Error> {
+        let OnPurgeCommand {
+            invocation_id,
+            response_sink,
+        } = self;
+        match ctx.get_invocation_status(invocation_id).await? {
+            InvocationStatus::Completed(CompletedInvocation {
+                ref vqueue_id,
+                invocation_target,
+                journal_metadata,
+                pinned_deployment,
+                ..
+            }) => {
+                // delete the vqueue entry information.
+                if let Some(vqueue_id) = vqueue_id {
+                    let entry_id = EntryId::from(invocation_id);
+                    let Some(header) = ctx
+                        .storage
+                        .get_vqueue_entry_status(invocation_id.partition_key(), &entry_id)
+                        .await?
+                    else {
+                        // This is equivalent to InvocationStatus::Free.
+                        panic!(
+                            "Trying to purge invocation {invocation_id} in {vqueue_id} which does not have a vqueue entry. Cannot proceed!"
+                        );
+                    };
+
+                    assert!(matches!(header.stage(), Stage::Finished));
+
+                    let at = UniqueTimestamp::from_unix_millis_unchecked(ctx.record_created_at);
+                    VQueue::get(
+                        vqueue_id,
+                        ctx.storage,
+                        ctx.processor.vqueues_mut(),
+                        ctx.is_leader.then_some(ctx.action_collector),
+                    )
+                    .await?
+                    .expect("purging in a non-existent vqueue")
+                    .delete(at, vqueue_id, &entry_id, header.entry_key());
+                }
+
+                let pinned_service_protocol_version = pinned_deployment
+                    .as_ref()
+                    .map(|pd| pd.service_protocol_version);
+
+                ctx.do_free_invocation(invocation_id)?;
+
+                // For workflow, we should also clean up the associated state and promises.
+                if invocation_target.invocation_target_ty()
+                    == InvocationTargetType::Workflow(WorkflowHandlerType::Workflow)
+                {
+                    let service_id = invocation_target
+                        .as_keyed_service_id()
+                        .expect("Workflow methods must have keyed service id");
+
+                    ctx.do_clear_all_state(service_id.clone(), invocation_id)?;
+                    ctx.do_clear_all_promises(service_id).await?;
+                }
+
+                // If journal is not empty, clean it up
+                if journal_metadata.length != 0 {
+                    ctx.do_drop_journal(
+                        invocation_id,
+                        journal_metadata.length,
+                        pinned_service_protocol_version,
+                    )
+                    .await?;
+                }
+                ctx.reply_to_purge_invocation(response_sink, PurgeInvocationResponse::Ok);
+            }
+            InvocationStatus::Free => {
+                trace!("Received purge command for unknown invocation with id '{invocation_id}'.");
+                ctx.reply_to_purge_invocation(response_sink, PurgeInvocationResponse::NotFound);
+            }
+            _ => {
+                trace!(
+                    "Ignoring purge command as the invocation '{invocation_id}' is still ongoing."
+                );
+                ctx.reply_to_purge_invocation(response_sink, PurgeInvocationResponse::NotCompleted);
+            }
+        };
+
+        Ok(())
+    }
+}

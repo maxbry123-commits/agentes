@@ -1,0 +1,87 @@
+operators:
+- id: load_in_physics
+  config:
+    type: load_preexisting
+    framework_name: load_in_science_stackexchange_physics
+- id: annotate_gpt41_mini_physics
+  config:
+    type: completions
+    map: chat
+    map_config:
+      user_message_column: instruction_seed
+      output_column: gpt41_mini_response
+    model: "gpt-4.1-mini"
+    batch: False
+    temperature: 1.0
+    require_all_responses: False
+    backend_params:
+      max_requests_per_minute: 4_000
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - load_in_physics
+- id: get_length_physics
+  config:
+    type: function
+    function: data_strategies.InstructionFiltering.gemini_length_filtering.utils.get_lengths
+    function_config:
+      input_column: gpt41_mini_response
+      output_column: length
+  input_ids:
+  - annotate_gpt41_mini_physics
+- id: select_to_be_used_physics
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.utils.filter_top_n
+    function_config:
+      n: 30_000
+      score_column: length
+  input_ids:
+    - get_length_physics
+
+
+- id: load_in_organic_chem_pdfs
+  config:
+    type: load_preexisting
+    framework_name: load_in_science_organic_chem_pdfs
+- id: annotate_gpt41_mini_organic_chem_pdfs
+  config:
+    type: completions
+    map: chat
+    map_config:
+      user_message_column: instruction_seed
+      output_column: gpt41_mini_response
+    model: "gpt-4.1-mini"
+    batch: False
+    temperature: 1.0
+    require_all_responses: False
+    backend_params:
+      max_requests_per_minute: 4_000
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - load_in_organic_chem_pdfs
+- id: get_length_organic_chem_pdfs
+  config:
+    type: function
+    function: data_strategies.InstructionFiltering.gemini_length_filtering.utils.get_lengths
+    function_config:
+      input_column: gpt41_mini_response
+      output_column: length
+  input_ids:
+  - annotate_gpt41_mini_organic_chem_pdfs
+
+
+- id: select_to_be_used_organic_chem_pdfs
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.utils.filter_top_n
+    function_config:
+      n: 30_000
+      score_column: length
+  input_ids:
+    - get_length_organic_chem_pdfs
+- id: mix
+  config:
+    type: mix
+  input_ids:
+    - select_to_be_used_physics
+    - select_to_be_used_organic_chem_pdfs

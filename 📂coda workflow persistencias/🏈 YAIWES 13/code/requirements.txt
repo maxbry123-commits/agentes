@@ -1,0 +1,6 @@
+paramiko
+pydantic
+python-dotenv
+openai
+chromadb
+beautifulsoup4

@@ -1,0 +1,30 @@
+[
+  {
+    "repo": "Argo-Workflows",
+    "path": "manifests/quick-start-postgres.yaml",
+    "chunks_dir": "Argo-Workflows/manifests/quick-start-postgres.yaml.chunks",
+    "bytes": 12006733,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Argo-Workflows",
+    "path": "manifests/quick-start-mysql.yaml",
+    "chunks_dir": "Argo-Workflows/manifests/quick-start-mysql.yaml.chunks",
+    "bytes": 12006799,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Argo-Workflows",
+    "path": "manifests/quick-start-minimal.yaml",
+    "chunks_dir": "Argo-Workflows/manifests/quick-start-minimal.yaml.chunks",
+    "bytes": 12004607,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Argo-Workflows",
+    "path": "manifests/quick-start-telemetry.yaml",
+    "chunks_dir": "Argo-Workflows/manifests/quick-start-telemetry.yaml.chunks",
+    "bytes": 12010873,
+    "chunk_bytes": 8388608
+  }
+]

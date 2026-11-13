@@ -1,0 +1,149 @@
+operators:
+- id: seed_math_load_in
+  config:
+    type: load_preexisting
+    framework_name: a1_code_glaive
+- id: sample_dataset_apps
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 200
+  input_ids:
+  - seed_math_load_in
+- id: hf_source_numina
+  config:
+    type: hf_source
+    dataset: AI-MO/NuminaMath-CoT
+    split: train
+- id: select_amc_aime
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: amc_aime
+  input_ids:
+    - hf_source_numina
+- id: select_aops
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: aops_forum
+  input_ids:
+    - hf_source_numina
+
+- id: rename_task_column_positive
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        problem: instruction_seed
+  input_ids:
+  - select_amc_aime
+  - select_aops
+
+- id: hf_source_bad_seed_math
+  config:
+    type: load_preexisting
+    framework_name: a1_math_lap1official_math
+- id: sample_dataset_bad_seed_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 200
+  input_ids:
+  - hf_source_bad_seed_math
+
+- id: calc_embeddings
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.embedding.apply_embedding_openai
+    function_config:
+      text_column: instruction_seed
+      embedding_column_name: embedding
+      split: train
+      batch_size: 100
+      max_concurrent_requests: 100
+      model: text-embedding-3-large
+  input_ids:
+    - sample_dataset_apps
+
+- id: calc_embeddings_positive
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.embedding.apply_embedding_openai
+    function_config:
+      text_column: instruction_seed
+      embedding_column_name: embedding
+      split: train
+      batch_size: 100
+      max_concurrent_requests: 100
+      model: text-embedding-3-large
+  input_ids:
+    - rename_task_column_positive
+
+- id: force_merge_shards_positive
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_000_000
+  input_ids:
+  - calc_embeddings_positive
+
+- id: calc_embeddings_negative
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.embedding.apply_embedding_openai
+    function_config:
+      text_column: instruction_seed
+      embedding_column_name: embedding
+      split: train
+      batch_size: 100
+      max_concurrent_requests: 100
+      model: text-embedding-3-large
+  input_ids:
+    - hf_source_bad_seed_math
+
+- id: force_merge_shards_negative
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_000_000
+  input_ids:
+  - calc_embeddings_negative
+
+
+- id: calc_embedding_difference
+  config:
+    type: function
+    sharded: true
+    num_shards: 100
+    function: data_strategies.InstructionFiltering.EmbeddingFilter.utils.calc_embedding_score_mean
+    function_config:
+      embedding_column: embedding
+      positive_embedding_column: embedding
+      negative_embedding_column: embedding
+    input_dataset_map:
+      dataset: calc_embeddings
+      negative_dataset: force_merge_shards_negative
+      positive_dataset: force_merge_shards_positive
+  input_ids:
+    - calc_embeddings
+    - force_merge_shards_negative
+    - force_merge_shards_positive
+- id: select_to_be_used
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.utils.filter_top_n
+    function_config:
+      n: 100
+      score_column: difference_score
+  input_ids:
+    - calc_embedding_difference

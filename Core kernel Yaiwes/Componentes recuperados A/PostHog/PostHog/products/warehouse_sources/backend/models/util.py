@@ -1,0 +1,885 @@
+import re
+from collections.abc import Mapping
+from ipaddress import IPv6Address, ip_address
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, Union
+from urllib.parse import urlparse
+
+from django.conf import settings
+
+from posthog.hogql.database.models import (
+    BooleanDatabaseField,
+    DatabaseField,
+    DateDatabaseField,
+    DateTimeDatabaseField,
+    DecimalDatabaseField,
+    FloatDatabaseField,
+    IntegerDatabaseField,
+    StringArrayDatabaseField,
+    StringDatabaseField,
+    StringJSONDatabaseField,
+    StructDatabaseField,
+    UnknownDatabaseField,
+    UUIDDatabaseField,
+)
+
+from posthog.security.url_validation import is_url_allowed
+
+if TYPE_CHECKING:
+    from products.data_modeling.backend.facade.models import DataWarehouseSavedQuery
+    from products.warehouse_sources.backend.models.table import DataWarehouseTable
+
+
+class DatabaseFieldFactory(Protocol):
+    __name__: str
+
+    def __call__(self, *args: Any, **kwargs: Any) -> DatabaseField: ...
+
+
+def get_view_or_table_by_name(team, name) -> Union["DataWarehouseSavedQuery", "DataWarehouseTable", None]:
+    from products.data_modeling.backend.facade.models import DataWarehouseSavedQuery
+    from products.warehouse_sources.backend.models.table import DataWarehouseTable
+
+    table_names = [name]
+    if "." in name:
+        chain = name.split(".")
+        if len(chain) == 2:
+            table_names = [f"{chain[0]}_{chain[1]}"]
+        elif len(chain) == 3:
+            # Support both `_` suffixed source prefix and without - e.g. postgres_table_name and postgrestable_name
+            table_names = [f"{chain[1]}_{chain[0]}_{chain[2]}", f"{chain[1]}{chain[0]}_{chain[2]}"]
+
+    table: DataWarehouseSavedQuery | DataWarehouseTable | None = (
+        # `queryable()` ignores soft-deleted tables and orphans of a soft-deleted source.
+        DataWarehouseTable.objects.queryable()
+        .filter(team=team, name__in=table_names)
+        # Deterministic resolution when more than one live table matches: newest wins.
+        .order_by("-created_at")
+        .first()
+    )
+    if table is None:
+        table = DataWarehouseSavedQuery.objects.exclude(deleted=True).filter(team=team, name=name).first()
+    return table
+
+
+def validate_source_prefix(prefix: str | None) -> tuple[bool, str]:
+    """
+    Validate that prefix will form valid HogQL/ClickHouse identifiers.
+
+    Valid prefixes must:
+    - Contain only letters, numbers, and underscores
+    - Start with a letter or underscore
+    - Not be empty after stripping underscores
+
+    Returns:
+        tuple[bool, str]: (is_valid, error_message)
+    """
+    if not prefix:
+        return True, ""  # Empty/None prefix is allowed
+
+    # Strip underscores that will be stripped during table name construction
+    cleaned = prefix.strip("_")
+
+    if not cleaned:
+        return False, "Prefix cannot consist of only underscores"
+
+    # Check if prefix matches HogQL identifier rules
+    # Must start with letter or underscore, contain only letters, digits, underscores
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", cleaned):
+        return (
+            False,
+            "Prefix must contain only letters, numbers, and underscores, and start with a letter or underscore",
+        )
+
+    return True, ""
+
+
+def remove_named_tuples(type):
+    """Remove named tuples from query"""
+    from products.warehouse_sources.backend.models.table import CLICKHOUSE_HOGQL_MAPPING
+
+    tokenified_type = re.split(r"(\W)", type)
+    filtered_tokens = []
+    i = 0
+    while i < len(tokenified_type):
+        token = tokenified_type[i]
+        # handle tokenization of DateTime types that need to be parsed in a specific way ie) DateTime64(3, 'UTC')
+        if token == "DateTime64" or token == "DateTime32":
+            filtered_tokens.append(token)
+            i += 1
+            if i < len(tokenified_type) and tokenified_type[i] == "(":
+                filtered_tokens.append(tokenified_type[i])
+                i += 1
+                while i < len(tokenified_type) and tokenified_type[i] != ")":
+                    if tokenified_type[i] == "'":
+                        filtered_tokens.append(tokenified_type[i])
+                        i += 1
+                        while i < len(tokenified_type) and tokenified_type[i] != "'":
+                            filtered_tokens.append(tokenified_type[i])
+                            i += 1
+                        if i < len(tokenified_type):
+                            filtered_tokens.append(tokenified_type[i])
+                    else:
+                        filtered_tokens.append(tokenified_type[i])
+                    i += 1
+                if i < len(tokenified_type):
+                    filtered_tokens.append(tokenified_type[i])
+        elif token == "`":
+            # Skip backtick-quoted identifiers (field names like `1`, `deal_id`)
+            i += 1
+            while i < len(tokenified_type) and tokenified_type[i] != "`":
+                i += 1
+            # Skip closing backtick
+        elif (
+            token == "Nullable" or (len(token) == 1 and not token.isalnum()) or token in CLICKHOUSE_HOGQL_MAPPING.keys()
+        ):
+            filtered_tokens.append(token)
+        i += 1
+    return "".join(filtered_tokens)
+
+
+def clean_type(column_type: str) -> str:
+    # Replace newline characters followed by empty space
+    column_type = re.sub(r"\n\s+", "", column_type)
+
+    if column_type.startswith("LowCardinality("):
+        column_type = column_type.replace("LowCardinality(", "")[:-1]
+
+    if column_type.startswith("Nullable("):
+        column_type = column_type.replace("Nullable(", "")[:-1]
+
+    if column_type.startswith("Array("):
+        column_type = remove_named_tuples(column_type)
+
+    column_type = re.sub(r"\(.+\)+", "", column_type)
+
+    return column_type
+
+
+_ColumnT = TypeVar("_ColumnT")
+
+
+def reconstruct_ordered_columns(
+    columns: Mapping[str, _ColumnT], column_order: list[str] | None
+) -> list[tuple[str, _ColumnT]]:
+    """Return ``(name, value)`` column pairs in the recorded SELECT order.
+
+    Column metadata originates as an ordered list (SELECT / DESCRIBE order) but is stored in a
+    Postgres ``jsonb`` object, which does not preserve key insertion order. ``column_order``
+    carries the order captured at write time. Apply it first (skipping names that no longer
+    exist), then append any columns discovered since that were never recorded. Rows written
+    before ``column_order`` existed have ``None`` and fall back to the stored jsonb key order.
+    """
+    if not column_order:
+        return list(columns.items())
+
+    ordered: list[tuple[str, _ColumnT]] = []
+    seen: set[str] = set()
+    for name in column_order:
+        if name in columns and name not in seen:
+            ordered.append((name, columns[name]))
+            seen.add(name)
+    for name, value in columns.items():
+        if name not in seen:
+            ordered.append((name, value))
+    return ordered
+
+
+CLICKHOUSE_HOGQL_MAPPING: dict[str, DatabaseFieldFactory] = {
+    "UUID": UUIDDatabaseField,
+    "String": StringDatabaseField,
+    "Nothing": UnknownDatabaseField,
+    "DateTime64": DateTimeDatabaseField,
+    "DateTime32": DateTimeDatabaseField,
+    "DateTime": DateTimeDatabaseField,
+    "Date": DateDatabaseField,
+    "Date32": DateDatabaseField,
+    "UInt8": IntegerDatabaseField,
+    "UInt16": IntegerDatabaseField,
+    "UInt32": IntegerDatabaseField,
+    "UInt64": IntegerDatabaseField,
+    "Float8": FloatDatabaseField,
+    "Float16": FloatDatabaseField,
+    "Float32": FloatDatabaseField,
+    "Float64": FloatDatabaseField,
+    "Int8": IntegerDatabaseField,
+    "Int16": IntegerDatabaseField,
+    "Int32": IntegerDatabaseField,
+    "Int64": IntegerDatabaseField,
+    "Tuple": StringJSONDatabaseField,
+    "Array": StringArrayDatabaseField,
+    "Map": StringJSONDatabaseField,
+    "Bool": BooleanDatabaseField,
+    "Decimal": DecimalDatabaseField,
+    "FixedString": StringDatabaseField,
+    "Enum8": StringDatabaseField,
+}
+
+# Old-style column metadata stores only the ClickHouse type string and resolves through a
+# mapping on every query, so retyping UUID in CLICKHOUSE_HOGQL_MAPPING would flip every
+# legacy column at once on deploy. Pin those to their historical String typing — UUID typing
+# reaches a table only when a sync or materialization regenerates its column metadata.
+LEGACY_CLICKHOUSE_HOGQL_MAPPING: dict[str, DatabaseFieldFactory] = {
+    **CLICKHOUSE_HOGQL_MAPPING,
+    "UUID": StringDatabaseField,
+}
+
+STR_TO_HOGQL_MAPPING: dict[str, DatabaseFieldFactory] = {
+    "BooleanDatabaseField": BooleanDatabaseField,
+    "DateDatabaseField": DateDatabaseField,
+    "DateTimeDatabaseField": DateTimeDatabaseField,
+    "IntegerDatabaseField": IntegerDatabaseField,
+    "DecimalDatabaseField": DecimalDatabaseField,
+    "FloatDatabaseField": FloatDatabaseField,
+    "StringArrayDatabaseField": StringArrayDatabaseField,
+    "StringDatabaseField": StringDatabaseField,
+    "StringJSONDatabaseField": StringJSONDatabaseField,
+    "UUIDDatabaseField": UUIDDatabaseField,
+    "StructDatabaseField": StructDatabaseField,
+    "UnknownDatabaseField": UnknownDatabaseField,
+    "boolean": BooleanDatabaseField,
+    "date": DateDatabaseField,
+    "datetime": DateTimeDatabaseField,
+    "timestamp": DateTimeDatabaseField,
+    "integer": IntegerDatabaseField,
+    "numeric": DecimalDatabaseField,
+    "decimal": DecimalDatabaseField,
+    "float": FloatDatabaseField,
+    "string": StringDatabaseField,
+    "text": StringDatabaseField,
+    "array": StringArrayDatabaseField,
+    "json": StringJSONDatabaseField,
+    "struct": StructDatabaseField,
+    "unknown": UnknownDatabaseField,
+}
+
+
+POSTGRES_TO_CLICKHOUSE_TYPE = {
+    "smallint": "Int16",
+    "integer": "Int32",
+    "bigint": "Int64",
+    "real": "Float32",
+    "double precision": "Float64",
+    "numeric": "Decimal",
+    "decimal": "Decimal",
+    "boolean": "Bool",
+    "date": "Date",
+    "timestamp without time zone": "DateTime64",
+    "timestamp with time zone": "DateTime64",
+    "character varying": "String",
+    "character": "String",
+    "text": "String",
+    "json": "String",
+    "jsonb": "String",
+    "uuid": "String",
+}
+
+
+MYSQL_TO_CLICKHOUSE_TYPE = {
+    "tinyint": "Int8",
+    "smallint": "Int16",
+    "mediumint": "Int32",
+    "int": "Int32",
+    "integer": "Int32",
+    "bigint": "Int64",
+    # deltalake-style widening: unsigned ints map to the next signed type that holds their range.
+    "tinyint unsigned": "Int16",
+    "smallint unsigned": "Int32",
+    "mediumint unsigned": "Int64",
+    "int unsigned": "Int64",
+    "integer unsigned": "Int64",
+    "bigint unsigned": "UInt64",
+    "float": "Float32",
+    "double": "Float64",
+    "double precision": "Float64",
+    "real": "Float64",
+    "decimal": "Decimal",
+    "numeric": "Decimal",
+    "boolean": "Bool",
+    "bool": "Bool",
+    "bit": "String",
+    "date": "Date",
+    "datetime": "DateTime",
+    "timestamp": "DateTime",
+    "time": "String",
+    "year": "String",
+    "char": "String",
+    "varchar": "String",
+    "tinytext": "String",
+    "text": "String",
+    "mediumtext": "String",
+    "longtext": "String",
+    "binary": "String",
+    "varbinary": "String",
+    "tinyblob": "String",
+    "blob": "String",
+    "mediumblob": "String",
+    "longblob": "String",
+    "enum": "String",
+    "set": "String",
+    "json": "String",
+    "uuid": "String",
+}
+
+
+CLICKHOUSE_TYPE_TO_HOGQL_LABEL = {
+    "Int8": "integer",
+    "Int16": "integer",
+    "Int32": "integer",
+    "Int64": "integer",
+    "Int128": "integer",
+    "UInt8": "integer",
+    "UInt16": "integer",
+    "UInt32": "integer",
+    "UInt64": "integer",
+    "UInt128": "integer",
+    "Float32": "float",
+    "Float64": "float",
+    "Bool": "boolean",
+    "Date": "date",
+    "Date32": "date",
+    "DateTime": "datetime",
+    "DateTime64": "datetime",
+    "String": "string",
+    "UUID": "string",
+    "Decimal": "numeric",
+}
+
+
+def _split_top_level_items(value: str) -> list[str]:
+    items: list[str] = []
+    current: list[str] = []
+    depth = 0
+    quote: str | None = None
+    i = 0
+
+    while i < len(value):
+        char = value[i]
+
+        if quote is not None:
+            current.append(char)
+            if char == quote:
+                next_char = value[i + 1] if i + 1 < len(value) else None
+                if next_char == quote:
+                    current.append(next_char)
+                    i += 1
+                else:
+                    quote = None
+            i += 1
+            continue
+
+        if char in {"'", '"'}:
+            quote = char
+            current.append(char)
+        elif char == "(":
+            depth += 1
+            current.append(char)
+        elif char == ")":
+            depth = max(depth - 1, 0)
+            current.append(char)
+        elif char == "," and depth == 0:
+            item = "".join(current).strip()
+            if item:
+                items.append(item)
+            current = []
+        else:
+            current.append(char)
+
+        i += 1
+
+    final_item = "".join(current).strip()
+    if final_item:
+        items.append(final_item)
+
+    return items
+
+
+def _parse_struct_field(field: str) -> tuple[str, str] | None:
+    field = field.strip()
+    if not field:
+        return None
+
+    if field.startswith('"'):
+        identifier: list[str] = []
+        i = 1
+        while i < len(field):
+            char = field[i]
+            if char == '"':
+                if i + 1 < len(field) and field[i + 1] == '"':
+                    identifier.append('"')
+                    i += 2
+                    continue
+                break
+            identifier.append(char)
+            i += 1
+
+        if i >= len(field):
+            return None
+
+        field_name = "".join(identifier)
+        field_type = field[i + 1 :].strip()
+    else:
+        parts = field.split(None, 1)
+        if len(parts) != 2:
+            return None
+        field_name, field_type = parts
+
+    if not field_type:
+        return None
+
+    return field_name, field_type
+
+
+def _parse_postgres_struct_fields(postgres_type: str) -> dict[str, dict[str, Any]] | None:
+    match = re.match(r"(?is)^struct\s*\((.*)\)$", postgres_type.strip())
+    if match is None:
+        return None
+
+    fields: dict[str, dict[str, Any]] = {}
+    for field in _split_top_level_items(match.group(1)):
+        parsed_field = _parse_struct_field(field)
+        if parsed_field is None:
+            return None
+
+        field_name, field_type = parsed_field
+        fields[field_name] = postgres_column_to_dwh_column(field_name, field_type, False)
+
+    return fields
+
+
+def postgres_column_to_dwh_column(_column_name: str, postgres_type: str, nullable: bool) -> dict[str, Any]:
+    struct_fields = _parse_postgres_struct_fields(postgres_type)
+    if struct_fields is not None:
+        struct_clickhouse_type = f"Tuple({', '.join(str(field['clickhouse']) for field in struct_fields.values())})"
+        if nullable:
+            struct_clickhouse_type = f"Nullable({struct_clickhouse_type})"
+
+        return {
+            "clickhouse": struct_clickhouse_type,
+            "hogql": "StructDatabaseField",
+            "valid": True,
+            "fields": struct_fields,
+        }
+
+    normalized_type = postgres_type.lower()
+    clickhouse_type: str | None = POSTGRES_TO_CLICKHOUSE_TYPE.get(normalized_type)
+
+    if clickhouse_type is None:
+        if normalized_type.startswith("timestamp"):
+            clickhouse_type = "DateTime64"
+        elif normalized_type.startswith("numeric") or normalized_type.startswith("decimal"):
+            clickhouse_type = "Decimal"
+        elif "int" in normalized_type:
+            clickhouse_type = "Int64"
+        else:
+            clickhouse_type = "String"
+
+    if nullable:
+        clickhouse_type = f"Nullable({clickhouse_type})"
+
+    raw_clickhouse_type = clean_type(clickhouse_type)
+    return {
+        "clickhouse": clickhouse_type,
+        "hogql": CLICKHOUSE_TYPE_TO_HOGQL_LABEL.get(raw_clickhouse_type, "string"),
+        "valid": True,
+    }
+
+
+def postgres_columns_to_dwh_columns(columns: list[tuple[str, str, bool]]) -> dict[str, dict[str, Any]]:
+    return {
+        column_name: postgres_column_to_dwh_column(column_name, postgres_type, nullable)
+        for column_name, postgres_type, nullable in columns
+    }
+
+
+def mysql_column_to_dwh_column(_column_name: str, mysql_type: str, nullable: bool) -> dict[str, Any]:
+    # `information_schema.columns.data_type` carries the bare type, but be defensive against
+    # full `column_type` strings like `int(10) unsigned` by stripping display widths.
+    normalized_type = " ".join(re.sub(r"\(.*?\)", "", mysql_type.lower()).split())
+    clickhouse_type: str | None = MYSQL_TO_CLICKHOUSE_TYPE.get(normalized_type)
+
+    if clickhouse_type is None:
+        if normalized_type.startswith(("decimal", "numeric")):
+            clickhouse_type = "Decimal"
+        elif normalized_type.startswith(("datetime", "timestamp")):
+            clickhouse_type = "DateTime"
+        elif "int" in normalized_type:
+            clickhouse_type = "Int64"
+        else:
+            clickhouse_type = "String"
+
+    if nullable:
+        clickhouse_type = f"Nullable({clickhouse_type})"
+
+    raw_clickhouse_type = clean_type(clickhouse_type)
+    return {
+        "clickhouse": clickhouse_type,
+        "hogql": CLICKHOUSE_TYPE_TO_HOGQL_LABEL.get(raw_clickhouse_type, "string"),
+        "valid": True,
+    }
+
+
+def mysql_columns_to_dwh_columns(columns: list[tuple[str, str, bool]]) -> dict[str, dict[str, Any]]:
+    return {
+        column_name: mysql_column_to_dwh_column(column_name, mysql_type, nullable)
+        for column_name, mysql_type, nullable in columns
+    }
+
+
+def snowflake_column_to_dwh_column(_column_name: str, snowflake_type: str, nullable: bool) -> dict[str, Any]:
+    normalized_type = snowflake_type.lower()
+
+    if normalized_type.startswith("number"):
+        clickhouse_type = "Decimal"
+    elif normalized_type.startswith("float"):
+        clickhouse_type = "Float64"
+    elif normalized_type.startswith("boolean"):
+        clickhouse_type = "Bool"
+    elif normalized_type.startswith("date"):
+        clickhouse_type = "Date"
+    elif normalized_type.startswith("timestamp"):
+        clickhouse_type = "DateTime64"
+    else:
+        # variant/object/array (and anything unrecognized) map to String.
+        clickhouse_type = "String"
+
+    if nullable:
+        clickhouse_type = f"Nullable({clickhouse_type})"
+
+    raw_clickhouse_type = clean_type(clickhouse_type)
+    return {
+        "clickhouse": clickhouse_type,
+        "hogql": CLICKHOUSE_TYPE_TO_HOGQL_LABEL.get(raw_clickhouse_type, "string"),
+        "valid": True,
+    }
+
+
+def snowflake_columns_to_dwh_columns(columns: list[tuple[str, str, bool]]) -> dict[str, dict[str, Any]]:
+    return {
+        column_name: snowflake_column_to_dwh_column(column_name, snowflake_type, nullable)
+        for column_name, snowflake_type, nullable in columns
+    }
+
+
+def clickhouse_column_to_dwh_column(_column_name: str, clickhouse_type: str, nullable: bool) -> dict[str, Any]:
+    # The source is already ClickHouse, so the type string is a valid ClickHouse type — used verbatim.
+    # `system.columns.type` usually already encodes nullability, so only wrap when it doesn't.
+    ch_type = clickhouse_type.strip()
+    already_nullable = ch_type.startswith("Nullable(") or ch_type.startswith("LowCardinality(Nullable(")
+    if nullable and not already_nullable:
+        if ch_type.startswith("LowCardinality(") and ch_type.endswith(")"):
+            # LowCardinality must stay the outermost wrapper — ClickHouse rejects
+            # Nullable(LowCardinality(...)), so nest Nullable inside it instead.
+            inner = ch_type[len("LowCardinality(") : -1]
+            ch_type = f"LowCardinality(Nullable({inner}))"
+        else:
+            ch_type = f"Nullable({ch_type})"
+    raw_clickhouse_type = clean_type(ch_type)
+    return {
+        "clickhouse": ch_type,
+        "hogql": CLICKHOUSE_TYPE_TO_HOGQL_LABEL.get(raw_clickhouse_type, "string"),
+        "valid": True,
+    }
+
+
+def clickhouse_columns_to_dwh_columns(columns: list[tuple[str, str, bool]]) -> dict[str, dict[str, Any]]:
+    return {
+        column_name: clickhouse_column_to_dwh_column(column_name, clickhouse_type, nullable)
+        for column_name, clickhouse_type, nullable in columns
+    }
+
+
+# DuckDB base type name (lowercased, parenthesized args stripped) -> ClickHouse type.
+# Anything absent maps to String, which round-trips every remaining DuckDB type
+# (JSON, INTERVAL, BLOB, ENUM, nested LIST/STRUCT/MAP/UNION renderings).
+DUCKDB_TO_CLICKHOUSE_TYPE: dict[str, str] = {
+    "tinyint": "Int8",
+    "smallint": "Int16",
+    "integer": "Int32",
+    "int": "Int32",
+    "bigint": "Int64",
+    "hugeint": "Int128",
+    "utinyint": "UInt8",
+    "usmallint": "UInt16",
+    "uinteger": "UInt32",
+    "ubigint": "UInt64",
+    "uhugeint": "UInt128",
+    "float": "Float32",
+    "real": "Float32",
+    "double": "Float64",
+    "decimal": "Decimal",
+    "numeric": "Decimal",
+    "boolean": "Bool",
+    "date": "Date32",
+    "timestamp": "DateTime64(6)",
+    "datetime": "DateTime64(6)",
+    "timestamp with time zone": "DateTime64(6, 'UTC')",
+    "timestamptz": "DateTime64(6, 'UTC')",
+    "timestamp_s": "DateTime64(0)",
+    "timestamp_ms": "DateTime64(3)",
+    "timestamp_ns": "DateTime64(9)",
+    "uuid": "UUID",
+}
+
+
+def normalize_duckdb_type(duckdb_type: str) -> str:
+    """Lowercased base type name: `DECIMAL(10,2)` -> `decimal`, `INTEGER[]` -> `integer[]`."""
+    base = duckdb_type.strip().lower()
+    if "(" in base and base.endswith(")"):
+        open_index = base.index("(")
+        close_index = base.rindex(")")
+        base = (base[:open_index] + base[close_index + 1 :]).strip()
+    return base
+
+
+def duckdb_to_clickhouse_type(duckdb_type: str) -> str:
+    normalized_type = normalize_duckdb_type(duckdb_type)
+    clickhouse_type = DUCKDB_TO_CLICKHOUSE_TYPE.get(normalized_type)
+    if clickhouse_type is not None:
+        return clickhouse_type
+    # Arrays keep their `[]` suffix through normalization, so check before the scalar
+    # prefix fallbacks below or `DECIMAL(18,3)[]` would come out as a scalar Decimal.
+    if normalized_type.endswith("]"):
+        return "String"
+    if normalized_type.startswith(("decimal", "numeric")):
+        return "Decimal"
+    if normalized_type.startswith("timestamp"):
+        return "DateTime64(6)"
+    # JSON/INTERVAL/BLOB/ENUM and nested LIST/STRUCT/MAP/UNION render as String.
+    return "String"
+
+
+def motherduck_column_to_dwh_column(_column_name: str, duckdb_type: str, nullable: bool) -> dict[str, Any]:
+    clickhouse_type = duckdb_to_clickhouse_type(duckdb_type)
+    if nullable:
+        clickhouse_type = f"Nullable({clickhouse_type})"
+
+    raw_clickhouse_type = clean_type(clickhouse_type)
+    return {
+        "clickhouse": clickhouse_type,
+        "hogql": CLICKHOUSE_TYPE_TO_HOGQL_LABEL.get(raw_clickhouse_type, "string"),
+        "valid": True,
+    }
+
+
+def motherduck_columns_to_dwh_columns(columns: list[tuple[str, str, bool]]) -> dict[str, dict[str, Any]]:
+    return {
+        column_name: motherduck_column_to_dwh_column(column_name, duckdb_type, nullable)
+        for column_name, duckdb_type, nullable in columns
+    }
+
+
+def trino_column_to_dwh_column(column_name: str, trino_type: str, nullable: bool) -> dict[str, Any]:
+    return motherduck_column_to_dwh_column(column_name, trino_type, nullable)
+
+
+def trino_columns_to_dwh_columns(columns: list[tuple[str, str, bool]]) -> dict[str, dict[str, Any]]:
+    return {
+        column_name: trino_column_to_dwh_column(column_name, trino_type, nullable)
+        for column_name, trino_type, nullable in columns
+    }
+
+
+# Used by mixins.resolve_host for direct SQL-source connections (its own IP-pinning check).
+# validate_warehouse_table_url_pattern below calls posthog.security.url_validation instead.
+def _is_safe_public_ip(host: str) -> bool:
+    ip = ip_address(host)
+
+    # IPv6 can carry embedded IPv4 addresses that need the same SSRF checks.
+    if isinstance(ip, IPv6Address):
+        if ip.ipv4_mapped:
+            return _is_safe_public_ip(str(ip.ipv4_mapped))
+        if ip.sixtofour:
+            return _is_safe_public_ip(str(ip.sixtofour))
+
+    return not (
+        ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified
+    )
+
+
+# The AWS half matches the global, regional, dashed-regional, dualstack and accelerate endpoints,
+# because a bucket answers on all of them and each one resolves to the same objects.
+_STORAGE_ENDPOINT = r"(?:s3[.-][a-z0-9.-]*amazonaws\.com|storage\.googleapis\.com)"
+_PATH_STYLE_STORAGE_HOST = re.compile(rf"^{_STORAGE_ENDPOINT}$")
+_VIRTUAL_HOSTED_STORAGE_HOST = re.compile(rf"^(?P<bucket>.+?)\.{_STORAGE_ENDPOINT}$")
+
+# ClickHouse expands these in an s3() URL. They belong in the key, never in the bucket position.
+_GLOB_METACHARACTERS = frozenset("*?{}[]")
+
+_NOT_OUR_STORAGE = (
+    "This URL points to PostHog's internal storage and can't be used as a source. "
+    "Enter the location of your own bucket instead."
+)
+
+
+# Every Django setting naming a bucket the ClickHouse node role can read, so a table's
+# url_pattern must never resolve to one - see _posthog_owned_bucket_names below.
+# test_bucket_settings_are_all_triaged in test_util.py enumerates every "*_BUCKET" setting that
+# exists and fails if one isn't listed here or in _BUCKET_SETTINGS_NOT_READABLE_BY_THE_NODE_ROLE,
+# so a newly added "*_BUCKET" setting can't silently miss this check the way this one originally
+# did. BUCKET_PATH and BUCKET_URL are the two names here that don't follow that suffix, so they
+# have to stay listed by hand; the test can't discover either on its own. BUCKET_URL is the
+# warehouse pipelines' actual storage root (an `s3://bucket` URI, not a bare name - see the
+# s3:// handling in _posthog_owned_bucket_names) and is configured independently of
+# DATAWAREHOUSE_BUCKET/BUCKET_PATH, so a deployment that points it at a different bucket was
+# reachable through a table's url_pattern until this line was added.
+#
+# CLICKHOUSE_BACKUPS_BUCKET, DICTIONARY_STAGING_S3_BUCKET, IDENTITY_MATCHING_S3_BUCKET,
+# NOTEBOOKS_FRAME_STORE_S3_BUCKET, OBJECT_STORAGE_EXTERNAL_WEB_ANALYTICS_BUCKET, and
+# QUERY_LOG_ARCHIVE_EXPORT_S3_BUCKET are here because each is read or written by ClickHouse's own
+# `s3(...)` / `BACKUP ... TO S3(...)` with no explicit access key in the query, the same credential-less
+# shape the original vulnerability exploited - not because a customer's url_pattern can reach them today.
+#
+# DICTIONARY_STAGING_S3_BUCKET and NOTEBOOKS_FRAME_STORE_S3_BUCKET both fall back to
+# OBJECT_STORAGE_BUCKET, so they widen this set only on a deployment that points either one at a
+# bucket of its own, which cloud does for frames. Both writers (posthog/dags/common/staged_dictionary.py
+# and notebooks' frame_materialize.py) omit credentials whenever their own endpoint setting is empty,
+# and it is empty on prod, so ClickHouse reaches the object through its node role.
+#
+# BATCH_EXPORT_INTERNAL_STAGING_BUCKET is the same shape: internal_stage.py's get_s3_function_call
+# omits credentials whenever _get_s3_credentials() returns None, which it does on every cloud
+# deployment (_uses_object_storage_endpoint() is false there) - "we omit credentials and ClickHouse
+# uses the default credential provider chain" per that function's own docstring. That every team's
+# batch-export data lands there under aioboto3 elsewhere doesn't change that ClickHouse itself
+# writes there keylessly first.
+_POSTHOG_OWNED_BUCKET_SETTING_NAMES = (
+    "BATCH_EXPORT_INTERNAL_STAGING_BUCKET",
+    "BUCKET_PATH",
+    "BUCKET_URL",
+    "CLICKHOUSE_BACKUPS_BUCKET",
+    "DATAWAREHOUSE_BUCKET",
+    "DICTIONARY_STAGING_S3_BUCKET",
+    "IDENTITY_MATCHING_S3_BUCKET",
+    "NOTEBOOKS_FRAME_STORE_S3_BUCKET",
+    "OBJECT_STORAGE_BUCKET",
+    "OBJECT_STORAGE_EXTERNAL_WEB_ANALYTICS_BUCKET",
+    "QUERY_LOG_ARCHIVE_EXPORT_S3_BUCKET",
+    "SESSION_RECORDING_V2_S3_BUCKET",
+)
+
+# "*_BUCKET" settings checked and found to be read only through a Python process's own boto3/aioboto3
+# client (a different IAM identity than the ClickHouse node role) or to have no reader in this
+# codebase at all - never through ClickHouse's `s3(...)`/`BACKUP...S3(...)`, the credential-less
+# access pattern that makes a bucket reachable by the node role. Each reason names what was actually
+# checked; "no reader found" means exactly that, not a claim that none exists in a non-Python service.
+#
+# This registry can only ever cover buckets a Django setting names. A bucket the node role can read
+# but whose name comes from elsewhere - a database row, a control-plane API call - is invisible to
+# it by construction; posthog/dags/events_backfill_to_duckling.py resolves a per-organization bucket
+# that way, with the same "ClickHouse uses its EC2 instance role, no credentials needed" shape. The
+# load-bearing control against that class is TableSerializer requiring a credential whenever
+# url_pattern is set or changed (products/data_warehouse/backend/presentation/views/table.py), not
+# this list - this registry only backstops the credential-less-by-design tables PostHog's own code
+# creates (self-managed uploads, pipeline syncs), where the URL is known in advance.
+_BUCKET_SETTINGS_NOT_READABLE_BY_THE_NODE_ROLE = {
+    "AGENT_BUNDLES_S3_BUCKET": "no reader found in this codebase; defaults to OBJECT_STORAGE_BUCKET",
+    "AI_BLOB_S3_BUCKET": "read via posthog.storage.object_storage (boto3), by ai_observability/backend/api/ai_blob.py",
+    "BATCH_EXPORTS_FILE_DOWNLOAD_BUCKET": "written via a pre-signed URL over an assumed STS role, and read via aioboto3 - never by ClickHouse",
+    "BILLING_USAGE_REPORTS_S3_BUCKET": "read via posthog.storage.object_storage (boto3), by posthog/temporal/usage_report/storage.py",
+    "DAGSTER_AI_EVALS_S3_BUCKET": "read via boto3 (s3.get_client()) by products/posthog_ai/dags/utils.py",
+    "DAGSTER_FAVICONS_S3_BUCKET": "read via boto3 (s3.get_client()) by products/web_analytics/dags/cache_favicons.py",
+    "DAGSTER_S3_BUCKET": "read via Dagster's own S3Resource (boto3), the pickle io-manager's storage",
+    "INBOX_RANKING_DATASET_S3_BUCKET": "read via boto3 by products/signals/dags/inbox_ranking/common.py",
+    "MANAGED_MIGRATIONS_TRIAL_S3_BUCKET": "read via boto3 by products/managed_migrations/backend/trial_storage.py",
+    "POSTHOG_JS_S3_BUCKET": "read via boto3 by posthog/models/js_snippet_versioning.py",
+    "QUERY_CACHE_S3_BUCKET": "no reader found in this codebase; defaults to OBJECT_STORAGE_BUCKET",
+    "REPLAY_MESSAGE_TOO_LARGE_SAMPLE_BUCKET": "no reader found in this codebase",
+    "VIDEO_SEGMENT_CLUSTERING_S3_BUCKET": "no reader found in this codebase; defaults to OBJECT_STORAGE_BUCKET",
+}
+
+
+def _posthog_owned_bucket_names() -> set[str]:
+    """Buckets PostHog owns, so a table must never be pointed at one.
+
+    A self-managed table reads through ClickHouse, which falls back to its node IAM role when the
+    table carries no credential. These are the buckets that role can reach, and they hold every
+    team's data, so reading one across the API would cross the tenant boundary.
+    """
+    owned: set[str] = set()
+    for setting_name in _POSTHOG_OWNED_BUCKET_SETTING_NAMES:
+        value = getattr(settings, setting_name, None)
+        if not value:
+            continue
+        value = str(value)
+        # BUCKET_URL is a full `s3://bucket` URI rather than a bare bucket name; the rest are
+        # sometimes configured as `bucket/prefix`, where only the leading segment is the bucket.
+        bucket = urlparse(value).netloc if value.startswith("s3://") else value.strip("/").split("/", 1)[0]
+        if bucket:
+            owned.add(bucket)
+    return owned
+
+
+def _validate_url_pattern_is_not_posthog_storage(
+    url_pattern: str, normalized_hostname: str, path: str
+) -> tuple[bool, str]:
+    """Reject a URL that addresses PostHog's own object storage, in any of the forms S3 accepts.
+
+    A bucket answers to both a virtual-hosted host (`<bucket>.s3.<region>.amazonaws.com`) and a
+    path-style one (`s3.<region>.amazonaws.com/<bucket>`), so a host check alone leaves the same
+    object reachable under a name that doesn't look like ours.
+    """
+    configured_domain = (settings.DATAWAREHOUSE_BUCKET_DOMAIN or "").lower().strip()
+    if configured_domain and configured_domain in url_pattern.lower():
+        return False, _NOT_OUR_STORAGE
+
+    owned_buckets = _posthog_owned_bucket_names()
+
+    virtual_hosted = _VIRTUAL_HOSTED_STORAGE_HOST.match(normalized_hostname)
+    if virtual_hosted:
+        if virtual_hosted.group("bucket") in owned_buckets:
+            return False, _NOT_OUR_STORAGE
+        return True, ""
+
+    if _PATH_STYLE_STORAGE_HOST.match(normalized_hostname):
+        segments = path.lstrip("/").split("/")
+        bucket = segments[0]
+        # A glob here expands across buckets rather than within one, so it can reach ours whatever
+        # it looks like. No source needs to pattern-match a bucket name.
+        if any(character in _GLOB_METACHARACTERS for character in bucket):
+            return False, "The bucket name in a URL pattern must be exact. Wildcards belong in the file path."
+        # A percent-encoded slash here would put a second path segment (potentially one of our own
+        # bucket names) after whatever the request client decodes it into, while this check still
+        # sees it as part of one opaque bucket segment. Reject the encoding outright rather than
+        # depend on this parser agreeing with ClickHouse's about where it splits.
+        if "%" in bucket:
+            return False, "The bucket name in a URL pattern can't contain percent-encoded characters."
+        # Same reasoning as the percent-encoding check: a literal "." or ".." segment is opaque to
+        # this parser (bucket is just the first segment), but would let a path-normalizing client
+        # resolve a different bucket than the one checked below. No object key legitimately needs one.
+        if any(segment in (".", "..") for segment in segments):
+            return False, "The path in a URL pattern can't contain '.' or '..' segments."
+        if bucket in owned_buckets:
+            return False, _NOT_OUR_STORAGE
+
+    return True, ""
+
+
+def validate_warehouse_table_url_pattern(url_pattern: str | None) -> tuple[bool, str]:
+    if not url_pattern:
+        return True, ""
+
+    parsed = urlparse(url_pattern)
+    if parsed.scheme != "https":
+        return False, "URL pattern must use https."
+
+    if not parsed.hostname:
+        return False, "URL pattern must include a valid hostname."
+
+    normalized_hostname = parsed.hostname.lower().strip().rstrip(".")
+
+    # Runs before the generic SSRF check below so a URL aimed at our own storage always reports
+    # that, rather than whatever the internal hostname happens to resolve to.
+    is_valid, error_message = _validate_url_pattern_is_not_posthog_storage(
+        url_pattern, normalized_hostname, parsed.path
+    )
+    if not is_valid:
+        return is_valid, error_message
+
+    # is_url_allowed is the same SSRF guard used for outbound fetches elsewhere in the codebase
+    # (webhook destinations, integration probes, sibling warehouse_sources connectors): metadata
+    # IPs, loopback/internal-TLD hosts, the backslash/%5c authority-parsing mismatch between
+    # urlparse and the client that actually connects, and DNS resolution to a private IP.
+    allowed, reason = is_url_allowed(url_pattern)
+    if not allowed:
+        return False, reason or "URL pattern hostname is not allowed."
+
+    return True, ""

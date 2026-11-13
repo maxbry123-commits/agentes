@@ -1,0 +1,146 @@
+name: YAIWES CODA Canonical Identity Cleanup
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-coda-canonical-identity-cleanup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fresh main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Rename 24 component identities and rewrite orchestration references
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          root = Path('📂coda workflow persistencias')
+          team = 'Swarm agent team Navy seals YAIWES'
+          if not root.is_dir():
+              raise SystemExit('CODA_ROOT_MISSING')
+
+          mappings = []
+          for i in range(1, 25):
+              prefix = f'🏈 {i:02d}'
+              target = root / prefix
+              matches = sorted(p for p in root.iterdir() if p.is_dir() and p.name.startswith(prefix))
+              if target in matches and len(matches) == 1:
+                  old = target
+              else:
+                  candidates = [p for p in matches if p != target]
+                  if len(candidates) != 1:
+                      raise SystemExit(f'CANONICAL_SOURCE_AMBIGUOUS:{prefix}:{[p.name for p in matches]}')
+                  old = candidates[0]
+                  subprocess.run(['git','mv',str(old),str(target)], check=True)
+              mappings.append((old.name, target.name))
+
+          # Rewrite only prior orchestration labels (full directory labels), not technical package/import identifiers.
+          for p in Path('.').rglob('*'):
+              if not p.is_file() or '.git' in p.parts:
+                  continue
+              try:
+                  if p.stat().st_size > 2_000_000:
+                      continue
+                  text = p.read_text(encoding='utf-8')
+              except Exception:
+                  continue
+              new = text
+              for old_name, new_name in mappings:
+                  if old_name != new_name:
+                      new = new.replace(old_name, new_name)
+              if new != text:
+                  p.write_text(new, encoding='utf-8')
+
+          for i in range(1,25):
+              comp = root / f'🏈 {i:02d}'
+              marker = comp / 'CANONICAL-NAME.md'
+              marker.write_text(f'# 🏈 {i:02d}\n\n{team}\n', encoding='utf-8')
+
+          # Assertions: exactly 24 canonical component directories and no previous orchestration labels remain.
+          canonical = sorted(p.name for p in root.iterdir() if p.is_dir() and p.name.startswith('🏈 ') and p.name != '🏈 cancha deportiva de fútbol')
+          expected = [f'🏈 {i:02d}' for i in range(1,25)]
+          if canonical != expected:
+              raise SystemExit(f'CANONICAL_SET_MISMATCH:{canonical}')
+
+          leftovers = []
+          for p in Path('.').rglob('*'):
+              if not p.is_file() or '.git' in p.parts:
+                  continue
+              try:
+                  if p.stat().st_size > 2_000_000:
+                      continue
+                  text = p.read_text(encoding='utf-8')
+              except Exception:
+                  continue
+              for old_name, new_name in mappings:
+                  if old_name != new_name and old_name in text:
+                      leftovers.append((str(p), old_name))
+          if leftovers:
+              raise SystemExit(f'OLD_COMPONENT_LABELS_REMAIN:{leftovers[:20]}')
+          print('CANONICAL_IDENTITIES_OK=24')
+          PY
+
+      - name: Validate registry and Fables chain after rename
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import importlib.util, json, tempfile
+          from pathlib import Path
+          root = Path('📂coda workflow persistencias')
+          registry = root / '🏈 cancha deportiva de fútbol' / 'YAIWES-INTERNAL-SWARM-REGISTRY-V5.json'
+          data = json.loads(registry.read_text(encoding='utf-8'))
+          expected = [f'🏈 {i:02d}' for i in range(1,25)]
+          got = [x['component'] for x in data['components']]
+          assert got == expected, (got, expected)
+          for idx, item in enumerate(data['components'], 1):
+              assert item['order'] == idx
+              assert (root / item['runtime']).is_file()
+              assert (root / item['manifest']).is_file()
+          chain = root / 'Fables enchufe universal' / 'yaiwes_internal_swarm_chain_v5.py'
+          spec = importlib.util.spec_from_file_location('yaiwes_chain', chain)
+          mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+          with tempfile.TemporaryDirectory() as td:
+              out = mod.run_swarm(registry, td, 'canonical-identity-smoke', {'mode':'rename-check'})
+          assert out['components_completed'] == 24, out
+          assert all(x['status'] == 'RELEASED' for x in out['evidence']), out
+          print('FABLES_CANONICAL_SMOKE_PASS=24')
+          PY
+
+      - name: Commit atomically and self-delete workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/yaiwes-coda-canonical-identity-cleanup.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'NO_CHANGES'
+            exit 0
+          fi
+          git commit -m 'refactor(coda): use only canonical YAIWES component identities'
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Final readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo "ORIGIN_MAIN=$(git rev-parse origin/main)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"

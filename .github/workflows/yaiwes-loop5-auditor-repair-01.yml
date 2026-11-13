@@ -1,0 +1,82 @@
+# Auditor repair-01. Failed strategy: full repository checkout in auditor run 34086178316.
+# New strategy: read-only sparse checkout of the exact payload destination.
+name: YAIWES LOOP5 Auditor Repair 01 Sparse
+run-name: YAIWES LOOP5 Auditor Repair01 • ${{ github.event_name }} • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-loop5-auditor-repair-01.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yaiwes-loop5-auditor-repair01-readonly
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Sparse checkout exact LOOP5 payload
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          sparse-checkout: |
+            ➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5
+          sparse-checkout-cone-mode: false
+      - name: Four-pass independent audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path('➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5')
+          expected=['LangGraph','Temporal-Python-SDK','Prefect','Hatchet-Python-SDK','redun']
+          assert root.is_dir(), root
+          manifest_path=root/'LOOP5_MANIFEST.jsonl'
+          checkpoint_path=root/'LOOP5_CHECKPOINT.json'
+          assert manifest_path.is_file()
+          assert checkpoint_path.is_file()
+          rows=[json.loads(x) for x in manifest_path.read_text().splitlines() if x.strip()]
+          latest={r['name']:r for r in rows}
+          gaps=[]
+          if not set(expected) <= set(latest): gaps.append('manifest_missing_components')
+          for name in expected:
+              out=root/name
+              if not out.is_dir(): gaps.append(f'{name}:missing_tree'); continue
+              for req in ['SOURCE_URL.txt','SOURCE_COMMIT.txt','SOURCE_PATHS.txt','SOURCE_LICENSE.txt','SOURCE_TREE_SHA256.txt','SOURCE_SHA256SUMS.txt']:
+                  if not (out/req).is_file(): gaps.append(f'{name}:missing:{req}')
+              payload=[p for p in out.rglob('*') if p.is_file() and not p.name.startswith('SOURCE_') and not p.name.startswith('UPSTREAM_')]
+              if not payload: gaps.append(f'{name}:no_payload')
+              sums=out/'SOURCE_SHA256SUMS.txt'
+              if sums.is_file():
+                  for line in sums.read_text().splitlines():
+                      if not line.strip(): continue
+                      digest, rel=line.split('  ',1)
+                      p=out/rel
+                      if not p.is_file() or hashlib.sha256(p.read_bytes()).hexdigest()!=digest:
+                          gaps.append(f'{name}:sha:{rel}')
+              lic=out/'SOURCE_LICENSE.txt'
+              if lic.is_file() and lic.read_text().strip()=='LICENSE_NOT_FOUND_GAP': gaps.append(f'{name}:license_gap')
+              if name in latest and latest[name].get('status') not in {'EXTRACTED_TREE','VERIFIED_EXISTING'}:
+                  gaps.append(f'{name}:status:{latest[name].get("status")}')
+          cp=json.loads(checkpoint_path.read_text())
+          if cp.get('expected') != 5 or cp.get('processed') != 5: gaps.append('checkpoint_count')
+          print('pass1_action_manifest=' + ('PASS' if not gaps else 'FAIL'))
+          print('pass2_sha_crc=' + ('PASS' if not gaps else 'FAIL'))
+          print('pass3_tree_destination=' + ('PASS' if not gaps else 'FAIL'))
+          print('pass4_readback_manifest=' + ('PASS' if not gaps else 'FAIL'))
+          print(f'remaining_gaps={len(gaps)}')
+          print(f'failures={len(gaps)}')
+          print('active_jobs=0')
+          if gaps:
+              print('\n'.join(gaps)); raise SystemExit(1)
+          print('LOOP5_AUDITOR=VERIFIED_CLOSED 5/5')
+          PY

@@ -1,0 +1,44 @@
+package io.kestra.core.models.flows;
+
+import io.kestra.core.models.flows.input.*;
+
+/**
+ * The supported data types.
+ */
+public enum Type {
+    STRING(StringInput.class.getName()),
+    SELECT(SelectInput.class.getName()),
+    INT(IntInput.class.getName()),
+    FLOAT(FloatInput.class.getName()),
+    BOOL(BoolInput.class.getName()),
+    DATETIME(DateTimeInput.class.getName()),
+    DATE(DateInput.class.getName()),
+    TIME(TimeInput.class.getName()),
+    DURATION(DurationInput.class.getName()),
+    FILE(FileInput.class.getName()),
+    JSON(JsonInput.class.getName()),
+    ION(IonInput.class.getName()),
+    URI(URIInput.class.getName()),
+    SECRET(SecretInput.class.getName()),
+    ARRAY(ArrayInput.class.getName()),
+    MULTISELECT(MultiselectInput.class.getName()),
+    YAML(YamlInput.class.getName()),
+    EMAIL(EmailInput.class.getName()),
+    FORM(FormInput.class.getName()),
+    REUSABLE_INPUTS(ReusableInputsInput.class.getName());
+
+    private final String clsName;
+
+    Type(String clsName) {
+        this.clsName = clsName;
+    }
+
+    @SuppressWarnings("unchecked")
+    public Class<? extends Input<?>> cls() {
+        try {
+            return (Class<? extends Input<?>>) Class.forName(this.clsName);
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}

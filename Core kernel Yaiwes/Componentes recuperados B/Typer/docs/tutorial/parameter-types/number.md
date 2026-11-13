@@ -1,0 +1,145 @@
+# Number
+
+You can define numeric validations with `max` and `min` values for `int` and `float` *CLI parameters*:
+
+{* docs_src/parameter_types/number/tutorial001_an_py310.py hl[10:12] *}
+
+*CLI arguments* and *CLI options* can both use these validations.
+
+You can specify `min`, `max` or both.
+
+Check it:
+
+<div class="termy">
+
+```console
+$ uv run python main.py --help
+
+// Notice the extra range information in the help text for --age and --score
+Usage: main.py [OPTIONS] {ID}
+
+Arguments:
+  ID  [required]
+
+Options:
+  --age <int range>      [default: 20; x>=18]
+  --score <float range>  [default: 0; x<=100]
+  --help                 Show this message and exit.
+
+// Pass all the CLI parameters
+$ uv run python main.py 5 --age 20 --score 90
+
+ID is 5
+--age is 20
+--score is 90.0
+
+// Pass an invalid ID
+$ uv run python main.py 1002
+
+Usage: main.py [OPTIONS] {ID}
+Try "main.py --help" for help.
+
+Error: Invalid value for 'ID': 1002 is not in the range 0<=x<=1000.
+
+// Pass an invalid age
+$ uv run python main.py 5 --age 15
+
+Usage: main.py [OPTIONS] {ID}
+Try "main.py --help" for help.
+
+Error: Invalid value for '--age': 15 is not in the range x>=18.
+
+// Pass an invalid score
+$ uv run python main.py 5 --age 20 --score 100.5
+
+Usage: main.py [OPTIONS] {ID}
+Try "main.py --help" for help.
+
+Error: Invalid value for '--score': 100.5 is not in the range x<=100.
+
+// But as we didn't specify a minimum score, this is accepted
+$ uv run python main.py 5 --age 20 --score -5
+
+ID is 5
+--age is 20
+--score is -5.0
+```
+
+</div>
+
+## Clamping numbers
+
+You might want to, instead of showing an error, use the closest minimum or maximum valid values.
+
+You can do it with the `clamp` parameter:
+
+{* docs_src/parameter_types/number/tutorial002_an_py310.py hl[10:12] *}
+
+And then, when you pass data that is out of the valid range, it will be "clamped", the closest valid value will be used:
+
+<div class="termy">
+
+```console
+// ID doesn't have clamp, so it shows an error
+$ uv run python main.py 1002
+
+Usage: main.py [OPTIONS] {ID}
+Try "main.py --help" for help.
+
+Error: Invalid value for 'ID': 1002 is not in the range 0<=x<=1000.
+
+// But --rank and --score use clamp
+$ uv run python main.py 5 --rank 11 --score -5
+
+ID is 5
+--rank is 10
+--score is 0
+```
+
+</div>
+
+## Counter *CLI options*
+
+You can make a *CLI option* work as a counter with the `count` parameter:
+
+{* docs_src/parameter_types/number/tutorial003_an_py310.py hl[9] *}
+
+It means that the *CLI option* will be like a boolean flag, e.g. `--verbose`.
+
+And the value you receive in the function will be the amount of times that `--verbose` was added:
+
+<div class="termy">
+
+```console
+// Check it
+$ uv run python main.py
+
+Verbose level is 0
+
+// Now use one --verbose
+$ uv run python main.py --verbose
+
+Verbose level is 1
+
+// Now 3 --verbose
+$ uv run python main.py --verbose --verbose --verbose
+
+Verbose level is 3
+
+// And with the short name
+$ uv run python main.py -v
+
+Verbose level is 1
+
+// And with the short name 3 times
+$ uv run python main.py -v -v -v
+
+Verbose level is 3
+
+// As short names can be put together, this also works
+$ uv run python main.py -vvv
+
+Verbose level is 3
+```
+
+</div>

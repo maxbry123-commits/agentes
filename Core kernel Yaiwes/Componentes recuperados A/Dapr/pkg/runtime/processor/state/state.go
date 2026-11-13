@@ -1,0 +1,198 @@
+/*
+Copyright 2023 The Dapr Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package state
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+
+	contribstate "github.com/dapr/components-contrib/state"
+	compapi "github.com/dapr/dapr/pkg/apis/components/v1alpha1"
+	compstate "github.com/dapr/dapr/pkg/components/state"
+	diag "github.com/dapr/dapr/pkg/diagnostics"
+	"github.com/dapr/dapr/pkg/encryption"
+	"github.com/dapr/dapr/pkg/outbox"
+	"github.com/dapr/dapr/pkg/runtime/compstore"
+	rterrors "github.com/dapr/dapr/pkg/runtime/errors"
+	"github.com/dapr/dapr/pkg/runtime/meta"
+	"github.com/dapr/kit/logger"
+	kitstrings "github.com/dapr/kit/strings"
+)
+
+const (
+	PropertyKeyActorStateStore = "actorstatestore"
+)
+
+var log = logger.NewLogger("dapr.runtime.processor.state")
+
+// Actors is the subset of the actor runtime which is notified when a
+// component becomes the actor state store.
+type Actors interface {
+	OnActorStateStoreChanged()
+}
+
+type Options struct {
+	Registry       *compstate.Registry
+	ComponentStore *compstore.ComponentStore
+	Meta           *meta.Meta
+	ActorsEnabled  bool
+	Outbox         outbox.Outbox
+	Actors         Actors
+}
+
+type state struct {
+	registry  *compstate.Registry
+	compStore *compstore.ComponentStore
+	meta      *meta.Meta
+	lock      sync.RWMutex
+
+	actorsEnabled bool
+	outbox        outbox.Outbox
+	actors        Actors
+}
+
+func New(opts Options) *state {
+	return &state{
+		registry:      opts.Registry,
+		compStore:     opts.ComponentStore,
+		meta:          opts.Meta,
+		actorsEnabled: opts.ActorsEnabled,
+		outbox:        opts.Outbox,
+		actors:        opts.Actors,
+	}
+}
+
+func (s *state) Init(ctx context.Context, comp compapi.Component) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	fName := comp.LogName()
+
+	store, err := s.registry.Create(comp.Spec.Type, comp.Spec.Version, fName)
+	if err != nil {
+		diag.DefaultMonitoring.ComponentInitFailed(comp.Spec.Type, "creation", comp.Name)
+		return rterrors.NewInit(rterrors.CreateComponentFailure, fName, err)
+	}
+
+	if store == nil {
+		return nil
+	}
+
+	secretStoreName := s.meta.AuthSecretStoreOrDefault(&comp)
+
+	secretStore, _ := s.compStore.GetSecretStore(secretStoreName)
+
+	encKeys, err := encryption.ComponentEncryptionKey(comp, secretStore)
+	if err != nil {
+		diag.DefaultMonitoring.ComponentInitFailed(comp.Spec.Type, "creation", comp.Name)
+		return rterrors.NewInit(rterrors.CreateComponentFailure, fName, err)
+	}
+
+	if encKeys.Primary.Key != "" {
+		ok := encryption.AddEncryptedStateStore(comp.Name, encKeys)
+		if ok {
+			log.Infof("Automatic encryption enabled for state store %s", comp.Name)
+			log.Info("WARNING: Automatic state store encryption should never be used to store more than 4 billion items in the state store (including updates). Storing more items than that can cause the private key to be exposed.")
+		}
+	}
+
+	meta, err := s.meta.ToBaseMetadata(comp)
+	if err != nil {
+		diag.DefaultMonitoring.ComponentInitFailed(comp.Spec.Type, "init", comp.Name)
+		return rterrors.NewInit(rterrors.InitComponentFailure, fName, err)
+	}
+
+	props := meta.Properties
+
+	err = store.Init(ctx, contribstate.Metadata{Base: meta})
+	if err != nil {
+		diag.DefaultMonitoring.ComponentInitFailed(comp.Spec.Type, "init", comp.Name)
+		return rterrors.NewInit(rterrors.InitComponentFailure, fName, err)
+	}
+
+	// when placement address list is not empty, set specified actor store.
+	if s.actorsEnabled {
+		// set specified actor store if "actorStateStore" is true in the spec.
+		actorStoreSpecified := false
+
+		for k, v := range props {
+			//nolint:gocritic
+			if strings.ToLower(k) == PropertyKeyActorStateStore {
+				actorStoreSpecified = kitstrings.IsTruthy(v)
+				break
+			}
+		}
+
+		if actorStoreSpecified {
+			if err = s.compStore.AddStateStoreActor(comp.Name, store); err != nil {
+				diag.DefaultMonitoring.ComponentInitFailed(comp.Spec.Type, "init", comp.Name)
+				return rterrors.NewInit(rterrors.InitComponentFailure, fName, err)
+			}
+			log.Info("Using '" + comp.Name + "' as actor state store")
+
+			// Notify the actor runtime directly on the add side: components
+			// parked behind a not-yet-loaded secret store are initialized
+			// outside the hot reload reconciler, so its notification does not
+			// cover them. Notifications coalesce, so double notification via
+			// the reconciler is harmless. The remove side is only notified by
+			// the reconciler, once a remove or update has fully settled.
+			if s.actors != nil {
+				s.actors.OnActorStateStoreChanged()
+			}
+		}
+	}
+
+	s.compStore.AddStateStore(comp.Name, store)
+
+	err = compstate.SaveStateConfiguration(comp.Name, props)
+	if err != nil {
+		diag.DefaultMonitoring.ComponentInitFailed(comp.Spec.Type, "init", comp.Name)
+
+		wrapError := fmt.Errorf("failed to save lock keyprefix: %s", err.Error())
+
+		return rterrors.NewInit(rterrors.InitComponentFailure, fName, wrapError)
+	}
+
+	s.outbox.AddOrUpdateOutbox(comp)
+
+	diag.DefaultMonitoring.ComponentInitialized(comp.Spec.Type)
+
+	return nil
+}
+
+func (s *state) Close(comp compapi.Component) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	ss, ok := s.compStore.GetStateStore(comp.Name)
+	if !ok {
+		return nil
+	}
+
+	defer s.compStore.DeleteStateStore(comp.Name)
+
+	err := ss.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *state) ActorStateStoreName() (string, bool) {
+	_, name, ok := s.compStore.GetStateStoreActor()
+	return name, ok
+}

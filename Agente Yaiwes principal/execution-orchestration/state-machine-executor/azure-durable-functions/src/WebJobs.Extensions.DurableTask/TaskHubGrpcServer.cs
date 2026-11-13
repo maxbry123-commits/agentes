@@ -1,0 +1,807 @@
+// Copyright (c) .NET Foundation. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using DurableTask.Core;
+using DurableTask.Core.Entities;
+using DurableTask.Core.Exceptions;
+using DurableTask.Core.History;
+using DurableTask.Core.Query;
+using DurableTask.Core.Serializing.Internal;
+using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
+using Microsoft.Azure.WebJobs.Extensions.DurableTask.Correlation;
+using Microsoft.Azure.WebJobs.Extensions.DurableTask.Grpc;
+using Newtonsoft.Json;
+using DTCore = DurableTask.Core;
+using P = Microsoft.DurableTask.Protobuf;
+
+namespace Microsoft.Azure.WebJobs.Extensions.DurableTask
+{
+    internal class TaskHubGrpcServer : P.TaskHubSidecarService.TaskHubSidecarServiceBase
+    {
+        private const int MaxHistoryChunkSizeInBytes = 2 * 1024 * 1024; // 2 MB
+
+        // gRPC metadata key for correlating client operations with function invocations
+        private const string FunctionInvocationIdMetadataKey = "x-azure-functions-invocationid";
+
+        private readonly DurableTaskExtension extension;
+
+        public TaskHubGrpcServer(DurableTaskExtension extension)
+        {
+            this.extension = extension;
+        }
+
+        public override Task<Empty> Hello(Empty request, ServerCallContext context)
+        {
+            return Task.FromResult(new Empty());
+        }
+
+        public async override Task<P.CreateTaskHubResponse> CreateTaskHub(P.CreateTaskHubRequest request, ServerCallContext context)
+        {
+            await this.GetDurabilityProvider(context).CreateAsync(request.RecreateIfExists);
+            return new P.CreateTaskHubResponse();
+        }
+
+        public async override Task<P.DeleteTaskHubResponse> DeleteTaskHub(P.DeleteTaskHubRequest request, ServerCallContext context)
+        {
+            await this.GetDurabilityProvider(context).DeleteAsync();
+            return new P.DeleteTaskHubResponse();
+        }
+
+        public async override Task<P.CreateInstanceResponse> StartInstance(P.CreateInstanceRequest request, ServerCallContext context)
+        {
+            try
+            {
+                if (this.GetClient(context) is DurableClient durableClient)
+                {
+                    durableClient.ThrowIfOrchestratorFunctionIsDisabled(request.Name);
+                }
+
+                List<OrchestrationStatus> allStatuses = System.Enum
+                    .GetValues<OrchestrationStatus>()
+                    .ToList();
+
+                // Not all clients are necessarily configured to set the OrchestrationIdReusePolicy field of the request.
+                // If it is null, we assume that they do not support per-request-dedupe statuses, and default to using just
+                // the OverridableExistingInstanceStates setting instead.
+                List<OrchestrationStatus> reusableStatuses = request.OrchestrationIdReusePolicy is null
+                    ? allStatuses
+                    : request.OrchestrationIdReusePolicy.ReplaceableStatus.Select(status => (OrchestrationStatus)status).ToList();
+
+                OrchestrationStatus[] dedupeStatuses = allStatuses
+                    .Except(reusableStatuses)
+                    .Union(this.extension.Options.OverridableExistingInstanceStates.ToDedupeStatuses())
+                    .ToArray();
+
+                // Create the orchestration instance
+                var instance = new OrchestrationInstance
+                {
+                    InstanceId = string.IsNullOrEmpty(request.InstanceId) ? Guid.NewGuid().ToString("N") : request.InstanceId,
+                    ExecutionId = Guid.NewGuid().ToString(),
+                };
+
+                // Log correlation information for client operations
+                this.LogClientOperationReceived(context, "StartOrchestration", instance.InstanceId);
+
+                // Create the ExecutionStartedEvent
+                ExecutionStartedEvent executionStartedEvent = new ExecutionStartedEvent(-1, request.Input)
+                {
+                    Name = request.Name,
+                    Version = request.Version != null ? request.Version : this.extension.Options.DefaultVersion,
+                    OrchestrationInstance = instance,
+                    ScheduledStartTime = request.ScheduledStartTimestamp?.ToDateTime(),
+                    Tags = request.Tags.ToDictionary(),
+                };
+
+                // Get the parent trace context from CreateInstanceRequest
+                string? traceParent = request.ParentTraceContext?.TraceParent;
+                string? traceState = request.ParentTraceContext?.TraceState;
+
+                // Create a new activity with the parent context
+                ActivityContext.TryParse(traceParent, traceState, out ActivityContext parentActivityContext);
+                using Activity? scheduleOrchestrationActivity = TraceHelper.StartActivityForNewOrchestration(executionStartedEvent, parentActivityContext, request.RequestTime?.ToDateTimeOffset());
+
+                // Schedule the orchestration
+                await this.GetDurabilityProvider(context).CreateTaskOrchestrationAsync(
+                    new TaskMessage
+                    {
+                        Event = executionStartedEvent,
+                        OrchestrationInstance = instance,
+                    },
+                    dedupeStatuses,
+                    context.CancellationToken);
+
+                return new P.CreateInstanceResponse
+                {
+                    InstanceId = instance.InstanceId,
+                };
+            }
+            catch (OrchestrationAlreadyExistsException)
+            {
+                throw new RpcException(new Status(StatusCode.AlreadyExists, $"An Orchestration instance with the ID {request.InstanceId} already exists."));
+            }
+            catch (InvalidOperationException ex) when (ex.Message.EndsWith("already exists.")) // for older versions of DTF.AS and DTFx.Netherite
+            {
+                throw new RpcException(new Status(StatusCode.AlreadyExists, $"An Orchestration instance with the ID {request.InstanceId} already exists."));
+            }
+            catch (ArgumentException ex)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, $"Invalid argument for start instance request for instance ID {request.InstanceId}: {ex.Message}"));
+            }
+            catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                this.extension.TraceHelper.ExtensionWarningEvent(
+                    this.extension.Options.HubName,
+                    functionName: request.Name,
+                    instanceId: request.InstanceId,
+                    message: $"Failed to start instanceId {request.InstanceId} due to internal exception.\n Exception trace: {ex}.");
+                throw new RpcException(new Status(StatusCode.Internal, $"Failed to start instance with ID {request.InstanceId}.\nInner Exception message: {ex.Message}."));
+            }
+        }
+
+        public async override Task<P.RaiseEventResponse> RaiseEvent(P.RaiseEventRequest request, ServerCallContext context)
+        {
+            bool throwStatusExceptionsOnRaiseEvent = this.extension.Options.ThrowStatusExceptionsOnRaiseEvent ?? this.extension.DefaultDurabilityProvider.CheckStatusBeforeRaiseEvent;
+
+            // Log correlation information for client operations
+            this.LogClientOperationReceived(context, "RaiseEvent", request.InstanceId);
+
+            try
+            {
+                await this.GetClient(context).RaiseEventAsync(request.InstanceId, request.Name, Raw(request.Input));
+            }
+            catch (ArgumentNullException ex)
+            {
+                // Indicates a required argument (e.g., instanceId, eventName, or input) is null or empty.
+                throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+            }
+            catch (ArgumentException ex)
+            {
+                // Indicates the provided instanceId has no orchestration status.
+                if (throwStatusExceptionsOnRaiseEvent)
+                {
+                    throw new RpcException(new Status(StatusCode.NotFound, ex.Message));
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // Indicates the orchestration instance exists but is already in a completed state.
+                if (throwStatusExceptionsOnRaiseEvent)
+                {
+                    throw new RpcException(new Status(StatusCode.FailedPrecondition, "The orchestration instance with the provided instance id is not running."));
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !context.CancellationToken.IsCancellationRequested)
+            {
+                // Any other unexpected exceptions.
+                throw new TaskHubRpcException(new Status(StatusCode.Unknown, ex.Message), ex);
+            }
+
+            return new P.RaiseEventResponse();
+        }
+
+        public async override Task<P.SignalEntityResponse> SignalEntity(P.SignalEntityRequest request, ServerCallContext context)
+        {
+            this.CheckEntitySupport(context, out var durabilityProvider, out var entityOrchestrationService);
+
+            // Log correlation information for client operations
+            this.LogClientOperationReceived(context, "SignalEntity", request.InstanceId);
+
+            Activity? signalEntityActivity = null;
+
+            // We only want to create a trace activity for signaling the entity in the case that we can successfully parse the trace context of the signal entity request.
+            // Otherwise, we will create an unlinked trace activity with no parent.
+            if (ActivityContext.TryParse(request.ParentTraceContext?.TraceParent, request.ParentTraceContext?.TraceState, out ActivityContext parentTraceContext))
+            {
+                signalEntityActivity = TraceHelper.StartActivityForCallingOrSignalingEntity(
+                    request.InstanceId,
+                    EntityId.GetEntityIdFromSchedulerId(request.InstanceId).EntityName,
+                    request.Name,
+                    signalEntity: true,
+                    request.ScheduledTime?.ToDateTime(),
+                    parentTraceContext,
+                    request.RequestTime?.ToDateTime());
+            }
+
+            EntityMessageEvent eventToSend = ClientEntityHelpers.EmitOperationSignal(
+                new OrchestrationInstance() { InstanceId = request.InstanceId },
+                Guid.Parse(request.RequestId),
+                request.Name,
+                request.Input,
+                EntityMessageEvent.GetCappedScheduledTime(
+                    DateTime.UtcNow,
+                    entityOrchestrationService.EntityBackendProperties!.MaximumSignalDelayTime,
+                    request.ScheduledTime?.ToDateTime()),
+                signalEntityActivity != null ? new DTCore.Tracing.DistributedTraceContext(signalEntityActivity.Id!, signalEntityActivity.TraceStateString) : null);
+
+            await durabilityProvider.SendTaskOrchestrationMessageAsync(eventToSend.AsTaskMessage());
+            signalEntityActivity?.Dispose();
+
+            // No fields in the response
+            return new P.SignalEntityResponse();
+        }
+
+        public async override Task<P.GetEntityResponse> GetEntity(P.GetEntityRequest request, ServerCallContext context)
+        {
+            this.LogClientOperationReceived(context, "GetEntity", request.InstanceId);
+            this.CheckEntitySupport(context, out var durabilityProvider, out var entityOrchestrationService);
+
+            EntityBackendQueries.EntityMetadata? metaData = await entityOrchestrationService.EntityBackendQueries!.GetEntityAsync(
+                DTCore.Entities.EntityId.FromString(request.InstanceId),
+                request.IncludeState,
+                includeStateless: false,
+                context.CancellationToken);
+
+            return new P.GetEntityResponse()
+            {
+                Exists = metaData.HasValue,
+                Entity = metaData.HasValue ? this.ConvertEntityMetadata(metaData.Value) : default,
+            };
+        }
+
+        public async override Task<P.QueryEntitiesResponse> QueryEntities(P.QueryEntitiesRequest request, ServerCallContext context)
+        {
+            this.LogClientOperationReceived(context, "QueryEntities", string.Empty);
+            this.CheckEntitySupport(context, out var durabilityProvider, out var entityOrchestrationService);
+
+            P.EntityQuery query = request.Query;
+            EntityBackendQueries.EntityQueryResult result = await entityOrchestrationService.EntityBackendQueries!.QueryEntitiesAsync(
+                new EntityBackendQueries.EntityQuery()
+                {
+                    InstanceIdStartsWith = query.InstanceIdStartsWith,
+                    LastModifiedFrom = query.LastModifiedFrom?.ToDateTime(),
+                    LastModifiedTo = query.LastModifiedTo?.ToDateTime(),
+                    IncludeTransient = query.IncludeTransient,
+                    IncludeState = query.IncludeState,
+                    ContinuationToken = query.ContinuationToken,
+                    PageSize = query.PageSize,
+                },
+                context.CancellationToken);
+
+            var response = new P.QueryEntitiesResponse()
+            {
+                ContinuationToken = result.ContinuationToken,
+            };
+
+            foreach (EntityBackendQueries.EntityMetadata entityMetadata in result.Results)
+            {
+                response.Entities.Add(this.ConvertEntityMetadata(entityMetadata));
+            }
+
+            return response;
+        }
+
+        public async override Task<P.CleanEntityStorageResponse> CleanEntityStorage(P.CleanEntityStorageRequest request, ServerCallContext context)
+        {
+            this.LogClientOperationReceived(context, "CleanEntityStorage", string.Empty);
+            this.CheckEntitySupport(context, out var durabilityProvider, out var entityOrchestrationService);
+
+            EntityBackendQueries.CleanEntityStorageResult result = await entityOrchestrationService.EntityBackendQueries!.CleanEntityStorageAsync(
+                new EntityBackendQueries.CleanEntityStorageRequest()
+                {
+                    RemoveEmptyEntities = request.RemoveEmptyEntities,
+                    ReleaseOrphanedLocks = request.ReleaseOrphanedLocks,
+                    ContinuationToken = request.ContinuationToken,
+                },
+                context.CancellationToken);
+
+            return new P.CleanEntityStorageResponse()
+            {
+                EmptyEntitiesRemoved = result.EmptyEntitiesRemoved,
+                OrphanedLocksReleased = result.OrphanedLocksReleased,
+                ContinuationToken = result.ContinuationToken,
+            };
+        }
+
+        public async override Task<P.TerminateResponse> TerminateInstance(P.TerminateRequest request, ServerCallContext context)
+        {
+            // Log correlation information for client operations
+            this.LogClientOperationReceived(context, "Terminate", request.InstanceId);
+
+            await InvokeControlPlaneOperationAsync(() => this.GetClient(context).TerminateAsync(request.InstanceId, request.Output));
+            return new P.TerminateResponse();
+        }
+
+        public async override Task<P.SuspendResponse> SuspendInstance(P.SuspendRequest request, ServerCallContext context)
+        {
+            // Log correlation information for client operations
+            this.LogClientOperationReceived(context, "Suspend", request.InstanceId);
+
+            await InvokeControlPlaneOperationAsync(() => this.GetClient(context).SuspendAsync(request.InstanceId, request.Reason));
+            return new P.SuspendResponse();
+        }
+
+        public async override Task<P.ResumeResponse> ResumeInstance(P.ResumeRequest request, ServerCallContext context)
+        {
+            // Log correlation information for client operations
+            this.LogClientOperationReceived(context, "Resume", request.InstanceId);
+
+            await InvokeControlPlaneOperationAsync(() => this.GetClient(context).ResumeAsync(request.InstanceId, request.Reason));
+            return new P.ResumeResponse();
+        }
+
+        public async override Task<P.RewindInstanceResponse> RewindInstance(P.RewindInstanceRequest request, ServerCallContext context)
+        {
+            // Log correlation information for client operations
+            this.LogClientOperationReceived(context, "Rewind", request.InstanceId);
+
+            try
+            {
+#pragma warning disable CS0618 // Type or member is obsolete
+                await this.GetClient(context).RewindAsync(request.InstanceId, request.Reason);
+#pragma warning restore CS0618 // Type or member is obsolete
+            }
+            catch (ArgumentException ex)
+            {
+                // Instance ID does not exist.
+                throw new RpcException(new Status(StatusCode.NotFound, ex.Message));
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Orchestration is not in a failed state.
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
+            }
+            catch (NotImplementedException ex)
+            {
+                // Rewind is not supported by the underlying storage provider.
+                throw new RpcException(new Status(StatusCode.Unimplemented, ex.Message));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !context.CancellationToken.IsCancellationRequested)
+            {
+                // Any other unexpected exceptions.
+                throw new TaskHubRpcException(new Status(StatusCode.Unknown, ex.Message), ex);
+            }
+
+            return new P.RewindInstanceResponse();
+        }
+
+        public async override Task<P.GetInstanceResponse> GetInstance(P.GetInstanceRequest request, ServerCallContext context)
+        {
+            this.LogClientOperationReceived(context, "GetInstance", request.InstanceId);
+
+            OrchestrationState state = await this.GetDurabilityProvider(context)
+                .GetOrchestrationStateAsync(request.InstanceId, executionId: null);
+            if (state == null)
+            {
+                return new P.GetInstanceResponse() { Exists = false };
+            }
+
+            return CreateGetInstanceResponse(state, request);
+        }
+
+        public async override Task<P.QueryInstancesResponse> QueryInstances(P.QueryInstancesRequest request, ServerCallContext context)
+        {
+            this.LogClientOperationReceived(context, "QueryInstances", string.Empty);
+
+            var query = ProtobufUtils.ToOrchestrationQuery(request);
+            var queryClient = (IOrchestrationServiceQueryClient)this.GetDurabilityProvider(context);
+            OrchestrationQueryResult result = await queryClient.GetOrchestrationWithQueryAsync(query, context.CancellationToken);
+            return ProtobufUtils.CreateQueryInstancesResponse(result, request);
+        }
+
+        public async override Task<P.PurgeInstancesResponse> PurgeInstances(P.PurgeInstancesRequest request, ServerCallContext context)
+        {
+            var purgeClient = (IOrchestrationServicePurgeClient)this.GetDurabilityProvider(context);
+
+            // Log correlation information for client operations
+            string instanceId = request.RequestCase == P.PurgeInstancesRequest.RequestOneofCase.InstanceId
+                ? request.InstanceId
+                : "(filter)";
+            this.LogClientOperationReceived(context, "PurgeInstances", instanceId);
+
+            PurgeResult result;
+            try
+            {
+                switch (request.RequestCase)
+                {
+                    case P.PurgeInstancesRequest.RequestOneofCase.InstanceId:
+                        // We need to confirm that the instance is an orchestration before checking that it has a terminal runtime status,
+                        // since entities can also be purged and have runtime status "Running".
+                        // Some clients will explicitly set the IsOrchestration flag when purging orchestrations, so for these clients, we are guaranteed
+                        // that if the field is true, the instance corresponds to an orchestration. For other clients, this field is false by
+                        // default for all requests, so we make a best-effort check by looking at the instance ID format:
+                        // All entities have instance IDs that start with '@', but orchestrations can also have such instance IDs.
+                        // This runtime status check will therefore not necessarily be performed for all orchestrations, but it is guaranteed to
+                        // at least not be performed for any entities.
+                        if (request.IsOrchestration || !request.InstanceId.StartsWith('@'))
+                        {
+                            OrchestrationState orchestrationState = await this.GetDurabilityProvider(context)
+                                .GetOrchestrationStateAsync(request.InstanceId, executionId: null);
+
+                            // Orchestration does not exist
+                            if (orchestrationState?.OrchestrationInstance == null)
+                            {
+                                result = new PurgeResult(0);
+                                break;
+                            }
+
+                            // Orchestration is in an invalid state for purging
+                            if (!IsOrchestrationCompleted(orchestrationState.OrchestrationStatus))
+                            {
+                                throw new InvalidOperationException($"Only orchestrations in a terminal state can be purged, but the " +
+                                    $"orchestration with instance ID {request.InstanceId} has status {orchestrationState.OrchestrationStatus}");
+                            }
+                        }
+
+                        result = await purgeClient.PurgeInstanceStateAsync(request.InstanceId);
+                        break;
+
+                    case P.PurgeInstancesRequest.RequestOneofCase.PurgeInstanceFilter:
+                        var purgeInstanceFilter = ProtobufUtils.ToPurgeInstanceFilter(request);
+                        result = await purgeClient.PurgeInstanceStateAsync(purgeInstanceFilter);
+                        break;
+
+                    default:
+                        throw new RpcException(new Status(StatusCode.InvalidArgument, $"Unknown purge request type '{request.RequestCase}'."));
+                }
+
+                return ProtobufUtils.CreatePurgeInstancesResponse(result);
+            }
+            catch (RpcException)
+            {
+                // Rethrow RPC-related exceptions as-is.
+                throw;
+            }
+            catch (ArgumentException ex)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
+            }
+            catch (NotSupportedException ex)
+            {
+                // Purging is not supported by the underlying storage provider.
+                throw new RpcException(new Status(StatusCode.Unimplemented, ex.Message));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !context.CancellationToken.IsCancellationRequested)
+            {
+                // Wrap all other exceptions in an RpcException.
+                throw new TaskHubRpcException(
+                    new Status(StatusCode.Internal, $"Failed during purging instances: {ex.Message}"),
+                    ex);
+            }
+        }
+
+        public async override Task<P.GetInstanceResponse> WaitForInstanceStart(P.GetInstanceRequest request, ServerCallContext context)
+        {
+            this.LogClientOperationReceived(context, "WaitForInstanceStart", request.InstanceId);
+
+            int retryCount = 0;
+            while (true)
+            {
+                // Keep fetching the status until we get one of the states we care about
+                OrchestrationState state = await this.GetDurabilityProvider(context)
+                    .GetOrchestrationStateAsync(request.InstanceId, executionId: null);
+                if (state != null && state.OrchestrationStatus != OrchestrationStatus.Pending)
+                {
+                    return CreateGetInstanceResponse(state, request);
+                }
+
+                // Increase the delay time by 1 second every 10 seconds up to 10 seconds.
+                // The cancellation token is what will break us out of this loop if the orchestration
+                // never leaves the "Pending" state.
+                var delay = TimeSpan.FromSeconds(Math.Min(10, (retryCount / 10) + 1));
+                await Task.Delay(delay, context.CancellationToken);
+                retryCount++;
+            }
+        }
+
+        public async override Task<P.GetInstanceResponse> WaitForInstanceCompletion(P.GetInstanceRequest request, ServerCallContext context)
+        {
+            this.LogClientOperationReceived(context, "WaitForInstanceCompletion", request.InstanceId);
+
+            OrchestrationState state = await this.GetDurabilityProvider(context).WaitForOrchestrationAsync(
+                request.InstanceId,
+                executionId: null,
+                timeout: Timeout.InfiniteTimeSpan,
+                context.CancellationToken);
+
+            if (state == null)
+            {
+                return new P.GetInstanceResponse() { Exists = false };
+            }
+
+            return CreateGetInstanceResponse(state, request);
+        }
+
+        public override async Task<P.RestartInstanceResponse> RestartInstance(P.RestartInstanceRequest request, ServerCallContext context)
+        {
+            this.LogClientOperationReceived(context, "Restart", request.InstanceId);
+
+            try
+            {
+                string newInstanceId = await this.GetClient(context).RestartAsync(request.InstanceId, request.RestartWithNewInstanceId);
+                return new P.RestartInstanceResponse { InstanceId = newInstanceId };
+            }
+            catch (OrchestratorFunctionUnavailableException ex)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+            }
+            catch (ArgumentException ex)
+            {
+                // Thrown when th instanceId is not found.
+                throw new RpcException(new Status(StatusCode.NotFound, $"ArgumentException: {ex.Message}"));
+            }
+            catch (OrchestrationAlreadyExistsException ex)
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, $"Non-terminal instance with this instance ID already exists: {ex.Message}"));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !context.CancellationToken.IsCancellationRequested)
+            {
+                // Any other unexpected exceptions.
+                throw new TaskHubRpcException(new Status(StatusCode.Unknown, ex.Message), ex);
+            }
+        }
+
+#pragma warning disable CS0618 // Type or member is obsolete -- 'internal' usage.
+        private static RawInput Raw(string input)
+        {
+            return new RawInput(input);
+        }
+#pragma warning restore CS0618 // Type or member is obsolete
+
+        private static P.GetInstanceResponse CreateGetInstanceResponse(OrchestrationState state, P.GetInstanceRequest request)
+        {
+            var orchestrationState = new P.OrchestrationState
+            {
+                InstanceId = state.OrchestrationInstance.InstanceId,
+                Name = state.Name,
+                ParentInstanceId = state.ParentInstance?.OrchestrationInstance?.InstanceId,
+                OrchestrationStatus = (P.OrchestrationStatus)state.OrchestrationStatus,
+                CreatedTimestamp = Timestamp.FromDateTime(state.CreatedTime),
+                LastUpdatedTimestamp = Timestamp.FromDateTime(state.LastUpdatedTime),
+                Input = request.GetInputsAndOutputs ? state.Input : null,
+                Output = request.GetInputsAndOutputs ? state.Output : null,
+                CustomStatus = request.GetInputsAndOutputs ? state.Status : null,
+                FailureDetails = request.GetInputsAndOutputs ? GetFailureDetails(state.FailureDetails) : null,
+            };
+
+            if (state.Tags != null)
+            {
+                foreach (var tag in state.Tags)
+                {
+                    orchestrationState.Tags[tag.Key] = tag.Value;
+                }
+            }
+
+            return new P.GetInstanceResponse
+            {
+                Exists = true,
+                OrchestrationState = orchestrationState,
+            };
+        }
+
+        public async override Task StreamInstanceHistory(
+            P.StreamInstanceHistoryRequest request,
+            IServerStreamWriter<P.HistoryChunk> responseStream,
+            ServerCallContext context)
+        {
+            this.LogClientOperationReceived(context, "StreamInstanceHistory", request.InstanceId);
+
+            if (await this.GetClient(context).GetStatusAsync(request.InstanceId, showInput: false) is null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, $"Orchestration instance with ID {request.InstanceId} was not found."));
+            }
+
+            async Task<(P.HistoryChunk, int)> AddToHistoryChunkAndStream(HistoryEvent historyEvent, P.HistoryChunk historyChunk, int currentChunkSizeInBytes)
+            {
+                P.HistoryEvent result = ProtobufUtils.ToHistoryEventProto(historyEvent);
+
+                int currentEventSize = result.CalculateSize();
+                if (currentChunkSizeInBytes + currentEventSize > MaxHistoryChunkSizeInBytes)
+                {
+                    // If we exceeded the chunk size threshold, send what we have so far.
+                    await responseStream.WriteAsync(historyChunk);
+                    historyChunk = new ();
+                    currentChunkSizeInBytes = 0;
+                }
+
+                historyChunk.Events.Add(result);
+                currentChunkSizeInBytes += currentEventSize;
+                return (historyChunk, currentChunkSizeInBytes);
+            }
+
+            try
+            {
+                int currentChunkSizeInBytes = 0;
+                P.HistoryChunk historyChunk = new ();
+
+                // First, try to use the streaming API if it's implemented.
+                try
+                {
+                    IAsyncEnumerable<HistoryEvent> historyEvents = await this.GetDurabilityProvider(context).StreamOrchestrationHistoryAsync(
+                        request.InstanceId,
+                        context.CancellationToken);
+
+                    await foreach (HistoryEvent historyEvent in historyEvents)
+                    {
+                        (historyChunk, currentChunkSizeInBytes) = await AddToHistoryChunkAndStream(historyEvent, historyChunk, currentChunkSizeInBytes);
+                    }
+                }
+
+                // Otherwise default to the older non-streaming implementation.
+                catch (NotImplementedException)
+                {
+                    string jsonHistory = await this.GetDurabilityProvider(context).GetOrchestrationHistoryAsync(
+                        request.InstanceId,
+                        executionId: null);
+
+                    List<HistoryEvent>? historyEvents = JsonConvert.DeserializeObject<List<HistoryEvent>>(
+                        jsonHistory,
+                        new JsonSerializerSettings()
+                        {
+                            Converters = { new HistoryEventJsonConverter() },
+                        })
+                        ?? throw new Exception($"Failed to deserialize orchestration history.");
+
+                    foreach (HistoryEvent historyEvent in historyEvents)
+                    {
+                        (historyChunk, currentChunkSizeInBytes) = await AddToHistoryChunkAndStream(historyEvent, historyChunk, currentChunkSizeInBytes);
+                    }
+                }
+
+                // Send the last chunk, which may be smaller than the maximum chunk size.
+                if (historyChunk.Events.Count > 0)
+                {
+                    await responseStream.WriteAsync(historyChunk);
+                }
+            }
+            catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
+            {
+                throw new RpcException(new Status(StatusCode.Cancelled, $"Orchestration history streaming cancelled for instance {request.InstanceId}"));
+            }
+            catch (OperationCanceledException ex)
+            {
+                throw new TaskHubRpcException(
+                    new Status(StatusCode.Cancelled, $"Orchestration history streaming cancelled for instance {request.InstanceId}"),
+                    ex);
+            }
+            catch (Exception ex)
+            {
+                throw new TaskHubRpcException(
+                    new Status(StatusCode.Internal, $"Failed to stream orchestration history for instance {request.InstanceId}: {ex.Message}"),
+                    ex);
+            }
+        }
+
+        private static P.TaskFailureDetails? GetFailureDetails(FailureDetails? failureDetails)
+        {
+            if (failureDetails == null)
+            {
+                return null;
+            }
+
+            return new P.TaskFailureDetails
+            {
+                ErrorType = failureDetails.ErrorType,
+                ErrorMessage = failureDetails.ErrorMessage,
+                StackTrace = failureDetails.StackTrace,
+            };
+        }
+
+        private DurableClientAttribute GetAttribute(ServerCallContext context)
+        {
+            string? taskHub = context.RequestHeaders.GetValue("Durable-TaskHub");
+            string? connectionName = context.RequestHeaders.GetValue("Durable-ConnectionName");
+            return new DurableClientAttribute() { TaskHub = taskHub, ConnectionName = connectionName };
+        }
+
+        private DurabilityProvider GetDurabilityProvider(ServerCallContext context)
+        {
+            return this.extension.GetDurabilityProvider(this.GetAttribute(context));
+        }
+
+        private IDurableClient GetClient(ServerCallContext context)
+        {
+            return this.extension.GetClient(this.GetAttribute(context));
+        }
+
+        private static string? GetFunctionInvocationId(ServerCallContext context)
+        {
+            Metadata.Entry? entry = context.RequestHeaders.FirstOrDefault(
+                e => string.Equals(e.Key, FunctionInvocationIdMetadataKey, StringComparison.OrdinalIgnoreCase));
+            return entry?.Value;
+        }
+
+        private void LogClientOperationReceived(ServerCallContext context, string operationType, string instanceId)
+        {
+            string? functionInvocationId = GetFunctionInvocationId(context);
+
+            // Validate the metadata value to prevent malformed or oversized values from creating noisy logs.
+            if (!string.IsNullOrEmpty(functionInvocationId) && !Guid.TryParse(functionInvocationId, out _))
+            {
+                functionInvocationId = null;
+            }
+
+            this.extension.TraceHelper.ClientOperationReceived(
+                this.extension.Options.HubName,
+                operationType,
+                instanceId,
+                functionInvocationId);
+        }
+
+        /// <summary>
+        /// Invokes a control-plane client operation (terminate/suspend/resume) and maps the common
+        /// <see cref="DurableClient"/> exceptions onto meaningful gRPC status codes. Shared by the
+        /// control-plane handlers so the mapping cannot drift between them.
+        /// </summary>
+        /// <remarks>
+        /// An already-formed <see cref="RpcException"/> is left to propagate unchanged (never re-wrapped),
+        /// and <see cref="OperationCanceledException"/> is left to propagate so gRPC surfaces
+        /// <see cref="StatusCode.Cancelled"/> instead of an opaque <see cref="StatusCode.Unknown"/>.
+        /// </remarks>
+        private static async Task InvokeControlPlaneOperationAsync(Func<Task> operation)
+        {
+            try
+            {
+                await operation();
+            }
+            catch (ArgumentNullException ex)
+            {
+                // Thrown when required arguments like InstanceId are null
+                throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Thrown when the orchestration is in a state that does not allow the operation (e.g. a terminal state)
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, $"InvalidOperationException: {ex.Message}"));
+            }
+            catch (ArgumentException ex)
+            {
+                // Thrown when the InstanceId does not match any existing orchestration
+                throw new RpcException(new Status(StatusCode.NotFound, $"ArgumentException: {ex.Message}"));
+            }
+            catch (Exception ex) when (ex is not RpcException && ex is not OperationCanceledException)
+            {
+                // Any other unexpected exceptions. RpcException and cancellation are excluded above so a
+                // client cancellation/deadline surfaces as StatusCode.Cancelled rather than Unknown.
+                throw new TaskHubRpcException(new Status(StatusCode.Unknown, ex.Message), ex);
+            }
+        }
+
+        private void CheckEntitySupport(ServerCallContext context, out DurabilityProvider durabilityProvider, out IEntityOrchestrationService entityOrchestrationService)
+        {
+            durabilityProvider = this.GetDurabilityProvider(context);
+            entityOrchestrationService = durabilityProvider;
+            if (entityOrchestrationService?.EntityBackendProperties == null)
+            {
+                throw new RpcException(new Status(
+                    StatusCode.Unimplemented,
+                    $"Missing entity support for storage backend '{durabilityProvider.GetBackendInfo()}'. Entity support" +
+                    $" may have not been implemented yet, or the selected package version is too old."));
+            }
+        }
+
+        private P.EntityMetadata ConvertEntityMetadata(EntityBackendQueries.EntityMetadata metaData)
+        {
+            return new P.EntityMetadata()
+            {
+                InstanceId = metaData.EntityId.ToString(),
+                LastModifiedTime = metaData.LastModifiedTime.ToTimestamp(),
+                BacklogQueueSize = metaData.BacklogQueueSize,
+                LockedBy = metaData.LockedBy,
+                SerializedState = metaData.SerializedState,
+            };
+        }
+
+        private static bool IsOrchestrationCompleted(OrchestrationStatus status)
+        {
+            return status == OrchestrationStatus.Completed ||
+                status == OrchestrationStatus.Terminated ||
+                status == OrchestrationStatus.Failed;
+        }
+    }
+}

@@ -1,0 +1,63 @@
+{
+  "schema": "yaiwes.sandbox_evidence/v1",
+  "gap_id": "G-022",
+  "date": "2026-09-12",
+  "result": "PARTIAL_FIXED_BLOCKED_PHYSICAL_ISOLATION",
+  "claim_commit": "b8b63ab34f85e919166c0905f4b1e55af6dad594",
+  "proven_gaps": [
+    "The previous acquire_sandbox accepted caller-controlled booleans and returned READY_VERIFIED without starting an isolation backend.",
+    "The current host rejects the required user/network namespaces, so a positive filesystem/network/time/memory isolation run cannot be claimed."
+  ],
+  "corrections": [
+    "Caller-supplied attestations always return BLOCKED_UNTRUSTED_ATTESTATION.",
+    "execute_isolated invokes Bubblewrap without a shell and requests user, PID, network, UTS, IPC and filesystem isolation plus RLIMIT_AS and wall timeout.",
+    "Any missing backend, timeout, namespace/start failure or non-zero execution fails closed.",
+    "UEK cluster returns BLOCKED_SANDBOX and no output when the sandbox has not authorized execution."
+  ],
+  "runtime_probes": [
+    {
+      "command": "bwrap with user/pid/net/uts/ipc namespaces and read-only runtime mounts",
+      "exit_code": 1,
+      "result": "BLOCKED",
+      "stderr": "bwrap: loopback: Failed to create NETLINK_ROUTE socket: Operation not permitted"
+    },
+    {
+      "command": "unshare --user --map-root-user --net",
+      "exit_code": 1,
+      "result": "BLOCKED",
+      "stderr": "unshare: write failed /proc/self/uid_map: Operation not permitted"
+    },
+    {
+      "command": "SandboxManager.execute_isolated actual Bubblewrap probe",
+      "result": "BLOCKED_TIME_LIMIT_EXCEEDED",
+      "execution_authorized": false,
+      "stderr": "bwrap: open /proc/11/ns/ns failed: No such file or directory"
+    }
+  ],
+  "tests_executed": [
+    {
+      "command": "python -m unittest -v runtime.tests.test_sandbox_enforcement_g022",
+      "result": "PASS_5_OF_5"
+    },
+    {
+      "command": "direct invocation of runtime.tests.test_install_sandbox_deploy_gates test functions",
+      "result": "PASS_5_OF_5"
+    },
+    {
+      "command": "python -m compileall -q selected G-022 modules/tests",
+      "result": "PASS"
+    }
+  ],
+  "sha256": {
+    "runtime/src/uek/sandbox_manager.py": "411f360802de73b7f1ceb385c93e9335f5fb8f3ada9f112649153d7850f18f5c",
+    "runtime/src/uek/uek_cluster.py": "b7672741aec5b502ec720d1347cc4856c029dc7c08c9bdf86d2d816150684671",
+    "runtime/tests/test_sandbox_enforcement_g022.py": "43887ab5f2c3a4f0ddc714cbda3f9094a8f55a7cef278d65ae65c0de8c9457ff",
+    "runtime/tests/test_install_sandbox_deploy_gates.py": "beba45ce12c932b007a7c151970d3ccf8affea5c0c6aa88b021d3897591fd804"
+  },
+  "closure": {
+    "g022_closed": false,
+    "promotion_test_passed": false,
+    "global_pass_claimed": false,
+    "required_next_evidence": "Run rejection and successful promotion on a host that permits Bubblewrap user, PID, network and mount namespaces; verify filesystem, network, time and memory enforcement physically."
+  }
+}

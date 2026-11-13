@@ -1,0 +1,407 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package distr_test
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"runtime"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/dagucloud/dagu/v2/internal/cmn/config"
+	"github.com/dagucloud/dagu/v2/internal/ir"
+	"github.com/dagucloud/dagu/v2/internal/test/intgharness"
+	"github.com/stretchr/testify/require"
+)
+
+func TestParallel_MultipleItems(t *testing.T) {
+	t.Run("parallelExecutionOnWorkers", func(t *testing.T) {
+		f := newTestFixture(t, `
+steps:
+  - name: process-items
+    action: dag.run
+    with:
+      dag: child-worker
+    parallel:
+      items:
+        - "item1"
+        - "item2"
+        - "item3"
+      max_concurrent: 2
+    output: RESULTS
+
+---
+name: child-worker
+worker_selector:
+  type: test-worker
+steps:
+  - name: process
+    run: echo "Processing $1 on worker"
+    output: RESULT
+`, withWorkerCount(2), withLabels(map[string]string{"type": "test-worker"}), withLogPersistence())
+
+		agent := f.dagWrapper.Agent()
+		agent.RunSuccess(t)
+		f.dagWrapper.AssertLatestStatus(t, ir.Succeeded)
+
+		st, err := f.latestStatus()
+		require.NoError(t, err)
+		require.NotNil(t, st)
+		require.Len(t, st.Nodes, 1)
+
+		processNode := st.Nodes[0]
+		require.Equal(t, "process-items", processNode.Step.Name)
+		require.Equal(t, ir.NodeSucceeded, processNode.Status)
+
+		require.NotEmpty(t, processNode.SubRuns)
+		require.Len(t, processNode.SubRuns, 3)
+
+		for _, child := range processNode.SubRuns {
+			require.Contains(t, child.Params, "item")
+		}
+
+		require.NotNil(t, processNode.OutputVariables)
+		if value, ok := processNode.OutputVariables.Load("RESULTS"); ok {
+			results := value.(string)
+			require.Contains(t, results, "RESULTS=")
+			require.Contains(t, results, `"total": 3`)
+			require.Contains(t, results, `"succeeded": 3`)
+			require.Contains(t, results, `"failed": 0`)
+
+			require.Contains(t, results, "Processing item1 on worker")
+			require.Contains(t, results, "Processing item2 on worker")
+			require.Contains(t, results, "Processing item3 on worker")
+		} else {
+			t.Fatal("RESULTS output not found")
+		}
+	})
+}
+
+func TestParallel_SameWorkerType(t *testing.T) {
+	t.Run("allItemsGoToSameWorkerType", func(t *testing.T) {
+		f := newTestFixture(t, `
+steps:
+  - name: process-regions
+    action: dag.run
+    with:
+      dag: child-regional
+    parallel:
+      items:
+        - "us-east"
+        - "eu-west"
+        - "ap-south"
+    output: RESULTS
+
+---
+name: child-regional
+worker_selector:
+  type: test-worker
+steps:
+  - name: process
+    run: |
+      echo "Processing region: $1"
+    output: RESULT
+`, withWorkerCount(3), withLabels(map[string]string{"type": "test-worker"}), withLogPersistence())
+
+		agent := f.dagWrapper.Agent()
+		agent.RunSuccess(t)
+		f.dagWrapper.AssertLatestStatus(t, ir.Succeeded)
+
+		st, err := f.latestStatus()
+		require.NoError(t, err)
+		require.NotNil(t, st)
+
+		processNode := st.Nodes[0]
+		require.Equal(t, "process-regions", processNode.Step.Name)
+		require.Equal(t, ir.NodeSucceeded, processNode.Status)
+		require.Len(t, processNode.SubRuns, 3)
+
+		if value, ok := processNode.OutputVariables.Load("RESULTS"); ok {
+			results := value.(string)
+			require.Contains(t, results, "Processing region: us-east")
+			require.Contains(t, results, "Processing region: eu-west")
+			require.Contains(t, results, "Processing region: ap-south")
+			require.Contains(t, results, `"succeeded": 3`)
+		} else {
+			t.Fatal("RESULTS output not found")
+		}
+	})
+}
+
+func TestParallel_ChildSelectorParams(t *testing.T) {
+	f := newTestFixture(t, `
+steps:
+  - name: route-item
+    action: dag.run
+    with:
+      dag: child-routed
+      params: "FACILITY=${ITEM}"
+    parallel:
+      items: ["serverA"]
+
+---
+name: child-routed
+params:
+  - name: FACILITY
+    type: string
+    required: true
+worker_selector:
+  host: ${FACILITY}
+steps:
+  - name: process
+    run: echo "$FACILITY"
+`, withLabels(map[string]string{"host": "serverA"}))
+
+	agent := f.dagWrapper.Agent()
+	agent.RunSuccess(t)
+	f.dagWrapper.AssertLatestStatus(t, ir.Succeeded)
+
+	status, err := f.latestStatus()
+	require.NoError(t, err)
+	require.Len(t, status.Nodes, 1)
+	require.Len(t, status.Nodes[0].SubRuns, 1)
+	require.Equal(t, `FACILITY="serverA"`, status.Nodes[0].SubRuns[0].Params)
+}
+
+func TestParallel_PartialFailure(t *testing.T) {
+	t.Run("partialFailurePropagatesToParentStep", func(t *testing.T) {
+		childCommand := `      if [ "$1" = "fail" ]; then
+        echo "Simulated failure"
+        exit 1
+      fi
+      echo "Processed $1"`
+		if runtime.GOOS == "windows" {
+			childCommand = `      if ("${1}" -eq "fail") {
+        Write-Output "Simulated failure"
+        exit 1
+      }
+      Write-Output ("Processed {0}" -f "${1}")`
+		}
+
+		f := newTestFixture(t, `
+steps:
+  - name: process-items
+    action: dag.run
+    with:
+      dag: child-worker
+    parallel:
+      items:
+        - "ok"
+        - "fail"
+
+---
+name: child-worker
+worker_selector:
+  type: test-worker
+steps:
+  - name: run
+    run: |
+`+childCommand+`
+`, withLabels(map[string]string{"type": "test-worker"}), withLogPersistence())
+
+		agent := f.dagWrapper.Agent()
+		err := agent.Run(agent.Context)
+		require.Error(t, err)
+
+		st, statusErr := f.latestStatus()
+		require.NoError(t, statusErr)
+		require.NotNil(t, st)
+		require.Len(t, st.Nodes, 1)
+
+		node := st.Nodes[0]
+		require.Equal(t, "process-items", node.Step.Name)
+		require.Equal(t, ir.NodeFailed, node.Status)
+		require.Len(t, node.SubRuns, 2)
+	})
+}
+
+func TestParallel_NoMatchingWorkers(t *testing.T) {
+	t.Run("failsGracefullyWhenNoWorkersMatch", func(t *testing.T) {
+		f := newTestFixture(t, `
+steps:
+  - name: process-items
+    action: dag.run
+    with:
+      dag: child-nonexistent
+    parallel:
+      items: ["a", "b", "c"]
+    output: RESULTS
+
+---
+name: child-nonexistent
+worker_selector:
+  type: nonexistent-worker
+steps:
+  - name: process
+    run: echo "Should not run"
+`, withWorkerCount(0))
+
+		agent := f.dagWrapper.Agent()
+
+		ctx, cancel := context.WithTimeout(f.coord.Context, 5*time.Second)
+		defer cancel()
+		err := agent.Run(ctx)
+		require.Error(t, err)
+
+		st := agent.Status(f.coord.Context)
+		require.NotEqual(t, ir.Succeeded, st.Status)
+	})
+}
+
+func TestParallel_ForceLocalSubDAGsFromDistributedWorker(t *testing.T) {
+	t.Run("workerDispatchedParentRunsLocalChildren", func(t *testing.T) {
+		f := newTestFixture(t, `
+steps:
+  - name: process-items
+    action: dag.run
+    with:
+      dag: local-child
+    parallel:
+      items: ["item1", "item2", "item3"]
+      max_concurrent: 3
+    output: RESULTS
+
+---
+name: local-child
+worker_selector: local
+steps:
+  - name: process
+    run: echo "processed $1 locally"
+`, withConfigMutator(func(c *config.Config) {
+			c.DefaultExecMode = config.ExecutionModeDistributed
+		}), withLogPersistence())
+		defer f.cleanup()
+
+		require.NoError(t, f.enqueue())
+		f.waitForQueued()
+		f.startScheduler(30 * time.Second)
+
+		status := f.waitForStatusIn([]ir.Status{ir.Succeeded, ir.Failed, ir.Aborted}, 25*time.Second)
+
+		require.Equal(t, ir.Succeeded, status.Status)
+		require.Len(t, status.Nodes, 1)
+
+		node := status.Nodes[0]
+		require.Equal(t, "process-items", node.Step.Name)
+		require.Equal(t, ir.NodeSucceeded, node.Status)
+		require.Len(t, node.SubRuns, 3)
+
+		value, ok := node.OutputVariables.Load("RESULTS")
+		require.True(t, ok)
+		results := value.(string)
+		require.Contains(t, results, `"succeeded": 3`)
+		require.Contains(t, results, `"failed": 0`)
+	})
+}
+
+func TestParallel_MixedLocalAndDistributed(t *testing.T) {
+	t.Run("mixedLocalAndDistributedExecution", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		releaseFile := filepath.Join(t.TempDir(), "release")
+		startedDir := t.TempDir()
+		localStartedFile := filepath.Join(startedDir, "local-started")
+		distributedStartedFile := filepath.Join(startedDir, "distributed-started")
+		commands := intgharness.PortableCommands()
+		waitStepScript := func(startedFile string) string {
+			return indentYAMLBlock(commands.WriteFile(startedFile, "started")+"\n"+commands.WaitForFile(releaseFile), 6)
+		}
+		f := newTestFixture(t, `
+type: graph
+steps:
+  - name: local-execution
+    action: dag.run
+    with:
+      dag: child-local
+    parallel:
+      items: ["3", "5"]
+    output: LOCAL_RESULTS
+    depends: []
+  - name: distributed-execution
+    action: dag.run
+    with:
+      dag: child-distributed
+    parallel:
+      items: ["4", "6"]
+    output: DISTRIBUTED_RESULTS
+    depends: []
+
+---
+name: child-local
+steps:
+  - name: wait
+    run: |
+`+waitStepScript(localStartedFile)+`
+
+---
+name: child-distributed
+worker_selector:
+  type: test-worker
+steps:
+  - name: wait
+    run: |
+`+waitStepScript(distributedStartedFile)+`
+`, withLabels(map[string]string{"type": "test-worker"}), withDAGsDir(tmpDir), withLogPersistence())
+
+		agent := f.dagWrapper.Agent()
+		done := make(chan struct{})
+
+		go func() {
+			agent.Context = f.coord.Context
+			_ = agent.Run(agent.Context)
+			close(done)
+		}()
+		defer func() {
+			_ = os.WriteFile(releaseFile, []byte("release"), 0o644)
+			select {
+			case <-done:
+			case <-time.After(distrTestTimeout(5 * time.Second)):
+				t.Log("agent did not stop during cleanup")
+			}
+		}()
+
+		require.Eventually(t, func() bool {
+			st, err := f.latestStatus()
+			if err != nil || !st.Status.IsActive() {
+				return false
+			}
+			if len(st.Nodes) == 0 {
+				return false
+			}
+			if _, err := os.Stat(localStartedFile); err != nil {
+				return false
+			}
+			if _, err := os.Stat(distributedStartedFile); err != nil {
+				return false
+			}
+			var started int
+			for _, node := range st.Nodes {
+				if node.Status == ir.NodeRunning {
+					started++
+				}
+			}
+			return started == 2
+		}, distrTestTimeout(5*time.Second), 100*time.Millisecond)
+
+		agent.Signal(f.coord.Context, os.Signal(syscall.SIGTERM))
+
+		select {
+		case <-done:
+		case <-time.After(distrTestTimeout(5 * time.Second)):
+			_ = os.WriteFile(releaseFile, []byte("release"), 0o644)
+			t.Fatal("agent did not stop within timeout")
+		}
+
+		st := agent.Status(f.coord.Context)
+
+		for _, node := range st.Nodes {
+			if node.Step.Name == "local-execution" || node.Step.Name == "distributed-execution" {
+				require.Equal(t, ir.NodeAborted, node.Status,
+					"node %s should be canceled, got %v", node.Step.Name, node.Status)
+			}
+		}
+	})
+}

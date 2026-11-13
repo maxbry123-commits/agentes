@@ -1,0 +1,103 @@
+name: YAIWES CODA Persistence Mesh V2.1
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-coda-mesh-v21.yml'
+      - '.github/scripts/yaiwes_coda_mesh_v21.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-coda-mesh-v21
+  cancel-in-progress: false
+
+jobs:
+  mesh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout transformed CODA
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/scripts/yaiwes_coda_mesh_v21.py
+            /.github/workflows/yaiwes-coda-mesh-v21.yml
+            /📂coda workflow persistencias/
+
+      - name: Build mesh and run 24 adapter roundtrips
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/yaiwes_coda_mesh_v21.py | tee /tmp/mesh-v21.log
+          grep -q 'STATIC_VALIDATION=PASS_24_OF_24' /tmp/mesh-v21.log
+          grep -q 'RUNTIME_ROUNDTRIP=PASS_24_OF_24' /tmp/mesh-v21.log
+
+      - name: Verify graph and 24 README links
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('📂coda workflow persistencias')
+          field=root/'🏈 cancha deportiva de fútbol'
+          graph=json.loads((field/'YAIWES-SWARM-NAVY-SEALS-CABLE-GRAPH.json').read_text(encoding='utf-8'))
+          assert graph['component_count']==24
+          assert graph['edge_count']==24
+          assert graph['validation']['static_adapter_validation']=='PASS_24_OF_24'
+          assert graph['validation']['runtime_persistence_roundtrip']=='PASS_24_OF_24'
+          docs=[p for p in field.iterdir() if p.is_dir() and p.name.startswith('🏈 ')]
+          assert len(docs)==24, len(docs)
+          for d in docs:
+              t=(d/'README.md').read_text(encoding='utf-8')
+              assert 'Swarm agent team Navy seals YAIWES' in t
+              assert 'Persistence Mesh v2.1' in t
+              assert 'YAIWES-PERSISTENCE-MESH-v2.1' in t
+          print('MESH_STRUCTURE=PASS_24_OF_24')
+          PY
+
+      - name: Commit mesh transformation
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='📂coda workflow persistencias'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- "$ROOT"
+          if git diff --cached --quiet; then
+            echo 'NO_CHANGES'
+            exit 0
+          fi
+          git commit -m 'feat(coda): cable 24 YAIWES persistence components into mesh v2.1'
+          ok=0
+          for attempt in 1 2 3 4; do
+            if git push origin HEAD:main; then ok=1; break; fi
+            git fetch origin main
+            git rebase origin/main || { git rebase --abort || true; }
+            sleep $((attempt*3))
+          done
+          test "$ok" -eq 1
+
+      - name: Final readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          test -f '📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-SWARM-NAVY-SEALS-CABLE-GRAPH.json'
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-SWARM-NAVY-SEALS-CABLE-GRAPH.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d['component_count']==24 and d['edge_count']==24
+          print('YAIWES_CODA_MESH_V21=PASS_24_OF_24')
+          PY

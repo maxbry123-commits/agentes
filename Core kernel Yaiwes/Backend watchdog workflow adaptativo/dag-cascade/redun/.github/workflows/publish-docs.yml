@@ -1,0 +1,61 @@
+name: sphinx-docs
+on:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'insitro/redun'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Get uv version
+        id: uv-version
+        run: echo "version=$(cat .uv-version)" >> $GITHUB_OUTPUT
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          version: ${{ steps.uv-version.outputs.version }}
+          python-version: '3.11'
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --group docs
+
+      - name: Build sphinx docs
+        run: |
+          cd docs
+          uv run make api html
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/build/html/
+
+  deploy:
+    needs: build
+    if: github.repository == 'insitro/redun'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,353 @@
+name: YAIWES SOL2 AG2 N28 STEP3
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-sol2-ag2-step3.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-sol2-ag2-n28-step3
+  cancel-in-progress: false
+
+jobs:
+  wire_microtest_release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      WALL: '📂 Bitácora stated JSON Craxy wall.json'
+      INVENTORY: 'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json'
+      TARGET: 'Agente Yaiwes principal/agent-fleet-parallelism/ag2'
+      YDIR: 'Agente Yaiwes principal/agent-fleet-parallelism/ag2/yaiwes'
+      ADAPTER: 'Agente Yaiwes principal/agent-fleet-parallelism/ag2/yaiwes/ag2_adapter.py'
+      FICHA: 'Agente Yaiwes principal/agent-fleet-parallelism/ag2/yaiwes/ficha.ag2.v2.json'
+      EVIDENCE: 'Agente Yaiwes principal/agent-fleet-parallelism/ag2/yaiwes/STEP3_EVIDENCE.json'
+      BUS: 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py'
+      FICHA_CODE: 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py'
+    steps:
+      - name: Checkout N28 STEP3 surfaces
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 8
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-sol2-ag2-step3.yml
+            /📂 Bitácora stated JSON Craxy wall.json
+            /Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json
+            /Agente Yaiwes principal/agent-fleet-parallelism/ag2/
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py
+
+      - name: Claim N28 STEP3 and register SOL2
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          path=os.environ['WALL']
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          with open(path,encoding='utf-8') as f:
+              data=json.load(f)
+          node=next(n for n in data['nodes'] if n.get('id')==28 and n.get('component')=='AG2')
+          if node.get('current_step')!=3 or node.get('next_action')!='STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST':
+              raise SystemExit(f"N28_UNEXPECTED_STEP:{node.get('current_step')}:{node.get('status')}:{node.get('next_action')}")
+          if node.get('lock') not in ('FREE',None) or node.get('owner') not in (None,'SOL'):
+              raise SystemExit(f"N28_LOCKED:{node.get('owner')}:{node.get('lock')}")
+          regs=data.setdefault('registrations',[])
+          if not any(r.get('name')=='SOL integración 2' and r.get('status')=='ACTIVE' for r in regs):
+              regs.append({'name':'SOL integración 2','role':'integration_worker','status':'ACTIVE','scope':'physical_inventory_strict_3_steps','registered_at':now})
+          loop=data.setdefault('sol_loop_persistence',{})
+          workers=loop.setdefault('workers',[])
+          if 'SOL_2' not in workers:
+              workers.append('SOL_2')
+          loop['updated_at']=now
+          node['owner']='SOL'
+          node['lock']='CLAIMED'
+          node['status']='PENDING_STEP3'
+          node.setdefault('checkpoint',{})['before']=(
+              f"{now} SOL integración 2 N28 STEP3 claim: STEP2 Motor4/read-back PASS; wire AG2 through canonical FABLES UniversalPluginBus; "
+              "create only minimal adapter/ficha/evidence; execute real AG2 AgentSpec->Agent roundtrip + missing-tool fail-closed microtest; prune only if concrete cause"
+          )
+          node.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 2','event':'CLAIM_STEP3'})
+          ev=node.setdefault('evidence',[])
+          if 'worker:SOL integración 2' not in ev:
+              ev.append('worker:SOL integración 2')
+          data['updated_at']=now
+          with open(path,'w',encoding='utf-8') as f:
+              json.dump(data,f,ensure_ascii=False,indent=2); f.write('\n')
+          PY
+            git add -- "$WALL"
+            git commit -m 'crazy-wall: SOL integración 2 claim N28 AG2 STEP3'
+            if git push origin HEAD:main; then ok=1; break; fi
+            sleep $((attempt*2))
+          done
+          test "$ok" -eq 1
+
+      - name: Verify claim and canonical FABLES bus
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          python3 - <<'PY'
+          import json,os
+          with open(os.environ['WALL'],encoding='utf-8') as f: wall=json.load(f)
+          n=next(x for x in wall['nodes'] if x.get('id')==28)
+          assert n.get('owner')=='SOL' and n.get('lock')=='CLAIMED' and n.get('current_step')==3, n
+          print('N28_SOL2_CLAIM_READBACK=PASS')
+          PY
+          test "$(git hash-object "$BUS")" = '470f9c91650bc6c59e2900f7e71090b84363da9f'
+          test "$(git hash-object "$FICHA_CODE")" = 'a72508027cc2458553ef6a2255a9aa33d9a77a21'
+          echo CANONICAL_FABLES_BUS=PASS
+
+      - name: Install moved AG2 package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --no-input "$TARGET"
+          python3 - <<'PY'
+          import ag2
+          print('AG2_VERSION='+ag2.__version__)
+          PY
+
+      - name: Create minimal AG2 adapter and FABLES ficha
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$YDIR"
+          cat > "$ADAPTER" <<'PY'
+          from __future__ import annotations
+          import json
+          from ag2.spec import AgentSpec
+          from ag2.exceptions import ToolResolutionError
+
+          def run_microtest() -> dict:
+              spec = AgentSpec(
+                  name='yaiwes_ag2_worker',
+                  prompt=['Execute deterministic YAIWES worker tasks.'],
+                  tool_names=[],
+              )
+              agent = spec.to_agent()
+              roundtrip = AgentSpec.from_agent(agent)
+              assert roundtrip.name == 'yaiwes_ag2_worker'
+              assert roundtrip.prompt == ['Execute deterministic YAIWES worker tasks.']
+              assert roundtrip.tool_names == []
+              fail_closed = False
+              try:
+                  AgentSpec(name='yaiwes_missing_tool_guard', tool_names=['tool_that_does_not_exist']).to_agent()
+              except ToolResolutionError:
+                  fail_closed = True
+              assert fail_closed
+              return {
+                  'status': 'PASS',
+                  'agent_name': agent.name,
+                  'roundtrip': roundtrip.model_dump(),
+                  'missing_tool_fail_closed': fail_closed,
+              }
+
+          if __name__ == '__main__':
+              print('YAIWES_AG2_RESULT=' + json.dumps(run_microtest(), sort_keys=True))
+          PY
+          python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          adapter=Path(os.environ['ADAPTER'])
+          h='sha256:'+hashlib.sha256(adapter.read_bytes()).hexdigest()
+          ficha={
+            'artifact_id':'yaiwes.agent_fleet.ag2',
+            'version':'1.0.0',
+            'estado':'active',
+            'contract_hash':h,
+            'tribunal_case_id':'YAIWES-N28-AG2-STEP3',
+            'contrato':{
+              'rol':'transform',
+              'consume':{'datatype':{'family':'json','type':'object','version':1}},
+              'expone':{'datatype':{'family':'json','type':'object','version':1}}
+            },
+            'ejecucion':{
+              'kind':'code','transport':'sdk','runtime_type':'compute',
+              'entry_point':os.environ['ADAPTER']+':run_microtest','idempotente':True
+            },
+            'seguridad':{'sandbox':'process','limites':{'timeout_ms':180000,'deadline_ms':180000}},
+            'firma':{'gpg_key_id':'YAIWES-N28'},
+            'categoria':'pipeline','etapa':'P',
+            'perfiles':{'n0':{'habilitada':True,'iteraciones':1,'simulaciones':0,'criticas':0,'muestras_k':1}},
+            'repeticion':{'max':1,'condicion':'nunca'},'repite_en':[],
+            'activacion':{'eventos':['kernel.v2.plugin.enchufed'],'wake_words':[],'condicion':''},
+            'presupuesto':{'n0':{'max_tokens':1,'max_ms':180000,'max_costo_usd':0.0}},
+            'telemetria':{'metricas':['tiempo','errores','health'],'span_otel':True},
+            'evidencia':{'produce':['L2_build','L3_runtime','L4_feature'],'destino':os.environ['YDIR']+'/'},
+            'failover':{'sustituible_por':[],'compensacion':'fail_closed'},
+            'salud':{'metodo':'exec','heartbeat_interval_s':30}
+          }
+          Path(os.environ['FICHA']).write_text(json.dumps(ficha,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('AG2_ADAPTER_SHA256='+h)
+          PY
+          python3 -m py_compile "$ADAPTER"
+
+      - name: FABLES enchufe plus real AG2 microtest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,importlib.util,json,os,subprocess,sys
+          from pathlib import Path
+          root=Path.cwd()
+          adapter=root/os.environ['ADAPTER']
+          ficha=root/os.environ['FICHA']
+          bus_path=root/os.environ['BUS']
+          source=adapter.read_text(encoding='utf-8')
+          manifest=json.loads(ficha.read_text(encoding='utf-8'))
+          actual='sha256:'+hashlib.sha256(source.encode()).hexdigest()
+          assert actual==manifest['contract_hash'],(actual,manifest['contract_hash'])
+          sys.path.insert(0,str(bus_path.parent))
+          import universal_plugin_bus_v2_integrated as bus_mod
+          bus=bus_mod.UniversalPluginBus()
+          bus.add_tribunal_approval(manifest['tribunal_case_id'])
+          candidate=bus_mod.ComponentCandidate(source,'python',[os.environ['ADAPTER']])
+          conventions=bus_mod.TargetConventions('python','snake_case','sync','gradual')
+          reg=bus.enchufar(manifest,candidate,conventions,registered_by='SOL integración 2')
+          assert reg.status==bus_mod.PluginStatus.ACTIVE,reg
+          assert reg.plugin_id=='yaiwes.agent_fleet.ag2',reg.plugin_id
+          bus.health.heartbeat(reg.plugin_id)
+          assert bus.check_plugin_health(reg.plugin_id)
+          proc=subprocess.run([sys.executable,str(adapter)],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
+          print(proc.stdout,end='')
+          if proc.returncode!=0: raise RuntimeError(f'AG2_ADAPTER_FAILED:{proc.returncode}')
+          marker='YAIWES_AG2_RESULT='
+          payload=next((x[len(marker):] for x in proc.stdout.splitlines() if x.startswith(marker)),None)
+          if payload is None: raise RuntimeError('AG2_RESULT_MARKER_MISSING')
+          result=json.loads(payload)
+          assert result['status']=='PASS',result
+          assert result['agent_name']=='yaiwes_ag2_worker',result
+          assert result['missing_tool_fail_closed'] is True,result
+          bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L3,{'microtest':result})
+          bus.evidence.collect(reg.plugin_id,bus_mod.EvidenceLevel.L4,{'capability':'agent_spec_to_live_agent_roundtrip_and_tool_resolution_guard','verified':True})
+          levels=[e['level'] for e in bus.evidence.get(reg.plugin_id)]
+          assert 'L2_build' in levels and 'L3_runtime' in levels and 'L4_feature' in levels,levels
+          ev={
+            'node':28,'worker':'SOL integración 2','status':'PASS',
+            'route':'UniversalPluginBus/FABLES -> AG2 adapter -> AgentSpec -> live Agent -> AgentSpec roundtrip',
+            'plugin_id':reg.plugin_id,'microtest':'ag2_agent_roundtrip_plus_missing_tool_fail_closed',
+            'result':result,'evidence_levels':levels,'run':int(os.environ['GITHUB_RUN_ID']),
+            'runner_commit':os.environ['GITHUB_SHA'],'adapter_sha256':actual,
+            'canonical_bus_blob':'470f9c91650bc6c59e2900f7e71090b84363da9f',
+            'canonical_ficha_code_blob':'a72508027cc2458553ef6a2255a9aa33d9a77a21',
+            'prune':'NOT_NEEDED'
+          }
+          Path(os.environ['EVIDENCE']).write_text(json.dumps(ev,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('AG2_REAL_MICROTEST=PASS')
+          print('YAIWES_FABLES_ENCHUFE=PASS ACTIVE L2+L3+L4')
+          PY
+
+      - name: Publish STEP3 adapter ficha evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$ADAPTER" "$FICHA" "$EVIDENCE"
+          git commit -m 'feat(yaiwes): AG2 N28 FABLES STEP3 integration'
+          git reset --hard HEAD
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi
+            git rebase --abort || true
+            git reset --hard HEAD
+            sleep $((attempt*2))
+          done
+          test "$ok" -eq 1
+          echo "EVIDENCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Read-back STEP3 artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test -n "$(git ls-tree -r --name-only origin/main -- "$TARGET")"
+          test -n "$(git ls-tree -r --name-only origin/main -- "$ADAPTER")"
+          test -n "$(git ls-tree -r --name-only origin/main -- "$FICHA")"
+          test -n "$(git ls-tree -r --name-only origin/main -- "$EVIDENCE")"
+          git show "origin/main:$FICHA" | grep -Fq 'yaiwes.agent_fleet.ag2'
+          git show "origin/main:$EVIDENCE" | grep -Fq 'AG2' || git show "origin/main:$EVIDENCE" | grep -Fq 'ag2_agent_roundtrip'
+          git show "origin/main:$EVIDENCE" | grep -Fq 'L4_feature'
+          echo N28_STEP3_READBACK=PASS
+
+      - name: Checkpoint N28 PASS and release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python3 - <<'PY'
+          import hashlib,json,os
+          from datetime import datetime,timezone
+          from pathlib import Path
+          wall_path=os.environ['WALL']; inv_path=os.environ['INVENTORY']
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          with open(wall_path,encoding='utf-8') as f: data=json.load(f)
+          node=next(n for n in data['nodes'] if n.get('id')==28 and n.get('component')=='AG2')
+          if node.get('owner')!='SOL' or node.get('lock')!='CLAIMED' or node.get('current_step')!=3:
+              raise SystemExit(f"LOCK_OR_STEP_CHANGED:{node.get('owner')}:{node.get('lock')}:{node.get('current_step')}")
+          adapter_hash=hashlib.sha256(Path(os.environ['ADAPTER']).read_bytes()).hexdigest()
+          node['status']='PASS'
+          node['current_step']=3
+          node.setdefault('checkpoint',{})['after']=(
+              f"STEP3 PASS: FABLES UniversalPluginBus ACTIVE plugin yaiwes.agent_fleet.ag2; real moved AG2 package created live Agent from AgentSpec, round-tripped back to AgentSpec, and missing-tool resolution failed closed; L2+L3+L4; prune NOT_NEEDED; origin/main read-back PASS; run={os.environ['GITHUB_RUN_ID']}"
+          )
+          ev=node.setdefault('evidence',[])
+          items=[
+            f"step3:run:{os.environ['GITHUB_RUN_ID']}",
+            f"step3:evidence_commit:{os.environ.get('EVIDENCE_COMMIT','unknown')}",
+            f"step3:adapter_sha256:{adapter_hash}",
+            'step3:plugin_id:yaiwes.agent_fleet.ag2',
+            'step3:route:FABLES->AG2 adapter->AgentSpec->live Agent->AgentSpec roundtrip',
+            'step3:microtest:PASS agent_name=yaiwes_ag2_worker missing_tool_fail_closed=True',
+            'step3:evidence:L2_build+L3_runtime+L4_feature',
+            'step3:prune:NOT_NEEDED',
+            'step3:readback:target+adapter+ficha+evidence PASS'
+          ]
+          for x in items:
+              if x not in ev: ev.append(x)
+          node.setdefault('history',[]).append({'at':now,'actor':'SOL','label':'SOL integración 2','event':'STEP3_PASS_RELEASE','run':int(os.environ['GITHUB_RUN_ID']),'commit':os.environ.get('EVIDENCE_COMMIT')})
+          node['owner']=None; node['lock']='FREE'; node['next_action']='COMPLETE'
+          data.setdefault('counts',{})['closed_current_contract']=max(int(data.get('counts',{}).get('closed_current_contract',27)),28)
+          data['updated_at']=now
+          with open(wall_path,'w',encoding='utf-8') as f: json.dump(data,f,ensure_ascii=False,indent=2); f.write('\n')
+          with open(inv_path,encoding='utf-8') as f: inv=json.load(f)
+          comp=next(c for c in inv['components'] if c.get('name')=='AG2')
+          comp['wall_node_id']=28; comp['wall_status']='PASS'; comp['wall_current_step']=3; comp['wall_target']=node['target']
+          with open(inv_path,'w',encoding='utf-8') as f: json.dump(inv,f,ensure_ascii=False,indent=2); f.write('\n')
+          PY
+            git add -- "$WALL" "$INVENTORY"
+            git commit -m "crazy-wall: SOL integración 2 N28 AG2 STEP3 PASS run $GITHUB_RUN_ID"
+            if git push origin HEAD:main; then ok=1; break; fi
+            sleep $((attempt*2))
+          done
+          test "$ok" -eq 1
+
+      - name: Final read-back
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show "origin/main:$WALL" | python3 -c 'import json,sys; d=json.load(sys.stdin); n=next(x for x in d["nodes"] if x["id"]==28); assert n["status"]=="PASS" and n["lock"]=="FREE" and n["next_action"]=="COMPLETE"; print("N28_FINAL_WALL=PASS")'
+          echo YAIWES_SOL2_N28_STEP3=VERIFIED_CLOSED

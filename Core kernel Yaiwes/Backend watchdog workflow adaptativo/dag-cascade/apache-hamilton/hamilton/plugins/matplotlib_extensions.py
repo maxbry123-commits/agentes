@@ -1,0 +1,108 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+import dataclasses
+from collections.abc import Collection
+from os import PathLike
+from typing import IO, Any
+
+try:
+    from matplotlib.artist import Artist
+    from matplotlib.figure import Figure
+    from matplotlib.transforms import Bbox
+except ImportError as e:
+    raise NotImplementedError("Matplotlib is not installed.") from e
+
+from hamilton import registry
+from hamilton.io import utils
+from hamilton.io.data_adapters import DataSaver
+
+
+@dataclasses.dataclass
+class MatplotlibWriter(DataSaver):
+    """Write Matplotlib figure as static image format
+    ref: https://matplotlib.org/stable/api/figure_api.html#matplotlib.figure.Figure
+    """
+
+    path: str | PathLike | IO
+    dpi: float | str | None = None
+    format: str | None = None
+    metadata: dict | None = None
+    bbox_inches: str | Bbox | None = None
+    pad_inches: float | str | None = None
+    facecolor: str | float | tuple | None = None
+    edgecolor: str | float | tuple | None = None
+    backend: str | None = None
+    orientation: str | None = None
+    papertype: str | None = None
+    transparent: bool | None = None
+    bbox_extra_artists: list[Artist] | None = None
+    pil_kwargs: dict | None = None
+
+    def _get_saving_kwargs(self) -> dict:
+        kwargs = {}
+        if self.format is not None:
+            kwargs["format"] = self.format
+        if self.metadata is not None:
+            kwargs["metadata"] = self.metadata
+        if self.bbox_inches is not None:
+            kwargs["bbox_inches"] = self.bbox_inches
+        if self.pad_inches is not None:
+            kwargs["pad_inches"] = self.pad_inches
+        if self.facecolor is not None:
+            kwargs["facecolor"] = self.facecolor
+        if self.edgecolor is not None:
+            kwargs["edgecolor"] = self.edgecolor
+        if self.backend is not None:
+            kwargs["backend"] = self.backend
+        if self.orientation is not None:
+            kwargs["orientation"] = self.orientation
+        if self.papertype is not None:
+            kwargs["papertype"] = self.papertype
+        if self.transparent is not None:
+            kwargs["transparent"] = self.transparent
+        if self.bbox_extra_artists is not None:
+            kwargs["bbox_extra_artists"] = self.bbox_extra_artists
+        if self.pil_kwargs is not None:
+            kwargs["pil_kwargs"] = self.pil_kwargs
+
+        return kwargs
+
+    def save_data(self, data: Figure) -> dict[str, Any]:
+        data.savefig(fname=self.path, **self._get_saving_kwargs())
+        # TODO make utils.get_file_metadata() safer for when self.path is IO type
+        return utils.get_file_metadata(self.path)
+
+    @classmethod
+    def applicable_types(cls) -> Collection[type]:
+        return [Figure]
+
+    @classmethod
+    def name(cls) -> str:
+        return "plt"
+
+
+def register_data_savers():
+    for saver in [
+        MatplotlibWriter,
+    ]:
+        registry.register_adapter(saver)
+
+
+register_data_savers()
+
+COLUMN_FRIENDLY_DF_TYPE = False

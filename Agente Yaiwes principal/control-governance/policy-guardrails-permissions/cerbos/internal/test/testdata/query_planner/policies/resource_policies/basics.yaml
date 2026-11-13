@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=../../../../../../schema/jsonschema/cerbos/policy/v1/Policy.schema.json
+---
+apiVersion: "api.cerbos.dev/v1"
+resourcePolicy:
+  version: default
+  resource: x
+  rules:
+    - actions:
+        - write
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          expr: |-
+            P.attr.userQid == R.id
+    - actions:
+        - edit
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          expr: |-
+            P.attr.userQid == request.resource.id
+    - actions:
+        - reference_globals
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          expr: |-
+            R.attr.environment == G.environment
+    - actions: ["now-once"]
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          expr: now() == timestamp("2024-01-16T10:18:27.395+13:00") && now() == now()
+    - actions:
+        - lecture
+      effect: EFFECT_DENY
+      roles:
+        - USER
+      condition:
+        match:
+          expr: R.attr.degree != "master's"

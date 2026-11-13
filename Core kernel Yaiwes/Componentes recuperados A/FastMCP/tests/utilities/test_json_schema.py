@@ -1,0 +1,1150 @@
+import copy
+import sys
+from typing import Any
+from unittest.mock import patch
+
+from jsonref import replace_refs
+
+from fastmcp.utilities.json_schema import (
+    _prune_param,
+    _strip_remote_refs,
+    compress_schema,
+    dereference_refs,
+    resolve_root_ref,
+)
+
+
+def _measure_depth(schema: dict[str, Any]) -> int:
+    """Return how many `items` levels deep an array-nested schema goes.
+
+    Walks iteratively so the assertion helpers cannot themselves hit the
+    recursion limit the tests are probing.
+    """
+    depth = 0
+    node: Any = schema
+    while isinstance(node.get("items"), dict):
+        node = node["items"]
+        depth += 1
+    return depth
+
+
+def _count_titles(schema: dict[str, Any]) -> int:
+    """Count the `title` keys down an array-nested schema, iteratively."""
+    count = 0
+    node: Any = schema
+    while isinstance(node, dict):
+        if "title" in node:
+            count += 1
+        node = node.get("items")
+    return count
+
+
+class TestPruneParam:
+    """Tests for the _prune_param function."""
+
+    def test_nonexistent(self):
+        """Test pruning a parameter that doesn't exist."""
+        schema = {"properties": {"foo": {"type": "string"}}}
+        result = _prune_param(schema, "bar")
+        assert result == schema  # Schema should be unchanged
+
+    def test_exists(self):
+        """Test pruning a parameter that exists."""
+        schema = {"properties": {"foo": {"type": "string"}, "bar": {"type": "integer"}}}
+        result = _prune_param(schema, "bar")
+        assert result["properties"] == {"foo": {"type": "string"}}
+
+    def test_last_property(self):
+        """Test pruning the only/last parameter, should leave empty properties object."""
+        schema = {"properties": {"foo": {"type": "string"}}}
+        result = _prune_param(schema, "foo")
+        assert "properties" in result
+        assert result["properties"] == {}
+
+    def test_from_required(self):
+        """Test pruning a parameter that's in the required list."""
+        schema = {
+            "properties": {"foo": {"type": "string"}, "bar": {"type": "integer"}},
+            "required": ["foo", "bar"],
+        }
+        result = _prune_param(schema, "bar")
+        assert result["required"] == ["foo"]
+
+    def test_last_required(self):
+        """Test pruning the last required parameter, should remove required field."""
+        schema = {
+            "properties": {"foo": {"type": "string"}, "bar": {"type": "integer"}},
+            "required": ["foo"],
+        }
+        result = _prune_param(schema, "foo")
+        assert "required" not in result
+
+    def test_does_not_mutate_input(self):
+        """Test that _prune_param does not mutate the original schema."""
+        schema = {
+            "type": "object",
+            "properties": {"a": {"type": "string"}, "b": {"type": "integer"}},
+            "required": ["a", "b"],
+        }
+        original = copy.deepcopy(schema)
+        _prune_param(schema, "a")
+        assert schema == original
+
+
+class TestDereferenceRefs:
+    """Tests for the dereference_refs function."""
+
+    def test_dereferences_simple_ref(self):
+        """Test that simple $ref is dereferenced."""
+        schema = {
+            "properties": {
+                "foo": {"$ref": "#/$defs/foo_def"},
+            },
+            "$defs": {
+                "foo_def": {"type": "string"},
+            },
+        }
+        result = dereference_refs(schema)
+
+        # $ref should be inlined
+        assert result["properties"]["foo"] == {"type": "string"}
+        # $defs should be removed
+        assert "$defs" not in result
+
+    def test_dereferences_nested_refs(self):
+        """Test that nested $refs are dereferenced."""
+        schema = {
+            "properties": {
+                "foo": {"$ref": "#/$defs/foo_def"},
+            },
+            "$defs": {
+                "foo_def": {
+                    "type": "object",
+                    "properties": {"nested": {"$ref": "#/$defs/nested_def"}},
+                },
+                "nested_def": {"type": "string"},
+            },
+        }
+        result = dereference_refs(schema)
+
+        # All refs should be inlined
+        assert result["properties"]["foo"]["properties"]["nested"] == {"type": "string"}
+        # $defs should be removed
+        assert "$defs" not in result
+
+    def test_falls_back_for_circular_refs(self):
+        """Test that circular references fall back to resolve_root_ref."""
+        schema = {
+            "$defs": {
+                "Node": {
+                    "type": "object",
+                    "properties": {
+                        "children": {
+                            "type": "array",
+                            "items": {"$ref": "#/$defs/Node"},
+                        }
+                    },
+                }
+            },
+            "$ref": "#/$defs/Node",
+            "title": "Tree node",
+            "description": "A recursive tree node.",
+            "examples": [{"children": []}],
+        }
+        result = dereference_refs(schema)
+
+        # Should fall back to resolve_root_ref behavior
+        # Root should be resolved but nested refs preserved
+        assert result.get("type") == "object"
+        assert "$defs" in result  # $defs preserved for circular refs
+        assert result["title"] == "Tree node"
+        assert result["description"] == "A recursive tree node."
+        assert result["examples"] == [{"children": []}]
+
+    def test_falls_back_for_circular_json_pointer_refs(self):
+        """Test that circular JSON Pointer $ref (non-$defs) does not crash.
+
+        .NET/System.Text.Json emits $ref with JSON Pointer paths like
+        #/properties/nodes/items instead of $defs-based references.
+        Circular pointers must not cause a RecursionError.
+        """
+        schema = {
+            "type": "object",
+            "properties": {
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "value": {"type": "string"},
+                            "children": {
+                                "type": "array",
+                                "items": {"$ref": "#/properties/nodes/items"},
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        result = dereference_refs(schema)
+
+        # Should return the schema without crashing; circular refs stay unresolved
+        assert result["type"] == "object"
+        assert "properties" in result
+        # The circular $ref should be preserved (not inlined)
+        children_items = result["properties"]["nodes"]["items"]["properties"][
+            "children"
+        ]["items"]
+        assert children_items["$ref"] == "#/properties/nodes/items"
+
+    def test_preserves_sibling_keywords(self):
+        """Test that sibling keywords (default, description) are preserved.
+
+        Pydantic places description, default, examples as siblings to $ref.
+        These should not be lost during dereferencing.
+        """
+        schema = {
+            "$defs": {
+                "Status": {"type": "string", "enum": ["active", "inactive"]},
+            },
+            "properties": {
+                "status": {
+                    "$ref": "#/$defs/Status",
+                    "default": "active",
+                    "description": "The user status",
+                },
+            },
+            "type": "object",
+        }
+        result = dereference_refs(schema)
+
+        # $ref should be inlined with siblings preserved
+        status = result["properties"]["status"]
+        assert status["type"] == "string"
+        assert status["enum"] == ["active", "inactive"]
+        assert status["default"] == "active"
+        assert status["description"] == "The user status"
+        # $defs should be removed
+        assert "$defs" not in result
+
+    def test_preserves_siblings_in_lists(self):
+        """Test that siblings are preserved for $refs inside lists (allOf, anyOf, etc)."""
+        schema = {
+            "$defs": {
+                "StringType": {"type": "string"},
+                "IntType": {"type": "integer"},
+            },
+            "properties": {
+                "field": {
+                    "anyOf": [
+                        {"$ref": "#/$defs/StringType", "description": "As string"},
+                        {"$ref": "#/$defs/IntType", "description": "As integer"},
+                    ]
+                },
+            },
+        }
+        result = dereference_refs(schema)
+
+        # Both items in anyOf should have their siblings preserved
+        any_of = result["properties"]["field"]["anyOf"]
+        assert any_of[0]["type"] == "string"
+        assert any_of[0]["description"] == "As string"
+        assert any_of[1]["type"] == "integer"
+        assert any_of[1]["description"] == "As integer"
+        assert "$defs" not in result
+
+    def test_preserves_nested_siblings(self):
+        """Test that siblings on nested $refs are preserved."""
+        schema = {
+            "$defs": {
+                "Address": {
+                    "type": "object",
+                    "properties": {
+                        "country": {"$ref": "#/$defs/Country", "default": "US"},
+                    },
+                },
+                "Country": {"type": "string", "enum": ["US", "UK", "CA"]},
+            },
+            "properties": {
+                "home_address": {"$ref": "#/$defs/Address"},
+            },
+        }
+        result = dereference_refs(schema)
+
+        # The nested $ref's sibling (default) should be preserved
+        country = result["properties"]["home_address"]["properties"]["country"]
+        assert country["type"] == "string"
+        assert country["enum"] == ["US", "UK", "CA"]
+        assert country["default"] == "US"
+        assert "$defs" not in result
+
+    def test_strips_discriminator_mapping_after_inlining(self):
+        """Discriminator.mapping refs dangle after $defs are inlined (#3679)."""
+        schema = {
+            "$defs": {
+                "IdentifyPerson": {
+                    "type": "object",
+                    "properties": {
+                        "action": {"const": "identify", "type": "string"},
+                        "name": {"type": "string"},
+                    },
+                    "required": ["action", "name"],
+                },
+                "PersonDelete": {
+                    "type": "object",
+                    "properties": {
+                        "action": {"const": "delete", "type": "string"},
+                    },
+                    "required": ["action"],
+                },
+            },
+            "anyOf": [
+                {"$ref": "#/$defs/IdentifyPerson"},
+                {"$ref": "#/$defs/PersonDelete"},
+            ],
+            "discriminator": {
+                "mapping": {
+                    "identify": "#/$defs/IdentifyPerson",
+                    "delete": "#/$defs/PersonDelete",
+                },
+                "propertyName": "action",
+            },
+        }
+        result = dereference_refs(schema)
+
+        assert "$defs" not in result
+        assert "discriminator" not in result
+        # The anyOf variants should be inlined with their const values intact
+        assert len(result["anyOf"]) == 2
+        actions = {v["properties"]["action"]["const"] for v in result["anyOf"]}
+        assert actions == {"identify", "delete"}
+
+    def test_discriminator_property_remains_required_after_inlining(self):
+        schema = {
+            "$defs": {
+                "Comprehensive": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {"const": "comprehensive", "type": "string"},
+                    },
+                },
+                "Validate": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {"const": "validate", "type": "string"},
+                        "target_id": {"type": "string"},
+                    },
+                    "required": ["target_id"],
+                },
+            },
+            "anyOf": [
+                {"$ref": "#/$defs/Comprehensive"},
+                {"$ref": "#/$defs/Validate"},
+            ],
+            "discriminator": {
+                "mapping": {
+                    "comprehensive": "#/$defs/Comprehensive",
+                    "validate": "#/$defs/Validate",
+                },
+                "propertyName": "kind",
+            },
+        }
+        result = dereference_refs(schema)
+
+        assert "discriminator" not in result
+        for variant in result["anyOf"]:
+            assert "kind" in variant["required"]
+        validate_schema = next(
+            variant
+            for variant in result["anyOf"]
+            if variant["properties"]["kind"]["const"] == "validate"
+        )
+        assert validate_schema["required"] == ["target_id", "kind"]
+
+    def test_preserves_property_named_discriminator(self):
+        """A field *named* 'discriminator' inside properties must survive."""
+        schema = {
+            "$defs": {
+                "Inner": {
+                    "type": "object",
+                    "properties": {
+                        "discriminator": {"type": "string"},
+                    },
+                },
+            },
+            "properties": {
+                "item": {"$ref": "#/$defs/Inner"},
+            },
+        }
+        result = dereference_refs(schema)
+
+        assert "$defs" not in result
+        assert "discriminator" in result["properties"]["item"]["properties"]
+
+
+class TestCompressSchema:
+    """Tests for the compress_schema function."""
+
+    def test_does_not_mutate_input(self):
+        """compress_schema must return a new dict and leave the caller's schema
+        untouched, even when it prunes titles, additionalProperties and unused
+        $defs (a live Tool.input_schema is passed straight in at some call sites)."""
+        schema = {
+            "type": "object",
+            "title": "MySchema",
+            "additionalProperties": False,
+            "properties": {
+                "a": {"type": "string", "title": "A"},
+                "b": {
+                    "type": "object",
+                    "title": "B",
+                    "properties": {"c": {"type": "integer", "title": "C"}},
+                },
+            },
+            "$defs": {"Unused": {"type": "string", "title": "Unused"}},
+        }
+        original = copy.deepcopy(schema)
+
+        result = compress_schema(
+            schema, prune_titles=True, prune_additional_properties=True
+        )
+
+        # The input is untouched...
+        assert schema == original
+        assert result is not schema
+        # ...and the returned copy really was optimized (so it is not a no-op).
+        assert "title" not in result
+        assert "title" not in result["properties"]["b"]["properties"]["c"]
+        assert "additionalProperties" not in result
+        assert "$defs" not in result
+
+    def test_compresses_schema_nested_far_beyond_the_recursion_limit(self):
+        """Deeply nested schemas must compress rather than raise RecursionError.
+
+        Copying the schema is what sets the depth ceiling, so it must not
+        recurse: schemas this deep arrive from proxied or remote MCP servers,
+        and failing to compress them is worse than compressing them partially.
+        """
+        depth = sys.getrecursionlimit() * 2
+
+        schema: dict[str, Any] = {"type": "string", "title": "Leaf"}
+        for _ in range(depth):
+            schema = {"type": "array", "title": "Level", "items": schema}
+
+        original_depth = _measure_depth(schema)
+
+        result = compress_schema(schema, prune_titles=True)
+
+        assert result is not schema
+        assert _measure_depth(result) == original_depth
+        # The caller's schema is still intact at every level...
+        assert _count_titles(schema) == original_depth + 1
+        # ...and the copy really was pruned as deep as the traversal reaches.
+        assert _count_titles(result) < _count_titles(schema)
+
+    def test_keeps_defs_referenced_below_the_traversal_cutoff(self):
+        """A $ref deeper than the traversal walks must still pin its definition.
+
+        The reference scan stops at its depth guard, so past that point it
+        cannot prove a definition is unused. Dropping one anyway would leave a
+        dangling $ref — an invalid schema is worse than an unpruned one.
+        """
+        schema: dict[str, Any] = {"$ref": "#/$defs/Leaf"}
+        for _ in range(60):
+            schema = {"type": "array", "items": schema}
+        schema["$defs"] = {"Leaf": {"type": "string"}}
+
+        result = compress_schema(schema)
+
+        assert result["$defs"] == {"Leaf": {"type": "string"}}
+
+        node: Any = result
+        while isinstance(node.get("items"), dict):
+            node = node["items"]
+        assert node == {"$ref": "#/$defs/Leaf"}
+
+    def test_preserves_refs_by_default(self):
+        """Test that compress_schema preserves $refs by default."""
+        schema = {
+            "properties": {
+                "foo": {"$ref": "#/$defs/foo_def"},
+            },
+            "$defs": {
+                "foo_def": {"type": "string"},
+            },
+        }
+        result = compress_schema(schema)
+
+        # $ref should be preserved (dereferencing is handled by middleware)
+        assert result["properties"]["foo"] == {"$ref": "#/$defs/foo_def"}
+        assert "$defs" in result
+
+    def test_prune_params(self):
+        """Test pruning parameters with compress_schema."""
+        schema = {
+            "properties": {
+                "foo": {"type": "string"},
+                "bar": {"type": "integer"},
+                "baz": {"type": "boolean"},
+            },
+            "required": ["foo", "bar"],
+        }
+        result = compress_schema(schema, prune_params=["foo", "baz"])
+        assert result["properties"] == {"bar": {"type": "integer"}}
+        assert result["required"] == ["bar"]
+
+    def test_pruning_additional_properties(self):
+        """Test pruning additionalProperties when explicitly enabled."""
+        schema = {
+            "type": "object",
+            "properties": {"foo": {"type": "string"}},
+            "additionalProperties": False,
+        }
+        # Must explicitly enable pruning now (default changed for MCP compatibility)
+        result = compress_schema(schema, prune_additional_properties=True)
+        assert "additionalProperties" not in result
+
+    def test_disable_pruning_additional_properties(self):
+        """Test disabling pruning of additionalProperties."""
+        schema = {
+            "type": "object",
+            "properties": {"foo": {"type": "string"}},
+            "additionalProperties": False,
+        }
+        result = compress_schema(schema, prune_additional_properties=False)
+        assert "additionalProperties" in result
+        assert result["additionalProperties"] is False
+
+    def test_combined_operations(self):
+        """Test all pruning operations together."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "keep": {"type": "string"},
+                "remove": {"$ref": "#/$defs/remove_def"},
+            },
+            "required": ["keep", "remove"],
+            "additionalProperties": False,
+            "$defs": {
+                "remove_def": {"type": "string"},
+                "unused_def": {"type": "number"},
+            },
+        }
+        result = compress_schema(
+            schema, prune_params=["remove"], prune_additional_properties=True
+        )
+        # Check that parameter was removed
+        assert "remove" not in result["properties"]
+        # Check that required list was updated
+        assert result["required"] == ["keep"]
+        # All $defs entries are now unreferenced after pruning "remove", so they're cleaned up
+        assert "$defs" not in result
+        # Check that additionalProperties was removed
+        assert "additionalProperties" not in result
+
+    def test_prune_titles(self):
+        """Test pruning title fields."""
+        schema = {
+            "title": "Root Schema",
+            "type": "object",
+            "properties": {
+                "foo": {"title": "Foo Property", "type": "string"},
+                "bar": {
+                    "title": "Bar Property",
+                    "type": "object",
+                    "properties": {
+                        "nested": {"title": "Nested Property", "type": "string"}
+                    },
+                },
+            },
+        }
+        result = compress_schema(schema, prune_titles=True)
+        assert "title" not in result
+        assert "title" not in result["properties"]["foo"]
+        assert "title" not in result["properties"]["bar"]
+        assert "title" not in result["properties"]["bar"]["properties"]["nested"]
+
+    def test_prune_nested_additional_properties(self):
+        """Test pruning additionalProperties: false at all levels when explicitly enabled."""
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "foo": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "nested": {
+                            "type": "object",
+                            "additionalProperties": False,
+                        }
+                    },
+                },
+            },
+        }
+        result = compress_schema(schema, prune_additional_properties=True)
+        assert "additionalProperties" not in result
+        assert "additionalProperties" not in result["properties"]["foo"]
+        assert (
+            "additionalProperties"
+            not in result["properties"]["foo"]["properties"]["nested"]
+        )
+
+    def test_title_pruning_preserves_parameter_named_title(self):
+        """Test that a parameter named 'title' is not removed during title pruning.
+
+        This is a critical edge case - we want to remove title metadata but preserve
+        actual parameters that happen to be named 'title'.
+        """
+        from typing import Annotated
+
+        from pydantic import Field, TypeAdapter
+
+        def greet(
+            name: Annotated[str, Field(description="The name to greet")],
+            title: Annotated[str, Field(description="Optional title", default="")],
+        ) -> str:
+            """A greeting function."""
+            return f"Hello {title} {name}"
+
+        adapter = TypeAdapter(greet)
+        schema = adapter.json_schema()
+
+        # Compress with title pruning
+        compressed = compress_schema(schema, prune_titles=True)
+
+        # The 'title' parameter should be preserved
+        assert "title" in compressed["properties"]
+        assert compressed["properties"]["title"]["description"] == "Optional title"
+        assert compressed["properties"]["title"]["default"] == ""
+
+        # But title metadata should be removed
+        assert "title" not in compressed["properties"]["name"]
+        assert "title" not in compressed["properties"]["title"]
+
+    def test_title_pruning_preserves_title_property_when_type_property_exists(self):
+        """Regression test for #3576: properties dict containing both 'title' and
+        'type' as parameter names caused the heuristic to treat 'title' as schema
+        metadata and strip the entire property definition."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "dashboard_id": {"type": "string", "title": "Dashboard Id"},
+                "title": {"type": "string", "title": "Title"},
+                "type": {"type": "string", "title": "Type", "default": "vis"},
+            },
+            "required": ["dashboard_id", "title"],
+        }
+
+        compressed = compress_schema(schema, prune_titles=True)
+
+        # All three properties must survive
+        assert "dashboard_id" in compressed["properties"]
+        assert "title" in compressed["properties"]
+        assert "type" in compressed["properties"]
+
+        # 'title' is still required
+        assert "title" in compressed["required"]
+
+        # But metadata title strings inside each property schema are removed
+        assert "title" not in compressed["properties"]["dashboard_id"]
+        assert "title" not in compressed["properties"]["title"]
+        assert "title" not in compressed["properties"]["type"]
+
+    def test_prune_titles_on_bare_metadata_node(self):
+        """Pydantic emits `{"title": "X"}` for Any-typed fields with no sibling
+        `type`/`properties`. Gemini 2.5 Flash rejects these with
+        MALFORMED_FUNCTION_CALL, so we need to strip the title even without a
+        schema keyword — as long as every remaining key is metadata."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "anyfield": {"title": "Anyfield"},
+                "described_any": {"title": "Described", "description": "anything"},
+            },
+        }
+
+        compressed = compress_schema(schema, prune_titles=True)
+
+        assert "title" not in compressed["properties"]["anyfield"]
+        assert "title" not in compressed["properties"]["described_any"]
+        # description survives — it's also metadata but prune_titles only
+        # targets "title" specifically
+        assert compressed["properties"]["described_any"]["description"] == "anything"
+
+    def test_prune_titles_on_draft07_and_legacy_keywords(self):
+        """Sub-schemas under draft-07 and 2019-09+ keywords that previous
+        drafts still use must be treated as schemas, not opaque payload —
+        `dependencies`, `additionalItems`, `contentSchema` all hold
+        sub-schemas in at least some JSON Schema drafts."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "payload": {
+                    "type": "string",
+                    "contentMediaType": "application/json",
+                    "contentSchema": {
+                        "type": "object",
+                        "title": "Payload",
+                    },
+                },
+                "items_field": {
+                    "type": "array",
+                    "items": [{"type": "string", "title": "First"}],
+                    "additionalItems": {"type": "number", "title": "Extra"},
+                },
+            },
+            "dependencies": {
+                "credit_card": {
+                    "type": "object",
+                    "title": "HasBillingAddress",
+                    "required": ["billing_address"],
+                }
+            },
+        }
+
+        compressed = compress_schema(schema, prune_titles=True)
+
+        # title metadata stripped from sub-schemas reachable through
+        # draft-07 / 2019-09+ keywords
+        assert "title" not in compressed["properties"]["payload"]["contentSchema"]
+        assert "title" not in compressed["properties"]["items_field"]["items"][0]
+        assert "title" not in compressed["properties"]["items_field"]["additionalItems"]
+        assert "title" not in compressed["dependencies"]["credit_card"]
+
+    def test_prune_titles_preserves_user_extension_payloads(self):
+        """User extensions (json_schema_extra, x-* vendor keys) carry opaque
+        payloads that may look metadata-shaped. They must not be touched."""
+        schema = {
+            "type": "object",
+            "x-ui": {"title": "Dashboard", "description": "sidebar label"},
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "x-widget": {"title": "Dropdown"},
+                }
+            },
+        }
+
+        compressed = compress_schema(schema, prune_titles=True)
+
+        assert compressed["x-ui"] == {
+            "title": "Dashboard",
+            "description": "sidebar label",
+        }
+        assert compressed["properties"]["config"]["x-widget"] == {"title": "Dropdown"}
+
+    def test_prune_titles_does_not_recurse_into_default_values(self):
+        """A user default that happens to be a dict shaped like schema metadata
+        must not be corrupted — `default` holds literal values, not sub-schemas."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "default": {"title": "My Dashboard", "type": "vis"},
+                }
+            },
+        }
+
+        compressed = compress_schema(schema, prune_titles=True)
+
+        default = compressed["properties"]["config"]["default"]
+        assert default == {"title": "My Dashboard", "type": "vis"}
+
+    def test_title_pruning_with_nested_properties(self):
+        """Test that nested property structures are handled correctly."""
+        schema = {
+            "type": "object",
+            "title": "OuterObject",
+            "properties": {
+                "title": {  # This is a property named "title", not metadata
+                    "type": "object",
+                    "title": "TitleObject",  # This is metadata
+                    "properties": {
+                        "subtitle": {
+                            "type": "string",
+                            "title": "SubTitle",  # This is metadata
+                        }
+                    },
+                },
+                "normal_field": {
+                    "type": "string",
+                    "title": "NormalField",  # This is metadata
+                },
+            },
+        }
+
+        compressed = compress_schema(schema, prune_titles=True)
+
+        # Root title should be removed
+        assert "title" not in compressed
+
+        # The property named "title" should be preserved
+        assert "title" in compressed["properties"]
+
+        # But its metadata title should be removed
+        assert "title" not in compressed["properties"]["title"]
+
+        # Nested metadata titles should be removed
+        assert (
+            "title" not in compressed["properties"]["title"]["properties"]["subtitle"]
+        )
+        assert "title" not in compressed["properties"]["normal_field"]
+
+    def test_mcp_client_compatibility_requires_additional_properties(self):
+        """Test that compress_schema preserves additionalProperties: false for MCP clients.
+
+        MCP clients like Claude require strict JSON schemas with additionalProperties: false.
+        When tools use Pydantic models with extra="forbid", this constraint must be preserved.
+
+        Without this, MCP clients return:
+        "Invalid schema for function 'X': In context=('properties', 'Y'),
+        'additionalProperties' is required to be supplied and to be false"
+
+        See: https://github.com/PrefectHQ/fastmcp/issues/3008
+        """
+        # Schema representing a Pydantic model with extra="forbid"
+        schema = {
+            "type": "object",
+            "properties": {
+                "graph_table": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "columns": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["name"],
+                    "additionalProperties": False,
+                }
+            },
+            "required": ["graph_table"],
+            "additionalProperties": False,
+        }
+
+        # By default, compress_schema should NOT strip additionalProperties: false
+        # This is the new expected behavior for MCP compatibility
+        result = compress_schema(schema)
+
+        # Root level should preserve additionalProperties: false
+        assert result.get("additionalProperties") is False, (
+            "Root additionalProperties: false was removed, breaking MCP compatibility"
+        )
+
+        # Nested object should also preserve additionalProperties: false
+        graph_table = result["properties"]["graph_table"]
+        assert graph_table.get("additionalProperties") is False, (
+            "Nested additionalProperties: false was removed, breaking MCP compatibility"
+        )
+
+
+class TestCompressSchemaDereference:
+    """Tests for the dereference parameter of compress_schema."""
+
+    SCHEMA_WITH_REFS = {
+        "properties": {
+            "foo": {"$ref": "#/$defs/foo_def"},
+        },
+        "$defs": {
+            "foo_def": {"type": "string"},
+        },
+    }
+
+    def test_dereference_true_inlines_refs(self):
+        result = compress_schema(self.SCHEMA_WITH_REFS, dereference=True)
+        assert result["properties"]["foo"] == {"type": "string"}
+        assert "$defs" not in result
+
+    def test_dereference_false_preserves_refs(self):
+        result = compress_schema(self.SCHEMA_WITH_REFS, dereference=False)
+        assert result["properties"]["foo"] == {"$ref": "#/$defs/foo_def"}
+        assert "$defs" in result
+
+    def test_other_optimizations_still_apply_without_dereference(self):
+        schema = {
+            "properties": {
+                "foo": {"$ref": "#/$defs/foo_def"},
+                "bar": {"type": "integer", "title": "Bar"},
+            },
+            "$defs": {
+                "foo_def": {"type": "string"},
+            },
+        }
+        result = compress_schema(
+            schema, dereference=False, prune_params=["bar"], prune_titles=True
+        )
+        assert "bar" not in result["properties"]
+        assert "$ref" in result["properties"]["foo"]
+        assert "$defs" in result
+
+
+class TestResolveRootRef:
+    """Tests for the resolve_root_ref function.
+
+    This function resolves $ref at root level to meet MCP spec requirements.
+    MCP specification requires outputSchema to have "type": "object" at root.
+    """
+
+    def test_resolves_simple_root_ref(self):
+        """Test that simple $ref at root is resolved."""
+        schema = {
+            "$defs": {
+                "Node": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "name": {"type": "string"},
+                    },
+                    "required": ["id"],
+                }
+            },
+            "$ref": "#/$defs/Node",
+        }
+        result = resolve_root_ref(schema)
+
+        # Should have type: object at root now
+        assert result.get("type") == "object"
+        assert "properties" in result
+        assert "id" in result["properties"]
+        assert "name" in result["properties"]
+        # Should still have $defs for nested references
+        assert "$defs" in result
+        # Should NOT have $ref at root
+        assert "$ref" not in result
+
+    def test_resolves_self_referential_model(self):
+        """Test resolving schema for self-referential models like Issue."""
+        # This is the exact schema Pydantic generates for self-referential models
+        schema = {
+            "$defs": {
+                "Issue": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "title": {"type": "string"},
+                        "dependencies": {
+                            "type": "array",
+                            "items": {"$ref": "#/$defs/Issue"},
+                        },
+                        "dependents": {
+                            "type": "array",
+                            "items": {"$ref": "#/$defs/Issue"},
+                        },
+                    },
+                    "required": ["id", "title"],
+                }
+            },
+            "$ref": "#/$defs/Issue",
+        }
+        result = resolve_root_ref(schema)
+
+        # Should have type: object at root
+        assert result.get("type") == "object"
+        assert "properties" in result
+        assert "id" in result["properties"]
+        assert "dependencies" in result["properties"]
+        # Nested $refs should still point to $defs
+        assert result["properties"]["dependencies"]["items"]["$ref"] == "#/$defs/Issue"
+        # Should have $defs preserved for nested references
+        assert "$defs" in result
+        assert "Issue" in result["$defs"]
+
+    def test_does_not_modify_schema_with_type_at_root(self):
+        """Test that schemas already having type at root are not modified."""
+        schema = {
+            "type": "object",
+            "properties": {"id": {"type": "string"}},
+            "$defs": {"SomeType": {"type": "string"}},
+            "$ref": "#/$defs/SomeType",  # This would be unusual but possible
+        }
+        result = resolve_root_ref(schema)
+
+        # Schema should be unchanged (returned as-is)
+        assert result is schema
+
+    def test_does_not_modify_schema_without_ref(self):
+        """Test that schemas without $ref are not modified."""
+        schema = {
+            "type": "object",
+            "properties": {"id": {"type": "string"}},
+        }
+        result = resolve_root_ref(schema)
+
+        assert result is schema
+
+    def test_does_not_modify_schema_without_defs(self):
+        """Test that schemas with $ref but without $defs are not modified."""
+        schema = {
+            "$ref": "#/$defs/Missing",
+        }
+        result = resolve_root_ref(schema)
+
+        assert result is schema
+
+    def test_does_not_modify_external_ref(self):
+        """Test that external $refs (not pointing to $defs) are not resolved."""
+        schema = {
+            "$defs": {"Node": {"type": "object"}},
+            "$ref": "https://example.com/schema.json#/definitions/Node",
+        }
+        result = resolve_root_ref(schema)
+
+        assert result is schema
+
+    def test_preserves_all_defs_for_nested_references(self):
+        """Test that $defs are preserved even if multiple definitions exist."""
+        schema = {
+            "$defs": {
+                "Node": {
+                    "type": "object",
+                    "properties": {
+                        "child": {"$ref": "#/$defs/ChildNode"},
+                    },
+                },
+                "ChildNode": {
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                },
+            },
+            "$ref": "#/$defs/Node",
+        }
+        result = resolve_root_ref(schema)
+
+        # Both defs should be preserved
+        assert "$defs" in result
+        assert "Node" in result["$defs"]
+        assert "ChildNode" in result["$defs"]
+
+    def test_handles_missing_def_gracefully(self):
+        """Test that missing definition in $defs doesn't cause error."""
+        schema = {
+            "$defs": {"OtherType": {"type": "string"}},
+            "$ref": "#/$defs/Missing",
+        }
+        result = resolve_root_ref(schema)
+
+        # Should return original schema unchanged
+        assert result is schema
+
+
+class TestStripRemoteRefs:
+    """Tests for _strip_remote_refs which prevents SSRF/LFI via $ref."""
+
+    def test_preserves_local_ref(self):
+        schema = {"$ref": "#/$defs/Foo"}
+        assert _strip_remote_refs(schema) == {"$ref": "#/$defs/Foo"}
+
+    def test_strips_http_ref(self):
+        schema = {"$ref": "http://evil.com/schema.json"}
+        assert _strip_remote_refs(schema) == {}
+
+    def test_strips_https_ref(self):
+        schema = {"$ref": "https://evil.com/schema.json"}
+        assert _strip_remote_refs(schema) == {}
+
+    def test_strips_file_ref(self):
+        schema = {"$ref": "file:///etc/passwd"}
+        assert _strip_remote_refs(schema) == {}
+
+    def test_preserves_siblings_when_stripping(self):
+        schema = {
+            "$ref": "http://evil.com/schema.json",
+            "description": "keep me",
+            "default": 42,
+        }
+        result = _strip_remote_refs(schema)
+        assert result == {"description": "keep me", "default": 42}
+
+    def test_strips_nested_remote_refs(self):
+        schema = {
+            "properties": {
+                "safe": {"$ref": "#/$defs/Safe"},
+                "evil": {"$ref": "http://169.254.169.254/latest/meta-data/"},
+            }
+        }
+        result = _strip_remote_refs(schema)
+        assert result["properties"]["safe"] == {"$ref": "#/$defs/Safe"}
+        assert "$ref" not in result["properties"]["evil"]
+
+    def test_strips_remote_refs_in_lists(self):
+        schema = {
+            "anyOf": [
+                {"$ref": "#/$defs/Good"},
+                {"$ref": "file:///etc/credentials.json"},
+            ]
+        }
+        result = _strip_remote_refs(schema)
+        assert result["anyOf"][0] == {"$ref": "#/$defs/Good"}
+        assert "$ref" not in result["anyOf"][1]
+
+    def test_deep_nesting(self):
+        schema = {
+            "properties": {
+                "a": {
+                    "type": "object",
+                    "properties": {"b": {"$ref": "https://internal-service/secret"}},
+                }
+            }
+        }
+        result = _strip_remote_refs(schema)
+        assert "$ref" not in result["properties"]["a"]["properties"]["b"]
+
+
+class TestDereferenceRefsRemoteRefSafety:
+    """Verify dereference_refs never fetches remote URIs."""
+
+    def test_http_ref_not_fetched(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"$ref": "http://evil.com/schema.json"},
+            },
+        }
+        with patch(
+            "fastmcp.utilities.json_schema.replace_refs", wraps=replace_refs
+        ) as mock:
+            result = dereference_refs(schema)
+            # The remote $ref should have been stripped before replace_refs
+            if mock.called:
+                call_schema = mock.call_args[0][0]
+                assert "$ref" not in call_schema.get("properties", {}).get("name", {})
+        # Result should not contain the remote $ref
+        assert "$ref" not in result.get("properties", {}).get("name", {})
+
+    def test_file_ref_not_fetched(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "secret": {"$ref": "file:///etc/passwd"},
+            },
+        }
+        result = dereference_refs(schema)
+        assert "$ref" not in result.get("properties", {}).get("secret", {})
+
+    def test_cloud_metadata_ref_not_fetched(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "creds": {
+                    "$ref": "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+                },
+            },
+        }
+        result = dereference_refs(schema)
+        assert "$ref" not in result.get("properties", {}).get("creds", {})
+
+    def test_local_refs_still_resolved(self):
+        schema = {
+            "$defs": {"Status": {"type": "string", "enum": ["a", "b"]}},
+            "type": "object",
+            "properties": {
+                "status": {"$ref": "#/$defs/Status"},
+                "evil": {"$ref": "https://evil.com/inject"},
+            },
+        }
+        result = dereference_refs(schema)
+        # Local ref should be resolved
+        assert result["properties"]["status"] == {"type": "string", "enum": ["a", "b"]}
+        # Remote ref should be stripped
+        assert "$ref" not in result["properties"]["evil"]
+        assert "$defs" not in result

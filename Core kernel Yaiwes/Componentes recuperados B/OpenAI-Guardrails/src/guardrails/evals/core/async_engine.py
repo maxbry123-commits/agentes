@@ -1,0 +1,462 @@
+"""Async run engine for guardrail evaluation.
+
+This module provides an asynchronous engine for running guardrail checks on evaluation samples.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from typing import Any
+
+from tqdm import tqdm
+
+from guardrails import GuardrailsAsyncOpenAI, run_guardrails
+
+from .types import Context, RunEngine, Sample, SampleResult
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_getattr(obj: dict[str, Any] | Any, key: str, default: Any = None) -> Any:
+    """Get attribute or dict key defensively.
+
+    Args:
+        obj: Dictionary or object to query
+        key: Attribute or dictionary key name
+        default: Default value if key not found
+
+    Returns:
+        Value of the attribute/key, or default if not found
+    """
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def _extract_text_from_content(content: Any) -> str:
+    """Extract plain text from message content, handling multi-part structures.
+
+    OpenAI ChatAPI supports content as either:
+    - String: "hello world"
+    - List of parts: [{"type": "text", "text": "hello"}, {"type": "image_url", ...}]
+
+    Args:
+        content: Message content (string, list of parts, or other)
+
+    Returns:
+        Extracted text as a plain string
+    """
+    # Content is already a string
+    if isinstance(content, str):
+        return content
+
+    # Content is a list of parts (multi-modal message)
+    if isinstance(content, list):
+        if not content:
+            return ""
+
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict):
+                # Extract text from various field names
+                text = None
+                for field in ["text", "input_text", "output_text"]:
+                    if field in part:
+                        text = part[field]
+                        break
+
+                if text is not None and isinstance(text, str):
+                    text_parts.append(text)
+
+        return " ".join(text_parts) if text_parts else ""
+
+    # Fallback: stringify other types
+    return str(content) if content is not None else ""
+
+
+def _normalize_conversation_payload(payload: Any) -> list[Any] | None:
+    """Normalize decoded sample payload into a conversation list if possible."""
+    if isinstance(payload, list):
+        return payload
+
+    if isinstance(payload, dict):
+        for candidate_key in ("messages", "conversation", "conversation_history"):
+            value = payload.get(candidate_key)
+            if isinstance(value, list):
+                return value
+
+    return None
+
+
+def _parse_conversation_payload(data: str) -> list[Any]:
+    """Attempt to parse sample data into a conversation history list.
+
+    If data is JSON, tries to extract conversation from it.
+    If data is a plain string, wraps it as a single user message.
+    Always returns a list (never None).
+    """
+    try:
+        payload = json.loads(data)
+        normalized = _normalize_conversation_payload(payload)
+        if normalized:
+            return normalized
+        # JSON parsed but not a conversation format - treat as user message
+        return [{"role": "user", "content": data}]
+    except json.JSONDecodeError:
+        # Not JSON - treat as a plain user message
+        return [{"role": "user", "content": data}]
+
+
+def _extract_latest_user_content(conversation_history: list[Any]) -> str:
+    """Extract plain text from the most recent user message.
+
+    Handles multi-part content structures (e.g., ChatAPI content parts) and
+    normalizes to plain text for guardrails expecting text/plain.
+
+    Args:
+        conversation_history: List of message dictionaries
+
+    Returns:
+        Plain text string from latest user message, or empty string if none found
+    """
+    for message in reversed(conversation_history):
+        if _safe_getattr(message, "role") == "user":
+            content = _safe_getattr(message, "content", "")
+            return _extract_text_from_content(content)
+    return ""
+
+
+def _annotate_incremental_result(
+    result: Any,
+    turn_index: int,
+    message: dict[str, Any] | Any,
+) -> None:
+    """Annotate guardrail result with incremental evaluation metadata.
+
+    Adds turn-by-turn context to results from conversation-aware guardrails
+    being evaluated incrementally. This includes the turn index, role, and
+    message that triggered the guardrail (if applicable).
+
+    Args:
+        result: GuardrailResult to annotate
+        turn_index: Index of the conversation turn (0-based)
+        message: Message object being evaluated (dict or object format)
+    """
+    role = _safe_getattr(message, "role")
+    msg_type = _safe_getattr(message, "type")
+    info = result.info
+    info["last_checked_turn_index"] = turn_index
+    if role is not None:
+        info["last_checked_role"] = role
+    if msg_type is not None:
+        info["last_checked_type"] = msg_type
+    if result.tripwire_triggered:
+        info["trigger_turn_index"] = turn_index
+        if role is not None:
+            info["trigger_role"] = role
+        if msg_type is not None:
+            info["trigger_type"] = msg_type
+        info["trigger_message"] = message
+
+
+async def _run_incremental_guardrails(
+    client: GuardrailsAsyncOpenAI,
+    conversation_history: list[dict[str, Any]],
+) -> list[Any]:
+    """Run guardrails incrementally over a conversation history.
+
+    Processes the conversation turn-by-turn, checking for violations at each step.
+    Stops on the first turn that triggers any guardrail.
+
+    Args:
+        client: GuardrailsAsyncOpenAI client with configured guardrails
+        conversation_history: Normalized conversation history (list of message dicts)
+
+    Returns:
+        List of guardrail results from the triggering turn (or final turn if none triggered)
+    """
+    latest_results: list[Any] = []
+
+    for turn_index in range(len(conversation_history)):
+        current_history = conversation_history[: turn_index + 1]
+        stage_results = await client._run_stage_guardrails(
+            stage_name="output",
+            text="",
+            conversation_history=current_history,
+            suppress_tripwire=True,
+        )
+
+        latest_results = stage_results or latest_results
+
+        # Annotate all results with turn metadata for multi-turn evaluation
+        triggered = False
+        for result in stage_results:
+            _annotate_incremental_result(result, turn_index, current_history[-1])
+            if result.tripwire_triggered:
+                triggered = True
+
+        if triggered:
+            return stage_results
+
+    return latest_results
+
+
+class AsyncRunEngine(RunEngine):
+    """Runs guardrail evaluations asynchronously."""
+
+    def __init__(self, guardrails: list[Any], *, multi_turn: bool = False) -> None:
+        """Initialize the run engine.
+
+        Args:
+            guardrails: List of configured guardrails to evaluate
+            multi_turn: Whether to evaluate guardrails on multi-turn conversations
+        """
+        self.guardrails = guardrails
+        self.guardrail_names = [g.definition.name for g in guardrails]
+        self.multi_turn = multi_turn
+        logger.info(
+            "Initialized engine with %d guardrails: %s",
+            len(self.guardrail_names),
+            ", ".join(self.guardrail_names),
+        )
+
+    async def run(
+        self,
+        context: Context,
+        samples: list[Sample],
+        batch_size: int,
+        desc: str | None = None,
+    ) -> list[SampleResult]:
+        """Run evaluations on samples in batches.
+
+        Args:
+            context: Evaluation context with LLM client
+            samples: List of samples to evaluate
+            batch_size: Number of samples to process in parallel
+            desc: Description for the tqdm progress bar
+
+        Returns:
+            List of evaluation results
+
+        Raises:
+            ValueError: If batch_size is less than 1
+        """
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+
+        if not samples:
+            logger.warning("No samples provided for evaluation")
+            return []
+
+        logger.info(
+            "Starting evaluation of %d samples with batch size %d",
+            len(samples),
+            batch_size,
+        )
+
+        results: list[SampleResult] = []
+        use_progress = bool(desc) and len(samples) > 1
+
+        if use_progress:
+            with tqdm(total=len(samples), desc=desc, leave=True) as progress:
+                results = await self._run_with_progress(context, samples, batch_size, progress)
+        else:
+            results = await self._run_without_progress(context, samples, batch_size)
+
+        logger.info("Evaluation completed. Processed %d samples", len(results))
+        return results
+
+    async def _run_with_progress(self, context: Context, samples: list[Sample], batch_size: int, progress: tqdm) -> list[SampleResult]:
+        """Run evaluation with progress bar."""
+        results = []
+        for i in range(0, len(samples), batch_size):
+            batch = samples[i : i + batch_size]
+            batch_results = await self._process_batch(context, batch)
+            results.extend(batch_results)
+            progress.update(len(batch))
+        return results
+
+    async def _run_without_progress(self, context: Context, samples: list[Sample], batch_size: int) -> list[SampleResult]:
+        """Run evaluation without progress bar."""
+        results = []
+        for i in range(0, len(samples), batch_size):
+            batch = samples[i : i + batch_size]
+            batch_results = await self._process_batch(context, batch)
+            results.extend(batch_results)
+        return results
+
+    async def _process_batch(self, context: Context, batch: list[Sample]) -> list[SampleResult]:
+        """Process a batch of samples."""
+        batch_results = await asyncio.gather(
+            *(self._evaluate_sample(context, sample) for sample in batch),
+            return_exceptions=True,
+        )
+
+        # Handle any exceptions from the batch
+        results = []
+        for sample, result in zip(batch, batch_results, strict=False):
+            if isinstance(result, Exception):
+                logger.error("Sample %s failed: %s", sample.id, str(result))
+                result = SampleResult(
+                    id=sample.id,
+                    expected_triggers=sample.expected_triggers,
+                    triggered=dict.fromkeys(self.guardrail_names, False),
+                    details={"error": str(result)},
+                )
+            results.append(result)
+
+        return results
+
+    async def _evaluate_sample(self, context: Context, sample: Sample) -> SampleResult:
+        """Evaluate a single sample against all guardrails.
+
+        Args:
+            context: Evaluation context with LLM client
+            sample: Sample to evaluate
+
+        Returns:
+            Evaluation result for the sample
+        """
+        try:
+            # Detect if this sample requires conversation history by checking guardrail metadata
+            # Check ALL guardrails, not just those in expected_triggers
+            needs_conversation_history = any(
+                guardrail.definition.metadata and guardrail.definition.metadata.uses_conversation_history for guardrail in self.guardrails
+            )
+
+            if needs_conversation_history:
+                try:
+                    # Parse conversation history from sample.data
+                    # Handles JSON conversations, plain strings (wraps as user message), etc.
+                    conversation_history = _parse_conversation_payload(sample.data)
+
+                    # Separate conversation-aware and non-conversation-aware guardrails
+                    # Evaluate ALL guardrails, not just those in expected_triggers
+                    # (expected_triggers is used for metrics calculation, not for filtering)
+                    conversation_aware_guardrails = [
+                        g for g in self.guardrails if g.definition.metadata and g.definition.metadata.uses_conversation_history
+                    ]
+                    non_conversation_aware_guardrails = [
+                        g for g in self.guardrails if not (g.definition.metadata and g.definition.metadata.uses_conversation_history)
+                    ]
+
+                    # Evaluate conversation-aware guardrails with conversation history
+                    conversation_results = []
+                    if conversation_aware_guardrails:
+                        # Create a minimal guardrails config for conversation-aware checks
+                        minimal_config = {
+                            "version": 1,
+                            "output": {
+                                "guardrails": [
+                                    {
+                                        "name": guardrail.definition.name,
+                                        "config": (guardrail.config.__dict__ if hasattr(guardrail.config, "__dict__") else guardrail.config),
+                                    }
+                                    for guardrail in conversation_aware_guardrails
+                                ],
+                            },
+                        }
+
+                        # Create a temporary GuardrailsAsyncOpenAI client for conversation-aware guardrails
+                        temp_client = GuardrailsAsyncOpenAI(
+                            config=minimal_config,
+                            api_key=getattr(context.guardrail_llm, "api_key", None) or "fake-key-for-eval",
+                        )
+
+                        # Normalize conversation history using the client's normalization
+                        normalized_conversation = temp_client._normalize_conversation(conversation_history)
+
+                        if self.multi_turn:
+                            conversation_results = await _run_incremental_guardrails(
+                                temp_client,
+                                normalized_conversation,
+                            )
+                        else:
+                            conversation_results = await temp_client._run_stage_guardrails(
+                                stage_name="output",
+                                text="",
+                                conversation_history=normalized_conversation,
+                                suppress_tripwire=True,
+                            )
+
+                    # Evaluate non-conversation-aware guardrails (if any) on extracted text
+                    non_conversation_results = []
+                    if non_conversation_aware_guardrails:
+                        # Non-conversation-aware guardrails expect plain text, not JSON
+                        latest_user_content = _extract_latest_user_content(conversation_history)
+                        non_conversation_results = await run_guardrails(
+                            ctx=context,
+                            data=latest_user_content,
+                            media_type="text/plain",
+                            guardrails=non_conversation_aware_guardrails,
+                            suppress_tripwire=True,
+                        )
+
+                    # Combine results from both types of guardrails
+                    results = conversation_results + non_conversation_results
+                except (json.JSONDecodeError, TypeError, ValueError) as e:
+                    logger.error(
+                        "Failed to parse conversation history for conversation-aware guardrail sample %s: %s",
+                        sample.id,
+                        e,
+                    )
+                    # Fall back to standard evaluation
+                    results = await run_guardrails(
+                        ctx=context,
+                        data=sample.data,
+                        media_type="text/plain",
+                        guardrails=self.guardrails,
+                        suppress_tripwire=True,  # Collect all results, don't stop on tripwire
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Failed to create conversation context for guardrail sample %s: %s",
+                        sample.id,
+                        e,
+                    )
+                    # Fall back to standard evaluation
+                    results = await run_guardrails(
+                        ctx=context,
+                        data=sample.data,
+                        media_type="text/plain",
+                        guardrails=self.guardrails,
+                        suppress_tripwire=True,  # Collect all results, don't stop on tripwire
+                    )
+            else:
+                # Standard sample (no conversation history needed)
+                results = await run_guardrails(
+                    ctx=context,
+                    data=sample.data,
+                    media_type="text/plain",
+                    guardrails=self.guardrails,
+                    suppress_tripwire=True,  # Collect all results, don't stop on tripwire
+                )
+
+            triggered: dict[str, bool] = dict.fromkeys(self.guardrail_names, False)
+            details: dict[str, Any] = {}
+
+            for result in results:
+                guardrail_name = result.info.get("guardrail_name", "unknown")
+                if guardrail_name in self.guardrail_names:
+                    triggered[guardrail_name] = result.tripwire_triggered
+                    details[guardrail_name] = result.info
+                else:
+                    logger.warning("Unknown guardrail name: %s", guardrail_name)
+
+            return SampleResult(
+                id=sample.id,
+                expected_triggers=sample.expected_triggers,
+                triggered=triggered,
+                details=details,
+            )
+
+        except Exception as e:
+            logger.error("Error evaluating sample %s: %s", sample.id, str(e))
+            return SampleResult(
+                id=sample.id,
+                expected_triggers=sample.expected_triggers,
+                triggered=dict.fromkeys(self.guardrail_names, False),
+                details={"error": str(e)},
+            )

@@ -1,0 +1,21 @@
+include_hp: dcft/train/hp_settings/hritik.yaml
+
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/airoboros_none_resp_gpt-4o-mini_inst_gpt-4o_resp
+template: llama3
+formatting: sharegpt
+messages: conversations
+role_tag: from
+content_tag: value
+user_tag: human
+assistant_tag: gpt
+
+per_device_train_batch_size: 8      # Can change depending on hardware
+gradient_accumulation_steps: 8      # Can change depending on number of GPUs
+
+output_dir: "/data4/dcft/experiments/train/checkpoints/airoboros_none_resp_gpt-4o-mini_inst_gpt-4o_resp"
+run_name: airoboros_none_resp_gpt-4o-mini_inst_gpt-4o_resp
+hub_model_id: mlfoundations-dev/airoboros_none_resp_gpt-4o-mini_inst_gpt-4o_resp
+report_to: wandb
+push_to_db: true
+push_to_hub: true

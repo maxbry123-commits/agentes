@@ -1,0 +1,92 @@
+[package]
+name = "cedar-policy-core"
+edition.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+version.workspace = true
+license.workspace = true
+categories.workspace = true
+description = "Core implementation of the Cedar policy language"
+keywords.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_with = { version = "3.21", features = ["json"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+lalrpop-util = { version = "0.22.2", features = ["lexer"] }
+either = "1.16"
+itertools = "0.15"
+ref-cast = "1.0"
+rustc-literal-escaper = "0.0.8"
+thiserror = "2.0"
+smol_str = { version = "0.3", features = ["serde"] }
+stacker = "0.1.24"
+arbitrary = { version = "1", features = ["derive"], optional = true }
+miette = { version = "7.6.0", features = ["serde"] }
+nonempty = { version = "0.12.0", features = ["serialize"] }
+educe = "0.7.4"
+unicode-security = "0.1.0"
+regex = { version = "1.12", features = ["unicode"] }
+linked-hash-map = { version = "0.5.6", features = ["serde_impl"] }
+linked_hash_set = "0.1.6"
+
+# wasm dependencies
+serde-wasm-bindgen = { version = "0.6", optional = true }
+# Intentionally not updated to 0.5.5, see issue #1744
+tsify = { version = "0.4.5", optional = true }
+wasm-bindgen = { version = "0.2.97", optional = true }
+
+# datetime extension requires chrono
+chrono = { version = "0.4.45", optional = true, default-features = false }
+
+[features]
+# by default, enable all Cedar extensions
+default = ["ipaddr", "decimal", "datetime"]
+ipaddr = []
+decimal = []
+datetime = ["dep:chrono"]
+
+# Enables `Arbitrary` implementations for several types in this crate
+arbitrary = ["dep:arbitrary"]
+
+# Expose test utilities
+test-util = []
+
+# Experimental features.
+partial-validate = []
+partial-eval = []
+entity-manifest = []
+wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+experimental = [
+    "tpe",
+    "entity-manifest",
+    "partial-validate",
+    "partial-eval",
+    "variadic-is-in-range",
+]
+tpe = []
+variadic-is-in-range = []
+
+# Unstable tooling features
+unstable-tooling = ["tolerant-ast", "extended-schema"]
+tolerant-ast = []
+extended-schema = []
+
+[build-dependencies]
+lalrpop = "0.22.2"
+
+[dev-dependencies]
+similar-asserts = "2.0.0"
+cool_asserts = "2.0"
+miette = { version = "7.6.0", features = ["fancy"] }
+insta = { version = "1.47.2", features = ["json", "glob"] }
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+features = ["experimental", "unstable-tooling", "test-util"]
+rustdoc-args = ["--cfg", "docsrs"]

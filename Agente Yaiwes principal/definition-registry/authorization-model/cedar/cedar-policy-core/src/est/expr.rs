@@ -1,0 +1,2682 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+use super::FromJsonError;
+#[cfg(feature = "tolerant-ast")]
+use crate::ast::expr_allows_errors::AstExprErrorKind;
+use crate::ast::Infallible;
+use crate::ast::{self, is_normalized_ident, BoundedDisplay, EntityUID, Name};
+use crate::entities::json::{
+    err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
+    CedarValueJson, FnAndArgs,
+};
+use crate::expr_builder::{ExprBuilder, ExprBuilderInfallibleBuild};
+use crate::extensions::{ExtStyles, Extensions};
+use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
+use crate::parser::{cst, err::ParseErrors, Loc, Node};
+use crate::FromNormalizedStr;
+use itertools::Itertools;
+use nonempty::NonEmpty;
+use serde::{de::Visitor, Deserialize, Serialize};
+use serde_with::serde_as;
+use smol_str::{SmolStr, ToSmolStr};
+use std::collections::{btree_map, BTreeMap, HashMap};
+use std::sync::Arc;
+
+/// Serde JSON structure for a Cedar expression in the EST format
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub enum Expr {
+    /// Any Cedar expression other than an extension function call.
+    ExprNoExt(ExprNoExt),
+    /// Extension function call, where the key is the name of an extension
+    /// function or method.
+    ExtFuncCall(ExtFuncCall),
+}
+
+// Manual implementation of `Deserialize` is more efficient than the derived
+// implementation with `serde(untagged)`. In particular, if the key is valid for
+// `ExprNoExt` but there is a deserialization problem within the corresponding
+// value, the derived implementation would backtrack and try to deserialize as
+// `ExtFuncCall` with that key as the extension function name, but this manual
+// implementation instead eagerly errors out, taking advantage of the fact that
+// none of the keys for `ExprNoExt` are valid extension function names.
+//
+// See #1284.
+impl<'de> Deserialize<'de> for Expr {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ExprVisitor;
+        impl<'de> Visitor<'de> for ExprVisitor {
+            type Value = Expr;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("JSON object representing an expression")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let (k, v): (SmolStr, JsonValueWithNoDuplicateKeys) = match map.next_entry()? {
+                    None => {
+                        return Err(serde::de::Error::custom(
+                            "empty map is not a valid expression",
+                        ))
+                    }
+                    Some((k, v)) => (k, v),
+                };
+                match map.next_key()? {
+                    None => (),
+                    Some(k2) => {
+                        let k2: SmolStr = k2;
+                        return Err(serde::de::Error::custom(format!("JSON object representing an `Expr` should have only one key, but found two keys: `{k}` and `{k2}`")));
+                    }
+                };
+                if ExtStyles::is_known_extension_func_str(&k) {
+                    // `k` is the name of an extension function or method. We assume that
+                    // no such keys are valid keys for `ExprNoExt`, so we must parse as an
+                    // `ExtFuncCall`.
+                    let obj = serde_json::json!({ k: v });
+                    let extfunccall =
+                        serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
+                    Ok(Expr::ExtFuncCall(extfunccall))
+                } else {
+                    // not a valid extension function or method, so we expect it
+                    // to work for `ExprNoExt`.
+                    let obj = serde_json::json!({ k: v });
+                    let exprnoext =
+                        serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
+                    Ok(Expr::ExprNoExt(exprnoext))
+                }
+            }
+        }
+
+        deserializer.deserialize_map(ExprVisitor)
+    }
+}
+
+/// Represent an element of a pattern literal
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub enum PatternElem {
+    /// The wildcard asterisk
+    Wildcard,
+    /// A string without any wildcards
+    Literal(SmolStr),
+}
+
+impl From<&[PatternElem]> for crate::ast::Pattern {
+    fn from(value: &[PatternElem]) -> Self {
+        let mut elems = Vec::new();
+        for elem in value {
+            match elem {
+                PatternElem::Wildcard => {
+                    elems.push(crate::ast::PatternElem::Wildcard);
+                }
+                PatternElem::Literal(s) => {
+                    elems.extend(s.chars().map(crate::ast::PatternElem::Char));
+                }
+            }
+        }
+        Self::from(elems)
+    }
+}
+
+impl From<crate::ast::PatternElem> for PatternElem {
+    fn from(value: crate::ast::PatternElem) -> Self {
+        match value {
+            crate::ast::PatternElem::Wildcard => Self::Wildcard,
+            crate::ast::PatternElem::Char(c) => Self::Literal(c.to_smolstr()),
+        }
+    }
+}
+
+impl From<crate::ast::Pattern> for Vec<PatternElem> {
+    fn from(value: crate::ast::Pattern) -> Self {
+        value.iter().map(|elem| (*elem).into()).collect()
+    }
+}
+
+/// Represents the variants of the `has` operation, either a simple operation or
+/// the extended has operation
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi,))]
+pub enum HasAttrRepr {
+    /// Simple has test with a single attribute :
+    /// { "has": { "left": ..., "attr": <string>}}
+    Simple {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Attribute tested
+        attr: SmolStr,
+    },
+    /// Extended has test with a sequence of attributes :
+    /// { "has": { "left": ..., "attr": [<string>, ..]}}
+    Extended {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Sequence of attributes tested
+        attr: NonEmpty<SmolStr>,
+    },
+}
+
+/// Serde JSON structure for [any Cedar expression other than an extension
+/// function call] in the EST format
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub enum ExprNoExt {
+    /// Literal value (including anything that's legal to express in the
+    /// attribute-value JSON format)
+    Value(CedarValueJson),
+    /// Var
+    Var(ast::Var),
+    /// Template slot
+    Slot(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::SlotId),
+    /// `!`
+    #[serde(rename = "!")]
+    Not {
+        /// Argument
+        arg: Arc<Expr>,
+    },
+    /// `-`
+    #[serde(rename = "neg")]
+    Neg {
+        /// Argument
+        arg: Arc<Expr>,
+    },
+    /// `==`
+    #[serde(rename = "==")]
+    Eq {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Right-hand argument
+        right: Arc<Expr>,
+    },
+    /// `!=`
+    #[serde(rename = "!=")]
+    NotEq {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Right-hand argument
+        right: Arc<Expr>,
+    },
+    /// `in`
+    #[serde(rename = "in")]
+    In {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Right-hand argument
+        right: Arc<Expr>,
+    },
+    /// `<`
+    #[serde(rename = "<")]
+    Less {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Right-hand argument
+        right: Arc<Expr>,
+    },
+    /// `<=`
+    #[serde(rename = "<=")]
+    LessEq {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Right-hand argument
+        right: Arc<Expr>,
+    },
+    /// `>`
+    #[serde(rename = ">")]
+    Greater {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Right-hand argument
+        right: Arc<Expr>,
+    },
+    /// `>=`
+    #[serde(rename = ">=")]
+    GreaterEq {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Right-hand argument
+        right: Arc<Expr>,
+    },
+    /// `&&`
+    #[serde(rename = "&&")]
+    And {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Right-hand argument
+        right: Arc<Expr>,
+    },
+    /// `||`
+    #[serde(rename = "||")]
+    Or {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Right-hand argument
+        right: Arc<Expr>,
+    },
+    /// `+`
+    #[serde(rename = "+")]
+    Add {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Right-hand argument
+        right: Arc<Expr>,
+    },
+    /// `-`
+    #[serde(rename = "-")]
+    Sub {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Right-hand argument
+        right: Arc<Expr>,
+    },
+    /// `*`
+    #[serde(rename = "*")]
+    Mul {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Right-hand argument
+        right: Arc<Expr>,
+    },
+    /// `contains()`
+    #[serde(rename = "contains")]
+    Contains {
+        /// Left-hand argument (receiver)
+        left: Arc<Expr>,
+        /// Right-hand argument (inside the `()`)
+        right: Arc<Expr>,
+    },
+    /// `containsAll()`
+    #[serde(rename = "containsAll")]
+    ContainsAll {
+        /// Left-hand argument (receiver)
+        left: Arc<Expr>,
+        /// Right-hand argument (inside the `()`)
+        right: Arc<Expr>,
+    },
+    /// `containsAny()`
+    #[serde(rename = "containsAny")]
+    ContainsAny {
+        /// Left-hand argument (receiver)
+        left: Arc<Expr>,
+        /// Right-hand argument (inside the `()`)
+        right: Arc<Expr>,
+    },
+    /// `isEmpty()`
+    #[serde(rename = "isEmpty")]
+    IsEmpty {
+        /// Argument
+        arg: Arc<Expr>,
+    },
+    /// `getTag()`
+    #[serde(rename = "getTag")]
+    GetTag {
+        /// Left-hand argument (receiver)
+        left: Arc<Expr>,
+        /// Right-hand argument (inside the `()`)
+        right: Arc<Expr>,
+    },
+    /// `hasTag()`
+    #[serde(rename = "hasTag")]
+    HasTag {
+        /// Left-hand argument (receiver)
+        left: Arc<Expr>,
+        /// Right-hand argument (inside the `()`)
+        right: Arc<Expr>,
+    },
+    /// Get-attribute
+    #[serde(rename = ".")]
+    GetAttr {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Attribute name
+        attr: SmolStr,
+    },
+    /// `has`
+    #[serde(rename = "has")]
+    HasAttr(HasAttrRepr),
+    /// `like`
+    #[serde(rename = "like")]
+    Like {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Pattern
+        pattern: Vec<PatternElem>,
+    },
+    /// `<entity> is <entity_type> in <entity_or_entity_set> `
+    #[serde(rename = "is")]
+    Is {
+        /// Left-hand entity argument
+        left: Arc<Expr>,
+        /// Entity type
+        entity_type: SmolStr,
+        /// Entity or entity set
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "in")]
+        in_expr: Option<Arc<Expr>>,
+    },
+    /// Ternary
+    #[serde(rename = "if-then-else")]
+    If {
+        /// Condition
+        #[serde(rename = "if")]
+        cond_expr: Arc<Expr>,
+        /// `then` expression
+        #[serde(rename = "then")]
+        then_expr: Arc<Expr>,
+        /// `else` expression
+        #[serde(rename = "else")]
+        else_expr: Arc<Expr>,
+    },
+    /// Set literal, whose elements may be arbitrary expressions
+    /// (which is why we need this case specifically and can't just
+    /// use Expr::Value)
+    Set(Vec<Expr>),
+    /// Record literal, whose elements may be arbitrary expressions
+    /// (which is why we need this case specifically and can't just
+    /// use Expr::Value)
+    Record(
+        #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
+        #[cfg_attr(feature = "wasm", tsify(type = "Record<string, Expr>"))]
+        BTreeMap<SmolStr, Expr>,
+    ),
+    /// AST Error node - this represents a parsing error in a partially generated AST
+    #[cfg(feature = "tolerant-ast")]
+    Error(AstExprErrorKind),
+}
+
+/// Serde JSON structure for an extension function call in the EST format
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct ExtFuncCall {
+    /// maps the name of the function to a JSON list/array of the arguments.
+    /// Note that for method calls, the method receiver is the first argument.
+    /// For example, for `a.isInRange(b)`, the first argument is `a` and the
+    /// second argument is `b`.
+    ///
+    /// INVARIANT: This map should always have exactly one k-v pair (not more or
+    /// less), but we make it a map in order to get the correct JSON structure
+    /// we want.
+    #[serde(flatten)]
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, Array<Expr>>"))]
+    call: HashMap<SmolStr, Vec<Expr>>,
+}
+
+impl ExtFuncCall {
+    /// Check the invariant.
+    ///
+    /// Returns `FromJsonError::MissingOperator` or `FromJsonError::MultipleOperators` as appropriate.
+    fn invariant(&self) -> Result<(), FromJsonError> {
+        match self.call.len() {
+            0 => Err(FromJsonError::MissingOperator),
+            1 => Ok(()),
+            _ => Err(FromJsonError::MultipleOperators {
+                ops: self.call.clone().into_keys().collect(),
+            }),
+        }
+    }
+
+    /// Attempt to extract the function name and arguments, returns the error of `self.invariant()`
+    /// if invariant doesn't hold.
+    pub(crate) fn try_into_components(self) -> Result<(SmolStr, Vec<Expr>), FromJsonError> {
+        self.invariant()?;
+        match self.call.into_iter().next() {
+            Some((fn_name, args)) => Ok((fn_name, args)),
+            None => Err(FromJsonError::MissingOperator),
+        }
+    }
+
+    /// Attempt to extract references to the function name and arguments,
+    /// Returns the error of `self.invariant()` if invariant doesn't hold.
+    pub(crate) fn try_components(&self) -> Result<(&SmolStr, &[Expr]), FromJsonError> {
+        self.invariant()?;
+        match self.call.iter().next() {
+            Some((fn_name, args)) => Ok((fn_name, args)),
+            None => Err(FromJsonError::MissingOperator),
+        }
+    }
+}
+
+/// Construct an [`Expr`].
+#[derive(Clone, Debug)]
+pub struct Builder;
+
+impl ExprBuilderInfallibleBuild for Builder {}
+
+impl ExprBuilder for Builder {
+    type Expr = Expr;
+    type BuildError = Infallible;
+    type Data = ();
+    #[cfg(feature = "tolerant-ast")]
+    type ErrorType = Infallible;
+
+    fn with_data(_data: Self::Data) -> Self {
+        Self
+    }
+
+    fn with_maybe_source_loc(self, _: Option<&Loc>) -> Self {
+        self
+    }
+
+    fn loc(&self) -> Option<&Loc> {
+        None
+    }
+
+    fn data(&self) -> &Self::Data {
+        &()
+    }
+
+    /// literal
+    fn val(self, lit: impl Into<ast::Literal>) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::from_lit(lit.into())))
+    }
+
+    /// principal, action, resource, context
+    fn var(self, var: ast::Var) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Var(var))
+    }
+
+    /// Template slots
+    fn slot(self, slot: ast::SlotId) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Slot(slot))
+    }
+
+    /// An extension call with one arg, which is the name of the unknown
+    fn unknown(self, u: ast::Unknown) -> Expr {
+        Expr::ExtFuncCall(ExtFuncCall {
+            call: HashMap::from([("unknown".to_smolstr(), vec![Builder::new().val(u.name)])]),
+        })
+    }
+
+    /// `!`
+    fn not(self, e: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Not { arg: Arc::new(e) })
+    }
+
+    /// `-`
+    fn neg(self, e: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Neg { arg: Arc::new(e) })
+    }
+
+    /// `==`
+    fn is_eq(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Eq {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `!=`
+    fn noteq(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::NotEq {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `in`
+    fn is_in_arc(self, left: Arc<Expr>, right: Arc<Expr>) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::In { left, right })
+    }
+
+    /// `<`
+    fn less(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Less {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `<=`
+    fn lesseq(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::LessEq {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `>`
+    fn greater(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Greater {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `>=`
+    fn greatereq(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::GreaterEq {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `&&`
+    fn and(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::And {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `||`
+    fn or(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Or {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `+`
+    fn add(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Add {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `-`
+    fn sub(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Sub {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `*`
+    fn mul(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Mul {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `left.contains(right)`
+    fn contains(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Contains {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `left.containsAll(right)`
+    fn contains_all(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::ContainsAll {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `left.containsAny(right)`
+    fn contains_any(self, left: Expr, right: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::ContainsAny {
+            left: Arc::new(left),
+            right: Arc::new(right),
+        })
+    }
+
+    /// `arg.isEmpty()`
+    fn is_empty(self, expr: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::IsEmpty {
+            arg: Arc::new(expr),
+        })
+    }
+
+    /// `left.getTag(right)`
+    fn get_tag(self, expr: Expr, tag: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::GetTag {
+            left: Arc::new(expr),
+            right: Arc::new(tag),
+        })
+    }
+
+    /// `left.hasTag(right)`
+    fn has_tag(self, expr: Expr, tag: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::HasTag {
+            left: Arc::new(expr),
+            right: Arc::new(tag),
+        })
+    }
+
+    /// `left.attr`
+    fn get_attr(self, expr: Expr, attr: SmolStr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::GetAttr {
+            left: Arc::new(expr),
+            attr,
+        })
+    }
+
+    /// `left.attr` (with an Arc)
+    fn get_attr_arc(self, expr: Arc<Expr>, attr: SmolStr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::GetAttr { left: expr, attr })
+    }
+
+    /// `left has attr`
+    fn has_attr(self, expr: Expr, attr: SmolStr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
+            left: Arc::new(expr),
+            attr,
+        }))
+    }
+
+    /// `left has attr` (with an Arc)
+    fn has_attr_arc(self, expr: Arc<Self::Expr>, attr: SmolStr) -> Self::Expr {
+        Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple { left: expr, attr }))
+    }
+
+    /// `left like pattern`
+    fn like(self, expr: Expr, pattern: ast::Pattern) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Like {
+            left: Arc::new(expr),
+            pattern: pattern.into(),
+        })
+    }
+
+    /// `left is entity_type`
+    fn is_entity_type_arc(self, left: Arc<Expr>, entity_type: ast::EntityType) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Is {
+            left,
+            entity_type: entity_type.to_smolstr(),
+            in_expr: None,
+        })
+    }
+
+    /// `left is entity_type in entity`
+    fn is_in_entity_type(self, left: Expr, entity_type: ast::EntityType, entity: Expr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Is {
+            left: Arc::new(left),
+            entity_type: entity_type.to_smolstr(),
+            in_expr: Some(Arc::new(entity)),
+        })
+    }
+
+    /// `if cond_expr then then_expr else else_expr`
+    fn ite_arc(
+        self,
+        cond_expr: Arc<Self::Expr>,
+        then_expr: Arc<Self::Expr>,
+        else_expr: Arc<Self::Expr>,
+    ) -> Self::Expr {
+        Expr::ExprNoExt(ExprNoExt::If {
+            cond_expr,
+            then_expr,
+            else_expr,
+        })
+    }
+
+    /// e.g. [1+2, !(context has department)]
+    fn set(self, elements: impl IntoIterator<Item = Expr>) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::Set(elements.into_iter().collect()))
+    }
+
+    /// e.g. {foo: 1+2, bar: !(context has department)}
+    fn record(
+        self,
+        map: impl IntoIterator<Item = (SmolStr, Expr)>,
+    ) -> Result<Expr, ast::ExpressionConstructionError> {
+        let mut dedup_map = BTreeMap::new();
+        for (k, v) in map {
+            match dedup_map.entry(k) {
+                btree_map::Entry::Occupied(oentry) => {
+                    return Err(ast::expression_construction_errors::DuplicateKeyError {
+                        key: oentry.key().clone(),
+                        context: "in record literal",
+                    }
+                    .into());
+                }
+                btree_map::Entry::Vacant(ventry) => {
+                    ventry.insert(v);
+                }
+            }
+        }
+        Ok(Expr::ExprNoExt(ExprNoExt::Record(dedup_map)))
+    }
+
+    /// extension function call, including method calls
+    fn call_extension_fn(
+        self,
+        fn_name: ast::Name,
+        args: impl IntoIterator<Item = Expr>,
+    ) -> Result<Expr, Infallible> {
+        Ok(Expr::ExtFuncCall(ExtFuncCall {
+            call: HashMap::from([(fn_name.to_smolstr(), args.into_iter().collect())]),
+        }))
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType> {
+        Ok(Expr::ExprNoExt(ExprNoExt::Error(
+            AstExprErrorKind::InvalidExpr(parse_errors.to_string()),
+        )))
+    }
+}
+
+impl Expr {
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        match self {
+            Expr::ExprNoExt(e) => match e {
+                ExprNoExt::Value(v) => Ok(Expr::ExprNoExt(ExprNoExt::Value(
+                    v.sub_entity_literals(mapping)?,
+                ))),
+                v @ ExprNoExt::Var(_) => Ok(Expr::ExprNoExt(v)),
+                s @ ExprNoExt::Slot(_) => Ok(Expr::ExprNoExt(s)),
+                ExprNoExt::Not { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Not {
+                    arg: Arc::new(Arc::unwrap_or_clone(arg).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Neg { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Neg {
+                    arg: Arc::new(Arc::unwrap_or_clone(arg).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Eq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Eq {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::NotEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::NotEq {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::In { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::In {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Less { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Less {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::LessEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::LessEq {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Greater { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Greater {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::GreaterEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::GreaterEq {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::And { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::And {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Or { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Or {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Add { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Add {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Sub { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Sub {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Mul { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Mul {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::Contains { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Contains {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::ContainsAll { left, right } => {
+                    Ok(Expr::ExprNoExt(ExprNoExt::ContainsAll {
+                        left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                        right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                    }))
+                }
+                ExprNoExt::ContainsAny { left, right } => {
+                    Ok(Expr::ExprNoExt(ExprNoExt::ContainsAny {
+                        left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                        right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                    }))
+                }
+                ExprNoExt::IsEmpty { arg } => Ok(Expr::ExprNoExt(ExprNoExt::IsEmpty {
+                    arg: Arc::new(Arc::unwrap_or_clone(arg).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::GetTag { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::GetTag {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::HasTag { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::HasTag {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
+                })),
+                ExprNoExt::GetAttr { left, attr } => Ok(Expr::ExprNoExt(ExprNoExt::GetAttr {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    attr,
+                })),
+                ExprNoExt::HasAttr(repr) => match repr {
+                    HasAttrRepr::Simple { left, attr } => {
+                        Ok(Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
+                            left: Arc::new(
+                                Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?,
+                            ),
+                            attr,
+                        })))
+                    }
+                    HasAttrRepr::Extended { left, attr } => {
+                        Ok(Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+                            left: Arc::new(
+                                Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?,
+                            ),
+                            attr,
+                        })))
+                    }
+                },
+                ExprNoExt::Like { left, pattern } => Ok(Expr::ExprNoExt(ExprNoExt::Like {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    pattern,
+                })),
+                ExprNoExt::Is {
+                    left,
+                    entity_type,
+                    in_expr,
+                } => match in_expr {
+                    Some(in_expr) => Ok(Expr::ExprNoExt(ExprNoExt::Is {
+                        left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                        entity_type,
+                        in_expr: Some(Arc::new(
+                            Arc::unwrap_or_clone(in_expr).sub_entity_literals(mapping)?,
+                        )),
+                    })),
+                    None => Ok(Expr::ExprNoExt(ExprNoExt::Is {
+                        left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                        entity_type,
+                        in_expr: None,
+                    })),
+                },
+                ExprNoExt::If {
+                    cond_expr,
+                    then_expr,
+                    else_expr,
+                } => Ok(Expr::ExprNoExt(ExprNoExt::If {
+                    cond_expr: Arc::new(
+                        Arc::unwrap_or_clone(cond_expr).sub_entity_literals(mapping)?,
+                    ),
+                    then_expr: Arc::new(
+                        Arc::unwrap_or_clone(then_expr).sub_entity_literals(mapping)?,
+                    ),
+                    else_expr: Arc::new(
+                        Arc::unwrap_or_clone(else_expr).sub_entity_literals(mapping)?,
+                    ),
+                })),
+                ExprNoExt::Set(v) => {
+                    let mut new_v = vec![];
+                    for e in v {
+                        new_v.push(e.sub_entity_literals(mapping)?);
+                    }
+                    Ok(Expr::ExprNoExt(ExprNoExt::Set(new_v)))
+                }
+                ExprNoExt::Record(m) => {
+                    let mut new_m = BTreeMap::new();
+                    for (k, v) in m {
+                        new_m.insert(k, v.sub_entity_literals(mapping)?);
+                    }
+                    Ok(Expr::ExprNoExt(ExprNoExt::Record(new_m)))
+                }
+                #[cfg(feature = "tolerant-ast")]
+                ExprNoExt::Error(_) => Err(JsonDeserializationError::ASTErrorNode),
+            },
+            Expr::ExtFuncCall(e_fn_call) => {
+                let mut new_m = HashMap::new();
+                for (k, v) in e_fn_call.call {
+                    let mut new_v = vec![];
+                    for e in v {
+                        new_v.push(e.sub_entity_literals(mapping)?);
+                    }
+                    new_m.insert(k, new_v);
+                }
+                Ok(Expr::ExtFuncCall(ExtFuncCall { call: new_m }))
+            }
+        }
+    }
+
+    /// Compute the height of this expression tree, defined as the number of
+    /// edges on the longest root-to-leaf path through nested `Expr` and
+    /// `CedarValueJson` nodes.
+    ///
+    /// Leaf nodes (`Var`, `Slot`, etc.) have height 0.
+    /// An empty `Set` or empty `Record` expression also has height 0.
+    ///
+    /// For internal nodes (`Not`, `Eq`, `If`, `Set`, `Record`, etc.)
+    /// with at least one child, the height is 1 + the maximum height among
+    /// all children.
+    ///
+    /// Uses an iterative depth-first traversal rather than recursion.
+    pub fn height(&self) -> usize {
+        // Stack of (node, depth) pairs.
+        // Start with this expression at depth 0.
+        let mut stack: Vec<(&Expr, usize)> = vec![(self, 0)];
+        let mut max_depth: usize = 0;
+
+        while let Some((expr, depth)) = stack.pop() {
+            max_depth = max_depth.max(depth);
+            let child_depth = depth + 1;
+
+            match expr {
+                Expr::ExprNoExt(e) => match e {
+                    ExprNoExt::Value(v) => {
+                        // A literal value may itself be a nested structure
+                        // (e.g., a set of records). Use CedarValueJson::height()
+                        // to account for its internal depth.
+                        let value_height = depth + v.height();
+                        max_depth = max_depth.max(value_height);
+                    }
+                    ExprNoExt::Var(_) | ExprNoExt::Slot(_) => {}
+                    #[cfg(feature = "tolerant-ast")]
+                    ExprNoExt::Error(_) => {}
+                    ExprNoExt::Not { arg }
+                    | ExprNoExt::Neg { arg }
+                    | ExprNoExt::IsEmpty { arg } => {
+                        stack.push((arg, child_depth));
+                    }
+                    ExprNoExt::Eq { left, right }
+                    | ExprNoExt::NotEq { left, right }
+                    | ExprNoExt::In { left, right }
+                    | ExprNoExt::Less { left, right }
+                    | ExprNoExt::LessEq { left, right }
+                    | ExprNoExt::Greater { left, right }
+                    | ExprNoExt::GreaterEq { left, right }
+                    | ExprNoExt::And { left, right }
+                    | ExprNoExt::Or { left, right }
+                    | ExprNoExt::Add { left, right }
+                    | ExprNoExt::Sub { left, right }
+                    | ExprNoExt::Mul { left, right }
+                    | ExprNoExt::Contains { left, right }
+                    | ExprNoExt::ContainsAll { left, right }
+                    | ExprNoExt::ContainsAny { left, right }
+                    | ExprNoExt::GetTag { left, right }
+                    | ExprNoExt::HasTag { left, right } => {
+                        stack.push((left, child_depth));
+                        stack.push((right, child_depth));
+                    }
+                    ExprNoExt::GetAttr { left, .. } => {
+                        stack.push((left, child_depth));
+                    }
+                    ExprNoExt::HasAttr(repr) => match repr {
+                        HasAttrRepr::Simple { left, .. } | HasAttrRepr::Extended { left, .. } => {
+                            // For the `Extended` variant, the attr list is
+                            // flat (a list of strings), not nested sub-expressions,
+                            // so only `left` contributes to EST height.
+                            // Note that the AST desugars this into a
+                            // nested tree of `and`/`hasAttr`/`getAttr`
+                            // nodes, which will result in a deeper tree.
+                            // However, the conversion to the AST uses an iterator + fold.
+                            stack.push((left, child_depth));
+                        }
+                    },
+                    ExprNoExt::Like { left, .. } => {
+                        stack.push((left, child_depth));
+                    }
+                    ExprNoExt::Is { left, in_expr, .. } => {
+                        stack.push((left, child_depth));
+                        if let Some(in_e) = in_expr {
+                            stack.push((in_e, child_depth));
+                        }
+                    }
+                    ExprNoExt::If {
+                        cond_expr,
+                        then_expr,
+                        else_expr,
+                    } => {
+                        stack.push((cond_expr, child_depth));
+                        stack.push((then_expr, child_depth));
+                        stack.push((else_expr, child_depth));
+                    }
+                    ExprNoExt::Set(elements) => {
+                        for el in elements {
+                            stack.push((el, child_depth));
+                        }
+                    }
+                    ExprNoExt::Record(map) => {
+                        for v in map.values() {
+                            stack.push((v, child_depth));
+                        }
+                    }
+                },
+                Expr::ExtFuncCall(ExtFuncCall { call }) => {
+                    for args in call.values() {
+                        for arg in args {
+                            stack.push((arg, child_depth));
+                        }
+                    }
+                }
+            }
+        }
+
+        max_depth
+    }
+}
+
+impl Expr {
+    /// Convert this `est::Expr` into an expression of type `B::Expr` using the builder `B`,
+    /// In the case of an error, returns the builder's own `BuildError`.
+    pub fn try_into_expr<B>(self) -> Result<B::Expr, B::BuildError>
+    where
+        B: ExprBuilder,
+        B::BuildError: From<FromJsonError>,
+    {
+        // This implementation looks a lot like try_into_ast but:
+        // - it doesn't have the policy ID information (could be injected after though)
+        // - it uses the fallible extension call constructor; validation is handled by builder
+        // - it doesn't directly desugars is_in, rather defers to the builder
+        // This implementation is used by PST. Using this for AST would result in a different
+        // behavior than try_into_ast, particularly for the second point which would fail
+        // conversions that are currently non-failing (method call with no arguments).
+        let builder = B::new();
+        match self {
+            Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => {
+                // Through AST expressions to convert to B::Expr
+                let ast_expr: ast::Expr = jsonvalue
+                    .into_expr(&|| JsonDeserializationErrorContext::Policy {
+                        id: ast::PolicyID::from_string(""),
+                    })
+                    .map(ast::Expr::from)
+                    .map_err(|j| B::BuildError::from(j.into()))?;
+                ast_expr.try_into_expr::<B>()
+            }
+            Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(builder.var(var)),
+            Expr::ExprNoExt(ExprNoExt::Slot(slot)) => Ok(builder.slot(slot)),
+            Expr::ExprNoExt(ExprNoExt::Not { arg }) => {
+                Ok(builder.not(Arc::unwrap_or_clone(arg).try_into_expr::<B>()?))
+            }
+            Expr::ExprNoExt(ExprNoExt::Neg { arg }) => {
+                Ok(builder.neg(Arc::unwrap_or_clone(arg).try_into_expr::<B>()?))
+            }
+            Expr::ExprNoExt(ExprNoExt::Eq { left, right }) => Ok(builder.is_eq(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::NotEq { left, right }) => Ok(builder.noteq(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::In { left, right }) => Ok(builder.is_in(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Less { left, right }) => Ok(builder.less(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::LessEq { left, right }) => Ok(builder.lesseq(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Greater { left, right }) => Ok(builder.greater(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::GreaterEq { left, right }) => Ok(builder.greatereq(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::And { left, right }) => Ok(builder.and(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Or { left, right }) => Ok(builder.or(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Add { left, right }) => Ok(builder.add(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Sub { left, right }) => Ok(builder.sub(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Mul { left, right }) => Ok(builder.mul(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Contains { left, right }) => Ok(builder.contains(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::ContainsAll { left, right }) => Ok(builder.contains_all(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::ContainsAny { left, right }) => Ok(builder.contains_any(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::IsEmpty { arg }) => {
+                Ok(builder.is_empty(Arc::unwrap_or_clone(arg).try_into_expr::<B>()?))
+            }
+            Expr::ExprNoExt(ExprNoExt::GetTag { left, right }) => Ok(builder.get_tag(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::HasTag { left, right }) => Ok(builder.has_tag(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr }) => {
+                Ok(builder.get_attr(Arc::unwrap_or_clone(left).try_into_expr::<B>()?, attr))
+            }
+            Expr::ExprNoExt(ExprNoExt::HasAttr(repr)) => match repr {
+                HasAttrRepr::Simple { left, attr } => {
+                    Ok(builder.has_attr(Arc::unwrap_or_clone(left).try_into_expr::<B>()?, attr))
+                }
+                HasAttrRepr::Extended { left, attr } => Ok(builder
+                    .extended_has_attr(Arc::unwrap_or_clone(left).try_into_expr::<B>()?, attr)),
+            },
+            Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => Ok(builder.like(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                ast::Pattern::from(pattern.as_slice()),
+            )),
+            Expr::ExprNoExt(ExprNoExt::Is {
+                left,
+                entity_type,
+                in_expr,
+            }) => {
+                let entity_type_name = ast::EntityType::from_normalized_str(&entity_type)
+                    .map_err(FromJsonError::InvalidEntityType)?;
+                let left_expr = Arc::unwrap_or_clone(left).try_into_expr::<B>()?;
+                match in_expr {
+                    Some(in_expr) => Ok(builder.is_in_entity_type(
+                        left_expr,
+                        entity_type_name,
+                        Arc::unwrap_or_clone(in_expr).try_into_expr::<B>()?,
+                    )),
+                    None => Ok(builder.is_entity_type(left_expr, entity_type_name)),
+                }
+            }
+            Expr::ExprNoExt(ExprNoExt::If {
+                cond_expr,
+                then_expr,
+                else_expr,
+            }) => Ok(builder.ite(
+                Arc::unwrap_or_clone(cond_expr).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(then_expr).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(else_expr).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Set(elements)) => Ok(builder.set(
+                elements
+                    .into_iter()
+                    .map(|el| el.try_into_expr::<B>())
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Record(map)) =>
+            {
+                #[expect(
+                    clippy::expect_used,
+                    reason = "can't have duplicate keys here because the input was already a HashMap"
+                )]
+                Ok(builder
+                    .record(
+                        map.into_iter()
+                            .map(|(k, v)| Ok((k, v.try_into_expr::<B>()?)))
+                            .collect::<Result<Vec<_>, B::BuildError>>()?,
+                    )
+                    .expect("map should not have duplicate keys"))
+            }
+            Expr::ExtFuncCall(e) => {
+                let (fn_name, args) = e.try_into_components()?;
+                let fn_name = Name::from_normalized_str(&fn_name).map_err(|errs| {
+                    JsonDeserializationError::parse_escape(EscapeKind::Extension, fn_name, errs)
+                        .into()
+                })?;
+                // unlike into_ast, some validation is handled by calling the fallible version
+                // of the extension call builder
+                builder.call_extension_fn(
+                    fn_name,
+                    args.into_iter()
+                        .map(|arg| arg.try_into_expr::<B>())
+                        .collect::<Result<Vec<_>, _>>()?,
+                )
+            }
+            #[cfg(feature = "tolerant-ast")]
+            Expr::ExprNoExt(ExprNoExt::Error(_)) => Err(FromJsonError::ASTErrorNode.into()),
+        }
+    }
+
+    /// Attempt to convert this `est::Expr` into an `ast::Expr`
+    ///
+    /// `id`: the ID of the policy this `Expr` belongs to, used only for reporting errors
+    pub fn try_into_ast(self, id: &ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+        match self {
+            Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => jsonvalue
+                .into_expr(&|| JsonDeserializationErrorContext::Policy { id: id.clone() })
+                .map(Into::into)
+                .map_err(Into::into),
+            Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(ast::Expr::var(var)),
+            Expr::ExprNoExt(ExprNoExt::Slot(slot)) => Ok(ast::Expr::slot(slot)),
+            Expr::ExprNoExt(ExprNoExt::Not { arg }) => {
+                Ok(ast::Expr::not(Arc::unwrap_or_clone(arg).try_into_ast(id)?))
+            }
+            Expr::ExprNoExt(ExprNoExt::Neg { arg }) => {
+                Ok(ast::Expr::neg(Arc::unwrap_or_clone(arg).try_into_ast(id)?))
+            }
+            Expr::ExprNoExt(ExprNoExt::Eq { left, right }) => Ok(ast::Expr::is_eq(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::NotEq { left, right }) => Ok(ast::Expr::noteq(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::In { left, right }) => Ok(ast::Expr::is_in(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Less { left, right }) => Ok(ast::Expr::less(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::LessEq { left, right }) => Ok(ast::Expr::lesseq(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Greater { left, right }) => Ok(ast::Expr::greater(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::GreaterEq { left, right }) => Ok(ast::Expr::greatereq(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::And { left, right }) => Ok(ast::Expr::and(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Or { left, right }) => Ok(ast::Expr::or(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Add { left, right }) => Ok(ast::Expr::add(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Sub { left, right }) => Ok(ast::Expr::sub(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Mul { left, right }) => Ok(ast::Expr::mul(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Contains { left, right }) => Ok(ast::Expr::contains(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::ContainsAll { left, right }) => Ok(ast::Expr::contains_all(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::ContainsAny { left, right }) => Ok(ast::Expr::contains_any(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::IsEmpty { arg }) => Ok(ast::Expr::is_empty(
+                Arc::unwrap_or_clone(arg).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::GetTag { left, right }) => Ok(ast::Expr::get_tag(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::HasTag { left, right }) => Ok(ast::Expr::has_tag(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr }) => Ok(ast::Expr::get_attr(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                attr,
+            )),
+            Expr::ExprNoExt(ExprNoExt::HasAttr(repr)) => match repr {
+                HasAttrRepr::Simple { left, attr } => Ok(ast::Expr::has_attr(
+                    Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                    attr,
+                )),
+                HasAttrRepr::Extended { left, attr } => Ok(ast::ExprBuilder::new()
+                    .extended_has_attr(Arc::unwrap_or_clone(left).try_into_ast(id)?, attr)),
+            },
+            Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => Ok(ast::Expr::like(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                crate::ast::Pattern::from(pattern.as_slice()),
+            )),
+            Expr::ExprNoExt(ExprNoExt::Is {
+                left,
+                entity_type,
+                in_expr,
+            }) => ast::EntityType::from_normalized_str(entity_type.as_str())
+                .map_err(FromJsonError::InvalidEntityType)
+                .and_then(|entity_type_name| {
+                    let left: ast::Expr = Arc::unwrap_or_clone(left).try_into_ast(id)?;
+                    match in_expr {
+                        Some(in_expr) => Ok(ast::ExprBuilder::new().is_in_entity_type(
+                            left,
+                            entity_type_name,
+                            Arc::unwrap_or_clone(in_expr).try_into_ast(id)?,
+                        )),
+                        None => Ok(ast::ExprBuilder::new().is_entity_type(left, entity_type_name)),
+                    }
+                }),
+            Expr::ExprNoExt(ExprNoExt::If {
+                cond_expr,
+                then_expr,
+                else_expr,
+            }) => Ok(ast::Expr::ite(
+                Arc::unwrap_or_clone(cond_expr).try_into_ast(id)?,
+                Arc::unwrap_or_clone(then_expr).try_into_ast(id)?,
+                Arc::unwrap_or_clone(else_expr).try_into_ast(id)?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Set(elements)) => Ok(ast::Expr::set(
+                elements
+                    .into_iter()
+                    .map(|el| el.try_into_ast(id))
+                    .collect::<Result<Vec<_>, FromJsonError>>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Record(map)) =>
+            {
+                #[expect(
+                    clippy::expect_used,
+                    reason = "can't have duplicate keys here because the input was already a HashMap"
+                )]
+                Ok(ast::Expr::record(
+                    map.into_iter()
+                        .map(|(k, v)| Ok((k, v.try_into_ast(id)?)))
+                        .collect::<Result<HashMap<SmolStr, _>, FromJsonError>>()?,
+                )
+                .expect("can't have duplicate keys here because the input was already a HashMap"))
+            }
+            Expr::ExtFuncCall(e) => {
+                let (fn_name, args) = e.try_into_components()?;
+                let fn_name = Name::from_normalized_str(&fn_name).map_err(|errs| {
+                    JsonDeserializationError::parse_escape(EscapeKind::Extension, fn_name, errs)
+                })?;
+                if ExtStyles::is_known_extension_func_name(&fn_name) {
+                    Ok(ast::Expr::call_extension_fn(
+                        fn_name,
+                        args.into_iter()
+                            .map(|arg| arg.try_into_ast(id))
+                            .collect::<Result<_, _>>()?,
+                    ))
+                } else {
+                    Err(FromJsonError::UnknownExtensionFunction(fn_name))
+                }
+            }
+            #[cfg(feature = "tolerant-ast")]
+            Expr::ExprNoExt(ExprNoExt::Error(_)) => Err(FromJsonError::ASTErrorNode),
+        }
+    }
+}
+
+impl From<ast::Literal> for Expr {
+    fn from(lit: ast::Literal) -> Expr {
+        Builder::new().val(lit)
+    }
+}
+
+impl From<ast::Var> for Expr {
+    fn from(var: ast::Var) -> Expr {
+        Builder::new().var(var)
+    }
+}
+
+impl From<ast::SlotId> for Expr {
+    fn from(slot: ast::SlotId) -> Expr {
+        Builder::new().slot(slot)
+    }
+}
+
+impl TryFrom<&Node<Option<cst::Expr>>> for Expr {
+    type Error = ParseErrors;
+    fn try_from(e: &Node<Option<cst::Expr>>) -> Result<Expr, ParseErrors> {
+        e.to_expr::<Builder>()
+    }
+}
+
+impl std::fmt::Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ExprNoExt(e) => write!(f, "{e}"),
+            Self::ExtFuncCall(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl BoundedDisplay for Expr {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
+        match self {
+            Self::ExprNoExt(e) => BoundedDisplay::fmt(e, f, n),
+            Self::ExtFuncCall(e) => BoundedDisplay::fmt(e, f, n),
+        }
+    }
+}
+
+fn display_cedarvaluejson(
+    f: &mut impl std::fmt::Write,
+    v: &CedarValueJson,
+    n: Option<usize>,
+) -> std::fmt::Result {
+    match v {
+        // Add parentheses around negative numeric literals otherwise
+        // round-tripping fuzzer fails for expressions like `(-1)["a"]`.
+        CedarValueJson::Long(i) if *i < 0 => write!(f, "({i})"),
+        CedarValueJson::Long(i) => write!(f, "{i}"),
+        CedarValueJson::Bool(b) => write!(f, "{b}"),
+        CedarValueJson::String(s) => write!(f, "\"{}\"", s.escape_debug()),
+        CedarValueJson::EntityEscape { __entity } => {
+            match ast::EntityUID::try_from(__entity.clone()) {
+                Ok(euid) => write!(f, "{euid}"),
+                Err(e) => write!(f, "(invalid entity uid: {e})"),
+            }
+        }
+        CedarValueJson::ExprEscape { __expr } => write!(f, "({__expr})"),
+        CedarValueJson::ExtnEscape {
+            __extn: FnAndArgs::Single { ext_fn, arg },
+        } => {
+            // search for the name and callstyle
+            let style = Extensions::all_available().all_funcs().find_map(|f| {
+                if &f.name().to_smolstr() == ext_fn {
+                    Some(f.style())
+                } else {
+                    None
+                }
+            });
+            match style {
+                Some(ast::CallStyle::MethodStyle) => {
+                    display_cedarvaluejson(f, arg, n)?;
+                    write!(f, ".{ext_fn}()")?;
+                    Ok(())
+                }
+                Some(ast::CallStyle::FunctionStyle) | None => {
+                    write!(f, "{ext_fn}(")?;
+                    display_cedarvaluejson(f, arg, n)?;
+                    write!(f, ")")?;
+                    Ok(())
+                }
+            }
+        }
+        CedarValueJson::ExtnEscape {
+            __extn: FnAndArgs::Multi { ext_fn, args },
+        } => {
+            // search for the name and callstyle
+            let style = Extensions::all_available().all_funcs().find_map(|f| {
+                if &f.name().to_smolstr() == ext_fn {
+                    Some(f.style())
+                } else {
+                    None
+                }
+            });
+            match style {
+                Some(ast::CallStyle::MethodStyle) => {
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "method-style calls must have more than one argument"
+                    )]
+                    display_cedarvaluejson(f, &args[0], n)?;
+                    write!(f, ".{ext_fn}(")?;
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "method-style calls must have more than one argument"
+                    )]
+                    match &args[1..] {
+                        [] => {}
+                        [args @ .., last] => {
+                            for arg in args {
+                                display_cedarvaluejson(f, arg, n)?;
+                                write!(f, ", ")?;
+                            }
+                            display_cedarvaluejson(f, last, n)?;
+                        }
+                    }
+                    write!(f, ")")?;
+                    Ok(())
+                }
+                Some(ast::CallStyle::FunctionStyle) | None => {
+                    write!(f, "{ext_fn}(")?;
+                    match &args[..] {
+                        [] => {}
+                        [args @ .., last] => {
+                            for arg in args {
+                                display_cedarvaluejson(f, arg, n)?;
+                                write!(f, ", ")?;
+                            }
+                            display_cedarvaluejson(f, last, n)?;
+                        }
+                    }
+                    write!(f, ")")?;
+                    Ok(())
+                }
+            }
+        }
+        CedarValueJson::Set(v) => {
+            match n {
+                Some(n) if v.len() > n => {
+                    // truncate to n elements
+                    write!(f, "[")?;
+                    for val in v.iter().take(n) {
+                        display_cedarvaluejson(f, val, Some(n))?;
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "..]")?;
+                    Ok(())
+                }
+                _ => {
+                    // no truncation
+                    write!(f, "[")?;
+                    for (i, val) in v.iter().enumerate() {
+                        display_cedarvaluejson(f, val, n)?;
+                        if i < v.len() - 1 {
+                            write!(f, ", ")?;
+                        }
+                    }
+                    write!(f, "]")?;
+                    Ok(())
+                }
+            }
+        }
+        CedarValueJson::Record(r) => {
+            match n {
+                Some(n) if r.len() > n => {
+                    // truncate to n key-value pairs
+                    write!(f, "{{")?;
+                    for (k, v) in r.iter().take(n) {
+                        write!(f, "\"{}\": ", k.escape_debug())?;
+                        display_cedarvaluejson(f, v, Some(n))?;
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "..}}")?;
+                    Ok(())
+                }
+                _ => {
+                    // no truncation
+                    write!(f, "{{")?;
+                    for (i, (k, v)) in r.iter().enumerate() {
+                        write!(f, "\"{}\": ", k.escape_debug())?;
+                        display_cedarvaluejson(f, v, n)?;
+                        if i < r.len() - 1 {
+                            write!(f, ", ")?;
+                        }
+                    }
+                    write!(f, "}}")?;
+                    Ok(())
+                }
+            }
+        }
+        CedarValueJson::Null => {
+            write!(f, "null")?;
+            Ok(())
+        }
+    }
+}
+
+impl std::fmt::Display for ExprNoExt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        BoundedDisplay::fmt_unbounded(self, f)
+    }
+}
+
+impl BoundedDisplay for ExprNoExt {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
+        match &self {
+            ExprNoExt::Value(v) => display_cedarvaluejson(f, v, n),
+            ExprNoExt::Var(v) => write!(f, "{v}"),
+            ExprNoExt::Slot(id) => write!(f, "{id}"),
+            ExprNoExt::Not { arg } => {
+                write!(f, "!")?;
+                maybe_with_parens(f, arg, n)
+            }
+            ExprNoExt::Neg { arg } => {
+                // Always add parentheses instead of calling
+                // `maybe_with_parens`.
+                // This makes sure that we always get a negation operation back
+                // (as opposed to e.g., a negative number) when parsing the
+                // printed form, thus preserving the round-tripping property.
+                write!(f, "-({arg})")
+            }
+            ExprNoExt::Eq { left, right } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, " == ")?;
+                maybe_with_parens(f, right, n)
+            }
+            ExprNoExt::NotEq { left, right } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, " != ")?;
+                maybe_with_parens(f, right, n)
+            }
+            ExprNoExt::In { left, right } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, " in ")?;
+                maybe_with_parens(f, right, n)
+            }
+            ExprNoExt::Less { left, right } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, " < ")?;
+                maybe_with_parens(f, right, n)
+            }
+            ExprNoExt::LessEq { left, right } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, " <= ")?;
+                maybe_with_parens(f, right, n)
+            }
+            ExprNoExt::Greater { left, right } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, " > ")?;
+                maybe_with_parens(f, right, n)
+            }
+            ExprNoExt::GreaterEq { left, right } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, " >= ")?;
+                maybe_with_parens(f, right, n)
+            }
+            ExprNoExt::And { left, right } => {
+                // Left-associative, so we can omit parens on left operand if it's another `&&`
+                if matches!(left.as_ref(), Expr::ExprNoExt(ExprNoExt::And { .. })) {
+                    BoundedDisplay::fmt(left.as_ref(), f, n)
+                } else {
+                    maybe_with_parens(f, left, n)
+                }?;
+                write!(f, " && ")?;
+                maybe_with_parens(f, right, n)
+            }
+            ExprNoExt::Or { left, right } => {
+                // Left-associative, so we can omit parens on left operand if it's another `||`
+                if matches!(left.as_ref(), Expr::ExprNoExt(ExprNoExt::Or { .. })) {
+                    BoundedDisplay::fmt(left.as_ref(), f, n)
+                } else {
+                    maybe_with_parens(f, left, n)
+                }?;
+                write!(f, " || ")?;
+                maybe_with_parens(f, right, n)
+            }
+            ExprNoExt::Add { left, right } => {
+                // Left-associative, so we can omit parens on left operand if it's another `+`
+                if matches!(left.as_ref(), Expr::ExprNoExt(ExprNoExt::Add { .. })) {
+                    BoundedDisplay::fmt(left.as_ref(), f, n)
+                } else {
+                    maybe_with_parens(f, left, n)
+                }?;
+                write!(f, " + ")?;
+                maybe_with_parens(f, right, n)
+            }
+            ExprNoExt::Sub { left, right } => {
+                // Left-associative, so we can omit parens on left operand if it's another `-`
+                if matches!(left.as_ref(), Expr::ExprNoExt(ExprNoExt::Sub { .. })) {
+                    BoundedDisplay::fmt(left.as_ref(), f, n)
+                } else {
+                    maybe_with_parens(f, left, n)
+                }?;
+                write!(f, " - ")?;
+                maybe_with_parens(f, right, n)
+            }
+            ExprNoExt::Mul { left, right } => {
+                // Left-associative, so we can omit parens on left operand if it's another `*`
+                if matches!(left.as_ref(), Expr::ExprNoExt(ExprNoExt::Mul { .. })) {
+                    BoundedDisplay::fmt(left.as_ref(), f, n)
+                } else {
+                    maybe_with_parens(f, left, n)
+                }?;
+                write!(f, " * ")?;
+                maybe_with_parens(f, right, n)
+            }
+            ExprNoExt::Contains { left, right } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, ".contains({right})")
+            }
+            ExprNoExt::ContainsAll { left, right } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, ".containsAll({right})")
+            }
+            ExprNoExt::ContainsAny { left, right } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, ".containsAny({right})")
+            }
+            ExprNoExt::IsEmpty { arg } => {
+                maybe_with_parens(f, arg, n)?;
+                write!(f, ".isEmpty()")
+            }
+            ExprNoExt::GetTag { left, right } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, ".getTag({right})")
+            }
+            ExprNoExt::HasTag { left, right } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, ".hasTag({right})")
+            }
+            ExprNoExt::GetAttr { left, attr } => {
+                maybe_with_parens(f, left, n)?;
+                if is_normalized_ident(attr) {
+                    write!(f, ".{}", attr)
+                } else {
+                    write!(f, "[\"{}\"]", attr.escape_debug())
+                }
+            }
+            ExprNoExt::HasAttr(repr) => match repr {
+                HasAttrRepr::Simple { left, attr } => {
+                    maybe_with_parens(f, left, n)?;
+                    if is_normalized_ident(attr) {
+                        write!(f, " has {}", attr)
+                    } else {
+                        write!(f, " has \"{}\"", attr.escape_debug())
+                    }
+                }
+                HasAttrRepr::Extended { left, attr } => {
+                    maybe_with_parens(f, left, n)?;
+                    if is_normalized_ident(&attr.head) {
+                        write!(f, " has {}", attr.head)?;
+                    } else {
+                        write!(f, " has \"{}\"", attr.head.escape_debug())?;
+                    }
+                    for attr in attr.tail.iter() {
+                        // TODO: validation, we shouldn't have non-idents here because
+                        // `principal has "foo".bar` doesn't parse
+                        if is_normalized_ident(attr) {
+                            write!(f, ".{}", attr)?;
+                        } else {
+                            write!(f, ".\"{}\"", attr.escape_debug())?;
+                        }
+                    }
+                    Ok(())
+                }
+            },
+            ExprNoExt::Like { left, pattern } => {
+                maybe_with_parens(f, left, n)?;
+                write!(
+                    f,
+                    " like \"{}\"",
+                    crate::ast::Pattern::from(pattern.as_slice())
+                )
+            }
+            ExprNoExt::Is {
+                left,
+                entity_type,
+                in_expr,
+            } => {
+                maybe_with_parens(f, left, n)?;
+                write!(f, " is {entity_type}")?;
+                match in_expr {
+                    Some(in_expr) => {
+                        write!(f, " in ")?;
+                        maybe_with_parens(f, in_expr, n)
+                    }
+                    None => Ok(()),
+                }
+            }
+            ExprNoExt::If {
+                cond_expr,
+                then_expr,
+                else_expr,
+            } => {
+                // All three operands are `Expr` in the grammar, so they never need parens
+                write!(f, "if ")?;
+                BoundedDisplay::fmt(cond_expr.as_ref(), f, n)?;
+                write!(f, " then ")?;
+                BoundedDisplay::fmt(then_expr.as_ref(), f, n)?;
+                write!(f, " else ")?;
+                BoundedDisplay::fmt(else_expr.as_ref(), f, n)
+            }
+            ExprNoExt::Set(v) => {
+                match n {
+                    Some(n) if v.len() > n => {
+                        // truncate to n elements
+                        write!(f, "[")?;
+                        for element in v.iter().take(n) {
+                            BoundedDisplay::fmt(element, f, Some(n))?;
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "..]")?;
+                        Ok(())
+                    }
+                    _ => {
+                        // no truncation
+                        write!(f, "[")?;
+                        for (i, element) in v.iter().enumerate() {
+                            BoundedDisplay::fmt(element, f, n)?;
+                            if i < v.len() - 1 {
+                                write!(f, ", ")?;
+                            }
+                        }
+                        write!(f, "]")?;
+                        Ok(())
+                    }
+                }
+            }
+            ExprNoExt::Record(m) => {
+                match n {
+                    Some(n) if m.len() > n => {
+                        // truncate to n key-value pairs
+                        write!(f, "{{")?;
+                        for (k, v) in m.iter().take(n) {
+                            if is_normalized_ident(k) {
+                                write!(f, "{k}: ")?;
+                            } else {
+                                write!(f, "\"{}\": ", k.escape_debug())?;
+                            }
+                            BoundedDisplay::fmt(v, f, Some(n))?;
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "..}}")?;
+                        Ok(())
+                    }
+                    _ => {
+                        // no truncation
+                        write!(f, "{{")?;
+                        for (i, (k, v)) in m.iter().enumerate() {
+                            if is_normalized_ident(k) {
+                                write!(f, "{k}: ")?;
+                            } else {
+                                write!(f, "\"{}\": ", k.escape_debug())?;
+                            }
+                            BoundedDisplay::fmt(v, f, n)?;
+                            if i < m.len() - 1 {
+                                write!(f, ", ")?;
+                            }
+                        }
+                        write!(f, "}}")?;
+                        Ok(())
+                    }
+                }
+            }
+            #[cfg(feature = "tolerant-ast")]
+            ExprNoExt::Error(e) => {
+                write!(f, "{e}")?;
+                Ok(())
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for ExtFuncCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        BoundedDisplay::fmt_unbounded(self, f)
+    }
+}
+
+impl BoundedDisplay for ExtFuncCall {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
+        #[expect(clippy::unwrap_used, reason = "safe due to INVARIANT on `ExtFuncCall`")]
+        let (fn_name, args) = self.try_components().unwrap();
+        // search for the name and callstyle
+        let style = Extensions::all_available().all_funcs().find_map(|ext_fn| {
+            if &ext_fn.name().to_smolstr() == fn_name {
+                Some(ext_fn.style())
+            } else {
+                None
+            }
+        });
+        match (style, args) {
+            (Some(ast::CallStyle::MethodStyle), [receiver, rest @ ..]) => {
+                maybe_with_parens(f, receiver, n)?;
+                write!(f, ".{}({})", fn_name, rest.iter().join(", "))
+            }
+            (_, _) => {
+                write!(f, "{}({})", fn_name, args.iter().join(", "))
+            }
+        }
+    }
+}
+
+/// returns the `BoundedDisplay` representation of the Expr, adding parens around
+/// the entire string if necessary.
+/// E.g., won't add parens for constants or `principal` etc, but will for things
+/// like `(2 < 5)`.
+/// When in doubt, add the parens.
+fn maybe_with_parens(
+    f: &mut impl std::fmt::Write,
+    expr: &Expr,
+    n: Option<usize>,
+) -> std::fmt::Result {
+    match expr {
+        Expr::ExprNoExt(ExprNoExt::Set(_)) |
+        Expr::ExprNoExt(ExprNoExt::Record(_)) |
+        Expr::ExprNoExt(ExprNoExt::Value(_)) |
+        Expr::ExprNoExt(ExprNoExt::Var(_)) |
+        Expr::ExprNoExt(ExprNoExt::Slot(_)) |
+        // Everything below prints at the grammar's `Member := Primary MemAccess*`
+        // which has the tightest associativity.
+        Expr::ExprNoExt(ExprNoExt::GetAttr { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Contains { .. }) |
+        Expr::ExprNoExt(ExprNoExt::ContainsAll { .. }) |
+        Expr::ExprNoExt(ExprNoExt::ContainsAny { .. }) |
+        Expr::ExprNoExt(ExprNoExt::IsEmpty { .. }) |
+        Expr::ExprNoExt(ExprNoExt::GetTag { .. }) |
+        Expr::ExprNoExt(ExprNoExt::HasTag { .. }) |
+        Expr::ExtFuncCall { .. } => BoundedDisplay::fmt(expr, f, n),
+
+        // we want parens here because things like parse((!x).y)
+        // would be printed into !x.y which has a different meaning
+        Expr::ExprNoExt(ExprNoExt::Not { .. }) |
+        // we want parens here because things like parse((-x).y)
+        // would be printed into -x.y which has a different meaning
+        Expr::ExprNoExt(ExprNoExt::Neg { .. })  |
+        Expr::ExprNoExt(ExprNoExt::Eq { .. }) |
+        Expr::ExprNoExt(ExprNoExt::NotEq { .. }) |
+        Expr::ExprNoExt(ExprNoExt::In { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Less { .. }) |
+        Expr::ExprNoExt(ExprNoExt::LessEq { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Greater { .. }) |
+        Expr::ExprNoExt(ExprNoExt::GreaterEq { .. }) |
+        Expr::ExprNoExt(ExprNoExt::And { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Or { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Add { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Sub { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Mul { .. }) |
+        Expr::ExprNoExt(ExprNoExt::HasAttr { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Like { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Is { .. }) |
+        Expr::ExprNoExt(ExprNoExt::If { .. }) => {
+            write!(f, "(")?;
+            BoundedDisplay::fmt(expr, f, n)?;
+            write!(f, ")")?;
+            Ok(())
+        },
+        #[cfg(feature = "tolerant-ast")]
+        Expr::ExprNoExt(ExprNoExt::Error { .. }) => {
+            write!(f, "(")?;
+            BoundedDisplay::fmt(expr, f, n)?;
+            write!(f, ")")?;
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::indexing_slicing, reason = "this is unit test code")]
+#[expect(clippy::panic, reason = "Unit Test Code")]
+mod test {
+    use crate::parser::{
+        err::{ParseError, ToASTErrorKind},
+        parse_expr,
+    };
+
+    use super::*;
+    use ast::BoundedToString;
+    use cool_asserts::assert_matches;
+
+    #[test]
+    fn test_invalid_expr_from_cst_name() {
+        let e = crate::parser::text_to_cst::parse_expr("some_long_str::else").unwrap();
+        assert_matches!(Expr::try_from(&e), Err(e) => {
+            assert!(e.len() == 1);
+            assert_matches!(&e[0],
+                ParseError::ToAST(to_ast_error) => {
+                    assert_matches!(to_ast_error.kind(), ToASTErrorKind::ReservedIdentifier(s) => {
+                        assert_eq!(s.to_string(), "else");
+                    });
+                }
+            );
+        });
+    }
+
+    #[test]
+    fn display_and_bounded_display() {
+        let expr = parse_expr(r#"[100, [3, 4, 5], -20, "foo"]"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"[100, [3, 4, 5], (-20), "foo"]"#);
+        assert_eq!(
+            BoundedToString::to_string(&expr, None),
+            r#"[100, [3, 4, 5], (-20), "foo"]"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(4)),
+            r#"[100, [3, 4, 5], (-20), "foo"]"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(3)),
+            r#"[100, [3, 4, 5], (-20), ..]"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(2)),
+            r#"[100, [3, 4, ..], ..]"#
+        );
+        assert_eq!(BoundedToString::to_string(&expr, Some(1)), r#"[100, ..]"#);
+        assert_eq!(BoundedToString::to_string(&expr, Some(0)), r#"[..]"#);
+
+        let expr = parse_expr(
+            r#"{
+            a: 12,
+            b: [3, 4, true],
+            c: -20,
+            "hello ∞ world": "∂µß≈¥"
+        }"#,
+        )
+        .unwrap()
+        .into_expr::<Builder>();
+        assert_eq!(
+            format!("{expr}"),
+            r#"{a: 12, b: [3, 4, true], c: (-20), "hello ∞ world": "∂µß≈¥"}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, None),
+            r#"{a: 12, b: [3, 4, true], c: (-20), "hello ∞ world": "∂µß≈¥"}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(4)),
+            r#"{a: 12, b: [3, 4, true], c: (-20), "hello ∞ world": "∂µß≈¥"}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(3)),
+            r#"{a: 12, b: [3, 4, true], c: (-20), ..}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(2)),
+            r#"{a: 12, b: [3, 4, ..], ..}"#
+        );
+        assert_eq!(BoundedToString::to_string(&expr, Some(1)), r#"{a: 12, ..}"#);
+        assert_eq!(BoundedToString::to_string(&expr, Some(0)), r#"{..}"#);
+    }
+
+    #[test]
+    fn display_get_attr() {
+        // Ensuring we prefer printing Expr::GetAttr in . notation if the attribute contains valid identifiers.
+        let expr = parse_expr(r#"context.foo"#).unwrap().into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context.foo"#);
+
+        let expr = parse_expr(r#"context["foo"]"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context.foo"#);
+
+        // Ensure we escape the identifier if it contains whitespaces.
+        let expr = parse_expr(r#"context["foo "]"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context["foo "]"#);
+
+        let expr = parse_expr(r#"context["foo-baz"]"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context["foo-baz"]"#);
+
+        let expr = parse_expr(r#"context["true"]"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context["true"]"#);
+
+        // Similarly for Expr::HasAttr
+        let expr = parse_expr(r#"context has foo"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context has foo"#);
+
+        let expr = parse_expr(r#"context has "foo""#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context has foo"#);
+
+        let expr = parse_expr(r#"context has "foo-baz""#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context has "foo-baz""#);
+
+        let expr = parse_expr(r#"if context has "if" then false else true"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(
+            format!("{expr}"),
+            r#"if context has "if" then false else true"#
+        );
+
+        let expr = parse_expr(r#"context has "has""#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context has "has""#);
+
+        let expr = parse_expr(r#"if context has "foo-baz" then false else true"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(
+            format!("{expr}"),
+            r#"if context has "foo-baz" then false else true"#
+        );
+    }
+
+    #[test]
+    fn has_attr_serde() {
+        use nonempty::nonempty;
+        let test_cases = vec![
+            // Has can have a single string argument.
+            (
+                Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
+                    left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+                    attr: "department".into(),
+                })),
+                serde_json::json!({"has": {"left": {"Var": "principal"}, "attr": "department"}}),
+            ),
+            // Has can have a singleton list as argument
+            (
+                Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+                    left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+                    attr: nonempty!["user".into()],
+                })),
+                serde_json::json!({"has": {"left": {"Var": "context"}, "attr": ["user"]}}),
+            ),
+            // Has can have a list of strings as argument
+            (
+                Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+                    left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+                    attr: nonempty!["user".into(), "profile".into(), "email".into()],
+                })),
+                serde_json::json!({"has": {"left": {"Var": "context"}, "attr": ["user", "profile", "email"]}}),
+            ),
+        ];
+        for (expr, json_repr) in test_cases {
+            // Serialize = json_repr
+            assert_eq!(serde_json::to_value(&expr).unwrap(), json_repr);
+            // expr = Deserialize
+            assert_eq!(expr, serde_json::from_value(json_repr).unwrap());
+        }
+    }
+
+    #[test]
+    fn deserialize_has_attr_empty_errors() {
+        let json = serde_json::json!({"has": {"left": {"Var": "context"}, "attr": []}});
+        let expr_result: Result<Expr, _> = serde_json::from_value(json);
+        assert!(expr_result.is_err())
+    }
+
+    #[test]
+    fn extended_has_display() {
+        // Other display functions are tested from the ast, but we can't curretly do that for the
+        // extended has operator
+        use nonempty::nonempty;
+
+        // Simple has
+        let expr = Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+            attr: "department".into(),
+        }));
+        assert_eq!(format!("{expr}"), "principal has department");
+
+        // Extended has with single attribute
+        let expr = Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+            attr: nonempty!["user".into()],
+        }));
+        assert_eq!(format!("{expr}"), "context has user");
+
+        // Extended has with multiple attributes
+        let expr = Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+            attr: nonempty!["user".into(), "profile".into(), "email".into()],
+        }));
+        assert_eq!(format!("{expr}"), "context has user.profile.email");
+    }
+
+    #[test]
+    fn height_leaf() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1)));
+        assert_eq!(expr.height(), 0);
+        let expr = Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal));
+        assert_eq!(expr.height(), 0);
+    }
+
+    #[test]
+    fn height_unary() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Not {
+            arg: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_binary() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Eq {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1)))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(2)))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_nested() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Not {
+            arg: Arc::new(Expr::ExprNoExt(ExprNoExt::Not {
+                arg: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+            })),
+        });
+        assert_eq!(expr.height(), 2);
+    }
+
+    #[test]
+    fn height_asymmetric() {
+        let deep_left = Expr::ExprNoExt(ExprNoExt::Not {
+            arg: Arc::new(Expr::ExprNoExt(ExprNoExt::Not {
+                arg: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1)))),
+            })),
+        });
+        let expr = Expr::ExprNoExt(ExprNoExt::Eq {
+            left: Arc::new(deep_left),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(2)))),
+        });
+        assert_eq!(expr.height(), 3);
+    }
+
+    #[test]
+    fn height_if_then_else() {
+        let expr = Expr::ExprNoExt(ExprNoExt::If {
+            cond_expr: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Bool(
+                true,
+            )))),
+            then_expr: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1)))),
+            else_expr: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(2)))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_set() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Set(vec![
+            Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1))),
+            Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(2))),
+        ]));
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_empty_set() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Set(vec![]));
+        assert_eq!(expr.height(), 0);
+    }
+
+    #[test]
+    fn height_record() {
+        let mut map = BTreeMap::new();
+        map.insert(
+            "a".into(),
+            Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1))),
+        );
+        let expr = Expr::ExprNoExt(ExprNoExt::Record(map));
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_neg() {
+        // Simple negation of a leaf has height 1
+        let expr = Expr::ExprNoExt(ExprNoExt::Neg {
+            arg: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(5)))),
+        });
+        assert_eq!(expr.height(), 1);
+
+        // Nested negation has height 2
+        let expr = Expr::ExprNoExt(ExprNoExt::Neg {
+            arg: Arc::new(Expr::ExprNoExt(ExprNoExt::Neg {
+                arg: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(5)))),
+            })),
+        });
+        assert_eq!(expr.height(), 2);
+    }
+
+    #[test]
+    fn height_not_eq() {
+        let expr = Expr::ExprNoExt(ExprNoExt::NotEq {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1)))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(2)))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_in() {
+        let expr = Expr::ExprNoExt(ExprNoExt::In {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Resource))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_less() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Less {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1)))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(2)))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_less_eq() {
+        let expr = Expr::ExprNoExt(ExprNoExt::LessEq {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1)))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(2)))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_greater() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Greater {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(2)))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1)))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_greater_eq() {
+        let expr = Expr::ExprNoExt(ExprNoExt::GreaterEq {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(2)))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1)))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_and() {
+        let expr = Expr::ExprNoExt(ExprNoExt::And {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Bool(
+                true,
+            )))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Bool(
+                false,
+            )))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_or() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Or {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Bool(
+                true,
+            )))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Bool(
+                false,
+            )))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_add() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Add {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1)))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(2)))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_sub() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Sub {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(3)))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1)))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_mul() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Mul {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(2)))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(3)))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_contains() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Contains {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Set(vec![Expr::ExprNoExt(
+                ExprNoExt::Value(CedarValueJson::Long(1)),
+            )]))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(1)))),
+        });
+        assert_eq!(expr.height(), 2);
+    }
+
+    #[test]
+    fn height_contains_all() {
+        let expr = Expr::ExprNoExt(ExprNoExt::ContainsAll {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Set(vec![]))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_contains_any() {
+        let expr = Expr::ExprNoExt(ExprNoExt::ContainsAny {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Set(vec![]))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_get_tag() {
+        let expr = Expr::ExprNoExt(ExprNoExt::GetTag {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::String(
+                "tag_name".into(),
+            )))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_has_tag() {
+        let expr = Expr::ExprNoExt(ExprNoExt::HasTag {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+            right: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::String(
+                "tag_name".into(),
+            )))),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_get_attr() {
+        let expr = Expr::ExprNoExt(ExprNoExt::GetAttr {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+            attr: "foo".into(),
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_has_attr() {
+        // Simple HasAttr
+        let expr = Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+            attr: "foo".into(),
+        }));
+        assert_eq!(expr.height(), 1);
+
+        // Extended HasAttr
+        use nonempty::nonempty;
+        let expr = Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+            attr: nonempty!["user".into(), "profile".into()],
+        }));
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_like() {
+        let expr = Expr::ExprNoExt(ExprNoExt::Like {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+            pattern: vec![PatternElem::Wildcard],
+        });
+        assert_eq!(expr.height(), 1);
+    }
+
+    #[test]
+    fn height_is() {
+        // Is without in_expr
+        let expr = Expr::ExprNoExt(ExprNoExt::Is {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+            entity_type: "User".into(),
+            in_expr: None,
+        });
+        assert_eq!(expr.height(), 1);
+
+        // Is with in_expr
+        let expr = Expr::ExprNoExt(ExprNoExt::Is {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+            entity_type: "User".into(),
+            in_expr: Some(Arc::new(Expr::ExprNoExt(ExprNoExt::Var(
+                ast::Var::Resource,
+            )))),
+        });
+        assert_eq!(expr.height(), 1);
+
+        // Is with deeper in_expr
+        let expr = Expr::ExprNoExt(ExprNoExt::Is {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+            entity_type: "User".into(),
+            in_expr: Some(Arc::new(Expr::ExprNoExt(ExprNoExt::Not {
+                arg: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Resource))),
+            }))),
+        });
+        assert_eq!(expr.height(), 2);
+    }
+
+    #[test]
+    fn height_ext_func_call() {
+        // ExtFuncCall with a leaf argument has height 1
+        let expr = Expr::ExtFuncCall(ExtFuncCall {
+            call: HashMap::from([(
+                "ip".to_smolstr(),
+                vec![Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::String(
+                    "127.0.0.1".into(),
+                )))],
+            )]),
+        });
+        assert_eq!(expr.height(), 1);
+
+        // ExtFuncCall with a nested argument has height 2
+        let expr = Expr::ExtFuncCall(ExtFuncCall {
+            call: HashMap::from([(
+                "ip".to_smolstr(),
+                vec![Expr::ExprNoExt(ExprNoExt::Not {
+                    arg: Arc::new(Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Bool(
+                        true,
+                    )))),
+                })],
+            )]),
+        });
+        assert_eq!(expr.height(), 2);
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::panic, reason = "unit test code")]
+mod paren_omission {
+    use super::*;
+    use crate::parser::text_to_cst;
+    use insta::assert_snapshot;
+
+    #[track_caller]
+    fn render(text: &str) -> String {
+        let cst =
+            text_to_cst::parse_expr(text).unwrap_or_else(|e| panic!("cannot parse {text:?}: {e}"));
+        let est =
+            Expr::try_from(&cst).unwrap_or_else(|e| panic!("cannot build EST for {text:?}: {e}"));
+        let printed = est.to_string();
+        let cst = text_to_cst::parse_expr(&printed)
+            .unwrap_or_else(|e| panic!("printed form {printed:?} does not parse: {e}"));
+        let reparsed = Expr::try_from(&cst)
+            .unwrap_or_else(|e| panic!("printed form {printed:?} is not a valid EST: {e}"));
+        assert_eq!(
+            reparsed, est,
+            "printed form {printed:?} reparsed to a different EST"
+        );
+        printed
+    }
+
+    #[test]
+    fn member_level_operands() {
+        assert_snapshot!(render("(((context.a).b).c).d"), @"context.a.b.c.d");
+        assert_snapshot!(render("(context.a.contains(1)).bar"), @"context.a.contains(1).bar");
+        assert_snapshot!(render(r#"(ip("1.2.3.4")).foo"#), @r#"ip("1.2.3.4").foo"#);
+        assert_snapshot!(render(r#"(context.a["b c"]).d"#), @r#"context.a["b c"].d"#);
+        assert_snapshot!(render("(context.a.b) == (context.c.d)"), @"context.a.b == context.c.d");
+        assert_snapshot!(
+            render("principal is X::Y in (context.a.b)"),
+            @"principal is X::Y in context.a.b"
+        );
+        assert_snapshot!(render("!(context.a.b)"), @"!context.a.b");
+    }
+
+    #[test]
+    fn if_operands() {
+        assert_snapshot!(render("if (context.a == 1) then (2) else (3)"), @"if context.a == 1 then 2 else 3");
+        assert_snapshot!(
+            render("if context.a then (if context.b then 1 else 2) else (if context.c then 3 else 4)"),
+            @"if context.a then if context.b then 1 else 2 else if context.c then 3 else 4"
+        );
+        assert_snapshot!(
+            render("if (if (if true then true else true) then true else true) then 1 else 2"),
+            @"if if if true then true else true then true else true then 1 else 2"
+        );
+    }
+
+    #[test]
+    fn chained_operators() {
+        assert_snapshot!(
+            render("(context.a && context.b) && context.c"),
+            @"context.a && context.b && context.c"
+        );
+        assert_snapshot!(
+            render("(context.a || context.b) || context.c"),
+            @"context.a || context.b || context.c"
+        );
+        assert_snapshot!(render("(1 + 2) + 3"), @"1 + 2 + 3");
+        assert_snapshot!(render("(1 - 2) - 3"), @"1 - 2 - 3");
+        assert_snapshot!(render("(2 * 3) * 4"), @"2 * 3 * 4");
+        assert_snapshot!(render("(1 - 2) + 3"), @"(1 - 2) + 3");
+        assert_snapshot!(
+            render("(context.a && context.b) || context.c"),
+            @"(context.a && context.b) || context.c"
+        );
+    }
+
+    #[test]
+    fn right_operands_keep_parens() {
+        assert_snapshot!(render("1 + (2 + 3)"), @"1 + (2 + 3)");
+        assert_snapshot!(render("1 - (2 - 3)"), @"1 - (2 - 3)");
+        assert_snapshot!(
+            render("context.a && (context.b && context.c)"),
+            @"context.a && (context.b && context.c)"
+        );
+    }
+
+    #[test]
+    fn looser_operands_keep_parens() {
+        assert_snapshot!(render("(!principal).y"), @"(!principal).y");
+        assert_snapshot!(render("(-principal).y"), @"(-(principal)).y");
+        assert_snapshot!(render("(1 == 2) == true"), @"(1 == 2) == true");
+        assert_snapshot!(render("(if true then 1 else 2) + 3"), @"(if true then 1 else 2) + 3");
+        assert_snapshot!(render("(true || false) && true"), @"(true || false) && true");
+    }
+}

@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+import logging
+
+import pytest
+
+from distributed import Nanny, NannyPlugin
+from distributed.utils_test import captured_logger, gen_cluster
+
+
+@gen_cluster(client=True, nthreads=[("", 1)], Worker=Nanny)
+async def test_register_idempotent_plugin(c, s, a):
+    class IdempotentPlugin(NannyPlugin):
+        def __init__(self, instance=None):
+            self.name = "idempotentplugin"
+            self.instance = instance
+            self.idempotent = True
+
+        def setup(self, nanny):
+            if self.instance != "first":
+                raise RuntimeError(
+                    "Only the first plugin should be started when idempotent is set"
+                )
+
+    first = IdempotentPlugin(instance="first")
+    await c.register_plugin(first)
+    assert "idempotentplugin" in a.plugins
+
+    second = IdempotentPlugin(instance="second")
+    await c.register_plugin(second)
+    assert "idempotentplugin" in a.plugins
+    assert a.plugins["idempotentplugin"].instance == "first"
+
+
+@gen_cluster(client=True, nthreads=[("", 1)], Worker=Nanny)
+async def test_register_non_idempotent_plugin(c, s, a):
+    class NonIdempotentPlugin(NannyPlugin):
+        def __init__(self, instance=None):
+            self.name = "nonidempotentplugin"
+            self.instance = instance
+
+    first = NonIdempotentPlugin(instance="first")
+    await c.register_plugin(first)
+    assert "nonidempotentplugin" in a.plugins
+
+    second = NonIdempotentPlugin(instance="second")
+    await c.register_plugin(second)
+    assert "nonidempotentplugin" in a.plugins
+    assert a.plugins["nonidempotentplugin"].instance == "second"
+
+
+class BrokenSetupPlugin(NannyPlugin):
+    def setup(self, nanny):
+        raise RuntimeError("test error")
+
+
+@gen_cluster(client=True, nthreads=[("", 1)], Worker=Nanny)
+async def test_register_plugin_with_broken_setup_to_existing_nannies_raises(c, s, a):
+    with pytest.raises(RuntimeError, match="test error"):
+        with captured_logger("distributed.nanny", level=logging.ERROR) as caplog:
+            await c.register_plugin(BrokenSetupPlugin(), name="TestPlugin1")
+    logs = caplog.getvalue()
+    assert "TestPlugin1 failed to setup" in logs
+    assert "test error" in logs
+
+
+@gen_cluster(client=True, nthreads=[])
+async def test_plugin_with_broken_setup_on_new_nanny_logs(c, s):
+    await c.register_plugin(BrokenSetupPlugin(), name="TestPlugin1")
+
+    with captured_logger("distributed.nanny", level=logging.ERROR) as caplog:
+        async with Nanny(s.address):
+            pass
+    logs = caplog.getvalue()
+    assert "TestPlugin1 failed to setup" in logs
+    assert "test error" in logs
+
+
+class BrokenTeardownPlugin(NannyPlugin):
+    def teardown(self, nanny):
+        raise RuntimeError("test error")
+
+
+@gen_cluster(client=True, nthreads=[("", 1)], Worker=Nanny)
+async def test_unregister_nanny_plugin_with_broken_teardown_raises(c, s, a):
+    await c.register_plugin(BrokenTeardownPlugin(), name="TestPlugin1")
+    with pytest.raises(RuntimeError, match="test error"):
+        with captured_logger("distributed.nanny", level=logging.ERROR) as caplog:
+            await c.unregister_worker_plugin("TestPlugin1", nanny=True)
+    logs = caplog.getvalue()
+    assert "TestPlugin1 failed to teardown" in logs
+    assert "test error" in logs
+
+
+@gen_cluster(client=True, nthreads=[])
+async def test_nanny_plugin_with_broken_teardown_logs_on_close(c, s):
+    await c.register_plugin(BrokenTeardownPlugin(), name="TestPlugin1")
+
+    with captured_logger("distributed.nanny", level=logging.ERROR) as caplog:
+        async with Nanny(s.address):
+            pass
+    logs = caplog.getvalue()
+    assert "TestPlugin1 failed to teardown" in logs
+    assert "test error" in logs

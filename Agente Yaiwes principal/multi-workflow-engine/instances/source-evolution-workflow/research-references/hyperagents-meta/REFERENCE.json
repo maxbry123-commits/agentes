@@ -1,0 +1,9 @@
+{
+  "name": "HyperAgents",
+  "source": "https://github.com/facebookresearch/HyperAgents",
+  "commit": "59a68f672dfb92c74aeb7e61535d776fb36e172d",
+  "paper": "https://arxiv.org/abs/2603.19461",
+  "license": "CC-BY-NC-SA-4.0",
+  "status": "REFERENCE_ONLY_NOT_EXECUTABLE",
+  "reason": "Non-commercial and share-alike terms require separate Director/legal approval before code adoption."
+}

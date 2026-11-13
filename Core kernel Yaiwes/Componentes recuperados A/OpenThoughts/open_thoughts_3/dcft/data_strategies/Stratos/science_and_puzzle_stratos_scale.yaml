@@ -1,0 +1,46 @@
+operators:
+  - id: load_code_contests
+    config:
+      type: "hf_source"
+      dataset: "mlfoundations-dev/science_and_puzzle_stratos_scale_pre_decontamination"
+      split: train
+  - id: decontaminate
+    config:
+      type: cpu_function
+      num_cpus: 80
+      function:  data_strategies.DeepSeekR1.utils.decontaminate_table
+      function_config:
+        column: question
+        eval_datasets:
+          - HuggingFaceH4/MATH-500
+          - Maxwell-Jia/AIME_2024
+          - AI-MO/aimo-validation-amc
+          - livecodebench/code_generation_lite
+          - Idavidrein/gpqa
+        eval_columns:
+          - problem
+          - Problem
+          - problem
+          - question_content
+          - Question
+        eval_splits:
+          - test
+          - train
+          - train
+          - test
+          - train
+        eval_subsets:
+          Idavidrein/gpqa: gpqa_diamond
+        similarity_threshold: 95.0
+    input_ids:
+      - load_code_contests
+  - id: fuzzy_dedup
+    config:
+      type: cpu_function
+      num_cpus: 80
+      function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+      function_config:
+        column: question
+        similarity_threshold: 95.0
+    input_ids:
+      - decontaminate

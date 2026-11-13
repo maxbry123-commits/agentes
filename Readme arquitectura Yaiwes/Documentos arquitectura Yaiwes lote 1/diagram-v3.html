@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>NCT AI Architecture v3 — Code-Deterministic + Mini-Agents + Ensemble Deliberativo</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    margin: 0;
+    padding: 24px;
+    line-height: 1.5;
+  }
+  .hdr {
+    max-width: 1600px;
+    margin: 0 auto 24px;
+    padding: 24px 28px;
+    background: linear-gradient(135deg, #5a1a1a 0%, #161b22 50%, #1c2128 100%);
+    border: 1px solid #d29922;
+    border-radius: 12px;
+    border-left: 6px solid #d29922;
+  }
+  .hdr h1 { margin: 0 0 6px; color: #f0f6fc; font-size: 24px; }
+  .hdr .sub { color: #c9d1d9; font-size: 13px; }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .badge.code { background: #5a1a1a; color: #ffa198; border: 1px solid #d29922; }
+  .badge.full { background: #5a3a0e; color: #f0c674; border: 1px solid #d29922; }
+  .badge.ver { background: #1f3a5f; color: #79c0ff; border: 1px solid #58a6ff; }
+  .badge.agn { background: #0e4429; color: #7ee787; border: 1px solid #3fb950; }
+
+  /* MANIFIESTO central */
+  .manifesto {
+    max-width: 1600px;
+    margin: 0 auto 24px;
+    background: #1c2128;
+    border: 2px solid #d29922;
+    border-radius: 12px;
+    padding: 24px 28px;
+  }
+  .manifesto h2 {
+    margin: 0 0 12px;
+    color: #f0c674;
+    font-size: 19px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .manifesto h2::before { content: "⚠️"; font-size: 22px; }
+  .manifesto p {
+    margin: 8px 0;
+    font-size: 14px;
+    color: #c9d1d9;
+  }
+  .manifesto .principles {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .manifesto .pp {
+    background: #0d1117;
+    border-left: 3px solid #d29922;
+    padding: 10px 14px;
+    border-radius: 4px;
+  }
+  .manifesto .pp strong { color: #f0c674; }
+  .manifesto .pp span { font-size: 12px; color: #c9d1d9; }
+
+  /* Recovery */
+  .recovery {
+    max-width: 1600px;
+    margin: 0 auto 24px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    border-left: 4px solid #58a6ff;
+    overflow: hidden;
+  }
+  .recovery .rh {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 20px; background: #1c2128; border-bottom: 1px solid #30363d;
+  }
+  .recovery .rh h2 {
+    margin: 0; color: #f0f6fc; font-size: 15px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .recovery .rh h2::before { content: "🩹"; }
+  .copy-btn {
+    background: #21262d; color: #c9d1d9;
+    border: 1px solid #30363d; border-radius: 6px;
+    padding: 6px 12px; font-size: 12px; cursor: pointer;
+    font-family: inherit;
+  }
+  .copy-btn:hover { background: #30363d; border-color: #58a6ff; color: #79c0ff; }
+  .copy-btn.copied { background: #0e4429; border-color: #3fb950; color: #7ee787; }
+  details { border-bottom: 1px solid #21262d; }
+  details:last-child { border-bottom: none; }
+  summary {
+    padding: 12px 20px; cursor: pointer;
+    font-size: 13px; color: #c9d1d9;
+    font-weight: 600; user-select: none; list-style: none;
+    display: flex; align-items: center; gap: 8px;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "▸"; color: #8b949e; transition: transform 0.15s; font-size: 11px; }
+  details[open] summary::before { transform: rotate(90deg); }
+  summary:hover { background: #21262d; }
+  .sum-tag { margin-left: auto; font-size: 11px; color: #8b949e; font-weight: normal; }
+  .rc { padding: 12px 20px 18px; font-size: 12px; }
+  pre.json {
+    background: #0d1117; border: 1px solid #30363d;
+    border-radius: 6px; padding: 14px; margin: 0;
+    overflow-x: auto; color: #c9d1d9;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; line-height: 1.55;
+  }
+  .k { color: #79c0ff; } .s { color: #a5d6ff; }
+  .n { color: #ffa657; } .b { color: #7ee787; }
+  .null { color: #8b949e; font-style: italic; }
+
+  /* Diagrama */
+  .grid {
+    max-width: 1600px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .grid-full { grid-template-columns: 1fr; }
+  .panel {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .panel h2 { margin: 0 0 4px; color: #f0f6fc; font-size: 16px; }
+  .panel .desc { color: #8b949e; font-size: 12px; margin-bottom: 14px; }
+  .mermaid { background: #0d1117; border-radius: 8px; padding: 16px; overflow-x: auto; }
+
+  /* Agent grids */
+  .agents-section {
+    max-width: 1600px;
+    margin: 24px auto 0;
+  }
+  .agents-section h2 {
+    color: #f0f6fc;
+    font-size: 18px;
+    margin: 0 0 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .agents-section .lead {
+    color: #8b949e;
+    font-size: 13px;
+    margin: 0 0 14px;
+  }
+  .agrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .agrid-4 { grid-template-columns: repeat(4, 1fr); }
+  .agrid-5 { grid-template-columns: repeat(5, 1fr); }
+  .acard {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 12px 14px;
+    transition: border-color 0.15s;
+  }
+  .acard:hover { border-color: #58a6ff; }
+  .acard .aid {
+    font-size: 10px;
+    color: #58a6ff;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .acard .aname {
+    font-size: 13px;
+    color: #f0f6fc;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .acard .adesc {
+    font-size: 11px;
+    color: #8b949e;
+    line-height: 1.5;
+  }
+  .acard .ainput {
+    font-size: 10px;
+    color: #79c0ff;
+    margin-top: 6px;
+    font-family: ui-monospace, monospace;
+  }
+
+  /* Comparativa reasoning */
+  .compare {
+    max-width: 1600px;
+    margin: 24px auto 0;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px 24px;
+  }
+  .compare h2 {
+    margin: 0 0 14px;
+    color: #f0f6fc;
+    font-size: 18px;
+  }
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .compare-table th, .compare-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #21262d;
+    text-align: left;
+    vertical-align: top;
+  }
+  .compare-table th {
+    color: #8b949e;
+    font-size: 11px;
+    text-transform: uppercase;
+    background: #0d1117;
+    font-weight: 600;
+  }
+  .compare-table td.mavis { color: #79c0ff; }
+  .compare-table td.mhytos { color: #7ee787; }
+  .compare-table td.added { color: #f0c674; font-style: italic; }
+
+  /* Ruta Mavis */
+  .ruta {
+    max-width: 1600px;
+    margin: 24px auto 0;
+    background: #161b22;
+    border: 1px solid #d29922;
+    border-radius: 12px;
+    padding: 20px 24px;
+  }
+  .ruta h2 {
+    margin: 0 0 12px;
+    color: #f0c674;
+    font-size: 18px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .ruta h2::before { content: "🎯"; }
+  .ruta .lead { color: #8b949e; font-size: 13px; margin: 0 0 14px; }
+  .ruta pre {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 16px;
+    overflow-x: auto;
+    color: #c9d1d9;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+
+  /* Opinion */
+  .opinion {
+    max-width: 1600px;
+    margin: 24px auto 0;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px 24px;
+  }
+  .opinion h2 {
+    margin: 0 0 12px;
+    color: #f0f6fc;
+    font-size: 18px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .opinion h2::before { content: "💭"; }
+  .opinion table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 12px;
+  }
+  .opinion th, .opinion td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #21262d;
+    text-align: left;
+    vertical-align: top;
+  }
+  .opinion th {
+    color: #8b949e;
+    font-size: 11px;
+    text-transform: uppercase;
+    background: #0d1117;
+  }
+
+  /* Cache */
+  .cache {
+    max-width: 1600px;
+    margin: 24px auto 0;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px 24px;
+  }
+  .cache h2 {
+    margin: 0 0 12px;
+    color: #f0f6fc;
+    font-size: 18px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .cache h2::before { content: "⚡"; }
+  .cgrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .ccard {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-left: 3px solid #d29922;
+    padding: 12px 14px;
+    border-radius: 6px;
+  }
+  .ccard .cn {
+    font-size: 11px;
+    color: #f0c674;
+    font-weight: 700;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .ccard .ct {
+    font-size: 13px;
+    color: #f0f6fc;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .ccard .cb {
+    font-size: 11px;
+    color: #c9d1d9;
+    line-height: 1.55;
+  }
+
+  .legend {
+    max-width: 1600px;
+    margin: 12px auto 0;
+    display: flex; gap: 16px; flex-wrap: wrap;
+    font-size: 12px; color: #8b949e;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .dot.appr { background: #3fb950; }
+  .dot.ver { background: #58a6ff; }
+  .dot.disc { background: #d29922; }
+  .dot.code { background: #ffa198; }
+  .dot.todo { background: #6e7681; }
+
+  .footer {
+    max-width: 1600px;
+    margin: 24px auto 0;
+    text-align: center;
+    color: #6e7681;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>NCT AI Architecture — v3 <span class="badge code">CODE-DETERMINISTIC</span> <span class="badge full">TODO APROBADO</span> <span class="badge agn">MODEL-AGNOSTIC</span> <span class="badge ver">Ensemble Deliberativo</span></h1>
+  <div class="sub">MHYTOS v3 · Mini-agentes especializados · Agentes memoria · Simuladores DSL · Consenso 5 AI · YUAN + Hermes + Gemma 4 E2B decisor</div>
+</div>
+
+<!-- ============================================================
+     MANIFIESTO: NUNCA PROMPT LIBRE
+     ============================================================ -->
+<div class="manifesto">
+  <h2>⚠️ Manifiesto central — NUNCA prompt libre</h2>
+  <p><strong>Principio 0 (no negociable):</strong> los LLMs ignoran los prompts. Cualquier instrucción importante debe ser <strong>código ejecutable</strong>, no texto persuasivo.</p>
+  <p>Lo que el usuario dijo — y tiene razón — es que confiar en system prompts es debilidad arquitectónica. La solución: <strong>toda la lógica vive en código Python DSL + DAG determinista</strong>. El LLM es un nodo más del DAG, no el orquestador.</p>
+  <div class="principles">
+    <div class="pp"><strong>1 · SHEMAT, SHERIFF, SENTINEL, JUEZ, CODE = clases Python.</strong> <span>No instrucciones. Cada una con .validate(), .execute(), .rollback().</span></div>
+    <div class="pp"><strong>2 · DAG = grafo de nodos ejecutables.</strong> <span>Cada nodo tiene input/output tipado, timeout, retry policy. Nada implícito.</span></div>
+    <div class="pp"><strong>3 · DSL = YAML para humanos + JSON para ejecución.</strong> <span>Los prompts del LLM son solo el ÚLTIMO recurso cuando el código no puede decidir.</span></div>
+    <div class="pp"><strong>4 · System prompt = solo bootstrap.</strong> <span>Define el rol inicial. Después, todo lo importante es código.</span></div>
+    <div class="pp"><strong>5 · Mini-agentes = funciones puras.</strong> <span>Input/output explícito. Testeables. Componibles en el DAG.</span></div>
+    <div class="pp"><strong>6 · Verificador separado del generador.</strong> <span>El que valida NUNCA es el mismo código que produce. Patrón Verifier/Critic/Judge.</span></div>
+    <div class="pp"><strong>7 · Constitutional rules = código, no ética blanda.</strong> <span>Reglas duras en Policy Engine. Si se viola, el output se rechaza. Sin excepciones.</span></div>
+    <div class="pp"><strong>8 · Multi-lenguaje.</strong> <span>Contratos JSON son language-agnostic. Bindings a Python/JS/Go/Rust desde el mismo schema.</span></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     RECOVERY HEADER JSON v3
+     ============================================================ -->
+<script type="application/json" id="recovery-header">
+{
+  "schema_version": "1.0",
+  "document": {
+    "id": "nct-ai-architecture",
+    "version": "v3",
+    "previous_version": "v2",
+    "title": "NCT AI Architecture v3 — Code-Deterministic + Mini-Agents + Ensemble Deliberativo",
+    "last_updated": "2026-06-21T16:23:21-04:00",
+    "session_id": "411717310456025",
+    "owner": "Mavis (root session)"
+  },
+  "manifesto": {
+    "principle_zero": "Nunca prompt libre. Todo importante es código Python DSL DAG.",
+    "rules": [
+      "SHEMAT/SHERIFF/SENTINEL/JUEZ/CODE = clases Python con .validate()/.execute()/.rollback()",
+      "DAG = grafo de nodos tipados, no prompt chains",
+      "DSL = YAML (humano) + JSON (ejecución) + Python DSL (lógica)",
+      "System prompt solo para bootstrap; lógica importante es código",
+      "Mini-agentes = funciones puras testeables",
+      "Verificador separado del generador",
+      "Constitutional rules = código enforced, no soft ethics",
+      "Multi-lenguaje via contratos JSON language-agnostic"
+    ]
+  },
+  "ensemble_deliberativo": {
+    "pattern": "3 modelos proponen + 1-2 arbitran",
+    "queue": ["Gemma 4 E2B (decisor local)", "Hermes Agent v0.17.0", "Yuan 3.0 Flash 40B MoE"],
+    "modelo_decisor_final": "Gemma 4 E2B Q4_K_M (filtro obligatorio)",
+    "activacion": "On-demand. Cada modelo carga, propone, descarga. Siguiente.",
+    "modo_usuario": "thinking_extendido con consenso activado",
+    "rationale": "En device solo cabe 1 LLM activo. Queue secuencial es realista. APIs externas son complemento.",
+    "limitacion_aceptada": "Consenso 100% local es inviable en smartphone. Solución: Gemma E2B arbitra siempre, los demás proponen via API/queue."
+  },
+  "decision_5_ai_consenso": {
+    "status": "cerrado",
+    "componentes": ["Gemma 4 E2B (decisor)", "Hermes Agent", "Yuan 3.0 Flash", "Claude/GPT fallback", "Local GGUF (opcional)"],
+    "winner": "Gemma 4 E2B (siempre el decisor final por obediencia + agentic-first)"
+  },
+  "patch_v2_to_v3": [
+    "NUNCA prompt libre — manifiesto central añadido",
+    "15 mini-agentes especializados diseñados (código Python)",
+    "7 agentes memoria diseñados",
+    "5 simuladores DSL diseñados",
+    "Sistema de Ensemble Deliberativo 3-propuesta + 1-arbitro aprobado",
+    "Comparativa Mavis reasoning chain vs MHYTOS incluida",
+    "10 mejoras que añadiría a MHYTOS (basado en mi método)",
+    "Opinión sobre YUAN AI + Hermes AI + Gemma 4 E2B",
+    "5 caches diseñados (semántico, resultado, plan, herramientas, failure-mode)",
+    "Ruta de trabajo para MiniMax M3/Mavis en otro chat (instrucciones copy-paste)"
+  ],
+  "pending_decisions": [],
+  "open_questions": [],
+  "recovery": {
+    "checkpoint_id": "nct-v3-20260621-1623",
+    "rollback_target": "v2 (/workspace/diagram-v2.html)",
+    "integrity_hash": "sha256-to-be-computed-on-deploy",
+    "next_action": "Implementación. Esperando luz verde del usuario para empezar a generar código."
+  }
+}
+</script>
+
+<div class="recovery">
+  <div class="rh">
+    <h2>Recovery Header JSON · checkpoint nct-v3-20260621-1623</h2>
+    <button class="copy-btn" id="copy-recovery-btn" type="button">📋 Copiar JSON</button>
+  </div>
+  <details open>
+    <summary>1 · Manifiesto central (8 reglas duras)</summary>
+    <div class="rc"><pre class="json" id="json-view-1"></pre></div>
+  </details>
+  <details>
+    <summary>2 · Ensemble Deliberativo (3 proponen + 1-2 arbitran)</summary>
+    <div class="rc"><pre class="json" id="json-view-2"></pre></div>
+  </details>
+  <details>
+    <summary>3 · Consenso 5 AI cerrado</summary>
+    <div class="rc"><pre class="json" id="json-view-3"></pre></div>
+  </details>
+  <details>
+    <summary>4 · Parche v2 → v3 (qué cambió)</summary>
+    <div class="rc"><pre class="json" id="json-view-4"></pre></div>
+  </details>
+  <details>
+    <summary>5 · Recovery (checkpoint + rollback)</summary>
+    <div class="rc"><pre class="json" id="json-view-5"></pre></div>
+  </details>
+</div>
+
+<!-- ============================================================
+     COMPARATIVA: MAVIS vs MHYTOS
+     ============================================================ -->
+<div class="compare">
+  <h2>🔍 Comparativa — mi cadena de razonamiento (Mavis) vs MHYTOS</h2>
+  <p style="color:#8b949e;font-size:12px;margin:0 0 12px;">Cómo se compara mi método de 9 pasos/turno con el método MHYTOS de 40 pasos, y qué añadiría a MHYTOS.</p>
+  <table class="compare-table">
+    <tr>
+      <th>#</th>
+      <th>Mavis (mi cadena por turno)</th>
+      <th>MHYTOS (40 pasos del swarm)</th>
+      <th>Qué añadiría a MHYTOS</th>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td class="mavis"><strong>Read intent</strong> — leer mensaje completo</td>
+      <td class="mhytos">INPUT · INTENT_PARSING</td>
+      <td class="added">Skill versioning — cada intent parser con semver y A/B</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td class="mavis"><strong>Verify facts</strong> — web_search si time-sensitive</td>
+      <td class="mhytos">KNOWLEDGE_RETRIEVAL · INSIGHT_EXTRACTION</td>
+      <td class="added">Cost tracking — cuánto costó cada nodo</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td class="mavis"><strong>State check</strong> — recovery headers + memoria</td>
+      <td class="mhytos">MEMORY_WRITE SHORT/LONG · CONTEXT_BUILDING</td>
+      <td class="added">Privacy zones — campos que nunca salen del device</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td class="mavis"><strong>Lead with conclusion</strong> — directo, no escondo</td>
+      <td class="mhytos">DECISION_ENGINE · SOLUTION_RANKING</td>
+      <td class="added">LLM-as-Judge separado — el juez es OTRO modelo</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td class="mavis"><strong>Decompose</strong> — todowrite o team plan</td>
+      <td class="mhytos">PLAN_GENERATION · SUBTASK_BREAKDOWN · DEPENDENCY_GRAPH</td>
+      <td class="added">Auto-tuning de hiperparámetros — SHEMAT ajusta thresholds</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td class="mavis"><strong>Execute</strong> — tool calls paralelos si independientes</td>
+      <td class="mhytos">EXECUTE · REASONING_SWARM · CRITIC_SWARM</td>
+      <td class="added">Reasoning explainability — traces exportables humanos</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td class="mavis"><strong>Verify outputs</strong> — parsea JSON, valida paths</td>
+      <td class="mhytos">VALIDATION_LAYER · VERIFIER · SELF_REFLECTION</td>
+      <td class="added">Multi-modal DAG nodes — imagen/audio/video, no solo texto</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td class="mavis"><strong>Deliver</strong> — deliver-assets con paths absolutos</td>
+      <td class="mhytos">OUTPUT_GENERATION · FINAL_SYNTHESIS</td>
+      <td class="added">Cross-session memory sync — entre dispositivos del usuario</td>
+    </tr>
+    <tr>
+      <td>9</td>
+      <td class="mavis"><strong>Update state</strong> — recovery header + memoria</td>
+      <td class="mhytos">POST_OUTPUT_AUDIT · FEEDBACK_LOOP_STORAGE</td>
+      <td class="added">Failure injection tests — inyectar fallos para verificar resiliencia</td>
+    </tr>
+    <tr>
+      <td colspan="4" style="background:#0d1117;color:#8b949e;text-align:center;font-size:11px;">
+        <strong>Resumen:</strong> mi cadena es un subconjunto optimizado para single-turn agent. MHYTOS es multi-step con swarm completo. Lo que YO añado es la dimensión práctica: cost tracking, privacy zones, explainability, multi-modal, failure injection.
+      </td>
+    </tr>
+  </table>
+</div>
+
+<!-- ============================================================
+     DIAGRAMA ENSEMBLE DELIBERATIVO
+     ============================================================ -->
+<div class="grid">
+  <div class="panel">
+    <h2>Ensemble Deliberativo — 3 proponen + 1-2 arbitran</h2>
+    <div class="desc">Cuando el usuario activa modo thinking_extendido + consenso. Queue de modelos. El decisor final es Gemma 4 E2B (siempre).</div>
+    <div class="mermaid">
+flowchart TD
+    U([👤 User activa<br/>thinking_extendido + consenso]):::user
+    Q[Queue de modelos<br/>on-demand]:::approved
+    P1[Propuesta 1<br/>Gemma 4 E2B<br/>local · rápido]:::verified
+    P2[Propuesta 2<br/>Hermes Agent v0.17<br/>self-evolving]:::verified
+    P3[Propuesta 3<br/>Yuan 3.0 Flash<br/>MoE multimodal]:::verified
+    P4[Propuesta 4<br/>Claude/GPT API<br/>fallback]:::approved
+    ARB[JUEZ árbitro<br/>Gemma 4 E2B<br/>filtro obligatorio]:::verified
+    VR[VERIFIER<br/>separado del árbitro]:::approved
+    OUT[Output final<br/>con reasoning trace]:::approved
+    DEC{{Decisor final<br/>Gemma 4 E2B}}:::verified
+
+    U --> Q
+    Q --> P1
+    Q --> P2
+    Q --> P3
+    Q -.si fallan los 3.-> P4
+    P1 --> ARB
+    P2 --> ARB
+    P3 --> ARB
+    ARB --> VR
+    VR --> DEC
+    DEC --> OUT
+    P1 -.memory.-> MA[Agentes Memoria]
+    P2 -.memory.-> MA
+    P3 -.memory.-> MA
+
+    classDef user fill:#1f6feb,stroke:#58a6ff,color:#fff
+    classDef approved fill:#0e4429,stroke:#3fb950,color:#7ee787
+    classDef verified fill:#0d2f4f,stroke:#58a6ff,color:#79c0ff
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>MHYTOS v3 — código Python DSL DAG</h2>
+    <div class="desc">NUNCA prompt libre. Todo nodo es una función Python tipada. El LLM es un nodo más, no el orquestador.</div>
+    <div class="mermaid">
+flowchart TD
+    U([👤 User]):::user
+    INP[input.json<br/>contrato validado]:::code
+    SHM[SHEMAT<br/>class SchemaValidator]:::code
+    SHF[SHERIFF<br/>class InputGuard]:::code
+    R[ROUTER<br/>class DAGRouter]:::code
+    DP[DSL Planner<br/>class PlanDecomposer]:::code
+    DAG{DAG Executor<br/>Python DAG runner}:::code
+    MI[Mini-agentes<br/>15 funciones puras]:::code
+    MEM[Agentes Memoria<br/>7 funciones con versionado]:::code
+    SIM[Simuladores DSL<br/>5 escenarios]:::code
+    CO[CODE<br/>class DSLExecutor]:::code
+    CR[CRITIC LOOP<br/>max=3, configurable]:::code
+    V[VERIFIER<br/>class Verifier separado]:::code
+    J[JUEZ<br/>class Judge final]:::code
+    SE[SENTINEL<br/>class Sentinel con rollback]:::code
+    PE[POLICY<br/>class ConstitutionalRules]:::code
+    PA[PydanticAI<br/>class OutputSchema]:::code
+    OUT[output.json<br/>schema validado]:::code
+
+    U --> INP
+    INP --> SHM
+    SHM --> SHF
+    SHF --> R
+    R --> DP
+    DP --> DAG
+    DAG --> MI
+    DAG --> MEM
+    DAG --> SIM
+    DAG --> CO
+    CO --> CR
+    CR --> V
+    V --> J
+    J --> SE
+    SE --> PE
+    PE --> PA
+    PA --> OUT
+    SE -.rollback.-> DAG
+
+    classDef user fill:#1f6feb,stroke:#58a6ff,color:#fff
+    classDef code fill:#5a1a1a,stroke:#d29922,color:#ffa198
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="dot code"></span> Código Python (no prompt)</span>
+  <span><span class="dot ver"></span> Verificado / filtro obligatorio</span>
+  <span><span class="dot appr"></span> Aprobado</span>
+  <span><span class="dot disc"></span> Discusión</span>
+</div>
+
+<!-- ============================================================
+     15 MINI-AGENTES ESPECIALIZADOS
+     ============================================================ -->
+<div class="agents-section">
+  <h2>🤖 15 Mini-agentes especializados (funciones puras Python)</h2>
+  <p class="lead">Cada uno es una función pura testeable. Input/output tipado. Se componen en el DAG.</p>
+  <div class="agrid">
+    <div class="acard">
+      <div class="aid">MA-01</div>
+      <div class="aname">IntentClassifierAgent</div>
+      <div class="adesc">Clasifica intención del usuario (pregunta, comando, clarificación, etc.).</div>
+      <div class="ainput">→ {text} → IntentCategory</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-02</div>
+      <div class="aname">EntityExtractorAgent</div>
+      <div class="adesc">Extrae entidades nombradas (personas, lugares, fechas, código).</div>
+      <div class="ainput">→ {text} → List[Entity]</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-03</div>
+      <div class="aname">PlanDecomposerAgent</div>
+      <div class="adesc">Descompone un objetivo en sub-tareas atómicas con dependencias.</div>
+      <div class="ainput">→ {goal} → TaskTree</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-04</div>
+      <div class="aname">CodeFormatterAgent</div>
+      <div class="adesc">Formatea código según estilo (black, prettier, gofmt).</div>
+      <div class="ainput">→ {code, lang} → formatted_code</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-05</div>
+      <div class="aname">SchemaValidatorAgent</div>
+      <div class="adesc">Valida JSON/YAML contra JSON Schema o Pydantic.</div>
+      <div class="ainput">→ {data, schema} → ValidationResult</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-06</div>
+      <div class="aname">ContractCheckerAgent</div>
+      <div class="adesc">Verifica contratos de borde (input/output contracts).</div>
+      <div class="ainput">→ {data, contract} → ContractReport</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-07</div>
+      <div class="aname">CritiqueAgent</div>
+      <div class="adesc">Crítica un output según criterios (corrección, completeness, claridad).</div>
+      <div class="ainput">→ {output, criteria} → CritiqueReport</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-08</div>
+      <div class="aname">RefinementAgent</div>
+      <div class="adesc">Refina output según crítica. Produce versión mejorada.</div>
+      <div class="ainput">→ {output, critique} → refined_output</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-09</div>
+      <div class="aname">ToolSelectorAgent</div>
+      <div class="adesc">Selecciona tools disponibles según intent y permisos.</div>
+      <div class="ainput">→ {intent, available_tools} → SelectedTools</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-10</div>
+      <div class="aname">CitationAgent</div>
+      <div class="adesc">Añade citas y verifica fuentes. Detecta claims sin respaldo.</div>
+      <div class="ainput">→ {output} → cited_output</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-11</div>
+      <div class="aname">TranslationAgent</div>
+      <div class="adesc">Traduce entre idiomas preservando formato y código.</div>
+      <div class="ainput">→ {text, src, tgt} → translated_text</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-12</div>
+      <div class="aname">SummarizationAgent</div>
+      <div class="adesc">Resume contexto largo preservando información crítica.</div>
+      <div class="ainput">→ {text, target_tokens} → summary</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-13</div>
+      <div class="aname">SafetyAgent</div>
+      <div class="adesc">Verifica reglas constitucionales (safety, ethics, contracts).</div>
+      <div class="ainput">→ {output, rules} → SafetyVerdict</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-14</div>
+      <div class="aname">CapabilityNegotiator</div>
+      <div class="adesc">Negocia qué funciones soporta el modelo actual.</div>
+      <div class="ainput">→ {model} → Capabilities</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MA-15</div>
+      <div class="aname">FallbackChainAgent</div>
+      <div class="adesc">Si el modelo actual falla, escala al siguiente en la chain.</div>
+      <div class="ainput">→ {failed_model, chain} → next_model</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     7 AGENTES MEMORIA
+     ============================================================ -->
+<div class="agents-section">
+  <h2>💾 7 Agentes Memoria (versionado, CRDT-ready)</h2>
+  <p class="lead">Cada agente maneja una capa de memoria. Todos escriben con versionado estilo git y resuelven conflictos.</p>
+  <div class="agrid agrid-4">
+    <div class="acard">
+      <div class="aid">MEM-01</div>
+      <div class="aname">WorkingMemoryAgent</div>
+      <div class="adesc">Contexto activo (8-32k tokens). Circular buffer. Snapshot periódico.</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MEM-02</div>
+      <div class="aname">EpisodicMemoryAgent</div>
+      <div class="adesc">Eventos con timestamp. Append-only. Búsqueda por rango temporal.</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MEM-03</div>
+      <div class="aname">SemanticMemoryAgent</div>
+      <div class="adesc">Embeddings + búsqueda semántica. Re-ranking por relevance.</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MEM-04</div>
+      <div class="aname">ProceduralMemoryAgent</div>
+      <div class="adesc">Recetas DSL y procedimientos aprendidos. Indexados por intent.</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MEM-05</div>
+      <div class="aname">GraphMemoryAgent</div>
+      <div class="adesc">SQLite nodes/edges + Cypher si &gt;100k nodos. Time-travel queries.</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MEM-06</div>
+      <div class="aname">SummaryCompressionAgent</div>
+      <div class="adesc">Compresión jerárquica de resúmenes. Lossy pero recuperable.</div>
+    </div>
+    <div class="acard">
+      <div class="aid">MEM-07</div>
+      <div class="aname">ConflictResolverAgent</div>
+      <div class="adesc">CRDT o last-write-wins. Resuelve escrituras concurrentes.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     5 SIMULADORES DSL
+     ============================================================ -->
+<div class="agents-section">
+  <h2>🎭 5 Simuladores DSL (escenarios y roles)</h2>
+  <p class="lead">Simuladores que ejecutan el DSL en escenarios controlados. Útiles para tests, training y what-if analysis.</p>
+  <div class="agrid agrid-5">
+    <div class="acard">
+      <div class="aid">SIM-01</div>
+      <div class="aname">FailureSimulator</div>
+      <div class="adesc">Simula fallos: timeout, crash, alucinación, OOM, red caída.</div>
+    </div>
+    <div class="acard">
+      <div class="aid">SIM-02</div>
+      <div class="aname">RoleSimulator</div>
+      <div class="adesc">Simula roles: arquitecto, crítico, tester, usuario final, seguridad.</div>
+    </div>
+    <div class="acard">
+      <div class="aid">SIM-03</div>
+      <div class="aname">ScenarioPlayer</div>
+      <div class="adesc">Ejecuta escenarios completos end-to-end con assertions.</div>
+    </div>
+    <div class="acard">
+      <div class="aid">SIM-04</div>
+      <div class="aname">StressTestSimulator</div>
+      <div class="adesc">Carga extrema: 10k requests/seg, memoria al 95%, latencia forzada.</div>
+    </div>
+    <div class="acard">
+      <div class="aid">SIM-05</div>
+      <div class="aname">RecoverySimulator</div>
+      <div class="adesc">Simula recovery desde checkpoint tras fallo catastrófico.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     OPINIÓN: YUAN + HERMES + GEMMA 4 E2B
+     ============================================================ -->
+<div class="opinion">
+  <h2>💭 Mi opinión sobre tu propuesta: YUAN AI + Hermes AI + Gemma 4 E2B decisor</h2>
+  <table>
+    <tr>
+      <th>Modelo</th>
+      <th>Verificado</th>
+      <th>Fortalezas para NCT</th>
+      <th>Limitaciones</th>
+      <th>Veredicto</th>
+    </tr>
+    <tr>
+      <td><strong>Hermes Agent v0.17.0</strong><br><small>Nous Research · MIT · 19 jun 2026</small></td>
+      <td>✅</td>
+      <td>Self-evolving, GEPA architecture (ICLR 2026 Oral), persistente con SQLite FTS5, MIT license, 200+ modelos vía OpenRouter</td>
+      <td>Self-hosted requiere mantenimiento. Self-evolution puede divergir.</td>
+      <td style="color:#7ee787;">✅ <strong>Excelente para agente persistente</strong>. Lo usaría como agente de background que aprende skills.</td>
+    </tr>
+    <tr>
+      <td><strong>Yuan 3.0 Flash</strong><br><small>YuanLab.ai · Open · 40B MoE · 3.7B activos</small></td>
+      <td>✅</td>
+      <td>MoE eficiente (3.7B activos en inferencia), LFA attention, multimodal fuerte, optimizado para empresas/RAG, open source</td>
+      <td>40B total necesita RAM/VRAM. Documentación principalmente en chino.</td>
+      <td style="color:#7ee787;">✅ <strong>Excelente para razonamiento pesado en PC</strong>. Mejor que Mistral 7B en multimodal.</td>
+    </tr>
+    <tr>
+      <td><strong>Yuan 3.0 Ultra</strong><br><small>YuanLab.ai · 1.5T params · 68.8B activos</small></td>
+      <td>✅</td>
+      <td>Tier empresarial, mejor en RAG/tablas, 1T+ open multimodal</td>
+      <td>1.5T no cabe en absoluto en device. Solo servidor con 8x A100+.</td>
+      <td style="color:#f0c674;">⚠️ <strong>Solo para backend servidor</strong>. No para filtro embebido.</td>
+    </tr>
+    <tr>
+      <td><strong>Gemma 4 E2B Q4_K_M</strong><br><small>Google · Apache 2.0 · 2.3B activos</small></td>
+      <td>✅</td>
+      <td>Mobile-runnable, agentic-first, tool calling nativo, 128K contexto, Apache 2.0</td>
+      <td>Pequeño. Razonamiento profundo se queda corto en algunas tareas.</td>
+      <td style="color:#7ee787;">✅ <strong>Decisor final obligatorio</strong>. Su obediencia + rapidez lo hacen ideal como árbitro.</td>
+    </tr>
+  </table>
+  <div style="margin-top:14px;padding:14px;background:#0d1117;border-left:3px solid #3fb950;border-radius:4px;font-size:12px;">
+    <strong style="color:#7ee787;">Conclusión sobre tu propuesta:</strong>
+    <strong>Sí, voy con tu configuración</strong> — Hermes Agent como agente persistente self-evolving (background), Yuan 3.0 Flash como proponente pesado en PC, Gemma 4 E2B como decisor final obligatorio (filtro). El consenso deliberativo funciona porque:
+    (1) Hermes aporta memoria persistente y skills aprendidas,
+    (2) Yuan 3.0 Flash aporta razonamiento fuerte en multimodal/RAG,
+    (3) Gemma 4 E2B aporta obediencia, rapidez y agentic-first que los demás no garantizan.
+    <br><br>
+    <strong style="color:#f0c674;">Cambio recomendado:</strong> añadir <code>Mistral 7B</code> como tier opcional en PC SOLO si Yuan 3.0 Flash no está disponible. Yuan 3.0 Flash es objetivamente superior.
+  </div>
+</div>
+
+<!-- ============================================================
+     5 CACHES + MÁS PROPUESTAS
+     ============================================================ -->
+<div class="cache">
+  <h2>⚡ 5 Caches + propuestas adicionales</h2>
+  <p style="color:#8b949e;font-size:12px;margin:0 0 14px;">Caches reducen latencia y costo. Cada uno es un módulo separado con TTL y eviction policy.</p>
+  <div class="cgrid">
+    <div class="ccard">
+      <div class="cn">CACHE-01</div>
+      <div class="ct">Cache Semántico</div>
+      <div class="cb">Embeddings detectan queries similares (cosine &gt; 0.92). Si hit, devuelve respuesta cacheada con trace. Ahorra 40-70% en repeat queries.</div>
+    </div>
+    <div class="ccard">
+      <div class="cn">CACHE-02</div>
+      <div class="ct">Cache de Resultado</div>
+      <div class="cb">Hash de (input + version_schema) → resultado. Para outputs deterministas (SHEMAT, SHERIFF, JUEZ). TTL largo.</div>
+    </div>
+    <div class="ccard">
+      <div class="cn">CACHE-03</div>
+      <div class="ct">Cache de Plan</div>
+      <div class="cb">DAGs ya ejecutados con éxito se reutilizan para intents similares. Detecta via PlanDecomposerAgent.</div>
+    </div>
+    <div class="ccard">
+      <div class="cn">CACHE-04</div>
+      <div class="ct">Cache de Herramientas</div>
+      <div class="cb">Resultados de tools caras (web search, DB queries) se cachean con TTL adaptativo según freshness requerida.</div>
+    </div>
+    <div class="ccard">
+      <div class="cn">CACHE-05</div>
+      <div class="ct">Cache de Failure-Mode</div>
+      <div class="cb">Cuando un input ya causó un failure mode conocido, salta directamente al recovery sin re-explorar.</div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:20px;color:#79c0ff;font-size:14px;text-transform:uppercase;letter-spacing:0.5px;">Propuestas adicionales incorporadas</h3>
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px;">
+    <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-size:12px;">
+      <strong style="color:#7ee787;">P01 · Constitutional Layer</strong><br>
+      <span style="color:#c9d1d9;">Reglas innegociables en código. No las puede saltar ni el usuario. Safety + ethics + contratos.</span>
+    </div>
+    <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-size:12px;">
+      <strong style="color:#7ee787;">P02 · Schema Evolution</strong><br>
+      <span style="color:#c9d1d9;">Backward compatibility via versionado semántico. Migraciones automáticas cuando schema cambia.</span>
+    </div>
+    <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-size:12px;">
+      <strong style="color:#7ee787;">P03 · Cross-session Sync</strong><br>
+      <span style="color:#c9d1d9;">Memoria sincroniza entre dispositivos del mismo usuario via Xata o similar. Conflict resolution con CRDT.</span>
+    </div>
+    <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-size:12px;">
+      <strong style="color:#7ee787;">P04 · Plugin Marketplace</strong><br>
+      <span style="color:#c9d1d9;">Third-party adapters con contratos validados. Registro, versionado, revisión.</span>
+    </div>
+    <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-size:12px;">
+      <strong style="color:#7ee787;">P05 · Multi-modal DAG Nodes</strong><br>
+      <span style="color:#c9d1d9;">Nodos que procesan imagen/audio/video, no solo texto. Aprovecha multimodal nativo de Gemma 4 E2B.</span>
+    </div>
+    <div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-size:12px;">
+      <strong style="color:#7ee787;">P06 · Replay Engine</strong><br>
+      <span style="color:#c9d1d9;">Re-ejecuta conversaciones desde checkpoint. Útil para debugging y A/B testing de versiones del sistema.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     RUTA DE TRABAJO PARA MAVIS EN OTRO CHAT
+     ============================================================ -->
+<div class="ruta">
+  <h2>🎯 Ruta de trabajo — instrucciones para Mavis en otro chat</h2>
+  <p class="lead">Copia y pega este prompt en una nueva conversación con Mavis (o MiniMax-M3) para que diseñe e implemente los agentes. Es auto-contenido.</p>
+  <pre>
+# INSTRUCCIONES PARA MAVIS / MiniMax-M3
+
+Eres el responsable de diseñar e implementar el sistema MHYTOS v3 con sus mini-agentes,
+agentes memoria, simuladores DSL y ensemble deliberativo. NO uses prompt libre — todo es código.
+
+## CONTEXTO DEL PROYECTO
+
+Proyecto: NCT Neuronas Code Turbo
+Stack objetivo: Python 3.11+, type hints, Pydantic v2, dataclasses, asyncio
+Deployment: puede correr en cloud, on-premise, o smartphone (Gemma 4 E2B Q4_K_M)
+
+## DECISIONES YA APROBADAS (no abrir debate)
+
+- Core fijo: SHEMAT, SHERIFF, SENTINEL, JUEZ, CODE como clases Python
+- 15 mini-agentes especializados (lista en /workspace/diagram-v3.html)
+- 7 agentes memoria (lista en /workspace/diagram-v3.html)
+- 5 simuladores DSL (lista en /workspace/diagram-v3.html)
+- Ensemble deliberativo: 3 proponen (Hermes, Yuan Flash, fallback) + Gemma 4 E2B arbitra
+- DSL: YAML (humano) + JSON (ejecución) + Python DSL (lógica)
+- Graph Memory: SQLite custom nodes/edges con time-travel
+- Constitucional rules: código enforced, no soft ethics
+- Multi-lenguaje via contratos JSON language-agnostic
+
+## ENTREGABLES REQUERIDOS (en este orden)
+
+### FASE 1 · Core determinista (semana 1)
+1. Clase SchemaValidator (SHEMAT) con .validate(input, schema) → ValidationResult
+2. Clase InputGuard (SHERIFF) con .check(input) → GuardReport
+3. Clase Sentinel con .rollback(state, reason) → State
+4. Clase Judge (JUEZ) con .decide(proposals) → Decision
+5. Clase DSLExecutor (CODE) con .execute(dag, context) → Output
+6. DAG runner que ejecuta nodos en orden topológico con retry policy
+
+### FASE 2 · Mini-agentes (semana 2)
+Implementa los 15 mini-agentes como funciones puras. Cada uno:
+- Type hints completos (input, output)
+- Docstring con ejemplo
+- Test unitario (pytest)
+- Métricas: latencia, costo, success_rate
+
+### FASE 3 · Agentes memoria (semana 3)
+Implementa los 7 agentes memoria con:
+- Versionado estilo git en cada write
+- Conflict resolution (CRDT o last-write-wins)
+- Búsqueda semántica via embeddings
+- Time-travel queries en GraphMemoryAgent
+
+### FASE 4 · Simuladores DSL (semana 4)
+Implementa los 5 simuladores. Cada uno ejecuta el DAG en escenarios:
+- FailureSimulator: inyecta fallos controlados
+- RoleSimulator: simula roles y mide respuestas
+- ScenarioPlayer: ejecuta test suites completos
+- StressTestSimulator: carga extrema
+- RecoverySimulator: recovery desde checkpoint
+
+### FASE 5 · Ensemble Deliberativo (semana 5)
+- Queue de modelos con carga/descarga on-demand
+- Decisor Gemma 4 E2B (siempre el árbitro final)
+- Verifier separado del árbitro
+- Reasoning trace exportable
+
+### FASE 6 · Caches (semana 6)
+Los 5 caches con TTL adaptativo y eviction policy LRU + TTL.
+
+## RESTRICCIONES DURAS
+
+- NO prompt libre. Todo en código.
+- NO imports de librerías no estándar sin justificación.
+- Type hints obligatorios en 100% del código público.
+- Tests unitarios para cada clase/función.
+- Docstrings en formato Google o NumPy.
+- Multi-lenguaje: contratos JSON deben ser válidos como schema en OpenAPI/JSON Schema.
+
+## ENTREGABLE FINAL
+
+1. Repo en /workspace/nct-mhytos/ con estructura:
+   /core (clases base)
+   /mini_agents (15 agentes)
+   /memory_agents (7 agentes)
+   /simulators (5 simuladores)
+   /ensemble (deliberativo)
+   /caches (5 caches)
+   /tests (pytest)
+   /contracts (JSON schemas language-agnostic)
+   /docs (arquitectura + ADRs)
+
+2. README con quickstart en 5 minutos.
+
+3. CI/CD con GitHub Actions: lint + type-check + tests.
+
+## PRIMER PASO
+
+Lee /workspace/diagram-v3.html y /workspace/diagram-v2.html para contexto completo.
+Después crea /workspace/nct-mhytos/ con la estructura de directorios y el primer
+archivo: /workspace/nct-mhytos/core/base.py con las clases base abstractas.
+
+NO te detengas a pedir permiso. Empieza ya.
+</pre>
+</div>
+
+<div class="footer">
+  v3 — checkpoint nct-v3-20260621-1623 · rollback a v2 (/workspace/diagram-v2.html) ·
+  TODO APROBADO · 0 pendientes · 0 preguntas abiertas · 15 mini-agentes · 7 memoria · 5 simuladores · 5 caches · 6 propuestas extra
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background: '#0d1117',
+      primaryColor: '#161b22',
+      primaryTextColor: '#c9d1d9',
+      primaryBorderColor: '#30363d',
+      lineColor: '#8b949e',
+      fontSize: '12px'
+    },
+    flowchart: { curve: 'basis', padding: 10 }
+  });
+
+  const recoveryData = JSON.parse(document.getElementById('recovery-header').textContent);
+
+  function syntaxHighlight(json) {
+    const escaped = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return escaped.replace(
+      /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+      function (match) {
+        let cls = 'n';
+        if (/^"/.test(match)) { cls = /:$/.test(match) ? 'k' : 's'; }
+        else if (/true|false/.test(match)) { cls = 'b'; }
+        else if (/null/.test(match)) { cls = 'null'; }
+        return '<span class="' + cls + '">' + match + '</span>';
+      }
+    );
+  }
+
+  function render(id, data) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = syntaxHighlight(JSON.stringify(data, null, 2));
+  }
+
+  render('json-view-1', recoveryData.manifesto);
+  render('json-view-2', recoveryData.ensemble_deliberativo);
+  render('json-view-3', recoveryData.decision_5_ai_consenso);
+  render('json-view-4', recoveryData.patch_v2_to_v3);
+  render('json-view-5', recoveryData.recovery);
+
+  const copyBtn = document.getElementById('copy-recovery-btn');
+  copyBtn.addEventListener('click', async () => {
+    const raw = document.getElementById('recovery-header').textContent;
+    try {
+      await navigator.clipboard.writeText(raw);
+      copyBtn.textContent = '✓ Copiado';
+      copyBtn.classList.add('copied');
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = raw;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (_) {}
+      document.body.removeChild(ta);
+      copyBtn.textContent = '✓ Copiado (fallback)';
+      copyBtn.classList.add('copied');
+    }
+    setTimeout(() => {
+      copyBtn.textContent = '📋 Copiar JSON';
+      copyBtn.classList.remove('copied');
+    }, 2000);
+  });
+</script>
+</body>
+</html>

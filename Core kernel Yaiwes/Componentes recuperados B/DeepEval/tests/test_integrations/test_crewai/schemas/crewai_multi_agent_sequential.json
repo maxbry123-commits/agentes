@@ -1,0 +1,106 @@
+{
+  "uuid": "b640f29b-5b0c-4595-ba43-793110678509",
+  "baseSpans": [
+    {
+      "uuid": "33ff953c-74e3-42a0-8856-9213f3ef8bc4",
+      "name": "kickoff",
+      "status": "SUCCESS",
+      "type": "base",
+      "startTime": "2026-06-01T17:24:09.054Z",
+      "endTime": "2026-06-01T17:24:12.294Z",
+      "input": {},
+      "output": "Why did the narwhal always bring a pencil to the ocean? Because it wanted to draw attention with its \"tusk-tastic\" personality!",
+      "integration": "CrewAI"
+    }
+  ],
+  "agentSpans": [
+    {
+      "uuid": "380c21a6-3725-4016-a391-05a22deb9412",
+      "name": "execute_task",
+      "status": "SUCCESS",
+      "type": "agent",
+      "parentUuid": "33ff953c-74e3-42a0-8856-9213f3ef8bc4",
+      "startTime": "2026-06-01T17:24:10.976Z",
+      "endTime": "2026-06-01T17:24:12.291Z",
+      "input": "Write a one-sentence joke about the animal provided.\n\nThis is the expected criteria for your final answer: A joke.\nyou MUST return the actual complete content as the final answer, not a summary.\n\nThis is the context you're working with:\nNarwhal",
+      "output": "Why did the narwhal always bring a pencil to the ocean? Because it wanted to draw attention with its \"tusk-tastic\" personality!",
+      "integration": "CrewAI",
+      "availableTools": [],
+      "agentHandoffs": []
+    },
+    {
+      "uuid": "7bc5db50-01a1-4aec-b40b-acd85cab17ad",
+      "name": "execute_task",
+      "status": "SUCCESS",
+      "type": "agent",
+      "parentUuid": "33ff953c-74e3-42a0-8856-9213f3ef8bc4",
+      "startTime": "2026-06-01T17:24:09.072Z",
+      "endTime": "2026-06-01T17:24:10.973Z",
+      "input": "Pick a random animal.\n\nThis is the expected criteria for your final answer: The name of an animal.\nyou MUST return the actual complete content as the final answer, not a summary.",
+      "output": "Narwhal",
+      "integration": "CrewAI",
+      "availableTools": [],
+      "agentHandoffs": []
+    }
+  ],
+  "llmSpans": [
+    {
+      "uuid": "d95e69e1-75a2-4fb4-a636-865d725b0223",
+      "name": "call",
+      "status": "SUCCESS",
+      "type": "llm",
+      "parentUuid": "380c21a6-3725-4016-a391-05a22deb9412",
+      "startTime": "2026-06-01T17:24:10.980Z",
+      "endTime": "2026-06-01T17:24:12.288Z",
+      "input": [
+        {
+          "role": "system",
+          "content": "You are Writer. Funny writer\nYour personal goal is: Write a joke about the topic",
+          "cache_breakpoint": true
+        },
+        {
+          "role": "user",
+          "content": "\nCurrent Task: Write a one-sentence joke about the animal provided.\n\nThis is the expected criteria for your final answer: A joke.\nyou MUST return the actual complete content as the final answer, not a summary.\n\nThis is the context you're working with:\nNarwhal\n\nProvide your complete response:",
+          "cache_breakpoint": true
+        }
+      ],
+      "output": "Why did the narwhal always bring a pencil to the ocean? Because it wanted to draw attention with its \"tusk-tastic\" personality!",
+      "integration": "CrewAI",
+      "model": "gpt-4o-mini",
+      "provider": "OpenAI"
+    },
+    {
+      "uuid": "8da52854-47da-43bf-a869-3deb00b75cd4",
+      "name": "call",
+      "status": "SUCCESS",
+      "type": "llm",
+      "parentUuid": "7bc5db50-01a1-4aec-b40b-acd85cab17ad",
+      "startTime": "2026-06-01T17:24:09.077Z",
+      "endTime": "2026-06-01T17:24:10.968Z",
+      "input": [
+        {
+          "role": "system",
+          "content": "You are Researcher. Curious researcher\nYour personal goal is: Find a topic",
+          "cache_breakpoint": true
+        },
+        {
+          "role": "user",
+          "content": "\nCurrent Task: Pick a random animal.\n\nThis is the expected criteria for your final answer: The name of an animal.\nyou MUST return the actual complete content as the final answer, not a summary.\n\nProvide your complete response:",
+          "cache_breakpoint": true
+        }
+      ],
+      "output": "Narwhal",
+      "integration": "CrewAI",
+      "model": "gpt-4o-mini",
+      "provider": "OpenAI"
+    }
+  ],
+  "retrieverSpans": [],
+  "toolSpans": [],
+  "startTime": "2026-06-01T17:24:09.054Z",
+  "endTime": "2026-06-01T17:24:12.294Z",
+  "environment": "development",
+  "input": {},
+  "output": "Why did the narwhal always bring a pencil to the ocean? Because it wanted to draw attention with its \"tusk-tastic\" personality!",
+  "status": "SUCCESS"
+}

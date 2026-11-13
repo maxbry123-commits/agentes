@@ -1,0 +1,40 @@
+{
+  "fullDeployments": [
+    {
+      "agentType": "HYBRID",
+      "deploymentId": 87,
+      "deploymentName": "data-eng-prod",
+      "deploymentStatus": "ACTIVE",
+      "deploymentType": "PRODUCTION",
+      "isBranchDeployment": false,
+      "organizationName": "hooli"
+    },
+    {
+      "agentType": "HYBRID",
+      "deploymentId": 190248,
+      "deploymentName": "gtm20",
+      "deploymentStatus": "ACTIVE",
+      "deploymentType": "PRODUCTION",
+      "isBranchDeployment": false,
+      "organizationName": "hooli"
+    },
+    {
+      "agentType": "HYBRID",
+      "deploymentId": 213933,
+      "deploymentName": "data-eng-staging",
+      "deploymentStatus": "ACTIVE",
+      "deploymentType": "PRODUCTION",
+      "isBranchDeployment": false,
+      "organizationName": "hooli"
+    },
+    {
+      "agentType": "HYBRID",
+      "deploymentId": 217021,
+      "deploymentName": "data-eng-dev",
+      "deploymentStatus": "ACTIVE",
+      "deploymentType": "PRODUCTION",
+      "isBranchDeployment": false,
+      "organizationName": "hooli"
+    }
+  ]
+}

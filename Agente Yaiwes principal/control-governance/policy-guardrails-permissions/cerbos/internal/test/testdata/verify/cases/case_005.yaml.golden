@@ -1,0 +1,15 @@
+{
+  "suites": [
+    {
+      "file": "invalid_test.yaml",
+      "name": "Unknown",
+      "summary": {
+        "overallResult": "RESULT_ERRORED"
+      },
+      "error": "failed to load test suite:\ntests: value is required"
+    }
+  ],
+  "summary": {
+    "overallResult": "RESULT_ERRORED"
+  }
+}

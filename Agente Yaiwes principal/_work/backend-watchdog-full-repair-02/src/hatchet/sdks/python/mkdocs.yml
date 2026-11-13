@@ -1,0 +1,49 @@
+site_name: Hatchet Python SDK
+site_description: Documentation for the Hatchet SDK
+repo_url: https://github.com/hatchet-dev/hatchet
+site_url: https://docs.hatchet.run/sdks/python/
+use_directory_urls: false
+
+
+plugins:
+  - markdown-export
+  - mkdocstrings:
+      default_handler: python
+      custom_templates: docs/templates
+      handlers:
+        python:
+          paths: [hatchet_sdk]
+          options:
+            extensions:
+              - griffe_pydantic
+            # Load pydantic_settings so griffe can resolve BaseSettings and the
+            # griffe_pydantic extension detects settings models. Deliberately NOT
+            # pydantic itself: loading it makes the extension label BaseModel's own
+            # internals as fields, which leak into every model's rendered field list.
+            preload_modules:
+              - pydantic_settings
+            show_source: false
+            heading_level: 3
+            show_category_heading: true
+            show_if_no_docstring: true
+            show_signature: false
+            show_overloads: false
+            docstring_style: sphinx
+            show_docstring_functions: false
+            inherited_members: true
+            filters: ["!^_", "!^features$"]
+            show_signature_annotations: false
+            annotations_path: "brief"
+            docstring_section_style: "table"
+            show_docstring_attributes: false
+            summary:
+              attributes: false
+              functions: true
+              modules: false
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - admonition
+  - toc:
+      permalink: true

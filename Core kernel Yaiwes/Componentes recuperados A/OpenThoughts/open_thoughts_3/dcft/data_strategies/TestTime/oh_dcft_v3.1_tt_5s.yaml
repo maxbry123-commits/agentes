@@ -1,0 +1,127 @@
+operators:
+  - id: load_oh_original
+    config:
+      type: hf_source
+      dataset: teknium/OpenHermes-2.5
+      split: train
+      columns: 
+        - conversations
+  - id: convert_to_instruction_response
+    input_ids:
+      - load_oh_original
+    config:
+      type: function
+      sharded: true
+      num_shards: 5
+      function: data_strategies.commons.convert_sharegpt_to_instruction_response
+      function_config:
+        input_sharegpt_column: conversations
+        output_instruction_column: instruction
+        output_response_column: response
+  - id: select_instruction_response
+    input_ids:
+      - convert_to_instruction_response
+    config:
+      type: function
+      sharded: true
+      num_shards: 5
+      function: data_strategies.commons.select_columns
+      function_config:
+        columns:
+          - instruction
+          - response
+  - id: duplicate
+    config:
+      type: function
+      sharded: true
+      num_shards: 5
+      function: data_strategies.TestTime.generator.duplicate_rows
+      function_config:
+        n_copies: 5
+    input_ids:
+      - select_instruction_response
+  - id: annotate_instruction
+    config:
+      type: completions
+      map: chat
+      sharded: true
+      num_shards: 5
+      merge_shards: false
+      require_all_responses: false
+      map_config:
+        user_message_column: instruction
+        output_column: completion
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+    input_ids:
+      - duplicate
+  - id: add_critique
+    config:
+      type: completions
+      map: critic
+      require_all_responses: false
+      map_config:
+        query_column: instruction
+        responses_column: completion
+        output_column: critique
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+    input_ids:
+      - annotate_instruction
+  - id: merge_together
+    config:
+      type: high_memory_function
+      sharded: true
+      num_shards: 5
+      memory: 500
+      function: data_strategies.TestTime.generator.merge_duplicate_rows
+      function_config:
+        diff_columns: 
+          - completion
+          - critique
+    input_ids:
+      - add_critique
+  # - id: ranker
+  #   config:
+  #     require_all_responses: false
+  #     type: completions
+  #     map: ranker
+  #     map_config:
+  #       query_column: instruction
+  #       responses_column: completion
+  #       critic_column: critique
+  #       output_column: ranking
+  #     model: gpt-4o-mini
+  #     top_p: 0.95
+  #     batch: False
+  #   input_ids:
+  #     - merge_together
+  # - id: fuser
+  #   config:
+  #     type: completions
+  #     require_all_responses: false
+  #     map: fuser
+  #     map_config:
+  #       query_column: instruction
+  #       responses_column: completion
+  #       critic_column: critique
+  #       ranking_column: ranking
+  #       output_column: fused_response
+  #       top_ranking: 5
+  #     model: gpt-4o-mini
+  #     top_p: 0.95
+  #     batch: False
+  #   input_ids:
+  #     - ranker
+  # - id: to_sharegpt
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.convert_instruction_response_to_sharegpt
+  #     function_config:
+  #       input_instruction_column: instruction
+  #       input_response_column: fused_response
+  #       output_sharegpt_column: conversations
+  #   input_ids:
+  #     - fuser

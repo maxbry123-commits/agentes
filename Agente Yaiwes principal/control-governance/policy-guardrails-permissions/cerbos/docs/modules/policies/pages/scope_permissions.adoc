@@ -1,0 +1,33 @@
+include::ROOT:partial$attributes.adoc[]
+
+= Scope Permissions
+
+include::ROOT:partial$version-check.adoc[]
+
+`scopePermissions` is a setting applied to resource and principal policies that impacts how rules are evaluated within a scope hierarchy. It defines whether policies in a given scope can **override** parent scope rules or whether they can only **restrict** the permissions granted by parent scopes.
+
+All resource or principal policies within the same scope **must** use the same `scopePermissions` setting. If conflicting settings are detected within a shared scope, a build-time error will occur.
+
+There are two available settings:
+
+- `SCOPE_PERMISSIONS_OVERRIDE_PARENT`
+- `SCOPE_PERMISSIONS_REQUIRE_PARENTAL_CONSENT_FOR_ALLOWS`
+
+NOTE: By default, resource and principal policies use `SCOPE_PERMISSIONS_OVERRIDE_PARENT` unless explicitly set otherwise.
+
+=== SCOPE_PERMISSIONS_OVERRIDE_PARENT
+
+This is the default evaluation strategy for scoped policies. Cerbos starts evaluating policies from the bottom of the scope chain and moves up. The first policy to produce a decision for a given action is the winner. Any policies further up the chain cannot influence that decision.
+
+- If an input matches a rule and its condition is met, the specified effect is applied (no need to check parents).
+- If a rule is matched but its condition is not met, or if a rule is not matched, evaluation continues up the hierarchy.
+
+=== SCOPE_PERMISSIONS_REQUIRE_PARENTAL_CONSENT_FOR_ALLOWS
+
+When a policy is configured with `scopePermissions: SCOPE_PERMISSIONS_REQUIRE_PARENTAL_CONSENT_FOR_ALLOWS`, it **inherits and restricts** the permissions of parent scopes. Policies at this level must define rules within the maximum set of permissions allowed by parent policies—they cannot introduce new permissions that exceed what a parent scope already permits.
+
+In this mode, an `ALLOW` rule that matches an action doesn't immediately generate an `ALLOW` decision. A parent policy higher up in the scope chain must also `ALLOW` that same action in order to produce a definitive decision. However, if a rule is matched but its condition is not met, the request is implicitly denied.
+
+- If an input is not matched, evaluation continues up the scope hierarchy.
+- If a rule is matched but its condition is not met, an implicit DENY is issued.
+- If a rule matches and the condition is met, evaluation continues to parent policies to verify that the action is also allowed at a higher level.

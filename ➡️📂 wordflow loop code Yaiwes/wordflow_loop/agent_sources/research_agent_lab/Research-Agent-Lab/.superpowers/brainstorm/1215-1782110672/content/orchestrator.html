@@ -1,0 +1,79 @@
+<h2>ExperimentOrchestratorAgent 内部循环</h2>
+<p class="subtitle">Workflow 视角只看到一个 agent，内部封装完整的 code → run → debug → retry 循环</p>
+
+<div class="mockup">
+  <div class="mockup-header">ExperimentOrchestratorAgent.run() 流程图</div>
+  <div class="mockup-body">
+    <div style="display:flex;flex-direction:column;gap:6px;font-family:monospace;font-size:12px;">
+
+      <div style="background:#1a3a5c;border-left:4px solid #64b5f6;padding:10px;border-radius:4px;color:#e0e0e0;">
+        <strong style="color:#90caf9;">1. 初始化</strong><br>
+        读取 state.values["experiment_plans"], ["code_tasks"]<br>
+        attempt = 0, max_attempts = 3<br>
+        all_patches = [], all_results = [], all_debug_records = []
+      </div>
+      <div style="text-align:center;color:#888;">↓</div>
+
+      <div style="border:2px dashed #fdd835;padding:12px;border-radius:4px;color:#ccc;">
+        <strong style="color:#ffee58;">对每个 ExperimentPlan 执行:</strong>
+
+        <div style="margin:10px 0;padding:8px;background:#1a1a2e;border-radius:4px;">
+          <strong style="color:#ff9800;">△ 子循环 (per plan): while attempt ≤ max_attempts</strong>
+
+          <div style="margin:6px 0;padding:8px;background:#4a3f00;border-radius:4px;color:#e0e0e0;">
+            <strong style="color:#ffee58;">Step A: CodeWriterAgent.run(state, context)</strong><br>
+            → 首次: 根据 ExperimentPlan 生成代码<br>
+            → retry: 应用 AutoDebugger 的修复代码<br>
+            → 输出: CodePatch → state.values["code_patch"]<br>
+            → artifact: code_patches/{patch_id}.json
+          </div>
+          <div style="text-align:center;color:#888;">↓</div>
+          <div style="margin:6px 0;padding:8px;background:#1b3d1b;border-radius:4px;color:#e0e0e0;">
+            <strong style="color:#81c784;">Step B: AutonomousExperimentAgent.run(state, context)</strong><br>
+            → 在 work_dir 运行实验命令<br>
+            → parse_experiment_output() + _check_criteria()<br>
+            → 输出: ExperimentResult[] → state.values["experiment_results"]<br>
+            → artifact: experiment_results/{result_id}.json
+          </div>
+          <div style="text-align:center;color:#888;">↓</div>
+          <div style="margin:6px 0;padding:8px;background:#1a3a5c;border-radius:4px;color:#e0e0e0;">
+            <strong style="color:#90caf9;">Step C: 判断</strong><br>
+            ✅ 所有结果 passed → 记录成功，break（进入下一个 plan）<br>
+            ❌ 全部失败 且 attempt ≥ max → 记录失败，break<br>
+            ⚠️ 部分失败且 attempt &lt; max → 继续 Step D
+          </div>
+          <div style="text-align:center;color:#888;">↓ retry</div>
+          <div style="margin:6px 0;padding:8px;background:#4a1a2a;border-radius:4px;color:#e0e0e0;">
+            <strong style="color:#ef9a9a;">Step D: AutoDebuggerAgent.run(state, context)</strong><br>
+            → 解析 traceback，定位错误文件<br>
+            → LLM 分析 + 生成修复代码<br>
+            → 输出: AutoDebugRecord → state.values["last_debug_record"]<br>
+            → artifact: auto_debug_records/{record_id}.json<br>
+            → attempt += 1，回到 Step A
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align:center;color:#888;">↓ 所有 plan 处理完</div>
+
+      <div style="background:#1a3a5c;border-left:4px solid #64b5f6;padding:10px;border-radius:4px;color:#e0e0e0;">
+        <strong style="color:#90caf9;">2. 汇总输出</strong><br>
+        state.values["all_code_patches"] = all_patches<br>
+        state.values["all_experiment_results"] = all_results<br>
+        state.values["experiment_orchestrator_summary"] = "{n} plans, {p} passed, {f} failed, {d} debug records"
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:20px;">
+  <h3>关键规则</h3>
+  <table>
+    <tr><td>子 agent 调用</td><td>直接实例化并调 run(state, context)，复用同一个 state 和 context</td></tr>
+    <tr><td>Artifact</td><td>每个子 agent 独立保存 artifact，和 workflow 中其他 agent 一致</td></tr>
+    <tr><td>LLM budget</td><td>每次调用前检查 llm_budget_allows()；超预算时 CodeWriter/AutoDebugger 返回 skipped</td></tr>
+    <tr><td>多 plan 处理</td><td>按 plans 顺序串行，前一个 plan 失败不阻止后续 plan</td></tr>
+    <tr><td>workflow 位置</td><td>DeveloperAgent 之后，ExperimentDecisionAgent 之前</td></tr>
+  </table>
+</div>

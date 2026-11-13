@@ -1,0 +1,72 @@
+{
+  "created_at": 1789398777,
+  "items": {
+    "PD4-001": {
+      "attempts": 12,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 57, in scan_tree\n    if special: raise RuntimeError('SOURCE_SPECIAL_FILE_GAP:'+','.join(special[:30]))\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_SPECIAL_FILE_GAP:misc/releases/latest/Dockerfile,misc/releases/latest/Vagrantfile\n",
+      "slug": "Fast-Downward",
+      "source_repo": "aibasel/downward",
+      "status": "FAILED"
+    },
+    "PD4-002": {
+      "attempts": 12,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/Unified-Planning\n",
+      "slug": "Unified-Planning",
+      "source_repo": "aiplan4eu/unified-planning",
+      "status": "FAILED"
+    },
+    "PD4-003": {
+      "attempts": 12,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/Pyperplan\n",
+      "slug": "Pyperplan",
+      "source_repo": "aibasel/pyperplan",
+      "status": "FAILED"
+    },
+    "PD4-004": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 60565,
+        "bundle_sha256": "da35e024addde65c4c75ab615fce7e7da3de9d45610ab4d5ed62b1afbe2b718f",
+        "elapsed_seconds": 37.74,
+        "extracted_tree": {
+          "bytes": 187224,
+          "files": 31,
+          "sha256": "5b7fbc716a417b88d83fce8973dc10bed81af7212f77e7c3ca0c75a9ca9cbfff"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 60565,
+            "name": "GTPyhop.bundle.zip.part-0001",
+            "sha256": "da35e024addde65c4c75ab615fce7e7da3de9d45610ab4d5ed62b1afbe2b718f"
+          }
+        ],
+        "publish": {
+          "commit": "c8686518aa6cebc1a73ce91c7efeecc83ba7a9aa",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "GTPyhop",
+        "source_bytes": 187224,
+        "source_commit": "1ca7773963443476d0e83d03f10efab325327565",
+        "source_files": 31,
+        "source_ref": "HEAD",
+        "source_repo": "dananau/GTPyhop",
+        "source_tree": {
+          "bytes": 187224,
+          "files": 31,
+          "sha256": "5b7fbc716a417b88d83fce8973dc10bed81af7212f77e7c3ca0c75a9ca9cbfff"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "GTPyhop",
+      "source_repo": "dananau/GTPyhop",
+      "status": "VERIFIED_CLOSED"
+    }
+  },
+  "schema": "yaiwes.frontend.download-extract-queue.v1"
+}

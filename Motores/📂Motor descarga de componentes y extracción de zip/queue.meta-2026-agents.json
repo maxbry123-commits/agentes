@@ -1,0 +1,42 @@
+{
+  "schema": "yaiwes.meta-agents-2026.queue.v1",
+  "generated_at": "2026-09-13",
+  "policy": {
+    "official_owner": "meta-models",
+    "deduplicate_by_source_repo": true,
+    "destination": "Core kernel Yaiwes",
+    "weights_excluded": true
+  },
+  "queue": [
+    {
+      "id": "meta-2026-001-muse-code-sdk",
+      "source_repo": "meta-models/muse-code-sdk",
+      "source_ref": "fbce769ccb75ab971d00e01a00fe076de4c773fc",
+      "slug": "Meta-Muse-Code-SDK-2026",
+      "dest_repo": "maxbry123-commits/agentes",
+      "dest_branch": "main",
+      "dest_root": "Core kernel Yaiwes",
+      "publish": true
+    },
+    {
+      "id": "meta-2026-002-muse-glimmer-agent",
+      "source_repo": "meta-models/meta-oss-cookbook",
+      "source_ref": "499ad7422c2175cf47dbad5df37c4c8f6c11f924",
+      "slug": "Meta-Muse-Glimmer-Agent-2026",
+      "dest_repo": "maxbry123-commits/agentes",
+      "dest_branch": "main",
+      "dest_root": "Core kernel Yaiwes",
+      "publish": true
+    },
+    {
+      "id": "meta-2026-003-agent-cookbook",
+      "source_repo": "meta-models/meta-model-cookbook",
+      "source_ref": "fb440d68f9f1eb735faca57092b0729ad6195d96",
+      "slug": "Meta-Agent-Cookbook-2026",
+      "dest_repo": "maxbry123-commits/agentes",
+      "dest_branch": "main",
+      "dest_root": "Core kernel Yaiwes",
+      "publish": true
+    }
+  ]
+}

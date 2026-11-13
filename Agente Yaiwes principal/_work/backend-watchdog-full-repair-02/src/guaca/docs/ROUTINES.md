@@ -1,0 +1,315 @@
+# Routines
+
+A routine is an instruction an agent gives itself when a trigger comes due.
+`domain/routine.rs` holds the shape, the scheduler is in `runtime/mod.rs`, and
+`RoutineList` and `RoutineDetail` draw them. `lib/routine.ts` is the webview's
+half: the only file on that side that reads a trigger's stored text.
+
+## A trigger is one string, in both places it lives, and two kinds of thing
+
+The column is text and so is the wire form, which is why `Trigger` has a
+hand-written `Serialize`: a derived one would hand the webview a tagged object
+and SQLite `weekdays` for the same fact, and only one of the two would be read
+by the frontend.
+
+Underneath that one string are two families. A `Cadence` is a moment or a repeat
+of them, and the scheduler owns it. An `EventTrigger` is something happening in
+a service the group is connected to, written `event:stripe/invoice.payment_failed`,
+and it owns nothing: it has no next moment, and no clock will ever produce one.
+Splitting them in the type is what keeps `next_after`, `first_run` and `accepts`
+off a value that has no answer for any of them.
+
+What delivers one is a POST. `webhook.rs` is a loopback receiver, and
+`/events/stripe/invoice.payment_failed` on it fires every active routine
+standing on that trigger through `Runtime::deliver_event`, which asks the same
+three things the clock's sweep asks, in the same order: is the agent working
+and does the routine skip, move the row, write the firing down. The body of the
+post rides on the fired part as `payload` and reaches the model below the
+instruction, fenced and named as data. Nothing polls a service and nothing
+signs in to one for this: whatever posts is the operator's to wire, and the
+routine's panel shows the address and the secret it takes. The trigger is in
+the picker now for exactly that reason. It was kept out until something could
+deliver one, because a routine an operator can set and then watch never fire is
+worse than one they cannot set yet.
+
+## The receiver is loopback, and the secret is in a header because of that
+
+Loopback is what the two viewers are, and it is enough for them because reading
+a page an agent drew changes nothing. A post here starts a turn, so loopback is
+not enough: any page open in the operator's browser can POST to a loopback port
+cross-origin, and a secret carried in the body rides along in such a post
+unread. The secret is a bearer token in `Authorization`, and that placement is
+the mechanism. A browser will not attach that header cross-origin without a
+preflight, the preflight is answered with no CORS headers at all, and the POST
+is never sent. A secret in a query string or a body would look identical to a
+reader and close nothing.
+
+The port and the secret are written into the settings the first time the
+receiver comes up and read back on every launch after, because the operator
+wires something to an address once. A receiver that took a fresh port from the
+OS every morning would break that wiring every morning with nothing on screen
+to say so. A recorded port that is taken is not fatal either: the receiver takes
+a free one, says so in the log, and writes the new one down. The panel shows
+whichever address is current, and a port of zero, which is a receiver that did
+not come up at all, is drawn as that sentence rather than as an address nothing
+answers.
+
+An event nobody stands on is a 404, and that is the answer that matters most. A
+200 would tell a script its wiring works while the routine it was meant for sits
+under a different spelling. The service is lowered on both sides for the same
+reason: a routine set as `stripe` hears from a webhook configured as `Stripe`.
+The body is drained before a refusal is written, because a client still sending
+when the answer arrives reads a reset instead of the sentence that says what it
+did wrong.
+
+The `schedule` tool still reads a cadence and nothing else. An agent that
+improvised `event:...` there would hold a routine waiting on a post nobody has
+arranged, and it has no way to tell whoever might post where to post to. The
+operator sets these, and the agent reads them in its prompt like any other.
+
+## A routine with no next firing has no next firing
+
+`next_run_at` is `Option<i64>`, and NULL in SQLite since migration 21. The
+alternative was a sentinel date, which is a date the operator eventually gets
+shown, and one bad comparison away from firing something that was meant to wait
+for Stripe. NULL also tells the scheduler for free: SQL compares NULL to
+nothing, so `next_run_at <= now` skips these without `due_routines` knowing what
+kinds of trigger exist.
+
+Everything reading that column has to answer for the empty case rather than
+invent a moment. `NextSlot` is the shape of that: `Due`, `Waiting` and `Done`
+are three answers, not two, because "nothing on the clock" and "finished" mean
+opposite things to the row and reading them off the same `None` deleted every
+event routine the first time it fired. `ORDER BY next_run_at` needs the same
+care: NULL sorts first in SQLite, so a routine waiting on an event drew above
+one firing in ten minutes.
+
+Migration 21 rebuilds the table, which is the only way SQLite will drop NOT
+NULL. `migrations::run` turns foreign key enforcement off around the whole
+sequence for it: with enforcement on, `DROP TABLE routines` performs an implicit
+delete first and fires `routine_runs`' `ON DELETE CASCADE`, taking every
+recorded firing with it.
+
+## A repeat is a shape, not a number of seconds
+
+`every weekday` and `every month` cannot be gaps, and `every day` should not be
+one: a day is 23 or 25 hours twice a year, so a daily nine o'clock routine
+stored as 86400 seconds drifts to eight and stays there. `Cadence` holds the
+shape and `next_run_at` holds the hour, and the next slot is computed in local
+time from the slot it was due at rather than from the moment it ran, so a
+machine asleep through three of them fires once on waking instead of three
+times. A gap still exists, because an agent scheduling itself works in seconds
+and nothing shorter than a day has an hour to keep.
+
+## The moment is the only record of which day a repeat keeps
+
+A weekly routine keeps the weekday of its first firing and a monthly one keeps
+the day of the month. Neither is stored anywhere else, and for a while neither
+was askable: the panel offered a time of day, so "every week at nine" landed on
+whichever day the operator happened to be at the keyboard, and nothing on screen
+said so. `anchorFor` in `lib/routine.ts` says which part of a moment each trigger
+actually keeps, and `firstRunDelay` turns what the operator picked into the one
+number the backend takes.
+
+Two rules in there are not obvious. A monthly 31st goes to the next month that
+*has* a 31st rather than clamping to the end of a short one, because clamping
+would anchor the routine on the 28th and every firing after it would inherit
+that day: the walk backward down the calendar `months_after` is careful to
+avoid. And a moment already gone is refused rather than sent, because a negative
+delay reaches the scheduler as a routine overdue and fires on the next tick,
+which is not what picking a date means. A one-off takes a date for the same
+reason: a time on its own can only ever mean the next 24 hours.
+
+## Switching a routine off and editing one are different actions
+
+`active` has its own command, acts on the click, and does not move
+`next_run_at`: a routine turned back on is due at the slot it was already
+holding, and the scheduler fires an overdue slot once. Parking it behind a Save
+the operator has not pressed means a routine they think they stopped still runs.
+
+## A firing can be skipped, which is not the same as deferred
+
+`skip_if_working` is one column and one question, asked at the moment a routine
+comes due: is this agent already working? If it is, nothing is delivered, the
+slot moves on exactly as it would have if the firing had happened, and the
+history records a skip. The next one comes at its usual time.
+
+The alternative reading is deferral, and it is the wrong one. An hourly sweep
+held until the agent goes quiet fires the moment it does, which is the pile-up
+the option exists to prevent, only later and in a bunch. Skipping is the
+operator saying this particular firing was not worth queueing.
+
+Which is also why it is refused on anything that does not repeat. Skipping
+moves the slot on, and the slot a one-off holds is the only one it has: the row
+would be deleted having done nothing, and the operator would find an empty list
+where their alarm used to be. `validate` refuses the pair where somebody asks
+for it outright, and the panel does not draw the tick on a one-off at all,
+which is why `draftOf` drops the flag rather than sending it: a routine ticked
+as a repeat and then switched to Once would otherwise fail to save with its
+reason attached to a control nobody can see.
+
+"Already working" is `Activity::is_working`, read off the same map the dot
+beside the agent's name is drawn from, so what the operator sees and what the
+scheduler decided are one fact rather than two that agree. Idle is the only
+state that is not working: a queue that is not empty is work already waiting, a
+permission request is a turn parked mid-flight, and a paused agent takes
+nothing off its inbox at all. An agent with no entry in the map has no actor
+and is not working, because a routine that does not run is invisible in a way
+one that runs is not, and the failure worth having is the noisy one.
+
+One path deliberately does not consult it. Test run is the operator pressing a
+button, and a test that quietly did nothing would read as the button being
+broken. The receiver does consult it, through the same `working` read the sweep
+uses, because the column would otherwise be true on an event routine and mean
+nothing: a burst of posts landing on an agent mid-turn is the same pile-up the
+option exists to prevent, arriving from the other direction.
+
+## A skipped firing is in the history, and has no run behind it
+
+`RunKind` has a third value and `routine_runs.run_id` is nullable since
+migration 34. A fourth, `event`, is a post that was delivered; it is kept apart
+from `scheduled` because the two answer different questions when a routine
+misbehaves. A scheduled firing at the wrong hour is the cadence, and an event
+firing nobody expected is whatever is posting to the receiver. Both halves are the same argument. A firing that leaves no trace
+is a gap in the history, and a gap is also what a scheduler that has stopped
+working looks like; but a skip recorded under an invented run id reads back as
+a delivery that bought no model calls, which is the *other* failure this
+history exists to name, and it has a different fix. So the row says which of
+the two it was, and the panel draws "skipped, already working" where it would
+otherwise draw "nothing ran".
+
+A fast cadence on a busy agent fills the list with skips. That is the news
+rather than noise: a sweep being passed over ten times running is worth seeing,
+and the operator's move is to change the cadence.
+
+## An agent reads its own schedule before it decides to write another one
+
+Every routine an agent has standing is in its system prompt, with the id of
+each, its cadence and the first line of its instruction. `schedule` with `list`
+still gives the full text, and the prompt says so.
+
+It is in the prompt rather than behind that tool call because of when the two
+arrive. An operator books something, comes back half an hour later and asks for
+it differently without saying which routine they mean: "make that every day".
+The agent had no idea it kept anything, so nothing in the turn prompted it to go
+and look, and it wrote a second routine beside the first with a name one word
+different. It reported that it had made the change. Both fired from then on, and
+the operator found out by reading the panel. A list an agent has to ask for is a
+list it reads *after* deciding what to do; a list in the prompt is one it reads
+before.
+
+What is in the row is chosen for recognition rather than for reading. An
+instruction is written to be acted on with no other context, so it runs to
+several sentences, and ten of them drawn in full would be the largest section of
+the prompt with the rule underneath them the part that got skimmed. A routine
+the operator has switched off says so instead of counting down: it still holds
+the slot it was holding, and an agent told a dead routine fires in an hour
+reports work as in hand that nobody is going to do.
+
+## Changing a routine is `update`, and adding a second one is not
+
+`schedule` had `list`, `add` and `cancel`. There was no verb for "the routine
+you already have, differently", so an agent asked for one could only add, or
+cancel and add, and canceling first means losing the wording it was keeping if
+the second call is refused. `update` takes an id and any of a name, an
+instruction, a repeat or a delay, and leaves every field it was not sent alone.
+That last part is the whole point: making an agent restate the instruction in
+order to move the clock is how a second routine gets written.
+
+Where the next firing lands after an edit is `next_slot_for`, in `domain`, and
+it is the same function the operator's panel uses. Two answers to "when is this
+next due" would be two schedules.
+
+An `add` that lands beside a routine already doing the same job says so, in the
+tool's own answer, naming both ids. It is a notice and not a refusal, and it
+must not become one: nothing in the runtime can tell "move the sweep to ten"
+from "sweep at ten as well", because both arrive as the same instruction on a
+different clock. A guard would refuse honest work, and an agent's way around a
+refusal is to reword the instruction until it gets through. Saying it out loud
+reaches the one party that knows which was meant, while the turn is still
+running. `same_job` is deliberately loose for the same reason: a false positive
+costs a sentence the turn can ignore.
+
+## A schedule changing is its own event, and the panel was not listening for one
+
+Every path that writes a routine row emits `RoutinesChanged`, carrying the agent
+whose schedule it was: the agent's own `schedule` tool, the operator's commands,
+and the scheduler advancing a routine it has just fired. `RoutineList` reads
+itself again when the id it is drawing comes up.
+
+The operator commands used to emit `AgentsChanged`, which is a claim about the
+roster, and nothing drawing a schedule was listening for it: the list survived
+on being remounted by its key when the detail panel closed. So an agent that
+booked a routine mid-turn left the operator reading a list drawn before the
+routine existed, and the only way to see it was to close the panel and open it
+again. The same held for a firing: a routine that had just run still showed the
+countdown it had before, and a one-shot that fired stayed on the list until
+something else redrew it.
+
+## A test run is the scheduler's own path with the schedule left alone
+
+Same delivery, same fresh run, so what the button shows is what Tuesday will do.
+It deliberately does not move `next_run_at` or delete a one-shot, because trying
+a routine out must not spend the only firing it had. It is refused while the
+draft is dirty: firing the saved version while the operator is looking at an
+edited one answers a different question and reads as the edit having done
+nothing. Both kinds are recorded in `routine_runs` and the test is marked,
+because in the transcript the two are identical.
+
+## A firing that spent nothing is a routine that did not run
+
+`routine_runs` records that a firing happened. What the operator actually wants
+to know is whether it worked, and a delivery to an agent that never took a turn
+is indistinguishable, row for row, from one that did the job. So the history
+joins `usage` by `run_id` and every firing carries what it bought: `calls: 0` is
+the one worth seeing.
+
+Joined at read time rather than stored on the row, because a firing's cost is
+not known when it is recorded and keeps moving until the run settles. A column
+would be a snapshot of a number that was still changing, and the model calls are
+already filed under the run id.
+
+## A routine's row is one line and its instruction is not in it
+
+The instruction is written to be acted on with no other context, which is
+several sentences, and drawing it as the title made one routine fill the panel.
+The row is a name and a cadence; opening it gives the panel over to that
+routine. An agent naming its own routine is optional, so `routineTitle` cuts the
+instruction down when nobody named it, on a word boundary and after the first
+sentence.
+
+The end of that second line is where the row is honest about what it is looking
+at. A switched-off routine must not claim a next firing, and one waiting on an
+event has no next firing to claim, so both say when they last ran instead: on a
+routine that is not about to do anything, that is the only news left.
+
+## A firing is a line in the transcript, not a message
+
+The instruction has to reach the model, and it does: the envelope carries
+`Part::Routine`, `as_plain_text` returns the instruction, and prompt assembly,
+dedup and the emptiness check are all unchanged. What the part buys is the
+drawing. A firing used to arrive as a chat bubble from "Guaca" carrying all
+several sentences of it, in the middle of the operator's own conversation with
+their agent: the system prompting the agent, in the shape of somebody talking to
+the reader. The reflex is to read it as addressed to you, and it never is.
+
+So it is one chip naming the routine, and the click opens that routine in the
+panel beside the transcript, where the instruction is the thing you came to
+read. The part carries the routine's id and its name *at the time it fired*, so
+a routine since renamed does not rewrite what the transcript said it was. The
+two ends are in different columns of the window, so the click goes through
+`openingRoutine` in the store rather than a prop threaded through every message,
+which is the same arrangement `focused` already uses for search hits.
+
+Old transcripts still hold text parts and still draw as bubbles. Migrations are
+forward-only and a message is a record of what happened; rewriting one to change
+how it looks is not worth being able to say the record was edited.
+
+## What a routine delivers is work, and the runtime is what sent it
+
+It arrives from neither the operator nor a peer, which is the case the reply
+mode originally had no arm for: every schedule an agent kept was answered by an
+agent that had just been told nothing was being asked of it. Anything carrying
+work with nobody to answer is `ReplyMode::Assigned`, whoever sent it; work from
+a peer answers that peer instead. See *Cascades terminate because of one
+asymmetry* in `ARCHITECTURE.md`.

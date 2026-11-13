@@ -1,0 +1,8 @@
+DCAgent/g1_gptlong_top8_8b_step1500
+laion/ablation-pymethods2test-seqmean-arm0-tis-15-8B
+laion/ablation-pymethods2test-seqnorm-15-8B
+laion/ablation-pymethods2test-shaped-45-8B
+laion/ablation-pymethods2test-seqmean-arm0-15-8B
+laion/ablation-pymethods2test-seqmean-arm0-30-8B
+laion/explore-tis-minp-40-8B
+laion/explore-tis-temp12-75-8B

@@ -1,0 +1,29 @@
+operators:
+  - id: load_open_orca_cot
+    config:
+      type: load_preexisting
+      framework_name: open-orca-cot_gpt-4o-mini_scale_x.5
+
+  - id: load_open_orca_niv2
+    config:
+      type: load_preexisting
+      framework_name: open-orca-niv2_gpt-4o-mini_scale_x.5
+
+  - id: load_open_orca_flan
+    config:
+      type: load_preexisting
+      framework_name: open-orca-flan_gpt-4o-mini_scale_x.5
+
+  - id: load_open_orca_t0
+    config:
+      type: load_preexisting
+      framework_name: open-orca-t0_gpt-4o-mini_scale_x.5
+
+  - id: orca_mix
+    input_ids: 
+      - load_open_orca_cot
+      - load_open_orca_niv2
+      - load_open_orca_flan
+      - load_open_orca_t0
+    config:
+      type: mix

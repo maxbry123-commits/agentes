@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.bitacora_event.v1",
+  "title": "BitacoraEvent",
+  "description": "Append-only work journal entry. Never rewritten.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "seq",
+    "ts",
+    "kind",
+    "lock_id",
+    "payload",
+    "prev_hash",
+    "event_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "event_id": { "type": "string" },
+    "seq": { "type": "integer", "minimum": 1 },
+    "ts": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "LOCK_CREATED",
+        "PING",
+        "FOCUS",
+        "STEP",
+        "TOOL",
+        "GATE",
+        "REPLAN",
+        "NOTE",
+        "ERROR"
+      ]
+    },
+    "lock_id": { "type": "string" },
+    "payload": { "type": "object", "additionalProperties": true },
+    "prev_hash": { "type": "string" },
+    "event_hash": { "type": "string" }
+  }
+}

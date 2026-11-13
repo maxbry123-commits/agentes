@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 2195739,
+  "bundle_sha256": "1bb5ca6241992577d86e127b33da9f6045aa341079f64c715fc47a3bc0f18ff3",
+  "extracted_tree": {
+    "bytes": 4929851,
+    "files": 220,
+    "sha256": "09910912fabc3176a14bde84144c226dbe03734b068fa533ab4bb93474d1227a"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 2195739,
+      "name": "03-LuaN1aoAgent.bundle.zip.part-0001",
+      "sha256": "1bb5ca6241992577d86e127b33da9f6045aa341079f64c715fc47a3bc0f18ff3"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "03-LuaN1aoAgent",
+  "source_bytes": 4929851,
+  "source_commit": "2efe2c5020332d90ee82d108fc82a6604a6610eb",
+  "source_files": 220,
+  "source_ref": "HEAD",
+  "source_repo": "SanMuzZzZz/LuaN1aoAgent",
+  "source_tree": {
+    "bytes": 4929851,
+    "files": 220,
+    "sha256": "09910912fabc3176a14bde84144c226dbe03734b068fa533ab4bb93474d1227a"
+  }
+}

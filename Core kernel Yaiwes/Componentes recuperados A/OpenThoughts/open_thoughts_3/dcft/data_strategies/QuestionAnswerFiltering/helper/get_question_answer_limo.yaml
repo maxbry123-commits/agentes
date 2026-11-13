@@ -1,0 +1,25 @@
+operators:
+- id: load_codeforces
+  config:
+    type: hf_source
+    dataset: GAIR/LIMO
+    split: train
+- id: get_question_answer_string
+  config:
+    type: function
+    function: data_strategies.QuestionAnswerFiltering.utils.get_combined_question_answer_string
+    function_config:
+      question_column: question
+      answer_column: solution
+      output_column: question_answer_string
+  input_ids:
+  - load_codeforces
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:
+      - question_answer_string
+  input_ids:
+  - get_question_answer_string

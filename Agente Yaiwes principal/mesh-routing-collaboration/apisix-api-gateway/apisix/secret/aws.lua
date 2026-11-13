@@ -1,0 +1,163 @@
+--
+-- Licensed to the Apache Software Foundation (ASF) under one or more
+-- contributor license agreements.  See the NOTICE file distributed with
+-- this work for additional information regarding copyright ownership.
+-- The ASF licenses this file to You under the Apache License, Version 2.0
+-- (the "License"); you may not use this file except in compliance with
+-- the License.  You may obtain a copy of the License at
+--
+--     http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+--
+
+--- AWS Tools.
+require("resty.aws.config") -- to read env vars before initing aws module
+
+local core = require("apisix.core")
+local http = require("resty.http")
+local aws = require("resty.aws")
+local aws_instance
+
+local sub = core.string.sub
+local find = core.string.find
+local rfind_char = core.string.rfind_char
+local env = core.env
+local type = type
+local unpack = unpack
+
+local schema = {
+    type = "object",
+    properties = {
+        access_key_id = {
+            type = "string",
+        },
+        secret_access_key = {
+            type = "string",
+        },
+        session_token = {
+            type = "string",
+        },
+        region = {
+            type = "string",
+            default = "us-east-1",
+        },
+        endpoint_url = core.schema.uri_def,
+    },
+    required = {"access_key_id", "secret_access_key"},
+}
+
+local _M = {
+    schema = schema
+}
+
+local function make_request_to_aws(conf, key)
+    if not aws_instance then
+        aws_instance = aws()
+    end
+
+    local region = conf.region
+
+    local access_key_id = env.fetch_by_uri(conf.access_key_id) or conf.access_key_id
+
+    local secret_access_key = env.fetch_by_uri(conf.secret_access_key) or conf.secret_access_key
+
+    local session_token = env.fetch_by_uri(conf.session_token) or conf.session_token
+
+    local credentials = aws_instance:Credentials({
+        accessKeyId = access_key_id,
+        secretAccessKey = secret_access_key,
+        sessionToken = session_token,
+    })
+
+    local default_endpoint = "https://secretsmanager." .. region .. ".amazonaws.com"
+    local scheme, host, port, _, _ = unpack(http:parse_uri(conf.endpoint_url or default_endpoint))
+    local endpoint = scheme .. "://" .. host
+
+    local sm = aws_instance:SecretsManager({
+        credentials = credentials,
+        endpoint = endpoint,
+        region = region,
+        port = port,
+    })
+
+    local res, err = sm:getSecretValue({
+        SecretId = key,
+        VersionStage = "AWSCURRENT",
+    })
+
+    if not res then
+        return nil, err
+    end
+
+    if res.status ~= 200 then
+        local err_type = type(res.body) == "table" and res.body.__type
+        local not_found = type(err_type) == "string"
+                          and find(err_type, "ResourceNotFoundException") ~= nil
+
+        local data = core.json.encode(res.body)
+        if data then
+            return nil, "invalid status code " .. res.status .. ", " .. data, not_found
+        end
+
+        return nil, "invalid status code " .. res.status, not_found
+    end
+
+    return res.body.SecretString
+end
+
+-- key is the aws secretId, optionally followed by a JSON field name.
+-- As AWS secret names may contain slashes, the boundary between the secret
+-- name and the field name is ambiguous. Try the longest possible secret name
+-- first, then on ResourceNotFoundException move path segments from the right into the
+-- field position, e.g. for "a/b/c": ("a/b/c"), ("a/b", "c"), ("a", "b/c").
+function _M.get(conf, key)
+    core.log.info("fetching data from aws for key: ", key)
+
+    if key == "" or find(key, '/') == 1 then
+        return nil, "can't find main key, key: " .. key
+    end
+
+    local main_key = key
+    local sub_key
+    local last_err
+    while true do
+        core.log.info("main: ", main_key, sub_key and ", sub: " .. sub_key or "")
+
+        local res, err, not_found = make_request_to_aws(conf, main_key)
+        if res then
+            if not sub_key then
+                return res
+            end
+
+            local data, err = core.json.decode(res)
+            if not data then
+                return nil, "failed to decode result, res: " .. res .. ", err: " .. err
+            end
+
+            return data[sub_key]
+        end
+
+        last_err = err
+        if not not_found then
+            break
+        end
+
+        local idx = rfind_char(main_key, '/')
+        if not idx then
+            break
+        end
+
+        main_key = sub(key, 1, idx - 1)
+        sub_key = sub(key, idx + 1)
+    end
+
+    return nil, "failed to retrieve data from aws secret manager: " .. last_err
+end
+
+
+return _M

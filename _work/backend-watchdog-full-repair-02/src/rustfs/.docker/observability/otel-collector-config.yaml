@@ -1,0 +1,132 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 1024
+    spike_limit_mib: 256
+  transform/logs:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["message"], body.string) where IsString(body)
+          - set(attributes["log.body"], body.string) where IsString(body)
+          - set(body, Concat([body, " event=", attributes["event"]], "")) where IsString(body) and attributes["event"] != nil
+          - set(body, Concat([body, " component=", attributes["component"]], "")) where IsString(body) and attributes["component"] != nil
+          - set(body, Concat([body, " subsystem=", attributes["subsystem"]], "")) where IsString(body) and attributes["subsystem"] != nil
+          - set(body, Concat([body, " state=", attributes["state"]], "")) where IsString(body) and attributes["state"] != nil
+          - set(body, Concat([body, " result=", attributes["result"]], "")) where IsString(body) and attributes["result"] != nil
+          - set(body, Concat([body, " reason=", attributes["reason"]], "")) where IsString(body) and attributes["reason"] != nil
+          - set(body, Concat([body, " failure_reason=", attributes["failure_reason"]], "")) where IsString(body) and attributes["failure_reason"] != nil
+          - set(body, Concat([body, " rpc_path=", attributes["rpc_path"]], "")) where IsString(body) and attributes["rpc_path"] != nil
+          - set(body, Concat([body, " rpc_service=", attributes["rpc_service"]], "")) where IsString(body) and attributes["rpc_service"] != nil
+          - set(body, Concat([body, " rpc_method=", attributes["rpc_method"]], "")) where IsString(body) and attributes["rpc_method"] != nil
+          - set(body, Concat([body, " expected_audience=", attributes["expected_audience"]], "")) where IsString(body) and attributes["expected_audience"] != nil
+          - set(body, Concat([body, " peer_addr=", attributes["peer_addr"]], "")) where IsString(body) and attributes["peer_addr"] != nil
+          - set(body, Concat([body, " replay_scope_bootstrap_allowed=", attributes["replay_scope_bootstrap_allowed"]], "")) where IsString(body) and attributes["replay_scope_bootstrap_allowed"] != nil
+          - set(body, Concat([body, " error=", attributes["error"]], "")) where IsString(body) and attributes["error"] != nil
+          - set(body, Concat([body, " exception_message=", attributes["exception.message"]], "")) where IsString(body) and attributes["exception.message"] != nil
+
+exporters:
+  otlp/tempo:
+    endpoint: "tempo:4317"
+    tls:
+      insecure: true
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 5000
+
+  otlp/jaeger:
+    endpoint: "jaeger:4317"
+    tls:
+      insecure: true
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 5000
+
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    send_timestamps: true
+    metric_expiration: 5m
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  otlphttp/loki:
+    endpoint: "http://loki:3100/otlp"
+    tls:
+      insecure: true
+    compression: gzip
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1888
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+service:
+  extensions: [ health_check, pprof, zpages ]
+  pipelines:
+    traces:
+      receivers: [ otlp ]
+      processors: [ memory_limiter, batch ]
+      exporters: [ otlp/tempo, otlp/jaeger ]
+    metrics:
+      receivers: [ otlp ]
+      processors: [ batch ]
+      exporters: [ prometheus ]
+    logs:
+      receivers: [ otlp ]
+      processors: [ batch, transform/logs ]
+      exporters: [ otlphttp/loki ]
+  telemetry:
+    logs:
+      level: "info"
+      encoding: "json"
+    metrics:
+      level: "normal"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888

@@ -1,0 +1,209 @@
+import { context, propagation } from '@opentelemetry/api';
+import cliState from '../cliState';
+import { getEnvBool, getEnvString } from '../envars';
+import { isLoggedIntoCloud } from '../globalConfig/accounts';
+import { CloudConfig } from '../globalConfig/cloud';
+import { hasCodexDefaultCredentials } from '../providers/openai/codexDefaults';
+import { remoteGenerationContextPayload as buildRemoteGenerationContextPayload } from './remoteGenerationContext';
+
+export { remoteGenerationContextPayload } from './remoteGenerationContext';
+export { getCloudTargetIdFromProviders } from './remoteGenerationContextFromProviders';
+
+interface ShouldGenerateRemoteOptions {
+  canUseCodexDefaultProvider?: boolean;
+  requireEmbeddingProvider?: boolean;
+}
+
+// Provider implementations already depend on this module. Re-exporting the leaf helper here
+// avoids introducing a providers -> redteam context dependency solely for payload construction.
+export function providerRemoteGenerationContextPayload(contextOrCloudTargetId?: unknown): {
+  targetId?: string;
+} {
+  return buildRemoteGenerationContextPayload(contextOrCloudTargetId);
+}
+
+/**
+ * Gets the remote generation API endpoint URL.
+ * Prioritizes: env var > cloud config > default endpoint.
+ * @returns The remote generation URL
+ */
+export function getRemoteGenerationUrl(): string {
+  // Check env var first
+  const envUrl = getEnvString('PROMPTFOO_REMOTE_GENERATION_URL');
+  if (envUrl) {
+    return envUrl;
+  }
+  // If logged into cloud use that url + /task
+  const cloudConfig = new CloudConfig();
+  if (cloudConfig.isEnabled()) {
+    return cloudConfig.getApiHost() + '/api/v1/task';
+  }
+  // otherwise use the default
+  return 'https://api.promptfoo.app/api/v1/task';
+}
+
+/**
+ * Builds headers for a remote-generation request.
+ *
+ * Authentication is injected centrally at the fetch layer (monkeyPatchFetch, mirrored
+ * in cache.ts for cache-key parity) and only when the request URL's origin matches the
+ * configured Promptfoo Cloud host (cloudConfig.getApiHost(), incl. on-prem). Keeping
+ * this helper auth-free prevents cloud credentials from leaking to custom
+ * remote-generation endpoints.
+ */
+export function getRemoteGenerationHeaders(
+  extraHeaders?: Record<string, string>,
+): Record<string, string> {
+  const propagatedHeaders: Record<string, string> = {};
+  propagation.inject(context.active(), propagatedHeaders);
+
+  return {
+    'Content-Type': 'application/json',
+    ...(propagatedHeaders.traceparent ? { traceparent: propagatedHeaders.traceparent } : {}),
+    ...(propagatedHeaders.tracestate ? { tracestate: propagatedHeaders.tracestate } : {}),
+    ...extraHeaders,
+  };
+}
+
+/**
+ * Check if remote generation should never be used.
+ * Respects both the general and redteam-specific disable flags.
+ * @returns true if remote generation is disabled
+ */
+export function neverGenerateRemote(): boolean {
+  // Check the general disable flag first (superset)
+  if (getEnvBool('PROMPTFOO_DISABLE_REMOTE_GENERATION')) {
+    return true;
+  }
+  // Fall back to the redteam-specific flag (subset)
+  return getEnvBool('PROMPTFOO_DISABLE_REDTEAM_REMOTE_GENERATION');
+}
+
+/**
+ * Check if remote generation should never be used for non-redteam features.
+ * This allows granular control: disable redteam remote generation while allowing
+ * regular SimulatedUser to use remote generation.
+ * @returns true if ALL remote generation is disabled
+ */
+export function neverGenerateRemoteForRegularEvals(): boolean {
+  // Only respect the general disable flag for non-redteam features
+  return getEnvBool('PROMPTFOO_DISABLE_REMOTE_GENERATION');
+}
+
+/**
+ * Builds a remote URL with a substituted pathname, honoring env vars / cloud config.
+ */
+export function buildRemoteUrl(pathname: string, fallback: string): string | null {
+  if (neverGenerateRemote()) {
+    return null;
+  }
+
+  const envUrl = getEnvString('PROMPTFOO_REMOTE_GENERATION_URL');
+  if (envUrl) {
+    try {
+      const url = new URL(envUrl);
+      url.pathname = pathname;
+      return url.toString();
+    } catch {
+      return fallback;
+    }
+  }
+
+  const cloudConfig = new CloudConfig();
+  if (cloudConfig.isEnabled()) {
+    return `${cloudConfig.getApiHost()}${pathname}`;
+  }
+
+  return fallback;
+}
+
+/**
+ * Gets the URL for checking remote API health based on configuration.
+ * @returns The health check URL, or null if remote generation is disabled.
+ */
+export function getRemoteHealthUrl(): string | null {
+  return buildRemoteUrl('/health', 'https://api.promptfoo.app/health');
+}
+
+/**
+ * Gets the URL for checking remote API version based on configuration.
+ * @returns The version check URL, or null if remote generation is disabled.
+ */
+export function getRemoteVersionUrl(): string | null {
+  return buildRemoteUrl('/version', 'https://api.promptfoo.app/version');
+}
+
+export function getRemoteGenerationDisabledError(strategyName: string): string {
+  return (
+    `${strategyName} requires remote generation, which is currently disabled for this configuration. ` +
+    'To enable it, run with --remote, set PROMPTFOO_REMOTE_GENERATION_URL to a self-hosted endpoint, ' +
+    'or log into Promptfoo Cloud with `promptfoo auth login`.'
+  );
+}
+
+export function getRemoteGenerationExplicitlyDisabledError(strategyName: string): string {
+  const activeFlags = [
+    'PROMPTFOO_DISABLE_REMOTE_GENERATION',
+    'PROMPTFOO_DISABLE_REDTEAM_REMOTE_GENERATION',
+  ].filter((flag) => getEnvBool(flag));
+  const unsetInstruction =
+    activeFlags.length > 0
+      ? `unset ${activeFlags.join(' and ')}`
+      : 'unset PROMPTFOO_DISABLE_REMOTE_GENERATION or PROMPTFOO_DISABLE_REDTEAM_REMOTE_GENERATION (whichever is set)';
+  return (
+    `${strategyName} requires remote generation, which has been explicitly disabled. ` +
+    `To enable it, ${unsetInstruction}. ` +
+    'Once re-enabled, you can point at a self-hosted endpoint with PROMPTFOO_REMOTE_GENERATION_URL or use Promptfoo Cloud via `promptfoo auth login`.'
+  );
+}
+
+/**
+ * Determines if remote generation should be used based on configuration.
+ * @returns true if remote generation should be used
+ */
+export function shouldGenerateRemote(options?: ShouldGenerateRemoteOptions): boolean {
+  // If remote generation is explicitly disabled, respect that even for cloud users
+  if (neverGenerateRemote()) {
+    return false;
+  }
+
+  if (getEnvString('PROMPTFOO_REMOTE_GENERATION_URL')) {
+    return true;
+  }
+
+  // If logged into cloud, prefer remote generation
+  if (isLoggedIntoCloud()) {
+    return true;
+  }
+
+  // Generate remotely when local credentials for the requested task are unavailable.
+  // Codex defaults only cover text default-provider paths, not redteam's task-specific
+  // generation providers.
+  const hasLocalCredentials =
+    Boolean(getEnvString('OPENAI_API_KEY')) ||
+    (options?.canUseCodexDefaultProvider &&
+      !options?.requireEmbeddingProvider &&
+      hasCodexDefaultCredentials());
+
+  return !hasLocalCredentials || (cliState.remote ?? false);
+}
+
+/**
+ * Gets the URL for unaligned model inference (harmful content generation).
+ * Prioritizes: env var > cloud config > default endpoint.
+ * @returns The unaligned inference URL
+ */
+export function getRemoteGenerationUrlForUnaligned(): string {
+  // Check env var first
+  const envUrl = getEnvString('PROMPTFOO_UNALIGNED_INFERENCE_ENDPOINT');
+  if (envUrl) {
+    return envUrl;
+  }
+  // If logged into cloud use that url + /task
+  const cloudConfig = new CloudConfig();
+  if (cloudConfig.isEnabled()) {
+    return cloudConfig.getApiHost() + '/api/v1/task/harmful';
+  }
+  // otherwise use the default
+  return 'https://api.promptfoo.app/api/v1/task/harmful';
+}

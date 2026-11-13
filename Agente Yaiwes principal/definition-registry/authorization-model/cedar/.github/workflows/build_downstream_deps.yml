@@ -1,0 +1,77 @@
+name: Build Downstream Dependencies
+
+on:
+  pull_request:
+
+# Declare default permissions as read only.
+permissions: read-all
+
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  get-branch-name:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get branch name
+        shell: bash
+        # The workflow is triggered by pull_request so we use `GITHUB_BASE_REF`
+        run: echo "branch_name=${GITHUB_BASE_REF}" >> $GITHUB_OUTPUT
+        id: get_branch_name
+    outputs:
+      branch_name: ${{ steps.get_branch_name.outputs.branch_name }}
+
+  build-cedar-drt:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-spec/.github/workflows/build_and_test_drt_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_spec_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+
+  build-cedar-lean-ffi:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-spec/.github/workflows/build_and_test_ffi_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_spec_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+  
+  build-cedar-lean-cli:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-spec/.github/workflows/build_and_test_cli_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_spec_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+
+  build-cedar-examples-hello-world:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-examples/.github/workflows/build_rust_hello_world_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+
+  run-cedar-examples-use-cases:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-examples/.github/workflows/run_example_use_cases_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+
+  build-tiny-todo:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-examples/.github/workflows/build_tiny_todo_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+
+  build-wasm:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-examples/.github/workflows/build_wasm_example_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+
+  run-integration-tests:
+    needs: get-branch-name
+    uses: ./.github/workflows/run_integration_tests_reusable.yml
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_integration_tests_ref:  ${{ needs.get-branch-name.outputs.branch_name }}

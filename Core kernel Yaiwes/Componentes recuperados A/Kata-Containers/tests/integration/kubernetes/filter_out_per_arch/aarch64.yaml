@@ -1,0 +1,26 @@
+#
+# Copyright (c) 2018 ARM Limited
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# for now, not all integration test suites are fully passed in aarch64.
+# some need to be tested, and some need to be refined.
+# sequence of 'test' holds supported integration tests components.
+test:
+  - functional
+  - kubernetes
+  - cri-containerd
+
+kubernetes:
+  - k8s-block-volume
+  - k8s-confidential-attestation
+  - k8s-confidential
+  - k8s-cpu-ns
+  - k8s-guest-pull-image
+  - k8s-expose-ip
+  - k8s-footloose
+  - k8s-inotify
+  - k8s-limit-range
+  - k8s-number-cpus
+  - k8s-oom
+  - k8s-qos-pods

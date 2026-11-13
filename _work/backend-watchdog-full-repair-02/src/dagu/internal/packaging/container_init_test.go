@@ -1,0 +1,171 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package packaging_test
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/goccy/go-yaml"
+	"github.com/stretchr/testify/require"
+)
+
+const tiniEntrypoint = `ENTRYPOINT ["/usr/local/bin/tini", "-g", "--", "/entrypoint.sh"]`
+
+func TestDockerfilesRunEntrypointUnderTini(t *testing.T) {
+	t.Parallel()
+
+	files := []string{
+		"Dockerfile",
+		"Dockerfile.alpine",
+		"Dockerfile.dev",
+	}
+
+	root := repoRoot(t)
+	for _, file := range files {
+		t.Run(file, func(t *testing.T) {
+			t.Parallel()
+
+			content := readFile(t, filepath.Join(root, file))
+			require.Contains(t, content, tiniEntrypoint, "%s must run /entrypoint.sh under tini", file)
+			require.True(t,
+				strings.Contains(content, "tini \\") || strings.Contains(content, "tini &&"),
+				"%s must install tini in the final image", file,
+			)
+		})
+	}
+}
+
+func TestKubernetesDaguContainersPreserveImageEntrypoint(t *testing.T) {
+	t.Parallel()
+
+	files := []string{
+		"charts/dagu/templates/coordinator-deployment.yaml",
+		"charts/dagu/templates/scheduler-deployment.yaml",
+		"charts/dagu/templates/ui-deployment.yaml",
+		"charts/dagu/templates/worker-deployment.yaml",
+		"deploy/k8s/server-deployment.yaml",
+		"deploy/k8s/worker-deployment.yaml",
+	}
+
+	root := repoRoot(t)
+	for _, file := range files {
+		t.Run(file, func(t *testing.T) {
+			t.Parallel()
+
+			content := readFile(t, filepath.Join(root, file))
+			require.False(t,
+				strings.Contains(content, "\n          command:") || strings.Contains(content, "\n        command:"),
+				"%s must use args so the image entrypoint remains active", file,
+			)
+			require.True(t,
+				strings.Contains(content, "\n          args:") || strings.Contains(content, "\n        args:"),
+				"%s must pass the Dagu command through args", file,
+			)
+		})
+	}
+}
+
+func TestKubernetesDefaultSecurityContextKeepsKubernetes119Compatibility(t *testing.T) {
+	t.Parallel()
+
+	files := []string{
+		"charts/dagu/values.yaml",
+		"deploy/k8s/server-deployment.yaml",
+		"deploy/k8s/worker-deployment.yaml",
+	}
+
+	root := repoRoot(t)
+	for _, file := range files {
+		t.Run(file, func(t *testing.T) {
+			t.Parallel()
+
+			content := readFile(t, filepath.Join(root, file))
+			require.Contains(t, content, "fsGroup: 1000", "%s must keep shared volumes writable after entrypoint privilege drop", file)
+			require.NotContains(t,
+				content,
+				"\n        fsGroupChangePolicy:",
+				"%s must not require a post-1.19 PodSecurityContext field by default", file,
+			)
+			require.NotContains(t,
+				content,
+				"\n  fsGroupChangePolicy:",
+				"%s must not require a post-1.19 PodSecurityContext field by default", file,
+			)
+		})
+	}
+}
+
+func TestDockerComposeEntrypointOverridesPreserveTini(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	content := readFile(t, filepath.Join(root, "deploy/docker/compose.minimal.yaml"))
+	require.NotContains(t, content, "entrypoint: []", "compose.minimal.yaml must not clear the image entrypoint without preserving tini")
+	require.Contains(t, content, `entrypoint: ["/usr/local/bin/tini", "-g", "--"]`, "compose.minimal.yaml must keep tini as PID 1 when overriding the image entrypoint")
+}
+
+func TestDockerComposeDAGMountsStayWritable(t *testing.T) {
+	t.Parallel()
+
+	expectedMountCounts := map[string]int{
+		"deploy/docker/compose.minimal.yaml": 1,
+		"deploy/docker/compose.prod.yaml":    3,
+	}
+
+	root := repoRoot(t)
+	for file, expectedCount := range expectedMountCounts {
+		t.Run(file, func(t *testing.T) {
+			t.Parallel()
+
+			content := readFile(t, filepath.Join(root, file))
+			require.NotContains(t, content, "./dags:/var/lib/dagu/dags:ro", "%s must keep the DAG directory writable for first-run seeding and DAG edits", file)
+			require.Contains(t, content, "./dags:/var/lib/dagu/dags", "%s must mount the local DAG directory", file)
+			require.Equal(t, expectedCount, strings.Count(content, "./dags:/var/lib/dagu/dags"), "%s must keep DAG mounts on all expected services", file)
+		})
+	}
+}
+
+func TestDockerComposeWorkerUsesCoordinatorRPC(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	content := readFile(t, filepath.Join(root, "deploy/docker/compose.prod.yaml"))
+	var compose struct {
+		Services map[string]struct {
+			Environment []string `yaml:"environment"`
+			Ports       []string `yaml:"ports"`
+			Volumes     []string `yaml:"volumes"`
+		} `yaml:"services"`
+	}
+	require.NoError(t, yaml.Unmarshal([]byte(content), &compose))
+
+	coordinator := compose.Services["dagu-coordinator"]
+	require.Contains(t, coordinator.Environment, "DAGU_COORDINATOR_HOST=0.0.0.0")
+	require.Contains(t, coordinator.Environment, "DAGU_COORDINATOR_ADVERTISE=dagu-coordinator")
+	require.Empty(t, coordinator.Ports)
+
+	worker := compose.Services["dagu-worker"]
+	require.Contains(t, worker.Environment, "DAGU_WORKER_COORDINATORS=dagu-coordinator:50055")
+	require.NotContains(t, worker.Volumes, "dagu-data:/var/lib/dagu")
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+
+	_, file, _, ok := runtime.Caller(0)
+	require.True(t, ok, "failed to resolve test file path")
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err, "read %s", path)
+	return string(data)
+}

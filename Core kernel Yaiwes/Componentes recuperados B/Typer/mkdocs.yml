@@ -1,0 +1,230 @@
+INHERIT: ./mkdocs.env.yml
+site_name: Typer
+site_description: Typer, build great CLIs. Easy to code. Based on Python type hints.
+site_url: https://typer.tiangolo.com/
+
+theme:
+  variant: classic
+  name: material
+  custom_dir: docs/overrides
+  palette:
+  - media: "(prefers-color-scheme)"
+    toggle:
+      icon: material/lightbulb-auto
+      name: Switch to light mode
+  - media: '(prefers-color-scheme: light)'
+    scheme: default
+    primary: black
+    accent: teal
+    toggle:
+      icon: material/lightbulb
+      name: Switch to dark mode
+  - media: '(prefers-color-scheme: dark)'
+    scheme: slate
+    primary: black
+    accent: teal
+    toggle:
+      icon: material/lightbulb-outline
+      name: Switch to system preference
+  features:
+  - content.code.annotate
+  - content.code.copy
+  # - content.code.select
+  - content.footnote.tooltips
+  - content.tabs.link
+  - content.tooltips
+  - navigation.footer
+  - navigation.indexes
+  - navigation.instant
+  - navigation.instant.prefetch
+  # - navigation.instant.preview
+  - navigation.instant.progress
+  - navigation.path
+  - navigation.tabs
+  - navigation.tabs.sticky
+  - navigation.top
+  - navigation.tracking
+  - search.highlight
+  - search.share
+  - search.suggest
+  - toc.follow
+
+  icon:
+    repo: octicons/mark-github-24
+  logo: img/icon.svg
+  favicon: img/favicon.png
+  language: en
+repo_name: fastapi/typer
+repo_url: https://github.com/fastapi/typer
+plugins:
+  mkdocstrings:
+    handlers:
+      python:
+        options:
+          extensions:
+            - griffe_typingdoc
+          show_root_heading: true
+          show_if_no_docstring: true
+          inherited_members: true
+          members_order: source
+          separate_signature: true
+          unwrap_annotated: true
+          filters:
+            - '!^_'
+          merge_init_into_class: true
+          docstring_section_style: spacy
+          signature_crossrefs: true
+          show_symbol_type_heading: true
+          show_symbol_type_toc: true
+
+nav:
+  - Typer: index.md
+  - features.md
+  - "":
+      - tutorial/index.md
+      - tutorial/install.md
+      - tutorial/first-steps.md
+      - tutorial/typer-app.md
+      - tutorial/printing.md
+      - tutorial/terminating.md
+      - "":
+          - tutorial/arguments/index.md
+          - tutorial/arguments/optional.md
+          - tutorial/arguments/default.md
+          - tutorial/arguments/help.md
+          - tutorial/arguments/envvar.md
+          - tutorial/arguments/other-uses.md
+      - "":
+          - tutorial/options/index.md
+          - tutorial/options/help.md
+          - tutorial/options/required.md
+          - tutorial/options/prompt.md
+          - tutorial/options/password.md
+          - tutorial/options/name.md
+          - tutorial/options/callback-and-context.md
+          - tutorial/options/version.md
+      - "":
+          - tutorial/commands/index.md
+          - tutorial/commands/arguments.md
+          - tutorial/commands/options.md
+          - tutorial/commands/help.md
+          - tutorial/commands/name.md
+          - tutorial/commands/callback.md
+          - tutorial/commands/one-or-multiple.md
+          - tutorial/commands/context.md
+      - tutorial/options-autocompletion.md
+      - "":
+          - tutorial/parameter-types/index.md
+          - tutorial/parameter-types/number.md
+          - tutorial/parameter-types/bool.md
+          - tutorial/parameter-types/uuid.md
+          - tutorial/parameter-types/datetime.md
+          - tutorial/parameter-types/enum.md
+          - tutorial/parameter-types/path.md
+          - tutorial/parameter-types/file.md
+          - tutorial/parameter-types/custom-types.md
+      - "":
+          - tutorial/subcommands/index.md
+          - tutorial/subcommands/add-typer.md
+          - tutorial/subcommands/single-file.md
+          - tutorial/subcommands/nested-subcommands.md
+          - tutorial/subcommands/callback-override.md
+          - tutorial/subcommands/name-and-help.md
+      - "":
+          - tutorial/multiple-values/index.md
+          - tutorial/multiple-values/multiple-options.md
+          - tutorial/multiple-values/options-with-multiple-values.md
+          - tutorial/multiple-values/arguments-with-multiple-values.md
+      - tutorial/prompt.md
+      - tutorial/progressbar.md
+      - tutorial/app-dir.md
+      - tutorial/launch.md
+      - tutorial/testing.md
+      - tutorial/package.md
+      - tutorial/exceptions.md
+      - tutorial/one-file-per-command.md
+      - tutorial/typer-command.md
+      - tutorial/click.md
+  - "":
+    - reference/index.md
+    - reference/typer.md
+    - reference/run_launch.md
+    - reference/parameters.md
+    - reference/file_objects.md
+    - reference/context.md
+  - "":
+    - resources/index.md
+    - help-typer.md
+    - contributing.md
+  - "":
+    - about/index.md
+    - alternatives.md
+    - management.md
+  - release-notes.md
+
+markdown_extensions:
+  # Material for MkDocs Extensions
+  material.extensions.preview:
+    targets:
+      include:
+        - "*"
+  zensical.extensions.macros:
+  # Python Markdown
+  abbr:
+  attr_list:
+  footnotes:
+  md_in_html:
+  tables:
+  toc:
+    permalink: true
+
+  # Python Markdown Extensions
+  pymdownx.betterem:
+    smart_enable: all
+  pymdownx.caret:
+  pymdownx.highlight:
+    line_spans: __span
+    linenums_style: pymdownx-inline
+  pymdownx.inlinehilite:
+  pymdownx.keys:
+  pymdownx.mark:
+  pymdownx.superfences:
+    custom_fences:
+    - name: mermaid
+      class: mermaid
+      format: !!python/name:pymdownx.superfences.fence_code_format
+  pymdownx.tilde:
+
+  # pymdownx blocks
+  pymdownx.blocks.admonition:
+  pymdownx.blocks.details:
+  pymdownx.blocks.tab:
+    alternate_style: True
+
+  # Other extensions
+  mdx_include:
+  markdown_include_variants:
+
+extra:
+  social:
+    - icon: octicons/mark-github-24
+      link: https://github.com/fastapi/typer
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/tiangolo
+    - icon: fontawesome/brands/bluesky
+      link: https://bsky.app/profile/tiangolo.com
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/tiangolo
+    - icon: fontawesome/solid/globe
+      link: https://tiangolo.com
+
+extra_css:
+  - css/termynal.css
+  - css/custom.css
+
+extra_javascript:
+  - js/termynal.js
+  - js/custom.js
+
+validation:
+  unresolved_references: false

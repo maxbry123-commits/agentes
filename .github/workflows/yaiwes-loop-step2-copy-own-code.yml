@@ -1,0 +1,96 @@
+# Skill-derived COPY workflow. Source template blob: 81b4b8c63af58ee52be2d6b1fabe3c4dedb01644
+name: YAIWES LOOP Step2 Copy Own Code
+run-name: YAIWES Step2 COPY • ${{ github.event_name }} • ${{ github.sha }}
+
+on:
+  workflow_run:
+    workflows: ["YAIWES LOOP5 Watchdog Auditor"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_TERMINAL_PROMPT: "0"
+
+concurrency:
+  group: yaiwes-wordflow-step2-copy-loop-engineer
+  cancel-in-progress: false
+
+jobs:
+  copy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout destination fresh main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+          lfs: false
+          persist-credentials: true
+      - name: Checkout source repo read-only at fixed SHA
+        uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
+          ref: 0ca97d7c7e8a2e20e986d18e273c6171a2684d30
+          path: _src/agentes-motores
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: false
+      - name: COPY only traced Loop Engineer modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC='_src/agentes-motores/Loop Engineer/Loop-Engineer/loop'
+          DST='➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/donors/loop_engineer'
+          files=(__init__.py runner.py runcontrol.py runtime.py reducer.py verifier.py plan.py events.py evidence.py fsm.py completion.py chain.py contract.py emit.py)
+          mkdir -p "$DST"
+          for f in "${files[@]}"; do
+            test -f "$SRC/$f"
+            if test -e "$DST/$f"; then
+              cmp -s "$SRC/$f" "$DST/$f" || { echo "COLLISION_BLOCKED $DST/$f"; exit 31; }
+            else
+              cp -a "$SRC/$f" "$DST/$f"
+            fi
+          done
+          printf '%s\n' 'https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES' > "$DST/SOURCE_URL.txt"
+          printf '%s\n' '0ca97d7c7e8a2e20e986d18e273c6171a2684d30' > "$DST/SOURCE_COMMIT.txt"
+          printf '%s\n' 'Loop Engineer/Loop-Engineer/loop/{__init__,runner,runcontrol,runtime,reducer,verifier,plan,events,evidence,fsm,completion,chain,contract,emit}.py' > "$DST/SOURCE_PATHS.txt"
+          (
+            cd "$DST"
+            find . -type f ! -name SOURCE_SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SOURCE_SHA256SUMS.txt
+            sha256sum -c SOURCE_SHA256SUMS.txt
+          )
+      - name: Verify COPY semantics and source preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC='_src/agentes-motores/Loop Engineer/Loop-Engineer/loop'
+          DST='➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/donors/loop_engineer'
+          files=(__init__.py runner.py runcontrol.py runtime.py reducer.py verifier.py plan.py events.py evidence.py fsm.py completion.py chain.py contract.py emit.py)
+          for f in "${files[@]}"; do
+            test -f "$SRC/$f"
+            test -f "$DST/$f"
+            cmp -s "$SRC/$f" "$DST/$f"
+          done
+          python3 -m py_compile "$DST"/*.py
+          echo 'STEP2_COPY_VERIFY=PASS 14/14'
+      - name: Commit and push copy-only delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          DST='➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/donors/loop_engineer'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$DST"
+          git diff --cached --quiet && echo 'NO CHANGE VERIFIED_EXISTING' && exit 0
+          git commit -m 'copy(yaiwes): preserve Loop Engineer donor modules for Wordflow LOOP'
+          git fetch origin main
+          remote=$(git rev-parse origin/main)
+          parent=$(git rev-parse HEAD^)
+          test "$remote" = "$parent" || { echo "CONCURRENT_WRITE_GAP remote=$remote parent=$parent"; exit 75; }
+          git push --no-verify origin HEAD:main

@@ -1,0 +1,90 @@
+[package]
+name = "restate-bifrost"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+local-loglet = ["dep:restate-rocksdb", "dep:rocksdb"]
+replicated-loglet = []
+memory-loglet = []
+test-util = ["memory-loglet", "dep:googletest", "dep:restate-test-util", "restate-core/test-util"]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-clock = { workspace = true }
+restate-core = { workspace = true }
+restate-futures-util = { workspace = true }
+restate-memory = { workspace = true }
+restate-metadata-store = { workspace = true }
+restate-platform = { workspace = true }
+restate-rocksdb = { workspace = true, optional = true }
+restate-test-util = { workspace = true, optional = true }
+restate-types = { workspace = true }
+restate-util-bytecount = { workspace = true, features = ["serde"] }
+restate-util-time = { workspace = true }
+
+ahash = { workspace = true }
+adaptive-timeout = { workspace = true, features = ["tokio", "sync"] }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+bitflags = { workspace = true }
+bytes = { workspace = true }
+crossbeam-utils = { version = "0.8" }
+dashmap = { workspace = true }
+derive_more = { workspace = true, features = ["debug", "display", "is_variant", "try_from"] }
+enum-map = { workspace = true, features = ["serde"] }
+futures = { workspace = true }
+googletest = { workspace = true, features = ["anyhow"], optional = true }
+metrics = { workspace = true }
+parking_lot = { workspace = true }
+pin-project = { workspace = true }
+rand = { workspace = true }
+rocksdb = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+smallvec = { workspace = true }
+static_assertions = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true, features = ["sync"] }
+tokio-util = { workspace = true, features = ["rt"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+# Enable local-loglet for use in various tests in this package. This allows us to not have it enabled by default,
+# which benefits importing libraries that don't need rocksdb.
+restate-bifrost = {path = ".", default-features = false, features = ["local-loglet"]}
+restate-core = { workspace = true, features = ["test-util"] }
+restate-log-server = { workspace = true, features = ["test-util"] }
+restate-rocksdb = { workspace = true }
+restate-storage-api = { workspace = true }
+restate-test-util = { workspace = true }
+restate-types = { workspace = true, features = ["test-util"] }
+restate-wal-protocol = { workspace = true }
+restate-worker-api = { workspace = true }
+
+bytestring = { workspace = true }
+criterion = { workspace = true, features = ["async_tokio"] }
+googletest = { workspace = true }
+paste = { workspace = true }
+pprof = { version = "0.15", features = ["criterion", "flamegraph", "frame-pointer"] }
+prost = { workspace = true }
+test-log = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+tracing-test = { workspace = true }
+
+[target.'cfg(not(target_env = "msvc"))'.dev-dependencies]
+tikv-jemallocator = { workspace = true }
+
+[[bench]]
+name = "replicated_loglet_serde"
+harness = false
+
+[lints]
+workspace = true

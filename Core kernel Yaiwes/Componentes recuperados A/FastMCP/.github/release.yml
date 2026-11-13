@@ -1,0 +1,57 @@
+changelog:
+  exclude:
+    labels:
+      - ignore in release notes
+
+  categories:
+    - title: New Features 🎉
+      labels:
+        - feature
+
+    - title: Breaking Changes ⚠️
+      labels:
+        - breaking change
+      exclude:
+        labels:
+          - contrib
+          - security
+
+    - title: Enhancements ✨
+      labels:
+        - enhancement
+      exclude:
+        labels:
+          - breaking change
+          - security
+
+    - title: Security 🔒
+      labels:
+        - security
+
+    - title: Fixes 🐞
+      labels:
+        - bug
+      exclude:
+        labels:
+          - contrib
+          - security
+
+    - title: Docs 📚
+      labels:
+        - documentation
+
+    - title: Examples & Contrib 💡
+      labels:
+        - example
+        - contrib
+
+    - title: Dependencies 📦
+      labels:
+        - dependencies
+      exclude:
+        labels:
+          - security
+
+    - title: Other Changes 🦾
+      labels:
+        - "*"

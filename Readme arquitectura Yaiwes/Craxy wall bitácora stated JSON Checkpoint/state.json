@@ -1,0 +1,117 @@
+{
+  "contract": "tel.workflow/v3",
+  "mode": "FAIL_CLOSED_LOOP",
+  "updated_at": "2026-09-06T17:09:46-05:00",
+  "execution_method": {
+    "contract": "tel.workflow/v4",
+    "mode": "FAIL_CLOSED_EXECUTION_LOOP",
+    "authority": "DIRECTOR_LITERAL_METHOD",
+    "scope": "METHOD_ONLY_NO_UI_PROJECT_REPLICATION",
+    "guide_path": "➡️📂 Wordflow LOOP Yaiwes/GUIA-MAESTRA-EJECUCION-LOOP-V4-WORDFLOW-YAIWES.md",
+    "guide_blob_at_registration": "d54bf5e2158ff8d926fc95246ea2fc7d94c5ff5a",
+    "source_repo": "maxbry123-commits/frontend",
+    "source_path": "UI YAIWES/readme arquitectura UI YAIWES/GUIA-MAESTRA-EJECUCION-LOOP-SOL-UI-YAIWES.md",
+    "source_blob": "7aa569945037a228f36eeed1747b7557b1adc5b6",
+    "core_loop": "STATE_READ -> HEAD_CHECK -> RESEARCH_REUSE -> PLAN_1X1 -> EXECUTE_DELTA -> VALIDATE -> VERIFY_REAL -> JUDGE -> PERSIST -> NEXT",
+    "anti_stall": "1-3 useful reads then physical delta or evidenced BLOCKED; 5 read/analysis ops without delta => STALL_DETECTED",
+    "concurrency": "refresh HEAD; adopt equivalent concurrent work; reinject only missing delta; NEVER_FORCE",
+    "closure": "presence/mock/staging do not equal VERIFIED_CLOSED; require falsifiable real evidence",
+    "legacy_state_preserved": true,
+    "project_progress_reconciled_by_this_method_registration": false,
+    "source_drift_note": "UI guide is v4; later UI operational artifacts were project-specifically reconciled to v3. Wordflow method follows Director v4 and does not import UI project state."
+  },
+  "director_scope": {
+    "audit_source": "Core kernel Yaiwes/",
+    "architecture_source": "Readme arquitectura Yaiwes/README.md",
+    "integration_root": "Agente Yaiwes principal/"
+  },
+  "queue": [
+    "Componentes recuperados A", "Componentes recuperados B", "Download code Yaiwes", "Download code", "Metodo de trabajo", "Método de trabajo", "Refactoria", "TASK-GAPS", "agente-yaiwes", "agents", "code-programming-engine", "control-layer", "extensions", "groups", "loop_catalog.json", "memory", "scripts", "tools", "wordflow", "workflows archivados 2026-09-04"
+  ],
+  "completed_components": [
+    {
+      "root_node": "Componentes recuperados A",
+      "component": "APScheduler",
+      "classification": "B",
+      "status": "VERIFIED_CLOSED",
+      "destination": "Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/",
+      "move_commit": "8a5c87b9b8ee79acab3de31e36a5eeb85d558d80",
+      "verification_run": 34055059156,
+      "verification_repeats": 10
+    },
+    {
+      "root_node": "Componentes recuperados A",
+      "component": "AWS-Step-Functions-DS-SDK",
+      "classification": "B",
+      "status": "VERIFIED_CLOSED",
+      "destination": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/",
+      "move_commit": "e7541c54575521d96a106e51e12f2a46e574eda8",
+      "repair_commit": "637eadee85c7bfcc7c05f7ae5137114dc67d09d5",
+      "repair_run": 34058918363,
+      "verification_run": 34059002899,
+      "verification_repeats": 10
+    },
+    {
+      "root_node": "Componentes recuperados A",
+      "component": "Ajv",
+      "classification": "C",
+      "status": "VERIFIED_CLOSED",
+      "destination": "Agente Yaiwes principal/definition-registry/schema-contracts/ajv/",
+      "source_code_tree": "0c002b98c6d6560c7fbca0de1a1bc5573953a5ce",
+      "move_commit": "95713304ee644b053efed4c9947af75bf71fd87c",
+      "verification_workflow_commit": "b69d38dc8500164849a82daa21c15d98705655b5",
+      "verification_run": 34061366845,
+      "verification_job": 101562375081,
+      "verification_repeats": 10
+    },
+    {
+      "root_node": "Componentes recuperados A",
+      "component": "Apache-APISIX",
+      "classification": "C",
+      "status": "VERIFIED_CLOSED",
+      "destination": "Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/",
+      "source_tree_sha": "ddf503025af470522c0893633ec5a1a6cd5d486b",
+      "move_commit": "ceda29c79c9a33fe054ec81e1da318b95c6d584d",
+      "verification_commit": "5bce9fddd39da3f4f7b2d79d1f6ab2c428e75c6d",
+      "verification_run": 34062622979,
+      "verification_job": 101565736973,
+      "verification_repeats": 10,
+      "verification_url": "https://github.com/maxbry123-commits/agentes/actions/runs/34062622979"
+    }
+  ],
+  "active": {
+    "root_node": "Componentes recuperados A",
+    "component": "Apache-Airflow",
+    "step": "VERIFY_REPAIR_LOOP",
+    "classification": "B",
+    "checkpoint": "RUNTIME_REPAIR_PRESENT_VERIFY_FINAL_PENDING",
+    "destination": "Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/",
+    "move_commit": "341ec322890e54d2ba1e817a13421821359f9a32",
+    "failed_run": 34062982102,
+    "failed_job": 101566717765,
+    "failure": "ModuleNotFoundError: No module named 'airflow._shared.configuration'",
+    "distinct_strategy_deltas": [
+      "5e17050c55497f226f755a4993b348ce92366dc1",
+      "478a723b5c605150368550e043cc4d3ef82e5598"
+    ],
+    "gaps": [
+      "AIRFLOW_CURRENT_REPAIR_SHA_HAS_NO_VERIFICATION_RUN",
+      "AIRFLOW_PYC_ARTIFACT_HYGIENE_FLAG"
+    ]
+  },
+  "batch": {
+    "size": 5,
+    "components": ["Ajv", "Apache-APISIX", "Apache-Airflow", "Argo-Workflows", "Azure-Durable-Functions"],
+    "verified_closed": 2,
+    "in_progress": 1,
+    "pending": 2,
+    "next_batch_locked": true
+  },
+  "watchdog": {
+    "status": "ACTIVE",
+    "purpose": "hourly component LOOP with state/checkpoint/bitacora persistence"
+  },
+  "completion_rule": "Only VERIFIED_CLOSED with route/diff/SHA/test/log/URL evidence",
+  "gap_policy": "GAP -> RESEARCH distinct delta -> EXECUTE -> CODA -> verify_final; no stop/no escalate",
+  "next_action": "Airflow only: audit repaired source hygiene, obtain a real verification run for 478a723b5c605150368550e043cc4d3ef82e5598 or a newer repair SHA, require runtime 10/10 PASS, then persist closure before Argo-Workflows"
+}

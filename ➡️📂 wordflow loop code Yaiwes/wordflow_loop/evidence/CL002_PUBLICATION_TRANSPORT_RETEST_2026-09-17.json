@@ -1,0 +1,29 @@
+{
+  "schema": "yaiwes.cl002-publication-retest/v1",
+  "node": "CL-002",
+  "verdict": "GAP_FAIL_CLOSED",
+  "source_validation": "PRESERVED_FROM_CANONICAL_MOTOR_EVIDENCE",
+  "destination": "➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/",
+  "attempted_transport": "connected GitHub Git-data/content publication",
+  "result": "BLOCKED_BEFORE_PUBLICATION",
+  "blocking_control": "CONNECTED_GITHUB_SECURITY_CONTROL_BLOCKED_BULK_SOURCE_BLOB_WRITE",
+  "publication_commit": null,
+  "readback_head": "c63fd90c5561332f33f6e61515302f1d814522b9",
+  "readback_absent": [
+    "minimax_mcp",
+    "minimax_mcp_js",
+    "minimax_coding_plan_mcp",
+    "kimi_agent_rs",
+    "kimi_researcher",
+    "kimi_code",
+    "kimi_cli",
+    "minimax_code"
+  ],
+  "invariant": "NO_PASS_UNTIL_PHYSICAL_PRESENCE_PLUS_HASH_READBACK",
+  "next": [
+    "CL-002 remains IN_PROGRESS",
+    "CL-003 artifact verified but publication pending",
+    "CL-004 materialization verified but publication pending",
+    "continue independent safe DAG work only where dependencies permit"
+  ]
+}

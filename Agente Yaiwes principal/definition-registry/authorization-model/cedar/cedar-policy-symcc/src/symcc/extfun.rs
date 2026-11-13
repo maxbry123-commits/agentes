@@ -1,0 +1,228 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+//! This file contains the symbolic encoding (factory functions) for extension
+//! operators.
+//!
+//! The extension functions are total. If given well-formed and type-correct
+//! arguments, an extension function will return a well-formed and type-correct
+//! output. Otherwise, the output is an arbitrary term.
+//!
+//! This design lets us minimize the number of error paths in the overall
+//! specification of symbolic compilation, which makes for nicer code and proofs, and
+//! it more closely tracks the specification of the concrete evaluator.
+//!
+//! See `compiler.rs` to see how the symbolic compiler uses this API. See also
+//! `factory.rs`.
+
+use super::{
+    bitvec::BitVec,
+    ext::Ext,
+    extension_types::ipaddr::{
+        IPNet, LOOP_BACK_CIDR_V4, LOOP_BACK_CIDR_V6, MULTICAST_CIDR_V4, MULTICAST_CIDR_V6,
+    },
+    factory::{
+        and, bvadd, bvlshr, bvsaddo, bvsdiv, bvshl, bvsle, bvslt, bvsmod, bvsrem, bvssubo, bvsub,
+        bvule, eq, ext_datetime_of_bitvec, ext_datetime_val, ext_decimal_val,
+        ext_duration_of_bitvec, ext_duration_val, ext_ipaddr_addr_v4, ext_ipaddr_addr_v6,
+        ext_ipaddr_is_v4, ext_ipaddr_prefix_v4, ext_ipaddr_prefix_v6, if_false, is_none, ite, not,
+        option_get, or, zero_extend,
+    },
+    term::{Term, TermPrim},
+    type_abbrevs::*,
+};
+
+pub fn less_than(t1: Term, t2: Term) -> Term {
+    bvslt(ext_decimal_val(t1), ext_decimal_val(t2))
+}
+
+pub fn less_than_or_equal(t1: Term, t2: Term) -> Term {
+    bvsle(ext_decimal_val(t1), ext_decimal_val(t2))
+}
+
+pub fn greater_than(t1: Term, t2: Term) -> Term {
+    less_than(t2, t1)
+}
+
+pub fn greater_than_or_equal(t1: Term, t2: Term) -> Term {
+    less_than_or_equal(t2, t1)
+}
+
+pub fn is_ipv4(t: Term) -> Term {
+    ext_ipaddr_is_v4(t)
+}
+
+pub fn is_ipv6(t: Term) -> Term {
+    not(is_ipv4(t))
+}
+
+/// Panics if `2^w` exceeds `u32::MAX`, i.e., if `w` exceeds 32. Currently, callers do not use `w` exceeding 7.
+pub fn subnet_width(w: Width, prefix: Term) -> Term {
+    #[expect(
+        clippy::expect_used,
+        reason = "Function is documented to panic if 2^w exceeds u32::MAX"
+    )]
+    let n = TWO.checked_pow(w.get()).expect("will not exceed u32::MAX");
+    ite(
+        is_none(prefix.clone()),
+        BitVec::of_nat(n, nat(0)).into(),
+        bvsub(
+            BitVec::of_nat(n, nat(n.get())).into(),
+            zero_extend(n.get() - w.get(), option_get(prefix)),
+        ),
+    )
+}
+
+/// Panics if `2^w` exceeds `u32::MAX`, i.e., if `w` exceeds 32. Currently, callers do not use `w` exceeding 7.
+fn range(w: Width, ip_addr: Term, prefix: Term) -> (Term, Term) {
+    #[expect(
+        clippy::expect_used,
+        reason = "Function is documented to panic if 2^w exceeds u32::MAX"
+    )]
+    let n = TWO.checked_pow(w.get()).expect("will not exceed u32::MAX");
+    let width = subnet_width(w, prefix);
+    let one: Term = BitVec::of_nat(n, nat(1)).into();
+    let lo = bvshl(bvlshr(ip_addr, width.clone()), width.clone());
+    let hi = bvsub(bvadd(lo.clone(), bvshl(one.clone(), width)), one);
+    (lo, hi)
+}
+
+pub fn range_v4(t: Term) -> (Term, Term) {
+    range(FIVE, ext_ipaddr_addr_v4(t.clone()), ext_ipaddr_prefix_v4(t))
+}
+
+pub fn range_v6(t: Term) -> (Term, Term) {
+    range(
+        SEVEN,
+        ext_ipaddr_addr_v6(t.clone()),
+        ext_ipaddr_prefix_v6(t),
+    )
+}
+
+pub fn in_range(range: impl Fn(Term) -> (Term, Term), t1: Term, t2: Term) -> Term {
+    let (lo1, hi1) = range(t1);
+    let (lo2, hi2) = range(t2);
+    and(bvule(hi1, hi2), bvule(lo2, lo1))
+}
+
+pub fn in_range_v(
+    is_ip: impl Fn(Term) -> Term,
+    range: impl Fn(Term) -> (Term, Term),
+    t: Term,
+    ts: impl IntoIterator<Item = Term>,
+) -> Term {
+    // Apply in_range between t and each term in ts, folding with or
+    let range_checks = ts.into_iter().fold(false.into(), |acc, term| {
+        or(
+            acc,
+            and(is_ip(term.clone()), in_range(&range, t.clone(), term)),
+        )
+    });
+
+    and(is_ip(t), range_checks)
+}
+
+pub fn is_in_range(t: Term, ts: Vec<Term>) -> Term {
+    or(
+        in_range_v(is_ipv4, range_v4, t.clone(), ts.iter().cloned()),
+        in_range_v(is_ipv6, range_v6, t, ts),
+    )
+}
+
+pub fn ip_term(ip: IPNet) -> Term {
+    Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip }))
+}
+
+pub fn in_range_lit(t: Term, cidr4: IPNet, cidr6: IPNet) -> Term {
+    ite(
+        is_ipv4(t.clone()),
+        in_range(range_v4, t.clone(), ip_term(cidr4)),
+        in_range(range_v6, t, ip_term(cidr6)),
+    )
+}
+
+pub fn is_loopback(t: Term) -> Term {
+    in_range_lit(t, LOOP_BACK_CIDR_V4.clone(), LOOP_BACK_CIDR_V6.clone())
+}
+
+pub fn is_multicast(t: Term) -> Term {
+    in_range_lit(t, MULTICAST_CIDR_V4.clone(), MULTICAST_CIDR_V6.clone())
+}
+
+pub fn to_milliseconds(t: Term) -> Term {
+    ext_duration_val(t)
+}
+
+pub fn to_seconds(t: Term) -> Term {
+    bvsdiv(to_milliseconds(t), 1000.into())
+}
+
+pub fn to_minutes(t: Term) -> Term {
+    bvsdiv(to_seconds(t), 60.into())
+}
+
+pub fn to_hours(t: Term) -> Term {
+    bvsdiv(to_minutes(t), 60.into())
+}
+
+pub fn to_days(t: Term) -> Term {
+    bvsdiv(to_hours(t), 24.into())
+}
+
+pub fn offset(dt: Term, dur: Term) -> Term {
+    let dt_val = ext_datetime_val(dt);
+    let dur_val = ext_duration_val(dur);
+    if_false(
+        bvsaddo(dt_val.clone(), dur_val.clone()),
+        ext_datetime_of_bitvec(bvadd(dt_val, dur_val)),
+    )
+}
+
+pub fn duration_since(dt1: Term, dt2: Term) -> Term {
+    let dt1_val = ext_datetime_val(dt1);
+    let dt2_val = ext_datetime_val(dt2);
+    if_false(
+        bvssubo(dt1_val.clone(), dt2_val.clone()),
+        ext_duration_of_bitvec(bvsub(dt1_val, dt2_val)),
+    )
+}
+
+pub fn to_date(dt: Term) -> Term {
+    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(SIXTY_FOUR, 86400000)));
+    let dt_val = ext_datetime_val(dt);
+    // we want dt - (dt % MS_PER_DAY), with the right version of `%`
+    // using bvsmod does the right thing: we have \forall x, 0 <= (bvsmod x MS_PER_DAY) < MS_PER_DAY
+    let rem = bvsmod(dt_val.clone(), ms_per_day);
+    if_false(
+        bvssubo(dt_val.clone(), rem.clone()),
+        ext_datetime_of_bitvec(bvsub(dt_val, rem)),
+    )
+}
+
+pub fn to_time(dt: Term) -> Term {
+    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(SIXTY_FOUR, 0)));
+    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(SIXTY_FOUR, 86400000)));
+    let dt_val = ext_datetime_val(dt);
+    ext_duration_of_bitvec(ite(
+        bvsle(zero.clone(), dt_val.clone()),
+        bvsrem(dt_val.clone(), ms_per_day.clone()),
+        ite(
+            eq(bvsrem(dt_val.clone(), ms_per_day.clone()), zero.clone()),
+            zero,
+            bvadd(bvsrem(dt_val, ms_per_day.clone()), ms_per_day),
+        ),
+    ))
+}

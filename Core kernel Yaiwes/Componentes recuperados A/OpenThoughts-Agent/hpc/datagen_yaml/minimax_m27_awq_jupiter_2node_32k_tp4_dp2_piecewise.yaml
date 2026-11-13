@@ -1,0 +1,54 @@
+
+engine:
+  type: vllm_local
+  model: cyankiwi/MiniMax-M2.7-AWQ-4bit
+  max_output_tokens: 8192
+  healthcheck_interval: 300
+  request_params:
+    temperature: 0.7
+    top_p: 0.95
+  vllm_local: {}
+backend:
+  type: ray
+  wait_for_endpoint: true
+  ray_cgraph_max_inflight_executions: 16
+  healthcheck_max_attempts: 160
+  healthcheck_retry_delay: 15
+vllm_server:
+  model_path: cyankiwi/MiniMax-M2.7-AWQ-4bit
+  num_replicas: 1
+  tensor_parallel_size: 4
+  pipeline_parallel_size: 1
+  data_parallel_size: 2
+  time_limit: '11:59:00'
+  max_model_len: 32768
+  max_num_seqs: 32
+  gpu_memory_utilization: 0.9
+  enable_expert_parallel: true
+  enable_auto_tool_choice: true
+  tool_call_parser: minimax_m2
+  reasoning_parser: minimax_m2
+  trust_remote_code: true
+  use_deep_gemm: false
+  use_flashinfer_sampler: false
+  use_flashinfer_moe_fp16: true
+  pynccl_trace_flush_interval_sec: 300
+  pynccl_pyspy_on_sigusr1: true
+  pynccl_faulthandler_interval_sec: 0
+  extra_args:
+  - --dtype
+  - bfloat16
+  - --kv-cache-dtype
+  - fp8
+  - --compilation-config
+  - '{"cudagraph_mode":"PIECEWISE"}'
+  - --chat-template-content-format
+  - string
+  - --max-num-batched-tokens
+  - '32768'
+  - --all2all-backend
+  - allgather_reducescatter
+  - --data-parallel-backend
+  - ray
+  - --data-parallel-size-local
+  - '1'

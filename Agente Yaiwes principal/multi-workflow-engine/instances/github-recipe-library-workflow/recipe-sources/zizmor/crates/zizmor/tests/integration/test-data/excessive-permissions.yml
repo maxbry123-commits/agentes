@@ -1,0 +1,14 @@
+# Adapted from
+# https://github.com/woodruffw/gha-hazmat/blob/main/.github/workflows/excessive-permissions.yml
+
+on: [push]
+
+name: excessive-permissions
+
+jobs:
+  excessive-permissions:
+    name: excessive-permissions
+    runs-on: ubuntu-latest
+    permissions: write-all
+    steps:
+      - run: "echo hello"

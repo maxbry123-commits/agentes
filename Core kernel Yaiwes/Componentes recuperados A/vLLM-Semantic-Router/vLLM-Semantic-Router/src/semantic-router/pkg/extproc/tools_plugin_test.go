@@ -1,0 +1,136 @@
+package extproc
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/config"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/llmprotocol"
+)
+
+func makeTool(name string) llmprotocol.Tool {
+	return llmprotocol.Tool{Name: name, InputSchema: []byte(`{"type":"object"}`)}
+}
+
+func TestFilterToolsByDecisionPolicy_AllowList(t *testing.T) {
+	tools := []llmprotocol.Tool{
+		makeTool("read_file"),
+		makeTool("write_file"),
+		makeTool("search_web"),
+		makeTool("exec_cmd"),
+	}
+
+	filtered := filterToolsByDecisionPolicy(tools, []string{"read_file", "search_web"}, nil)
+
+	assert.Len(t, filtered, 2)
+	names := make(map[string]bool)
+	for _, tool := range filtered {
+		names[tool.Name] = true
+	}
+	assert.True(t, names["read_file"])
+	assert.True(t, names["search_web"])
+	assert.False(t, names["write_file"])
+	assert.False(t, names["exec_cmd"])
+}
+
+func TestFilterToolsByDecisionPolicy_BlockList(t *testing.T) {
+	tools := []llmprotocol.Tool{
+		makeTool("read_file"),
+		makeTool("write_file"),
+		makeTool("search_web"),
+		makeTool("exec_cmd"),
+	}
+
+	filtered := filterToolsByDecisionPolicy(tools, nil, []string{"exec_cmd", "write_file"})
+
+	assert.Len(t, filtered, 2)
+	names := make(map[string]bool)
+	for _, tool := range filtered {
+		names[tool.Name] = true
+	}
+	assert.True(t, names["read_file"])
+	assert.True(t, names["search_web"])
+	assert.False(t, names["write_file"])
+	assert.False(t, names["exec_cmd"])
+}
+
+func TestFilterToolsByDecisionPolicy_AllowAndBlock(t *testing.T) {
+	tools := []llmprotocol.Tool{
+		makeTool("read_file"),
+		makeTool("write_file"),
+		makeTool("search_web"),
+	}
+
+	// Allow read_file and write_file, but block write_file
+	filtered := filterToolsByDecisionPolicy(tools, []string{"read_file", "write_file"}, []string{"write_file"})
+
+	assert.Len(t, filtered, 1)
+	assert.Equal(t, "read_file", filtered[0].Name)
+}
+
+func TestFilterToolsByDecisionPolicy_EmptyBoth(t *testing.T) {
+	tools := []llmprotocol.Tool{
+		makeTool("a"),
+		makeTool("b"),
+	}
+
+	filtered := filterToolsByDecisionPolicy(tools, nil, nil)
+	assert.Len(t, filtered, 2)
+}
+
+func TestFilterToolsByDecisionPolicy_EmptyTools(t *testing.T) {
+	filtered := filterToolsByDecisionPolicy(nil, []string{"a"}, nil)
+	assert.Empty(t, filtered)
+}
+
+func TestToolsPluginModeConstants(t *testing.T) {
+	assert.Equal(t, "none", config.ToolsPluginModeNone)
+	assert.Equal(t, "passthrough", config.ToolsPluginModePassthrough)
+	assert.Equal(t, "filtered", config.ToolsPluginModeFiltered)
+}
+
+func TestDecisionGetToolsConfig(t *testing.T) {
+	payload, err := config.NewStructuredPayload(config.ToolsPluginConfig{
+		Enabled:    true,
+		Mode:       config.ToolsPluginModeFiltered,
+		AllowTools: []string{"read_file", "list_dir"},
+		BlockTools: []string{"exec_cmd"},
+	})
+	assert.NoError(t, err)
+
+	dec := config.Decision{
+		Name: "test",
+		Plugins: []config.DecisionPlugin{
+			{Type: config.DecisionPluginTools, Configuration: payload},
+		},
+	}
+
+	cfg := dec.GetToolsConfig()
+	if assert.NotNil(t, cfg) {
+		assert.Equal(t, config.ToolsPluginModeFiltered, cfg.EffectiveMode())
+		assert.Equal(t, []string{"read_file", "list_dir"}, cfg.AllowTools)
+		assert.Equal(t, []string{"exec_cmd"}, cfg.BlockTools)
+	}
+}
+
+func TestClearToolChoiceWhenNoTools_RemovesAutoChoice(t *testing.T) {
+	req := testNeutralRequest("test-model", "你好")
+	req.ToolChoice = llmprotocol.ToolChoice{Mode: llmprotocol.ToolChoiceAuto}
+
+	changed := clearSemanticToolChoiceWhenNoTools(req)
+
+	assert.True(t, changed)
+	assert.Equal(t, llmprotocol.ToolChoice{}, req.ToolChoice)
+}
+
+func TestClearToolChoiceWhenNoTools_KeepsChoiceWhenToolsPresent(t *testing.T) {
+	req := testNeutralRequest("test-model", "天气如何")
+	req.ToolChoice = llmprotocol.ToolChoice{Mode: llmprotocol.ToolChoiceAuto}
+	req.Tools = []llmprotocol.Tool{makeTool("lookup_weather")}
+
+	changed := clearSemanticToolChoiceWhenNoTools(req)
+
+	assert.False(t, changed)
+	assert.Equal(t, llmprotocol.ToolChoiceAuto, req.ToolChoice.Mode)
+}

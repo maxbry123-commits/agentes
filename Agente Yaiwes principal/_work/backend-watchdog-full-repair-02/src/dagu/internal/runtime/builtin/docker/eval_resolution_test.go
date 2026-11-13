@@ -1,0 +1,85 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package docker
+
+import (
+	"context"
+	"testing"
+
+	cmnvalue "github.com/dagucloud/dagu/v2/internal/cmn/value"
+	"github.com/dagucloud/dagu/v2/internal/executor/registry"
+	"github.com/dagucloud/dagu/v2/internal/ir"
+	"github.com/dagucloud/dagu/v2/internal/runtime"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestDockerExecutorCommandResolution(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		step            ir.Step
+		wantShellConfig bool
+	}{
+		{
+			name: "StepContainerShell",
+			step: ir.Step{
+				ExecutorConfig: ir.ExecutorConfig{Type: "docker"},
+				Container: &ir.Container{
+					Image: "alpine",
+					Shell: []string{"/bin/sh", "-c"},
+				},
+			},
+			wantShellConfig: true,
+		},
+		{
+			name: "ExecutorConfigShell",
+			step: ir.Step{
+				ExecutorConfig: ir.ExecutorConfig{
+					Type:   "docker",
+					Config: map[string]any{"image": "alpine", "shell": "/bin/bash"},
+				},
+			},
+			wantShellConfig: true,
+		},
+		{
+			name: "NoShell",
+			step: ir.Step{
+				ExecutorConfig: ir.ExecutorConfig{Type: "docker"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			command := registry.CommandResolution(context.Background(), tt.step)
+			assert.Equal(t, cmnvalue.CommandTargetDocker, command.Target)
+			assert.Equal(t, tt.wantShellConfig, command.ShellConfigured)
+		})
+	}
+}
+
+func TestEvalContainerFieldsUsesDockerCommandSemantics(t *testing.T) {
+	t.Setenv("DOCKER_TARGET_HOME", "/host/home")
+
+	step := ir.Step{
+		Name:           "docker-step",
+		ExecutorConfig: ir.ExecutorConfig{Type: "docker"},
+	}
+	ctx := runtime.NewContextForTest(context.Background(), &ir.DAG{Name: "test-dag"}, "run-1", "test.log")
+	env := runtime.NewEnv(ctx, step)
+	env.Scope = env.Scope.WithEntry("COMMAND_NAME", "printf", cmnvalue.EnvSourceStepEnv)
+	ctx = runtime.WithEnv(ctx, env)
+
+	got, err := EvalContainerFields(ctx, ir.Container{
+		Command: []string{"$COMMAND_NAME", "$DOCKER_TARGET_HOME"},
+		Shell:   []string{"/bin/sh", "-c", "echo \\$DOCKER_TARGET_HOME"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"printf", "$DOCKER_TARGET_HOME"}, got.Command)
+	assert.Equal(t, []string{"/bin/sh", "-c", "echo \\$DOCKER_TARGET_HOME"}, got.Shell)
+}

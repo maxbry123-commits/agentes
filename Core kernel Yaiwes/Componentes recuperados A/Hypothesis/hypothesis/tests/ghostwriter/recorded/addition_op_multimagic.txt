@@ -1,0 +1,22 @@
+# This test code was written by the `hypothesis.extra.ghostwriter` module
+# and is provided under the Creative Commons Zero public domain dedication.
+
+import numpy
+import operator
+import test_expected_output
+from hypothesis import given, strategies as st
+
+
+@given(a=st.floats(), b=st.floats())
+def test_equivalent_add_add_add(a: float, b: float) -> None:
+    result_add_numpy = numpy.add(a, b)
+    result_add_operator = operator.add(a, b)
+    result_add_test_expected_output = test_expected_output.add(a=a, b=b)
+    assert result_add_numpy == result_add_operator, (
+        result_add_numpy,
+        result_add_operator,
+    )
+    assert result_add_numpy == result_add_test_expected_output, (
+        result_add_numpy,
+        result_add_test_expected_output,
+    )

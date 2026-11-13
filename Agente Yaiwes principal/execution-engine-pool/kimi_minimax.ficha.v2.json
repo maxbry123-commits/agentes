@@ -1,0 +1,9 @@
+{
+  "artifact_id": "wordflow.slot.kimi_minimax",
+  "abi_version": "0.1.0",
+  "status": "PLACEHOLDER",
+  "kind": "plugin_slot",
+  "engines": ["kimi", "minimax"],
+  "fusion": false,
+  "note": "V1 connection slot only. No merge in V1."
+}

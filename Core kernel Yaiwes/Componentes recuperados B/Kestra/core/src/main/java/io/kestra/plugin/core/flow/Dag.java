@@ -1,0 +1,286 @@
+package io.kestra.plugin.core.flow;
+
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.executions.Execution;
+import io.kestra.core.models.executions.NextTaskRun;
+import io.kestra.core.models.executions.TaskRun;
+import io.kestra.core.models.flows.State;
+import io.kestra.core.models.hierarchies.GraphCluster;
+import io.kestra.core.models.hierarchies.RelationType;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.*;
+import io.kestra.core.runners.FlowableUtils;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.utils.GraphUtils;
+import io.kestra.core.validations.DagTaskValidation;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
+
+@SuperBuilder
+@ToString
+@EqualsAndHashCode
+@Getter
+@NoArgsConstructor
+@DagTaskValidation
+@Schema(
+    title = "Define tasks as a DAG with explicit dependencies.",
+    description = """
+        Declare tasks and their `dependsOn` links; Kestra derives the execution order and parallelism (bounded by `concurrent`). Tasks may only reference peers inside this DAG block.
+
+        UI low-code forms are disabled for now with DAG tasks."""
+)
+@Plugin(
+    examples = {
+        @Example(
+            title = "Run a series of tasks for which the execution order is defined by their upstream dependencies.",
+            full = true,
+            code = """
+                id: dag_flow
+                namespace: company.team
+                tasks:
+                  - id: dag
+                    type: io.kestra.plugin.core.flow.Dag
+                    tasks:
+                      - task:
+                          id: task1
+                          type: io.kestra.plugin.core.log.Log
+                          message: task 1
+                      - task:
+                          id: task2
+                          type: io.kestra.plugin.core.log.Log
+                          message: task 2
+                        dependsOn:
+                          - task1
+                      - task:
+                          id: task3
+                          type: io.kestra.plugin.core.log.Log
+                          message: task 3
+                        dependsOn:
+                          - task1
+                      - task:
+                          id: task4
+                          type: io.kestra.plugin.core.log.Log
+                          message: task 4
+                        dependsOn:
+                          - task2
+                      - task:
+                          id: task5
+                          type: io.kestra.plugin.core.log.Log
+                          message: task 5
+                        dependsOn:
+                          - task4
+                          - task3
+                """
+        )
+    }
+)
+public class Dag extends Task implements FlowableTask<VoidOutput>, OnChildFailureInterface {
+    @NotNull
+    @Builder.Default
+    @Schema(
+        title = "Number of concurrent parallel tasks that can be running at any point in time",
+        description = "If the value is `0`, no concurrency limit exists for the tasks in a DAG and all tasks that can run in parallel will start at the same time."
+    )
+    private final Property<@PositiveOrZero Integer> concurrent = Property.ofValue(0);
+
+    @NotNull
+    @Builder.Default
+    @Schema(
+        title = "What to do with the other still-running tasks when one task fails.",
+        description = """
+            `CONTINUE` (default): other tasks keep running to completion, as today.
+
+            `CANCELLED` / `FAILED`: as soon as a task fails with no retry left, every other still-running task in this DAG is interrupted and lands in the given state. The DAG itself still resolves to `FAILED` and its `errors`/`finally` tasks still run normally."""
+    )
+    private final Property<OnChildFailure> onChildFailure = Property.ofValue(OnChildFailure.CONTINUE);
+
+    @Valid
+    @NotEmpty
+    private List<DagTask> tasks;
+
+    @Valid
+    @PluginProperty
+    protected List<Task> errors;
+
+    @Valid
+    @JsonProperty("finally")
+    @Getter(AccessLevel.NONE)
+    protected List<Task> _finally;
+
+    public List<Task> getFinally() {
+        return this._finally;
+    }
+
+    @Override
+    public GraphCluster tasksTree(Execution execution, TaskRun taskRun, List<String> parentValues) throws IllegalVariableEvaluationException {
+        GraphCluster subGraph = new GraphCluster(this, taskRun, parentValues, RelationType.DYNAMIC);
+
+        this.controlTask();
+
+        GraphUtils.dag(
+            subGraph,
+            this.getTasks(),
+            this.errors,
+            this._finally,
+            taskRun,
+            execution
+        );
+
+        return subGraph;
+    }
+
+    private void controlTask() throws IllegalVariableEvaluationException {
+        List<String> dagCheckNotExistTasks = this.dagCheckNotExistTask(this.tasks);
+        if (!dagCheckNotExistTasks.isEmpty()) {
+            throw new IllegalVariableEvaluationException("Some task doesn't exist on task '" + this.id + "': " + String.join(", ", dagCheckNotExistTasks));
+        }
+
+        ArrayList<String> cyclicDependenciesTasks = this.dagCheckCyclicDependencies(this.tasks);
+        if (!cyclicDependenciesTasks.isEmpty()) {
+            throw new IllegalVariableEvaluationException("Infinite loop detected on task '" + this.id + "': " + String.join(", ", cyclicDependenciesTasks));
+        }
+    }
+
+    @Override
+    public List<Task> allChildTasks() {
+        return Stream
+            .concat(
+                this.tasks != null ? this.tasks.stream().map(DagTask::getTask) : Stream.empty(),
+                Stream.concat(
+                    this.errors != null ? this.errors.stream() : Stream.empty(),
+                    this._finally != null ? this._finally.stream() : Stream.empty()
+                )
+            )
+            .toList();
+    }
+
+    @Override
+    public List<ResolvedTask> childTasks(RunContext runContext, TaskRun parentTaskRun) throws IllegalVariableEvaluationException {
+        return FlowableUtils.resolveTasks(this.tasks.stream().map(DagTask::getTask).toList(), parentTaskRun);
+    }
+
+    @Override
+    public List<NextTaskRun> resolveNexts(RunContext runContext, Execution execution, TaskRun parentTaskRun) throws IllegalVariableEvaluationException {
+        this.controlTask();
+
+        return FlowableUtils.resolveDagNexts(
+            execution,
+            this.childTasks(runContext, parentTaskRun),
+            FlowableUtils.resolveTasks(this.errors, parentTaskRun),
+            FlowableUtils.resolveTasks(this._finally, parentTaskRun),
+            parentTaskRun,
+            runContext.render(this.concurrent).as(Integer.class).orElseThrow(),
+            this.tasks
+        );
+    }
+
+    @Override
+    public Optional<State.Type> resolveState(RunContext runContext, Execution execution, TaskRun parentTaskRun) throws IllegalVariableEvaluationException {
+        List<ResolvedTask> childTasks = this.childTasks(runContext, parentTaskRun);
+
+        return FlowableUtils.resolveSequentialState(
+            execution,
+            childTasks,
+            FlowableUtils.resolveTasks(this.getErrors(), parentTaskRun),
+            FlowableUtils.resolveTasks(this.getFinally(), parentTaskRun),
+            parentTaskRun,
+            runContext,
+            this.isAllowFailure(),
+            this.isAllowWarning()
+        );
+    }
+
+    public List<String> dagCheckNotExistTask(List<DagTask> taskDepends) {
+        List<String> dependenciesIds = taskDepends
+            .stream()
+            .map(DagTask::getDependsOn)
+            .filter(Objects::nonNull)
+            .flatMap(Collection::stream)
+            .toList();
+
+        List<String> tasksIds = taskDepends
+            .stream()
+            .map(taskDepend -> taskDepend.getTask().getId())
+            .toList();
+
+        return dependenciesIds.stream()
+            .filter(dependencyId -> !tasksIds.contains(dependencyId))
+            .toList();
+    }
+
+    public ArrayList<String> dagCheckCyclicDependencies(List<DagTask> taskDepends) {
+        Map<String, List<String>> depMap = taskDepends.stream()
+            .collect(
+                Collectors.toMap(
+                    t -> t.getTask().getId(),
+                    t -> t.getDependsOn() != null ? t.getDependsOn() : List.of(),
+                    (first, second) -> first
+                )
+            );
+
+        ArrayList<String> cyclicDependency = new ArrayList<>();
+        for (DagTask taskDepend : taskDepends) {
+            if (taskDepend.getDependsOn() != null) {
+                String startId = taskDepend.getTask().getId();
+                if (hasCycle(startId, depMap)) {
+                    cyclicDependency.add(startId);
+                }
+            }
+        }
+        return cyclicDependency;
+    }
+
+    private boolean hasCycle(String startId, Map<String, List<String>> depMap) {
+        Set<String> visited = new HashSet<>();
+        Deque<String> stack = new ArrayDeque<>();
+        stack.push(startId);
+        while (!stack.isEmpty()) {
+            String current = stack.pop();
+            for (String dep : depMap.getOrDefault(current, List.of())) {
+                if (dep.equals(startId)) {
+                    return true;
+                }
+                if (visited.add(dep)) {
+                    stack.push(dep);
+                }
+            }
+        }
+        return false;
+    }
+
+    @SuperBuilder
+    @ToString
+    @EqualsAndHashCode
+    @Getter
+    @NoArgsConstructor
+    public static class DagTask {
+        @NotNull
+        @Valid
+        @Schema(
+            title = "The task within the DAG"
+        )
+        @PluginProperty
+        private Task task;
+
+        @PluginProperty
+        @Schema(
+            title = "The list of task IDs that should have been successfully executed before starting this task"
+        )
+        private List<String> dependsOn;
+    }
+}

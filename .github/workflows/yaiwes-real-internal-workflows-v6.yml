@@ -1,0 +1,45 @@
+name: YAIWES compatibility strict manual
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility-strict:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /📂coda workflow persistencias/*/INTERNAL-SURGICAL-MANIFEST-V5.json
+            /📂coda workflow persistencias/*/code/**/*.py
+            /📂coda workflow persistencias/*/code/**/*.go
+            /📂coda workflow persistencias/*/code/**/*.ts
+            /📂coda workflow persistencias/*/code/**/*.js
+            /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v6.py
+            /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v61.py
+            /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v62.py
+            /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63.py
+            /📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63_core.py
+            /📂coda workflow persistencias/🏈 cancha deportiva de fútbol/*
+      - name: Execute canonical strict chain
+        run: python3 '📂coda workflow persistencias/Fables enchufe universal/yaiwes_real_workflow_chain_v63.py'
+      - name: Assert strict close
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-LINEAR-WORKFLOW-REPORT-V63.json').read_text(encoding='utf-8'))
+          assert d['real_internal_workflows_executed'] == 24
+          assert d['completed_internal_workflows'] == 24
+          assert d['handoff_continuity'] is True
+          assert d['universal_plug_after_component_24'] is True
+          assert d['status'] == 'CLOSED_24_OF_24'
+          print('YAIWES_COMPATIBILITY_STRICT_PASS=24/24')
+          PY

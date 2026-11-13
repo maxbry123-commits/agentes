@@ -1,0 +1,53 @@
+- name: Install cargo-license
+  if: ${{ runner.os == 'macOS' }} # on linux we are in dev-tools container
+  run: cargo install cargo-license
+
+- name: Setup just
+  if: ${{ runner.os == 'macOS' }} # on linux we are in dev-tools container
+  uses: extractions/setup-just@v2
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+- name: Install cargo-hakari
+  uses: taiki-e/install-action@v2
+  with:
+    tool: cargo-hakari
+
+- name: Disable hakari
+  run: cargo hakari disable
+
+- name: Allowlist git directory
+  if: ${{ runner.os == 'Linux' }} # only required inside the dev-tools container
+  run: git config --global --add safe.directory /__w/restate/restate
+
+- name: Generate notice
+  run: just notice-file
+
+- name: Set up MACOSX_DEPLOYMENT_TARGET
+  if: ${{ runner.os == 'macOS' }}
+  run: echo MACOSX_DEPLOYMENT_TARGET="10.14.0" >> "$GITHUB_ENV"
+
+- name: Set up CODESIGN_OPTIONS for hardened runtime (macOS)
+  if: ${{ runner.os == 'macOS' }}
+  run: echo CODESIGN_OPTIONS="runtime" >> "$GITHUB_ENV"
+
+# cargo-dist isn't currently able to take these from .cargo/config.toml
+# https://github.com/axodotdev/cargo-dist/issues/1571
+- name: Set up RUSTFLAGS (macOS)
+  if: ${{ runner.os == 'macOS' }}
+  run: echo RUSTFLAGS="-C force-unwind-tables --cfg uuid_unstable --cfg tokio_unstable" >> "$GITHUB_ENV"
+
+- name: Set up RUSTFLAGS (Linux)
+  if: ${{ runner.os == 'Linux' }}
+  run: echo RUSTFLAGS="-C force-unwind-tables --cfg uuid_unstable --cfg tokio_unstable" >> "$GITHUB_ENV"
+
+# These env vars are needed when cross-compiling
+- name: Set up cross-compilation env variables
+  run: |
+    # for krb5
+    echo krb5_cv_attr_constructor_destructor="yes" >> "$GITHUB_ENV"
+    echo ac_cv_func_regcomp="yes" >> "$GITHUB_ENV"
+    echo ac_cv_printf_positional="yes" >> "$GITHUB_ENV"
+
+    # for sasl2
+    echo ac_cv_gssapi_supports_spnego="yes" >> "$GITHUB_ENV"

@@ -1,0 +1,27 @@
+{
+  "node": 23,
+  "worker": "SOL integración 1",
+  "status": "PASS",
+  "route": "UniversalPluginBus/FABLES -> PostgreSQL adapter -> moved PostgreSQL build -> initdb -> postgres server -> psql SELECT 20+21",
+  "plugin_id": "yaiwes.durability.postgresql",
+  "microtest": "real_server_query_20_plus_21",
+  "result": {
+    "status": "PASS",
+    "capability": "real_server_query",
+    "query": "SELECT 20+21",
+    "value": 41,
+    "initdb": 0,
+    "server_started": true
+  },
+  "evidence_levels": [
+    "L2_build",
+    "L3_runtime",
+    "L4_feature"
+  ],
+  "run": 34561267825,
+  "runner_commit": "dba8fb594b073e2f7a0262ef4e93abb805779c1d",
+  "adapter_sha256": "sha256:ff6fa63f2ca53d93c56276a121f3a5b60d4c36d5173fde35d1a822decf9ed5ba",
+  "canonical_bus_blob": "470f9c91650bc6c59e2900f7e71090b84363da9f",
+  "canonical_ficha_code_blob": "a72508027cc2458553ef6a2255a9aa33d9a77a21",
+  "prune": "NOT_NEEDED"
+}

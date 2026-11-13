@@ -1,0 +1,405 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Nightly GNU Build
+
+on:
+  schedule:
+    - cron: "7 0 * * *"
+      timezone: "Asia/Shanghai"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-gnu-build-main-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: Build x86_64 GNU
+    runs-on: sm-standard-4
+    timeout-minutes: 150
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust environment
+        uses: ./.github/actions/setup
+        with:
+          cache-shared-key: build-x86_64-unknown-linux-gnu
+          cache-save-if: 'false'
+          install-build-packaging-tools: 'false'
+          install-test-tools: 'false'
+
+      - name: Build RustFS
+        run: cargo build --release --locked --target x86_64-unknown-linux-gnu -p rustfs --bins
+
+      - name: Build DEB package
+        id: deb
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Nightly snapshot name: rustfs-nightly-<YYYY-MM-DD> (Asia/Shanghai,
+          # matching the schedule timezone so the file date always matches the
+          # cron's intended day).
+          DEB_DATE="$(TZ=Asia/Shanghai date +%Y-%m-%d)"
+          DEB_FILE="rustfs-nightly-${DEB_DATE}.deb"
+          PKG_DIR="rustfs-nightly-${DEB_DATE}"
+
+          command -v fakeroot >/dev/null 2>&1 || sudo apt-get install -y -qq fakeroot
+
+          BIN="target/x86_64-unknown-linux-gnu/release/rustfs"
+          test -x "${BIN}" || { echo "rustfs binary not found: ${BIN}"; exit 1; }
+
+          mkdir -p "${PKG_DIR}/DEBIAN"
+          mkdir -p "${PKG_DIR}/usr/bin"
+          mkdir -p "${PKG_DIR}/etc/default"
+          mkdir -p "${PKG_DIR}/lib/systemd/system"
+          mkdir -p "${PKG_DIR}/usr/share/doc/rustfs"
+
+          cp "${BIN}" "${PKG_DIR}/usr/bin/rustfs"
+          chmod 755 "${PKG_DIR}/usr/bin/rustfs"
+          cp deploy/build/rustfs.service "${PKG_DIR}/lib/systemd/system/"
+
+          cat > "${PKG_DIR}/etc/default/rustfs" << 'ENVEOF'
+          # RustFS Environment Configuration
+          # See https://rustfs.com/docs/ for more information
+          # RUSTFS_VOLUMES=""
+          # RUSTFS_ROOT_USER=""
+          # RUSTFS_ROOT_PASSWORD=""
+          ENVEOF
+
+          # dpkg versions must start with a digit and cannot contain hyphens;
+          # a date-based snapshot version keeps the nightly installable
+          # alongside release packages.
+          DEB_VERSION="${DEB_DATE//-/.}~nightly"
+
+          cat > "${PKG_DIR}/DEBIAN/control" << EOF
+          Package: rustfs
+          Version: ${DEB_VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Depends: libc6 (>= 2.31)
+          Maintainer: RustFS Team <support@rustfs.com>
+          Description: High-performance distributed object storage
+           RustFS is a high-performance distributed object storage software
+           built using Rust. It is compatible with MinIO and S3 API.
+          Homepage: https://rustfs.com
+          EOF
+
+          cat > "${PKG_DIR}/DEBIAN/conffiles" << 'CONFFILES'
+          /etc/default/rustfs
+          CONFFILES
+
+          cat > "${PKG_DIR}/DEBIAN/postinst" << 'POSTINST'
+          #!/bin/bash
+          set -e
+          if ! getent passwd rustfs > /dev/null 2>&1; then
+              useradd -r -s /bin/false -d /opt/rustfs rustfs
+          fi
+          mkdir -p /opt/rustfs /data/rustfs /var/log/rustfs
+          chown rustfs:rustfs /opt/rustfs /data/rustfs /var/log/rustfs
+          if [ -d /run/systemd/system ]; then
+              systemctl daemon-reload
+          fi
+          echo "RustFS installed. Configure /etc/default/rustfs then: systemctl start rustfs"
+          POSTINST
+          chmod 755 "${PKG_DIR}/DEBIAN/postinst"
+
+          cat > "${PKG_DIR}/DEBIAN/prerm" << 'PRERM'
+          #!/bin/bash
+          set -e
+          if [ -d /run/systemd/system ] && systemctl is-active --quiet rustfs; then
+              systemctl stop rustfs
+          fi
+          PRERM
+          chmod 755 "${PKG_DIR}/DEBIAN/prerm"
+
+          cat > "${PKG_DIR}/DEBIAN/postrm" << 'POSTRM'
+          #!/bin/bash
+          set -e
+          if [ -d /run/systemd/system ]; then
+              systemctl daemon-reload
+          fi
+          POSTRM
+          chmod 755 "${PKG_DIR}/DEBIAN/postrm"
+
+          cp LICENSE "${PKG_DIR}/usr/share/doc/rustfs/"
+          cp README.md "${PKG_DIR}/usr/share/doc/rustfs/"
+
+          fakeroot dpkg-deb --build "${PKG_DIR}"
+          ls -lh "${DEB_FILE}"
+          echo "deb_file=${DEB_FILE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload DEB artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ${{ steps.deb.outputs.deb_file }}
+          path: ${{ steps.deb.outputs.deb_file }}
+          if-no-files-found: error
+
+      # Persist the nightly deb on Cloudflare R2 (same channel as package.yml)
+      # so it can be downloaded later with a stable, unauthenticated URL —
+      # e.g. https://dl.rustfs.com/artifacts/rustfs/packages/nightly/... .
+      # Skipped when the R2 secrets are not configured (artifact-only mode).
+      - name: Upload DEB to Cloudflare R2
+        id: publish
+        env:
+          DEB_FILE: ${{ steps.deb.outputs.deb_file }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          AWS_EC2_METADATA_DISABLED: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$R2_ACCESS_KEY_ID" || -z "$R2_SECRET_ACCESS_KEY" || -z "$R2_ENDPOINT" || -z "$R2_BUCKET" ]]; then
+            echo "⚠️ R2 credentials missing, skipping upload"
+            exit 0
+          fi
+
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export AWS_DEFAULT_REGION="auto"
+
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          if [[ "${SOURCE_SHA}" != "${GITHUB_SHA}" ]]; then
+            echo "Checkout SHA does not match the nightly build run" >&2
+            exit 1
+          fi
+          DEB_SHA256="$(sha256sum "${DEB_FILE}" | cut -d ' ' -f 1)"
+          CANDIDATE_KEY="artifacts/rustfs/packages/nightly/runs/${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}/${DEB_SHA256}/rustfs.deb"
+          CANDIDATE_URL="https://dl.rustfs.com/${CANDIDATE_KEY}"
+
+          # Old AWS CLI models lack conditional PutObject support. Never fall
+          # back to an overwriting upload for a candidate.
+          AWS_CLI=aws
+          if ! "${AWS_CLI}" s3api put-object --generate-cli-skeleton input | jq -e 'has("IfNoneMatch")' >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y -qq python3-venv
+            AWS_CLI_DIR="$(mktemp -d "${RUNNER_TEMP}/nightly-awscli.XXXXXX")"
+            trap 'rm -rf "${AWS_CLI_DIR}"' EXIT
+            python3 -m venv "${AWS_CLI_DIR}"
+            "${AWS_CLI_DIR}/bin/python" -m pip install --disable-pip-version-check 'awscli==1.44.79'
+            AWS_CLI="${AWS_CLI_DIR}/bin/aws"
+          fi
+          "${AWS_CLI}" s3api put-object --generate-cli-skeleton input | jq -e 'has("IfNoneMatch")' >/dev/null
+          "${AWS_CLI}" --version
+          "${AWS_CLI}" s3api put-object --bucket "${R2_BUCKET}" --key "${CANDIDATE_KEY}" \
+            --body "${DEB_FILE}" --if-none-match '*' --endpoint-url "${R2_ENDPOINT}"
+          PUBLISHED_SHA256="$(curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 "${CANDIDATE_URL}" | sha256sum | cut -d ' ' -f 1)"
+          if [[ "${PUBLISHED_SHA256}" != "${DEB_SHA256}" ]]; then
+            echo "Published candidate checksum does not match the built package" >&2
+            exit 1
+          fi
+
+          R2_PREFIX="s3://${R2_BUCKET}/artifacts/rustfs/packages/nightly/"
+
+          echo "📤 Uploading ${DEB_FILE} to ${R2_PREFIX}"
+          "${AWS_CLI}" s3 cp "${DEB_FILE}" "${R2_PREFIX}" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+
+          # Stable "latest" alias so tests can fetch the newest nightly
+          # without knowing today's date.
+          echo "📤 Uploading latest alias"
+          "${AWS_CLI}" s3 cp "${DEB_FILE}" "${R2_PREFIX}rustfs-nightly-latest.deb" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors
+
+          echo "✅ R2 upload complete"
+
+          CANDIDATE_FILE="${RUNNER_TEMP}/nightly-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+          jq -n --arg source_sha "${SOURCE_SHA}" \
+            --argjson build_run_id "${GITHUB_RUN_ID}" --argjson build_run_attempt "${GITHUB_RUN_ATTEMPT}" \
+            --arg package_url "${CANDIDATE_URL}" --arg package_sha256 "${DEB_SHA256}" \
+            '{schema: 1, source_sha: $source_sha, build_run_id: $build_run_id, build_run_attempt: $build_run_attempt, package_url: $package_url, package_sha256: $package_sha256}' \
+            > "${CANDIDATE_FILE}"
+          echo "candidate_file=${CANDIDATE_FILE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload nightly candidate manifest
+        if: ${{ steps.publish.outputs.candidate_file != '' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: nightly-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.publish.outputs.candidate_file }}
+          if-no-files-found: error
+
+  # Live-Vault lane for the rustfs-kms suite (rustfs/backlog#1774).
+  #
+  # RUSTFS_KMS_VAULT_TOKEN is the single switch that adds the Vault KV2 and
+  # Vault Transit backends to every for_each_backend spec in
+  # crates/kms/tests/behavior_*.rs (see crates/kms/AGENTS.md). rotate and
+  # versioning are advertised only by the Vault backends, so without this lane
+  # no CI run ever asserts the working half of behavior_rotation.rs — a
+  # rotation that silently dropped historical key versions would stay green.
+  # The same lane runs the dev-Vault #[ignore] tests and the two self-hosting
+  # live scripts (AppRole login, three-node Raft leader failover).
+  #
+  # GitHub-hosted ubuntu-latest, deliberately not the self-hosted sm-standard
+  # fleet: the HA failover script needs a working Docker daemon, and the
+  # self-hosted fleet is heterogeneous — a docker-dependent workflow has been
+  # burned by it before (see the banner in e2e-s3tests.yml, rustfs/backlog#1149).
+  kms-vault-lane:
+    name: KMS live Vault lane
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      # Root token of the ephemeral loopback dev server. Not a secret: the
+      # server lives only for this job, listens on 127.0.0.1, and holds only
+      # keys the tests create. The literal value matters — the dev-Vault
+      # #[ignore] fixtures in crates/kms/src/backends/vault.rs hardcode it.
+      VAULT_LANE_TOKEN: dev-only-token
+      VAULT_LANE_ADDR: http://127.0.0.1:8200
+      # Keeps a runner-level proxy from swallowing the loopback dev-server
+      # traffic (see crates/kms/AGENTS.md). Actions env keys are
+      # case-insensitive, so only the uppercase form is set; reqwest reads
+      # either casing.
+      NO_PROXY: 127.0.0.1,localhost
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust environment
+        uses: ./.github/actions/setup
+        with:
+          # Dedicated key: rust-cache cannot tell runner images apart, so
+          # sharing a key with an sm-standard lane would let two different
+          # system images overwrite each other's artifacts (same reasoning as
+          # ci.yml's ci-uring lane). Saved from this nightly job itself so the
+          # next night starts warm.
+          cache-shared-key: kms-vault-lane
+          cache-save-if: 'true'
+          install-build-packaging-tools: 'false'
+          install-test-tools: 'false'
+
+      - name: Install Vault CLI
+        run: |
+          set -euo pipefail
+          wget -qO- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq vault
+          vault version
+
+      - name: Start Vault dev server with KV2 and Transit engines
+        run: |
+          set -euo pipefail
+          nohup vault server -dev \
+            -dev-root-token-id="${VAULT_LANE_TOKEN}" \
+            -dev-listen-address=127.0.0.1:8200 >/tmp/vault-dev.log 2>&1 &
+          for _ in $(seq 1 60); do
+            if curl -fsS "${VAULT_LANE_ADDR}/v1/sys/health" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS "${VAULT_LANE_ADDR}/v1/sys/health"
+          export VAULT_ADDR="${VAULT_LANE_ADDR}" VAULT_TOKEN="${VAULT_LANE_TOKEN}"
+          # Dev mode mounts KV v2 at secret/ by default; Transit is explicit.
+          # Prove both engines actually work rather than assuming the defaults.
+          vault secrets enable transit
+          vault kv put secret/rustfs-ci-lane-probe value=ok >/dev/null
+          vault kv get secret/rustfs-ci-lane-probe >/dev/null
+          vault write -f transit/keys/rustfs-ci-lane-probe >/dev/null
+
+      - name: Run rustfs-kms suite with the Vault lane on
+        env:
+          RUSTFS_KMS_VAULT_TOKEN: ${{ env.VAULT_LANE_TOKEN }}
+          RUSTFS_KMS_VAULT_ADDR: ${{ env.VAULT_LANE_ADDR }}
+        run: cargo test -p rustfs-kms --locked
+
+      - name: Run dev-Vault ignored tests
+        env:
+          RUSTFS_KMS_VAULT_TOKEN: ${{ env.VAULT_LANE_TOKEN }}
+          RUSTFS_KMS_VAULT_ADDR: ${{ env.VAULT_LANE_ADDR }}
+        # Filters select the dev-Vault-only #[ignore] tests. The AWS #[ignore]
+        # tests (backends::aws, service_manager) stay excluded — they need real
+        # AWS credentials and create billable keys. The AppRole and HA #[ignore]
+        # tests are excluded here because their own scripts below provision the
+        # Vault topology they need.
+        run: |
+          set -euo pipefail
+          cargo test -p rustfs-kms --locked --lib backends::contract_tests -- --ignored
+          cargo test -p rustfs-kms --locked --lib backends::vault -- --ignored
+          cargo test -p rustfs-kms --locked --test vault_fault_injection -- --ignored
+
+      - name: Run AppRole live checks (self-hosting ephemeral Vault)
+        run: bash scripts/test/vault_approle_kms_live.sh
+
+      - name: Show Vault dev server log on failure
+        if: failure()
+        run: tail -n 200 /tmp/vault-dev.log || true
+
+  # Three-node Raft leader failover (crates/kms/tests/vault_ha_failover_live.rs,
+  # first validated by rustfs/rustfs#5653). Its own job so an election-timing
+  # flake cannot mask the main lane's verdict, and vice versa. The script
+  # provisions and tears down its own Docker cluster.
+  kms-vault-ha-failover:
+    name: KMS Vault HA failover lane
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      NO_PROXY: 127.0.0.1,localhost
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust environment
+        uses: ./.github/actions/setup
+        with:
+          cache-shared-key: kms-vault-lane
+          cache-save-if: 'false'
+          install-build-packaging-tools: 'false'
+          install-test-tools: 'false'
+
+      - name: Run HA leader failover live checks (three-node Raft cluster in Docker)
+        run: bash scripts/test/vault_ha_kms_live.sh
+
+  alert-on-failure:
+    name: Alert on scheduled failure
+    needs: [build, kms-vault-lane, kms-vault-ha-failover]
+    if: >-
+      always() && github.event_name == 'schedule' &&
+      (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Open or update failure-tracking issue
+        uses: ./.github/actions/schedule-failure-issue
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}

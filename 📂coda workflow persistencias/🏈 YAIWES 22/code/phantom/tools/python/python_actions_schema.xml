@@ -1,0 +1,28 @@
+<tools>
+  <tool name="python_action">
+    <description>Perform Python actions using persistent interpreter sessions for cybersecurity tasks. Each session maintains its own namespace until explicitly closed.</description>
+    <parameters>
+      <parameter name="action" type="string" required="true">
+        <description>Action: new_session, execute, close, or inspect current sessions.</description>
+      </parameter>
+      <parameter name="code" type="string" required="false">
+        <description>Python code to execute. Required for new_session and execute.</description>
+      </parameter>
+      <parameter name="timeout" type="integer" required="false">
+        <description>Max execution time in seconds (default: 30).</description>
+      </parameter>
+      <parameter name="session_id" type="string" required="false">
+        <description>Session identifier. Uses default if omitted.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Response with session_id, stdout, stderr, result, execution_time, and message.</description>
+    </returns>
+    <examples>
+      <function=python_action>
+        <parameter=action>new_session</parameter>
+        <parameter=code>import requests; print("Session ready")</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

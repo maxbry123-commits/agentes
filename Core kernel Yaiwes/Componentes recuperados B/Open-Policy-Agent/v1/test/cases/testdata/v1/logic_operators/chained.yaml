@@ -1,0 +1,154 @@
+---
+cases:
+  - note: "logic_op/chained: a and b and c, all true"
+    query: data.test.p = x
+    modules:
+      - |
+        package test
+        import future.keywords.and
+
+        p if {
+          input.a and input.b and input.c
+        }
+    input:
+      a: true
+      b: true
+      c: true
+    want_result:
+      - x: true
+  - note: "logic_op/chained: a and b and c, middle false"
+    query: data.test.p = x
+    modules:
+      - |
+        package test
+        import future.keywords.and
+
+        p if {
+          input.a and input.b and input.c
+        }
+    input:
+      a: true
+      b: false
+      c: true
+    want_result: []
+  - note: "logic_op/chained: a or b or c, only middle true"
+    query: data.test.p = x
+    modules:
+      - |
+        package test
+        import future.keywords.or
+
+        p if {
+          input.a or input.b or input.c
+        }
+    input:
+      a: false
+      b: true
+      c: false
+    want_result:
+      - x: true
+  - note: "logic_op/chained: a or b or c, all false"
+    query: data.test.p = x
+    modules:
+      - |
+        package test
+        import future.keywords.or
+
+        p if {
+          input.a or input.b or input.c
+        }
+    input:
+      a: false
+      b: false
+      c: false
+    want_result: []
+  - note: "logic_op/chained: a and b or c and d, right side wins"
+    query: data.test.p = x
+    modules:
+      - |
+        package test
+        import future.keywords.and
+        import future.keywords.or
+
+        p if {
+          # parses as (a and b) or (c and d)
+          input.a and input.b or input.c and input.d
+        }
+    input:
+      a: false
+      b: true
+      c: true
+      d: true
+    want_result:
+      - x: true
+  - note: "logic_op/chained: a or b and c or d, b-and-c is the only true conjunct"
+    query: data.test.p = x
+    modules:
+      - |
+        package test
+        import future.keywords.and
+        import future.keywords.or
+
+        p if {
+          # parses as: a or (b and c) or d
+          input.a or input.b and input.c or input.d
+        }
+    input:
+      a: false
+      b: true
+      c: true
+      d: false
+    want_result:
+      - x: true
+  - note: "logic_op/chained: deeply nested explicit bodies"
+    query: data.test.p = x
+    modules:
+      - |
+        package test
+        import future.keywords.and
+        import future.keywords.or
+
+        p if {
+          { input.a and { input.b or input.c } } and { input.d or { input.e and input.f } }
+        }
+    input:
+      a: true
+      b: false
+      c: true
+      d: false
+      e: true
+      f: true
+    want_result:
+      - x: true
+  - note: "logic_op/chained: explicit bodies with locals at both ends of and-chain"
+    query: data.test.p = x
+    modules:
+      - |
+        package test
+        import future.keywords.and
+
+        p if {
+          { a := input.a; a > 0 } and input.b and { c := input.c; c > 0 }
+        }
+    input:
+      a: 1
+      b: true
+      c: 2
+    want_result:
+      - x: true
+  - note: "logic_op/chained: explicit bodies with locals at both ends of or-chain"
+    query: data.test.p = x
+    modules:
+      - |
+        package test
+        import future.keywords.or
+
+        p if {
+          { a := input.a; a > 0 } or input.b or { c := input.c; c > 0 }
+        }
+    input:
+      a: 0
+      b: false
+      c: 2
+    want_result:
+      - x: true

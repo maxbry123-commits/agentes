@@ -1,0 +1,139 @@
+{
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0019",
+  "contract": "tel.workflow/v4",
+  "mode": "FAIL_CLOSED_EXECUTION_LOOP",
+  "authorized_write_root": "➡️📂 wordflow loop code Yaiwes/",
+  "status": "CODE_GRAPH_30_OF_30_PRESERVED__CLOSURE_PLAN_ACTIVE__CL002_IN_PROGRESS",
+  "current_node": "CL-002",
+  "claimed_by": "CHATGPT_CURRENT_RUN",
+  "queue": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
+  "historical_closure": {
+    "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json"
+  },
+  "active_phase": {
+    "name": "CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP",
+    "gaps_total": 30,
+    "gaps_closed": 30,
+    "closed": [
+      "G-001",
+      "G-002",
+      "G-003",
+      "G-004",
+      "G-005",
+      "G-006",
+      "G-007",
+      "G-008",
+      "G-009",
+      "G-010",
+      "G-011",
+      "G-012",
+      "G-013",
+      "G-014",
+      "G-015",
+      "G-016",
+      "G-017",
+      "G-018",
+      "G-019",
+      "G-020",
+      "G-021",
+      "G-022",
+      "G-023",
+      "G-024",
+      "G-025",
+      "G-026",
+      "G-027",
+      "G-028",
+      "G-029",
+      "G-030"
+    ],
+    "blocked": [],
+    "in_research": [],
+    "pending": []
+  },
+  "verified_previous_cycle": {
+    "gaps": [
+      "G-022",
+      "G-017"
+    ],
+    "result": "PASS_PHYSICAL_SANDBOX_AND_DETERMINISTIC_DEPLOYMENT",
+    "github_actions_run": "34931798702",
+    "evidence": [
+      "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G022_PHYSICAL_SANDBOX_CLOSURE_2026-09-15.json",
+      "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G017_DETERMINISTIC_DEPLOYMENT_CLOSURE_2026-09-15.json"
+    ],
+    "four_test_gate": "PASS_4_OF_4"
+  },
+  "active_node": "CL-002",
+  "blocked_dependency": null,
+  "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
+  "foreign_owned_active": [
+    "COMP-BROWSER-USE:SOL_ORCHESTRATOR"
+  ],
+  "next_action": "Continue CL-002 publication/read-back using canonical motors; use recovery checkpoint above; do not count dry-run extracts as delivered. | Claude queue added: review agents for Frontend/Code and LOOP/workflow reuse after CL-005.",
+  "recovery_entrypoint": "➡️📂 wordflow loop code Yaiwes/HANDOFF.md",
+  "closure_phase": {
+    "id": "CLOSURE-2026-09-17",
+    "status": "ACTIVE_CL002_IN_PROGRESS",
+    "task_nodes_commit": "9066af89d805348c623c63432617ef47db944f63",
+    "state_commit": "e13096cbcde1b19e1871b3eee3dcfb53d5b4458b",
+    "bitacora_commit": "2e8cf31976bd43c265cd2d10557f5f65be7618b7",
+    "completed": [
+      "CL-001"
+    ],
+    "pending": [
+      "CL-002",
+      "CL-003",
+      "CL-004",
+      "CL-005",
+      "CL-006",
+      "CL-007",
+      "CL-008",
+      "CL-009",
+      "CL-010",
+      "CL-011",
+      "CL-012",
+      "CL-013"
+    ],
+    "next_action": "Execute CL-002 and continue DAG dependencies; preserve FAIL_CLOSED and exact read-back.",
+    "last_run": {
+      "task_nodes_commit": "08c1a9085a261e51e82afccd8ea5f169c51fc069",
+      "state_commit": "58ab5ba23b31ac9fd89320da58d1adf93dc9f15a",
+      "plan_commit": "7d20b5f408834a6f9b0c6b1f579c307f2fa252f5",
+      "bitacora_commit": "80ed4135ecf56462910569ee17359e4486a0d4e3"
+    }
+  },
+  "motor_descarga_recovery": {
+    "checkpoint": "➡️📂 wordflow loop code Yaiwes/Crazy Wall Orquestador/MOTOR-DESCARGA-RECOVERY-CHECKPOINT-2026-09-17.json",
+    "checkpoint_commit": "dac65bac9f1982944ad1df15c053b32874e46982",
+    "watchdog": "Motor de descarga",
+    "status": "ACTIVE_CL002_CL003_CL004_RECOVERY",
+    "orca_additional_destination": "VERIFIED_CLOSED",
+    "cl002": "IN_PROGRESS_PUBLICATION_TRANSPORT_GAPS",
+    "cl003": "ARTIFACT_VERIFIED_PUBLICATION_PENDING",
+    "cl004": "MOTOR3_VERIFIED_PUBLICATION_PENDING",
+    "next_action": "Continue CL-002 publication transport without GitHub Actions; then CL-003 npm artifact publication and CL-004 materialized Kimi publication. Keep FAIL_CLOSED."
+  },
+  "claude_pending_queue": {
+    "status": "PENDING_NOT_CLAIMED",
+    "assigned_to": "CLAUDE",
+    "nodes": [
+      "CLAUDE-AGENT-REVIEW-01",
+      "CLAUDE-FRONTEND-CODE-INTEGRATION-02",
+      "CLAUDE-LOOP-WORKFLOW-REUSE-03",
+      "CLAUDE-INTEGRATION-VALIDATION-04"
+    ],
+    "dependency_gate": "CL-005",
+    "task_nodes_commit": "82018bf63b3a9ec490c6e463e1de83db2b1aa2bb",
+    "rule": "Do not start integration until physical agent_sources publication/read-back is reconciled; then execute 1x1 and update evidence."
+  },
+  "agent_source_mount_status": {
+    "status": "MOUNTED",
+    "commit": "28a47f47b7f127ba400c0bcbbb930daa424f6d85",
+    "agent_sources_tree": "aa2e2b79b60fe48349fc03998f97560fdbf965d4",
+    "github_submodules": 12,
+    "mcode_mount": "NPM_PIN_MANIFEST",
+    "github_actions_used": false,
+    "note": "Sources are mounted/pinned. Gitlink mounts are not equivalent to vendored full source blobs; mcode full npm package bytes are not vendored."
+  }
+}

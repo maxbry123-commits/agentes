@@ -1,0 +1,36 @@
+on: pull_request
+
+name: stale-actions-refs
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  non-stale:
+    name: non-stale
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main # zizmor: ignore[unpinned-uses]
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4 # zizmor: ignore[unpinned-uses]
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4.2.2 # zizmor: ignore[unpinned-uses]
+        with:
+          persist-credentials: false
+      # v4.2.2 commit
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+  stale:
+    name: stale
+    runs-on: ubuntu-latest
+    steps:
+      # non-tagged commit
+      - uses: actions/checkout@009b9ae9e446ad8d9b8c809870b0fbcc5e03573e
+        with:
+          persist-credentials: false

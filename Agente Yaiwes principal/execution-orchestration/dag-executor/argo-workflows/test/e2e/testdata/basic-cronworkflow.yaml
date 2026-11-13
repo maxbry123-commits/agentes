@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: basic
+spec:
+  schedules:
+    - "* * * * *"
+  workflowMetadata:
+    labels:
+      workflows.argoproj.io/test: "true"
+  workflowSpec:
+    entrypoint: main
+    templates:
+      - name: main
+        container:
+          image: argoproj/argosay:v2

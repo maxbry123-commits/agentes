@@ -1,0 +1,9 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobs.DisabledActivity.Disabled": "true",
+    "AzureWebJobs.DisabledEntity.Disabled": "true"
+  }
+}

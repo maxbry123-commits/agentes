@@ -1,0 +1,18 @@
+# C39 — L4. B3 SALIDA4
+id: C39
+layer: L4
+name: webhook_verify
+implementado: true
+critical: false
+description: "Verificación de webhooks"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C39 aplica en capa L4"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - webhook_verify_check
+evidence:
+  type: webhook_verify_marker
+  required: false

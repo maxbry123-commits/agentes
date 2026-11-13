@@ -1,0 +1,132 @@
+{
+  "archive_bytes": 28231036,
+  "archive_sha256": "84a632876f120622af6d3e1d7c7624c387ce563999940a5ebd7dcfbc595a9862",
+  "extracted_tree": {
+    "bytes": 80482280,
+    "files": 3474,
+    "sha256": "b72ecfa6ee4b6fda79c4aea89ee0287d2cde8dc5f90b75609fedce1bba4d0917"
+  },
+  "extraction_verified": true,
+  "motor1_blob": "a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500",
+  "normalizations": [
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/cache-clickhouse.gateway.toml",
+      "target": "../config/cache-clickhouse.gateway.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/cache-valkey.gateway.toml",
+      "target": "../config/cache-valkey.gateway.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/postgres.gateway.toml",
+      "target": "../config/postgres.gateway.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.evaluations.toml",
+      "target": "../config/tensorzero.evaluations.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.anthropic_beta.toml",
+      "target": "../config/tensorzero.functions.anthropic_beta.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.cache_test.toml",
+      "target": "../config/tensorzero.functions.cache_test.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.dynamic_json.toml",
+      "target": "../config/tensorzero.functions.dynamic_json.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.extract_entities.toml",
+      "target": "../config/tensorzero.functions.extract_entities.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.image_judger.toml",
+      "target": "../config/tensorzero.functions.image_judger.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.json_math.toml",
+      "target": "../config/tensorzero.functions.json_math.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.json_mode_tool.toml",
+      "target": "../config/tensorzero.functions.json_mode_tool.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.json_success.toml",
+      "target": "../config/tensorzero.functions.json_success.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.weather_helper.toml",
+      "target": "../config/tensorzero.functions.weather_helper.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.write_haiku.toml",
+      "target": "../config/tensorzero.functions.write_haiku.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.models.toml",
+      "target": "../config/tensorzero.models.toml"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.provider_types.toml",
+      "target": "../config/tensorzero.provider_types.toml"
+    },
+    {
+      "action": "materialize_target_marker",
+      "from": "symlink",
+      "path": "crates/tensorzero-python/.sqlx",
+      "target": "../.sqlx"
+    },
+    {
+      "action": "dereference_file",
+      "from": "symlink",
+      "path": "examples/docs/guides/optimization/supervised-fine-tuning-sft/ner.py",
+      "target": "../dynamic-in-context-learning-dicl/ner.py"
+    }
+  ],
+  "publish_policy": "git_add_force_all_verified_files",
+  "schema": "yaiwes.kernel.catalog20.forceadd-manifest/v1",
+  "slug": "TensorZero",
+  "source_commit": "62eb8f63e8ec62018d70420dbf1a8c5d1c026315",
+  "source_repo": "tensorzero/tensorzero",
+  "source_tree": {
+    "bytes": 80482280,
+    "files": 3474,
+    "sha256": "b72ecfa6ee4b6fda79c4aea89ee0287d2cde8dc5f90b75609fedce1bba4d0917"
+  },
+  "unresolved_lfs_source_pointers_preserved": []
+}

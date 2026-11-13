@@ -1,0 +1,495 @@
+package io.kestra.jdbc;
+
+import java.io.IOException;
+import java.sql.Timestamp;
+import java.time.DayOfWeek;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.temporal.TemporalAdjusters;
+import java.util.*;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
+import org.jooq.*;
+import org.jooq.Record;
+import org.jooq.exception.DataAccessException;
+import org.jooq.impl.DSL;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.kestra.core.exceptions.DeserializationException;
+import io.kestra.core.models.HasUID;
+import io.kestra.core.models.executions.metrics.MetricAggregation;
+import io.kestra.core.repositories.ArrayListTotal;
+import io.kestra.core.repositories.NonSortableFields;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.utils.IdUtils;
+
+import io.micronaut.data.model.Pageable;
+import io.micronaut.data.model.Sort;
+import io.micronaut.data.model.Sort.Order;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.SneakyThrows;
+
+import static io.kestra.core.utils.CaseUtils.camelToSnake;
+import static io.kestra.jdbc.repository.AbstractJdbcRepository.*;
+
+public abstract class AbstractJdbcRepository<T> {
+    protected static final ObjectMapper MAPPER = JacksonMapper.ofJson();
+
+    /**
+     * Columns never exposed as a sort key, on top of whatever the metadata check in {@link #sort} rejects because
+     * it does not exist. Derived from {@link NonSortableFields#DEFAULT}, converted to the snake_case column names
+     * this backend compares against, so the JDBC and Elasticsearch backends refuse the same sort fields.
+     */
+    private static final Set<String> NON_SORTABLE_COLUMNS = NonSortableFields.DEFAULT.stream()
+        .map(field -> camelToSnake(field).toLowerCase())
+        .collect(Collectors.toUnmodifiableSet());
+
+    protected final Class<T> cls;
+
+    @Setter
+    protected Function<Record, T> deserializer;
+
+    @Getter
+    protected final JooqDSLContextWrapper dslContextWrapper;
+
+    @Getter
+    protected Table<Record> table;
+
+    /** Lazily loaded and cached by {@link #sortableColumns()}: the schema does not change at runtime. */
+    private volatile Map<String, String> sortableColumns;
+
+    @SuppressWarnings("unchecked")
+    public AbstractJdbcRepository(
+        JdbcTableConfig tableConfig,
+        JooqDSLContextWrapper dslContextWrapper) {
+        this.cls = (Class<T>) tableConfig.cls();
+        this.dslContextWrapper = dslContextWrapper;
+        this.table = DSL.table(tableConfig.table());
+    }
+
+    abstract public Condition fullTextCondition(List<String> fields, String query);
+
+    public String key(T entity) {
+        String key = entity instanceof HasUID hasUID ? hasUID.uid() : null;
+
+        if (key != null) {
+            return key;
+        }
+
+        return IdUtils.create();
+    }
+
+    @SneakyThrows
+    public Map<Field<Object>, Object> persistFields(T entity) {
+        Map<Field<Object>, Object> fields = HashMap.newHashMap(1);
+        fields.put(VALUE_FIELD, MAPPER.writeValueAsString(entity));
+        return fields;
+    }
+
+    /**
+     * Fetches an entity using {@code fetcher}, or inserts a default one (via {@code defaultEntity}) if absent, then re-fetches.
+     * The {@code fetcher} should use {@code FOR UPDATE} so the returned entity is locked within the caller's transaction.
+     */
+    public T getOrInsert(DSLContext dslContext, Supplier<Optional<T>> fetcher, Supplier<T> defaultEntity) {
+        // Note: ideally, we should emit an INSERT IGNORE or ON CONFLICT DO NOTHING but H2 didn't support it.
+        // So to avoid the case where no record exists and two threads insert concurrently, in H2, we select/insert and if the insert fails, select again.
+        // Anyway, this would only occur once in a record lifecycle, so even if it's not elegant, it should work.
+        // But as this pattern didn't work with Postgres, we emit INSERT IGNORE in Postgres and MySQL, so we're sure it works there also, and it's better than relying on exception.
+        return fetcher.get().orElseGet(() ->
+        {
+            try {
+                T entity = defaultEntity.get();
+                Map<Field<Object>, Object> fields = this.persistFields(entity);
+                var insert = dslContext
+                    .insertInto(this.getTable())
+                    .set(KEY_FIELD, this.key(entity))
+                    .set(fields);
+                if (dslContext.configuration().dialect().supports(SQLDialect.POSTGRES) || dslContext.configuration().dialect().supports(SQLDialect.MYSQL)) {
+                    insert.onDuplicateKeyIgnore().execute();
+                } else {
+                    insert.execute();
+                }
+            } catch (DataAccessException e) {
+                // we ignore any constraint violation
+            }
+            // refetch to have a lock on it
+            // at this point we are sure the record is inserted so it should never throw
+            return fetcher.get().orElseThrow();
+        });
+    }
+
+    public int count(Condition condition) {
+        return getDslContextWrapper()
+            .transactionResult(
+                configuration -> DSL
+                    .using(configuration)
+                    .selectCount()
+                    .from(getTable())
+                    .where(condition)
+                    .fetchOne(0, Integer.class)
+            );
+    }
+
+    /**
+     * Do an insert or update on the table (upsert).
+     * This is convenient to be fault-tolerant of possible conflict but is less performant than an UPDATE is we're sure the entity exists.
+     *
+     * @see #persist(T, Map)
+     * @see #persist(T, DSLContext, Map)
+     * @see #update(T)
+     * @see #update(T, Map)
+     * @see #update(T, DSLContext, Map)
+     */
+    public void persist(T entity) {
+        this.persist(entity, null);
+    }
+
+    /**
+     * Do an insert or update on the table (upsert).
+     * This is convenient to be fault-tolerant of possible conflict but is less performant than an UPDATE is we're sure the entity exists.
+     *
+     * @see #persist(T)
+     * @see #persist(T, DSLContext, Map)
+     * @see #update(T)
+     * @see #update(T, Map)
+     * @see #update(T, DSLContext, Map)
+     */
+    public void persist(T entity, Map<Field<Object>, Object> fields) {
+        dslContextWrapper.transaction(
+            configuration -> this.persist(entity, DSL.using(configuration), fields)
+        );
+    }
+
+    /**
+     * Do an insert or update on the table (upsert).
+     * This is convenient to be fault-tolerant of possible conflict but is less performant than an UPDATE is we're sure the entity exists.
+     *
+     * @see #persist(T)
+     * @see #persist(T, Map)
+     * @see #update(T)
+     * @see #update(T, Map)
+     * @see #update(T, DSLContext, Map)
+     */
+    public void persist(T entity, DSLContext dslContext, Map<Field<Object>, Object> fields) {
+        Map<Field<Object>, Object> finalFields = fields == null ? this.persistFields(entity) : fields;
+
+        dslContext
+            .insertInto(table)
+            .set(KEY_FIELD, key(entity))
+            .set(finalFields)
+            .onDuplicateKeyUpdate()
+            .set(excluded(finalFields))
+            .execute();
+    }
+
+    /**
+     * Turns a column-to-value map into a column-to-{@code EXCLUDED}/{@code VALUES(...)} map, so the
+     * update clause of an upsert re-references the row already bound by the insert clause instead of
+     * binding the (potentially large) value a second time. jOOQ renders this per-dialect: the
+     * {@code EXCLUDED} pseudo-table on PostgreSQL, {@code VALUES(column)} on MySQL/MariaDB.
+     */
+    protected static Map<Field<Object>, Object> excluded(Map<Field<Object>, Object> fields) {
+        Map<Field<Object>, Object> excluded = HashMap.newHashMap(fields.size());
+        fields.keySet().forEach(field -> excluded.put(field, DSL.excluded(field)));
+        return excluded;
+    }
+
+    /**
+     * Update the entity.
+     * For a safer upsert approach see the corresponding <code>persist()</code> methods
+     *
+     * @see #update(Object, Map)
+     * @see #update(Object, DSLContext, Map)
+     * @see #persist(Object)
+     * @see #persist(Object, Map)
+     * @see #persist(Object, DSLContext, Map)
+     */
+    public void update(T entity) {
+        this.persist(entity, null);
+    }
+
+    /**
+     * Update the entity.
+     * For a safer upsert approach see the corresponding <code>persist()</code> methods
+     *
+     * @see #update(Object)
+     * @see #update(Object, DSLContext, Map)
+     * @see #persist(Object)
+     * @see #persist(Object, Map)
+     * @see #persist(Object, DSLContext, Map)
+     */
+    public void update(T entity, Map<Field<Object>, Object> fields) {
+        dslContextWrapper.transaction(
+            configuration -> this.persist(entity, DSL.using(configuration), fields)
+        );
+    }
+
+    /**
+     * Update the entity.
+     * For a safer upsert approach see the corresponding <code>persist()</code> methods
+     *
+     * @see #update(Object)
+     * @see #update(Object, Map)
+     * @see #persist(Object)
+     * @see #persist(Object, Map)
+     * @see #persist(Object, DSLContext, Map)
+     */
+    public void update(T entity, DSLContext dslContext, Map<Field<Object>, Object> fields) {
+        Map<Field<Object>, Object> finalFields = fields == null ? this.persistFields(entity) : fields;
+
+        dslContext
+            .update(table)
+            .set(finalFields)
+            .where(KEY_FIELD.eq(key(entity)))
+            .execute();
+    }
+
+    public int persistBatch(List<T> items) {
+        return dslContextWrapper.transactionResult(configuration ->
+        {
+            DSLContext dslContext = DSL.using(configuration);
+            var inserts = items.stream()
+                .map(item -> buildInsertRequest(item, this.persistFields(item), dslContext))
+                .toList();
+
+            return Arrays.stream(dslContext.batch(inserts).execute()).sum();
+        });
+    }
+
+    public int persistBatch(Map<T, Map<Field<Object>, Object>> itemWithFields) {
+        return dslContextWrapper.transactionResult(configuration ->
+        {
+            DSLContext dslContext = DSL.using(configuration);
+            var inserts = itemWithFields.entrySet()
+                .stream().map(entry -> buildInsertRequest(entry.getKey(), entry.getValue(), dslContext))
+                .toList();
+
+            return Arrays.stream(dslContext.batch(inserts).execute()).sum();
+        });
+    }
+
+    protected InsertOnDuplicateSetMoreStep<Record> buildInsertRequest(T entity, Map<Field<Object>, Object> fields,
+        DSLContext dslContext) {
+
+        return dslContext
+            .insertInto(table)
+            .set(KEY_FIELD, key(entity))
+            .set(fields)
+            .onDuplicateKeyUpdate()
+            .set(excluded(fields));
+    }
+
+    public int delete(T entity) {
+        return dslContextWrapper.transactionResult(configuration ->
+        {
+            return this.delete(DSL.using(configuration), entity);
+        });
+    }
+
+    public int delete(DSLContext dslContext, T entity) {
+        DeleteConditionStep<Record> key = dslContext
+            .delete(table)
+            .where(KEY_FIELD.eq(key(entity)));
+
+        return key.execute();
+    }
+
+    public <R extends Record> T map(R record) {
+        if (deserializer != null) {
+            return deserializer.apply(record);
+        } else {
+            return this.deserialize(record.get("value", String.class));
+        }
+    }
+
+    public <R extends Record> MetricAggregation mapMetricAggregation(R record, String groupByType) {
+        Instant date = getDate(record, groupByType);
+        return MetricAggregation
+            .builder()
+            .name(record.get("metric_name", String.class))
+            .value(record.get("metric_value", Double.class))
+            .date(date)
+            .build();
+
+    }
+
+    /**
+     * Reassembles an {@link Instant} from the SQL-extracted date parts (year/month/day/hour/minute)
+     * produced by {@code AbstractJdbcRepository#groupByFields}.
+     * <p>
+     * Those parts are UTC wall-clock values — the date columns hold UTC (H2 and MySQL store UTC
+     * wall-clock directly; Postgres is normalised via {@code groupByTimestampField}) — so they must
+     * be reassembled in UTC. Using the JVM default zone here would shift every bucket by the local
+     * UTC offset on a non-UTC host.
+     */
+    public <R extends Record> Instant getDate(R record, String groupByType) {
+        List<String> fields = Arrays.stream(record.fields()).map(Field::getName).toList();
+        Integer minute = fields.contains("minute") ? record.get("minute", Integer.class) : 0;
+        Integer hour = fields.contains("hour") ? record.get("hour", Integer.class) : 0;
+        Integer day = fields.contains("day") ? record.get("day", Integer.class) : 0;
+        Integer week = fields.contains("week") ? record.get("week", Integer.class) : 0;
+        Integer month = fields.contains("month") ? record.get("month", Integer.class) : 0;
+        Integer year = fields.contains("year") ? record.get("year", Integer.class) : 0;
+
+        switch (groupByType) {
+            case "minute" -> {
+                return ZonedDateTime.of(year, month, day, hour, minute, 0, 0, ZoneOffset.UTC).toInstant();
+            }
+            case "hour" -> {
+                return ZonedDateTime.of(year, month, day, hour, 0, 0, 0, ZoneOffset.UTC).toInstant();
+            }
+            case "day" -> {
+                return ZonedDateTime.of(year, month, day, 0, 0, 0, 0, ZoneOffset.UTC).toInstant();
+            }
+            case "week" -> {
+                // week * 7 can fall outside the 1..365/366 day-of-year range (e.g. week 53 -> 371, or
+                // week 0 returned by some SQL WEEK() modes), which would make ofYearDay throw, so clamp it.
+                int maxDayOfYear = LocalDate.of(year, 12, 31).getDayOfYear();
+                int dayOfYear = Math.min(Math.max(week * 7, 1), maxDayOfYear);
+                LocalDate weekDate = LocalDate.ofYearDay(year, dayOfYear).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+                return weekDate.atStartOfDay(ZoneOffset.UTC).toInstant();
+            }
+            case "month" -> {
+                return ZonedDateTime.of(year, month, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant();
+            }
+            default -> throw new IllegalArgumentException("Invalid groupByType: " + groupByType);
+        }
+    }
+
+    public T deserialize(String record) {
+        try {
+            return MAPPER.readValue(record, cls);
+        } catch (IOException e) {
+            throw new DeserializationException(e, record);
+        }
+    }
+
+    public <R extends Record> Optional<T> fetchOne(Select<R> select) {
+        return Optional.ofNullable(select.fetchAny())
+            .map(this::map);
+    }
+
+    public <R extends Record> List<T> fetch(Select<R> select) {
+        return select.fetch().map(this::map);
+    }
+
+    public List<MetricAggregation> fetchMetricStat(Select<Record> select, String groupByType) {
+        return select.fetch().map(e -> this.mapMetricAggregation(e, groupByType));
+    }
+
+    abstract public <R extends Record, E> ArrayListTotal<E> fetchPage(DSLContext context, SelectConditionStep<R> select, Pageable pageable, RecordMapper<R, E> mapper);
+
+    public <R extends Record> ArrayListTotal<T> fetchPage(DSLContext context, SelectConditionStep<R> select, Pageable pageable) {
+        return this.fetchPage(context, select, pageable, this::map);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <R extends Record> Select<R> buildQuery(DSLContext context, SelectConditionStep<R> select, String orderField) {
+        return (Select<R>) context.select(DSL.asterisk())
+            .from(
+                this
+                    .sort(select, Pageable.from(Sort.of(Order.asc(orderField))))
+                    .asTable("page")
+            )
+            .where(DSL.noCondition());
+    }
+
+    public <R extends Record> SelectConditionStep<R> sort(SelectConditionStep<R> select, Pageable pageable) {
+        if (pageable != null && pageable.getSort().isSorted()) {
+            Map<String, String> sortableColumns = this.sortableColumns();
+
+            pageable
+                .getSort()
+                .getOrderBy()
+                .forEach(order ->
+                {
+                    String property = order.getProperty();
+                    if (property == null || property.isBlank()) {
+                        throw new IllegalArgumentException("Invalid sort field");
+                    }
+
+                    String column = sortableColumns.get(camelToSnake(property).toLowerCase());
+                    if (column == null) {
+                        column = sortableColumns.get(property.toLowerCase());
+                    }
+                    if (column == null) {
+                        throw new IllegalArgumentException("The sort field '%s' does not exist on this resource.".formatted(property));
+                    }
+
+                    Field<Object> field = DSL.field(DSL.name(column));
+
+                    select.orderBy(order.getDirection() == Sort.Order.Direction.ASC ? field.asc().nullsFirst() : field.desc().nullsLast());
+                });
+        }
+
+        return select;
+    }
+
+    /**
+     * The columns of {@link #table} that a client may sort on, keyed by their lowercased name, excluding {@link #NON_SORTABLE_COLUMNS}.
+     */
+    private Map<String, String> sortableColumns() {
+        Map<String, String> columns = this.sortableColumns;
+        if (columns == null) {
+            synchronized (this) {
+                columns = this.sortableColumns;
+                if (columns == null) {
+                    columns = this.sortableColumns = this.loadSortableColumns();
+                }
+            }
+        }
+
+        return columns;
+    }
+
+    private Map<String, String> loadSortableColumns() {
+        return this.dslContextWrapper.transactionResult(configuration ->
+        {
+            String tableName = this.table.getName();
+            Map<String, String> columns = new HashMap<>();
+            // Matching by name ourselves, case-insensitively, rather than relying on Meta#getTables(String) —
+            // dialects disagree on the case a bare (unquoted) table name is reported back in, e.g. H2 reports
+            // "FLOWS" for a table created as "flows".
+            for (Table<?> metaTable : DSL.using(configuration).meta().getTables()) {
+                if (!metaTable.getName().equalsIgnoreCase(tableName)) {
+                    continue;
+                }
+
+                for (Field<?> field : metaTable.fields()) {
+                    String name = field.getName();
+                    if (!NON_SORTABLE_COLUMNS.contains(name.toLowerCase())) {
+                        columns.put(name.toLowerCase(), name);
+                    }
+                }
+            }
+
+            return columns;
+        });
+    }
+
+    protected <R extends Record> Select<R> limit(SelectConditionStep<R> select, Pageable pageable) {
+        if (pageable == null || pageable.getSize() == -1) {
+            return select;
+        }
+
+        return select
+            .limit(pageable.getSize())
+            .offset(pageable.getOffset() - pageable.getSize());
+    }
+
+    protected <R extends Record> Select<R> pageable(SelectConditionStep<R> select, Pageable pageable) {
+        select = this.sort(select, pageable);
+
+        return this.limit(select, pageable);
+    }
+
+    public Field<Integer> weekFromTimestamp(Field<Timestamp> timestampField) {
+        return DSL.week(timestampField);
+    }
+}

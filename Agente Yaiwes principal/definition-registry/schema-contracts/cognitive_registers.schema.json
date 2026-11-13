@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.cognitive_registers.v1",
+  "title": "CognitiveRegisterFile",
+  "description": "R0-R15 registers reinjected on every engine call. Not LLM memory.",
+  "type": "object",
+  "required": ["schema_version", "file_id", "lock_id", "registers", "file_hash"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "file_id": { "type": "string" },
+    "lock_id": { "type": "string" },
+    "registers": {
+      "type": "object",
+      "required": [
+        "R0_objective",
+        "R1_step",
+        "R2_success",
+        "R3_constraints",
+        "R4_risks",
+        "R5_resources",
+        "R6_tools",
+        "R7_state",
+        "R8_checkpoint",
+        "R9_evidence",
+        "R10_hypothesis",
+        "R11_refutation",
+        "R12_next",
+        "R13_quality",
+        "R14_confidence",
+        "R15_exit_condition"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "R0_objective": { "type": ["string", "null"] },
+        "R1_step": { "type": ["string", "null"] },
+        "R2_success": { "type": ["string", "null"] },
+        "R3_constraints": { "type": "array", "items": { "type": "string" } },
+        "R4_risks": { "type": ["string", "null"] },
+        "R5_resources": { "type": "array", "items": { "type": "string" } },
+        "R6_tools": { "type": "array", "items": { "type": "string" } },
+        "R7_state": { "type": ["string", "null"] },
+        "R8_checkpoint": { "type": ["string", "null"] },
+        "R9_evidence": { "type": "array", "items": { "type": "string" } },
+        "R10_hypothesis": { "type": ["string", "null"] },
+        "R11_refutation": { "type": ["string", "null"] },
+        "R12_next": { "type": ["string", "null"] },
+        "R13_quality": { "type": ["string", "null"] },
+        "R14_confidence": { "type": ["number", "null"] },
+        "R15_exit_condition": { "type": ["string", "null"] }
+      }
+    },
+    "file_hash": { "type": "string" }
+  }
+}

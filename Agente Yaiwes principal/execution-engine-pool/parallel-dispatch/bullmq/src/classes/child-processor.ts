@@ -1,0 +1,365 @@
+import { AbortController } from './abort-controller';
+import { ParentCommand } from '../enums';
+import {
+  DependenciesOpts,
+  MoveToWaitingChildrenOpts,
+  Receiver,
+  SandboxedJob,
+} from '../interfaces';
+import { JobJsonSandbox, JobProgress } from '../types';
+import { errorToJSON } from '../utils';
+
+enum ChildStatus {
+  Idle,
+  Started,
+  Terminating,
+  Errored,
+}
+
+const RESPONSE_TIMEOUT = process.env.NODE_ENV === 'test' ? 500 : 5_000;
+
+/**
+ * ChildProcessor
+ *
+ * This class acts as the interface between a child process and it parent process
+ * so that jobs can be processed in different processes.
+ *
+ */
+export class ChildProcessor {
+  public status?: ChildStatus;
+  public processor: any;
+  public currentJobPromise: Promise<unknown> | undefined;
+  private abortController?: AbortController;
+
+  constructor(
+    private send: (msg: any) => Promise<void>,
+    private receiver: Receiver,
+  ) {}
+
+  public async init(processorFile: string): Promise<void> {
+    let processor;
+    try {
+      const { default: processorFn } = await import(processorFile);
+      processor = processorFn;
+
+      if (processor.default) {
+        // support es2015 module.
+        processor = processor.default;
+      }
+
+      if (typeof processor !== 'function') {
+        throw new Error('No function is exported in processor file');
+      }
+    } catch (err) {
+      this.status = ChildStatus.Errored;
+      try {
+        await this.send({
+          cmd: ParentCommand.InitFailed,
+          err: errorToJSON(err),
+        });
+      } finally {
+        // A child that failed to initialize cannot recover, and because the open
+        // IPC channel keeps its event loop alive it would never exit on its own.
+        // Exit explicitly (after attempting to send InitFailed) so the parent
+        // can never reuse a half-initialized "zombie" child. This is a
+        // belt-and-braces measure: ChildPool also kills the child, but exiting
+        // here guarantees termination even if the parent-side kill were to fail.
+        // In a worker thread this stops only the current worker, not the process.
+        process.exit(process.exitCode ?? 1);
+      }
+    }
+
+    const origProcessor = processor;
+    processor = function (
+      job: SandboxedJob,
+      token?: string,
+      signal?: AbortSignal,
+    ) {
+      try {
+        return Promise.resolve(origProcessor(job, token, signal));
+      } catch (err) {
+        return Promise.reject(err);
+      }
+    };
+
+    this.processor = processor;
+    this.status = ChildStatus.Idle;
+    await this.send({
+      cmd: ParentCommand.InitCompleted,
+    });
+  }
+
+  public async start(jobJson: JobJsonSandbox, token?: string): Promise<void> {
+    if (this.status !== ChildStatus.Idle) {
+      return this.send({
+        cmd: ParentCommand.Error,
+        err: errorToJSON(new Error('cannot start a not idling child process')),
+      });
+    }
+    this.status = ChildStatus.Started;
+    this.abortController = new AbortController();
+    this.currentJobPromise = (async () => {
+      try {
+        const job = this.wrapJob(jobJson, this.send);
+        const result = await this.processor(
+          job,
+          token,
+          this.abortController.signal,
+        );
+        await this.send({
+          cmd: ParentCommand.Completed,
+          value: typeof result === 'undefined' ? null : result,
+        });
+      } catch (err) {
+        await this.send({
+          cmd: ParentCommand.Failed,
+          value: errorToJSON(!(<Error>err).message ? new Error(<any>err) : err),
+        });
+      } finally {
+        this.status = ChildStatus.Idle;
+        this.currentJobPromise = undefined;
+        this.abortController = undefined;
+      }
+    })();
+  }
+
+  /**
+   * Cancels the currently running job by aborting its signal.
+   * @param reason - Optional reason for the cancellation
+   */
+  public cancel(reason?: string): void {
+    if (this.abortController) {
+      this.abortController.abort(reason);
+    }
+  }
+
+  public async stop(): Promise<void> {}
+
+  async waitForCurrentJobAndExit(): Promise<void> {
+    this.status = ChildStatus.Terminating;
+    try {
+      await this.currentJobPromise;
+    } finally {
+      process.exit(process.exitCode || 0);
+    }
+  }
+
+  /**
+   * Enhance the given job argument with some functions
+   * that can be called from the sandboxed job processor.
+   *
+   * Note, the `job` argument is a JSON deserialized message
+   * from the main node process to this forked child process,
+   * the functions on the original job object are not in tact.
+   * The wrapped job adds back some of those original functions.
+   */
+  protected wrapJob(
+    job: JobJsonSandbox,
+    send: (msg: any) => Promise<void>,
+  ): SandboxedJob {
+    const wrappedJob = {
+      ...job,
+      queueQualifiedName: job.queueQualifiedName,
+      data: JSON.parse(job.data || '{}'),
+      opts: job.opts,
+      returnValue: JSON.parse(job.returnvalue || '{}'),
+      /*
+       * Proxy `updateProgress` function, should works as `progress` function.
+       */
+      async updateProgress(progress: JobProgress) {
+        // Locally store reference to new progress value
+        // so that we can return it from this process synchronously.
+        this.progress = progress;
+        // Send message to update job progress.
+        await send({
+          cmd: ParentCommand.Progress,
+          value: progress,
+        });
+      },
+      /*
+       * Proxy job `log` function.
+       */
+      log: async (row: any) => {
+        await send({
+          cmd: ParentCommand.Log,
+          value: row,
+        });
+      },
+      /*
+       * Proxy `moveToDelayed` function.
+       */
+      moveToDelayed: async (timestamp: number, token?: string) => {
+        await send({
+          cmd: ParentCommand.MoveToDelayed,
+          value: { timestamp, token },
+        });
+      },
+      /*
+       * Proxy `moveToWait` function.
+       */
+      moveToWait: async (token?: string) => {
+        await send({
+          cmd: ParentCommand.MoveToWait,
+          value: { token },
+        });
+      },
+
+      /*
+       * Proxy `moveToWaitingChildren` function.
+       */
+      moveToWaitingChildren: async (
+        token?: string,
+        opts?: MoveToWaitingChildrenOpts,
+      ): Promise<boolean> => {
+        const requestId = Math.random().toString(36).substring(2, 15);
+        await send({
+          requestId,
+          cmd: ParentCommand.MoveToWaitingChildren,
+          value: { token, opts },
+        });
+
+        return waitResponse(
+          requestId,
+          this.receiver,
+          RESPONSE_TIMEOUT,
+          'moveToWaitingChildren',
+        ) as Promise<boolean>;
+      },
+
+      /*
+       * Proxy `updateData` function.
+       */
+      updateData: async (data: any) => {
+        await send({
+          cmd: ParentCommand.Update,
+          value: data,
+        });
+        wrappedJob.data = data;
+      },
+
+      /**
+       * Proxy `getChildrenValues` function.
+       */
+      getChildrenValues: async <CT = any>(): Promise<{
+        [jobKey: string]: CT;
+      }> => {
+        const requestId = Math.random().toString(36).substring(2, 15);
+        await send({
+          requestId,
+          cmd: ParentCommand.GetChildrenValues,
+        });
+
+        return waitResponse(
+          requestId,
+          this.receiver,
+          RESPONSE_TIMEOUT,
+          'getChildrenValues',
+        ) as Promise<{ [jobKey: string]: CT }>;
+      },
+
+      /**
+       * Proxy `getIgnoredChildrenFailures` function.
+       *
+       * This method sends a request to retrieve the failures of ignored children
+       * and waits for a response from the parent process.
+       *
+       * @returns - A promise that resolves with the ignored children failures.
+       * The exact structure of the returned data depends on the parent process implementation.
+       */
+      getIgnoredChildrenFailures: async (): Promise<{
+        [jobKey: string]: string;
+      }> => {
+        const requestId = Math.random().toString(36).substring(2, 15);
+        await send({
+          requestId,
+          cmd: ParentCommand.GetIgnoredChildrenFailures,
+        });
+
+        return waitResponse(
+          requestId,
+          this.receiver,
+          RESPONSE_TIMEOUT,
+          'getIgnoredChildrenFailures',
+        ) as Promise<{ [jobKey: string]: string }>;
+      },
+
+      /**
+       * Proxy `getDependenciesCount` function.
+       */
+      getDependenciesCount: async (opts?: {
+        failed?: boolean;
+        ignored?: boolean;
+        processed?: boolean;
+        unprocessed?: boolean;
+      }): Promise<{
+        failed?: number;
+        ignored?: number;
+        processed?: number;
+        unprocessed?: number;
+      }> => {
+        const requestId = Math.random().toString(36).substring(2, 15);
+        await send({
+          requestId,
+          cmd: ParentCommand.GetDependenciesCount,
+          value: opts,
+        });
+
+        return waitResponse(
+          requestId,
+          this.receiver,
+          RESPONSE_TIMEOUT,
+          'getDependenciesCount',
+        ) as Promise<{
+          failed?: number;
+          ignored?: number;
+          processed?: number;
+          unprocessed?: number;
+        }>;
+      },
+
+      /**
+       * Proxy `getDependencies` function.
+       */
+      getDependencies: async (opts?: DependenciesOpts) => {
+        const requestId = Math.random().toString(36).substring(2, 15);
+        await send({
+          requestId,
+          cmd: ParentCommand.GetDependencies,
+          value: opts,
+        });
+
+        return waitResponse(
+          requestId,
+          this.receiver,
+          RESPONSE_TIMEOUT,
+          'getDependencies',
+        );
+      },
+    };
+
+    return wrappedJob;
+  }
+}
+
+const waitResponse = async (
+  requestId: string,
+  receiver: Receiver,
+  timeout: number,
+  cmd: string,
+) => {
+  return new Promise((resolve, reject) => {
+    const listener = (msg: { requestId: string; value: any }) => {
+      if (msg.requestId === requestId) {
+        resolve(msg.value);
+        receiver.off('message', listener);
+      }
+    };
+    receiver.on('message', listener);
+
+    setTimeout(() => {
+      receiver.off('message', listener);
+
+      reject(new Error(`TimeoutError: ${cmd} timed out in (${timeout}ms)`));
+    }, timeout);
+  });
+};

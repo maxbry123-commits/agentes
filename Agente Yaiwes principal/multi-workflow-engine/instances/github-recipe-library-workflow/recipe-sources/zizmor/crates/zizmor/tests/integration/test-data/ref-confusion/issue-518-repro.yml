@@ -1,0 +1,13 @@
+name: ISSUE-518-REPRO
+on: [push]
+
+permissions: {}
+
+jobs:
+  issue-518-repro:
+    name: ISSUE-518-REPRO
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install Task
+        uses: arduino/setup-task@v2 # zizmor: ignore[unpinned-uses]

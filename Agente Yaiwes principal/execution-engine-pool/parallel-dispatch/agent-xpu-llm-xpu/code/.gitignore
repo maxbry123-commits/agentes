@@ -1,0 +1,64 @@
+# Extensions
+
+*.a
+*.bat
+*.bin
+*.model
+*.dll
+*.exe
+*.gguf
+*.log
+*.o
+*.so
+*.tmp
+*.prompt
+*.csv
+*.jsonl
+*.gz
+
+# Model assets 
+!models/llama2/tokenizer.model
+!models/llama3/tokenizer.model
+
+# IDE / OS
+
+.cache/
+.DS_Store
+.idea/
+.vs/
+.vscode/
+.clangd
+compile_commands.json
+
+# Build Artifacts
+
+xpu_engine
+tags
+.build/
+release
+debug
+build*
+!build-info.cmake
+!build-info.cpp.in
+!build-info.sh
+!build.zig
+!docs/build.md
+!make_debug.bat
+!make_release.bat
+!make_tests.bat
+cmake-build-*
+out/
+tmp/
+*.egg-info
+
+# Python
+
+__pycache__/
+*.pyc
+
+# redirect output
+stdout
+stderr
+
+# Compiled Model Cache
+*_cache/

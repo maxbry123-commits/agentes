@@ -1,0 +1,438 @@
+package httpdriver
+
+import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"crypto/rand"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/andybalholm/brotli"
+	"github.com/inngest/inngest/pkg/consts"
+	"github.com/inngest/inngest/pkg/enums"
+	"github.com/inngest/inngest/pkg/execution/exechttp"
+	"github.com/inngest/inngest/pkg/execution/state"
+	"github.com/inngest/inngest/pkg/headers"
+	"github.com/inngest/inngest/pkg/syscode"
+	"github.com/stretchr/testify/require"
+)
+
+func parseURL(s string) url.URL {
+	u, _ := url.Parse(s)
+	return *u
+}
+
+// TODO:
+//
+// Test returning a Step opcode with NonRetriableHeader semantics does NOT fill
+// .err in DriverResponse.
+
+func TestRedirect(t *testing.T) {
+	input := []byte(`{"event":{"name":"hi","data":{}}}`)
+
+	count := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch count {
+		case 8:
+			require.Equal(t, http.MethodGet, r.Method)
+			byt, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.Equal(t, input, byt)
+			require.Equal(t, "application/json", r.Header.Get("content-type"))
+			_, _ = w.Write([]byte("ok"))
+		default:
+			w.Header().Add("location", "/redirected/")
+			w.WriteHeader(301)
+		}
+		count++
+	}))
+	defer ts.Close()
+
+	client := exechttp.Client(exechttp.SecureDialerOpts{AllowPrivate: true})
+	res, _, err := do(context.Background(), client, Request{URL: parseURL(ts.URL), Input: input})
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+	require.Equal(t, []byte("ok"), res.Body)
+}
+
+func TestRequestAndJobIDHeaders(t *testing.T) {
+	input := []byte(`{"event":{"name":"hi","data":{}}}`)
+	requestID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+	jobID := "job-123"
+	generationID := 7
+
+	var receivedHeaders http.Header
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header
+		w.Header().Set(headerSDK, "test-sdk")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	client := exechttp.Client(exechttp.SecureDialerOpts{AllowPrivate: true})
+	_, _, err := do(context.Background(), client, Request{
+		URL:          parseURL(ts.URL),
+		Input:        input,
+		RequestID:    requestID,
+		GenerationID: generationID,
+		JobID:        jobID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, requestID, receivedHeaders.Get(headers.HeaderKeyRequestID))
+	require.Equal(t, "7", receivedHeaders.Get(headers.HeaderKeyGenerationID))
+	require.Equal(t, jobID, receivedHeaders.Get(headers.HeaderKeyJobID))
+}
+
+func TestRetryAfter(t *testing.T) {
+	input := []byte(`{"event":{"name":"hi","data":{}}}`)
+	at := time.Now().Add(6 * time.Hour).Truncate(time.Second).UTC()
+	formats := []string{
+		time.RFC3339, // Standard
+		time.RFC1123, // HTTP spec
+	}
+	for _, f := range formats {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Retry-After", at.Format(f))
+			w.WriteHeader(500)
+			_, _ = w.Write([]byte(`{"error":true}`))
+		}))
+		defer ts.Close()
+
+		client := exechttp.Client(exechttp.SecureDialerOpts{AllowPrivate: true})
+		res, _, err := do(context.Background(), client, Request{URL: parseURL(ts.URL), Input: input})
+		require.NoError(t, err)
+		require.Equal(t, 500, res.StatusCode)
+		require.Equal(t, []byte(`{"error":true}`), res.Body)
+		require.NotNil(t, res.RetryAt)
+		require.EqualValues(t, at, *res.RetryAt)
+	}
+}
+
+func TestParseRetry(t *testing.T) {
+	now := time.Now().Truncate(time.Second).UTC()
+
+	t.Run("It clips with too much time", func(t *testing.T) {
+		at := now.Add(2 * consts.MaxRetryDuration)
+		actual, err := ParseRetry(at.Format(time.RFC3339))
+		require.NoError(t, err)
+		require.Equal(t, now.Add(consts.MaxRetryDuration), actual)
+	})
+
+	t.Run("It clips with too many seconds", func(t *testing.T) {
+		at := (2 * consts.MaxRetryDuration)
+		actual, err := ParseRetry(strconv.Itoa(int(at.Seconds())))
+		require.NoError(t, err)
+		require.Equal(t, now.Add(consts.MaxRetryDuration), actual)
+	})
+
+	t.Run("It returns a minute in seconds", func(t *testing.T) {
+		actual, err := ParseRetry("60")
+		require.NoError(t, err)
+		require.Equal(t, now.Add(time.Minute), actual)
+	})
+
+	t.Run("It uses minimums in seconds", func(t *testing.T) {
+		actual, err := ParseRetry("1")
+		require.NoError(t, err)
+		require.Equal(t, now.Add(consts.MinRetryDuration), actual)
+	})
+
+	t.Run("It uses minimums with dates", func(t *testing.T) {
+		actual, err := ParseRetry(now.Add(time.Second).Format(time.RFC1123))
+		require.NoError(t, err)
+		require.Equal(t, now.Add(consts.MinRetryDuration), actual)
+	})
+}
+
+func TestParseStream(t *testing.T) {
+	t.Run("It parses stream responses", func(t *testing.T) {
+		byt := []byte(`{"status":200,"body":"hi"}`)
+		resp, err := ParseStream(byt)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, StreamResponse{
+			StatusCode: 200,
+			Body:       []byte("hi"),
+		}, *resp)
+	})
+
+	t.Run("It parses generators as a stream", func(t *testing.T) {
+		gen := []state.GeneratorOpcode{
+			{
+				Op:   enums.OpcodeStep,
+				ID:   "step-id",
+				Name: "step name",
+				Data: []byte(`"oh hello there"`),
+			},
+		}
+		raw, err := json.Marshal(gen)
+		require.NoError(t, err)
+		r := StreamResponse{
+			StatusCode: 206,
+			Body:       raw,
+		}
+		byt, err := json.Marshal(r)
+		require.NoError(t, err)
+
+		actual, err := ParseStream(byt)
+		require.NoError(t, err)
+		require.NotNil(t, actual)
+		require.Equal(t, r, *actual)
+	})
+
+	t.Run("It handles double encoding from old SDK releases", func(t *testing.T) {
+		gen := []state.GeneratorOpcode{
+			{
+				Op:   enums.OpcodeStep,
+				ID:   "step-id",
+				Name: "step name",
+				Data: []byte(`"oh hello there"`),
+			},
+		}
+
+		first, err := json.Marshal(gen)
+		require.NoError(t, err)
+
+		// Encode once again
+		second, err := json.Marshal(string(first))
+		require.NoError(t, err)
+
+		r := StreamResponse{
+			StatusCode: 206,
+			Body:       second,
+		}
+
+		byt, err := json.Marshal(r)
+		require.NoError(t, err)
+
+		// We should actually get the first encoding.
+		r.Body = first
+
+		actual, err := ParseStream(byt)
+		require.NoError(t, err)
+		require.NotNil(t, actual)
+		require.Equal(t, r, *actual)
+	})
+}
+
+func TestStreamResponseTooLarge(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data := make([]byte, consts.MaxSDKResponseBodySize+2)
+		_, err := rand.Read(data)
+		require.NoError(t, err)
+
+		// Indicate a streaming response.
+		w.WriteHeader(201)
+		// The client will close the connection after reading MaxSDKResponseBodySize bytes,
+		// so this write is expected to fail with broken pipe / connection reset.
+		_ = json.NewEncoder(w).Encode(data)
+	}))
+
+	defer ts.Close()
+	u, _ := url.Parse(ts.URL)
+	client := exechttp.Client(exechttp.SecureDialerOpts{AllowPrivate: true})
+	r, _, err := do(context.Background(), client, Request{
+		URL: *u,
+	})
+
+	require.NotNil(t, err)
+	require.NotNil(t, r, "expected some response")
+	require.NotNil(t, r.SysErr)
+	require.Equal(t, r.SysErr.Code, syscode.CodeOutputTooLarge)
+}
+
+func TestTiming(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Delay the read by 1 second.
+		<-time.After(time.Second)
+		_, _ = io.ReadAll(r.Body)
+		r.Body.Close()
+		w.WriteHeader(200)
+	}))
+
+	defer ts.Close()
+	u, _ := url.Parse(ts.URL)
+	client := exechttp.Client(exechttp.SecureDialerOpts{AllowPrivate: true})
+	r, result, err := do(context.Background(), client, Request{
+		URL:   *u,
+		Input: []byte("test"),
+	})
+
+	require.NotNil(t, r, "got nil response")
+	require.Nil(t, err)
+
+	require.True(t, result.StartTransfer > time.Second)
+	require.True(t, result.ServerProcessing > time.Second)
+	require.True(t, result.Total > time.Second)
+	require.Equal(t, strings.ReplaceAll(ts.URL, "http://", ""), fmt.Sprintf("%s:%d", result.ConnectedTo.IP, result.ConnectedTo.Port))
+}
+
+func TestExecuteDriverRequest_DecodesBrotliGeneratorResponse(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Encoding", "br")
+		w.Header().Set(headerSDK, "inngest-js:v3.35.1")
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write(brotliCompressedJSON(t, `[{"op":"StepRun","id":"step-id","name":"step"}]`))
+	}))
+	defer ts.Close()
+
+	client := exechttp.Client(exechttp.SecureDialerOpts{AllowPrivate: true})
+	dr, _, err := ExecuteDriverRequest(context.Background(), client, Request{
+		URL:     parseURL(ts.URL),
+		Headers: map[string]string{"Accept-Encoding": "br"},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, dr)
+	require.Len(t, dr.Generator, 1)
+	require.Equal(t, enums.OpcodeStepRun, dr.Generator[0].Op)
+	require.Equal(t, "step-id", dr.Generator[0].ID)
+}
+
+// A transport-level 5xx with no structured Inngest error (proxy/gateway error,
+// crash, timeout) must surface a clear synthesized error in the trace, while
+// leaving dr.Err intact so retry behavior is unchanged.
+func TestHandleHttpResponse_FatalUpstreamError(t *testing.T) {
+	r := require.New(t)
+
+	resp := &Response{
+		Body:       []byte("Bad Gateway"),
+		StatusCode: 502,
+		IsSDK:      false,
+		Header:     http.Header{"Content-Type": []string{"text/plain"}},
+	}
+
+	dr, _ := HandleHttpResponse(context.Background(), Request{}, resp)
+	r.NotNil(dr)
+
+	// Retry signal preserved.
+	r.NotNil(dr.Err)
+	r.Contains(*dr.Err, "invalid status code: 502")
+
+	// Output replaced with the synthesized user-facing error.
+	se := dr.StandardError()
+	r.Equal(state.FatalServerErrorName, se.Name)
+	r.Contains(se.Message, "HTTP 502")
+	r.Contains(se.Stack, "Bad Gateway")
+}
+
+// A 5xx from an SDK must be preserved, not overwritten with the synthesized
+// fatal-upstream copy. SDKs return real function/step errors as non-2xx with a
+// top-level serialized error body (not wrapped under an "error" key), so the
+// guard is the SDK-header check, not the body shape.
+func TestHandleHttpResponse_SDKErrorNotClobbered(t *testing.T) {
+	r := require.New(t)
+
+	resp := &Response{
+		Body:       []byte(`{"name":"MyError","message":"boom","stack":"at fn (app.ts:1:1)","__serialized":true}`),
+		StatusCode: 500,
+		IsSDK:      true,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+	}
+
+	dr, _ := HandleHttpResponse(context.Background(), Request{}, resp)
+	r.NotNil(dr)
+
+	se := dr.StandardError()
+	r.Equal("MyError", se.Name)
+	r.Equal("boom", se.Message)
+	r.NotEqual(state.FatalServerErrorName, se.Name)
+}
+
+func TestHandleHttpResponse_DecompressesGzipBody(t *testing.T) {
+	r := require.New(t)
+
+	body := `{"result":"ok"}`
+	compressed := gzipCompressedJSON(t, body)
+
+	resp := &Response{
+		Body:       compressed,
+		StatusCode: 200,
+		IsSDK:      true,
+		Header:     http.Header{"Content-Encoding": []string{"gzip"}},
+	}
+
+	dr, err := HandleHttpResponse(context.Background(), Request{}, resp)
+	r.NoError(err)
+	r.NotNil(dr)
+
+	// The body should have been decompressed before parsing.
+	out, ok := dr.Output.(map[string]interface{})
+	r.True(ok, "expected parsed JSON map, got %T", dr.Output)
+	r.Equal("ok", out["result"])
+}
+
+func TestHandleHttpResponse_DecompressesBrotliBody(t *testing.T) {
+	r := require.New(t)
+
+	body := `[{"op":"StepRun","id":"step-id","name":"step"}]`
+	compressed := brotliCompressedJSON(t, body)
+
+	resp := &Response{
+		Body:       compressed,
+		StatusCode: 206,
+		IsSDK:      true,
+		Header:     http.Header{"Content-Encoding": []string{"br"}},
+	}
+
+	dr, err := HandleHttpResponse(context.Background(), Request{}, resp)
+	r.NoError(err)
+	r.NotNil(dr)
+	r.Len(dr.Generator, 1)
+	r.Equal(enums.OpcodeStepRun, dr.Generator[0].Op)
+}
+
+func TestHandleHttpResponse_NoDoubleDecompress(t *testing.T) {
+	r := require.New(t)
+
+	// Simulate the HTTP path: body is already decompressed, no Content-Encoding header.
+	body := `{"result":"ok"}`
+	resp := &Response{
+		Body:       []byte(body),
+		StatusCode: 200,
+		IsSDK:      true,
+		Header:     http.Header{},
+	}
+
+	dr, err := HandleHttpResponse(context.Background(), Request{}, resp)
+	r.NoError(err)
+	r.NotNil(dr)
+
+	out, ok := dr.Output.(map[string]interface{})
+	r.True(ok, "expected parsed JSON map, got %T", dr.Output)
+	r.Equal("ok", out["result"])
+}
+
+func brotliCompressedJSON(t *testing.T, input string) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	writer := brotli.NewWriter(&buf)
+	_, err := writer.Write([]byte(input))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	return buf.Bytes()
+}
+
+func gzipCompressedJSON(t *testing.T, input string) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	writer, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	_, err := writer.Write([]byte(input))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	return buf.Bytes()
+}

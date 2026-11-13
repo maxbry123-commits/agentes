@@ -1,0 +1,154 @@
+name: YAIWES AutoGen Core LFS Pointer Repair
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-autogen-core-lfs-pointer-repair.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-autogen-core-lfs-pointer-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      MOTOR1: Motores/➡️📂 Motor de extracción zip/motor_1_extract_only.py
+      DEST_ROOT: Core kernel Yaiwes
+      SLUG: AutoGen-Core
+      SOURCE_REPO: microsoft/autogen
+      STATE_FILE: Core kernel Yaiwes/Crack wall bitácora stated JSON/AUTOGEN-CORE-LFS-REPAIR-STATE-20260914.json
+    steps:
+      - name: Checkout immutable Motor1
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-autogen-core-lfs-pointer-repair.yml
+            /Motores/➡️📂 Motor de extracción zip/motor_1_extract_only.py
+            /Core kernel Yaiwes/Crack wall bitácora stated JSON/
+
+      - name: Verify immutable Motor1
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$MOTOR1")" = 'a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500'
+          echo MOTOR1_LOCK=PASS
+
+      - name: Materialize tracked source, extract with Motor1, publish without LFS hooks
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, shutil, stat, subprocess, sys, tempfile, time, zipfile
+          ROOT=pathlib.Path.cwd(); MOTOR1=ROOT/os.environ['MOTOR1']; TOKEN=os.environ['GITHUB_TOKEN']; DEST_ROOT=os.environ['DEST_ROOT']; SLUG=os.environ['SLUG']; SOURCE_REPO=os.environ['SOURCE_REPO']
+          LFS_PREFIX=b'version https://git-lfs.github.com/spec/v1\n'
+          def run(a,cwd=None,env=None,check=True,binary=False):
+              p=subprocess.run(a,cwd=cwd,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=not binary)
+              if check and p.returncode:
+                  s=p.stdout if isinstance(p.stdout,str) else p.stdout.decode('utf-8','replace'); raise RuntimeError(f'COMMAND_FAILED:{a[0]}:{p.returncode}:{s[-6000:]}')
+              return p.stdout
+          def sha(p):
+              h=hashlib.sha256()
+              with open(p,'rb') as f:
+                  for b in iter(lambda:f.read(1048576),b''): h.update(b)
+              return h.hexdigest()
+          def tree_hash(d):
+              h=hashlib.sha256(); n=0; z=0
+              for p in sorted((x for x in d.rglob('*') if x.is_file()),key=lambda x:x.relative_to(d).as_posix()):
+                  r=p.relative_to(d).as_posix(); s=p.stat().st_size; g=sha(p); h.update(r.encode()+b'\0'+g.encode()+b'\0'+str(s).encode()+b'\n'); n+=1; z+=s
+              return {'files':n,'bytes':z,'sha256':h.hexdigest()}
+          def auth():
+              e=dict(os.environ); b=base64.b64encode(f'x-access-token:{TOKEN}'.encode()).decode(); e.update({'GIT_CONFIG_COUNT':'1','GIT_CONFIG_KEY_0':'http.https://github.com/.extraheader','GIT_CONFIG_VALUE_0':f'AUTHORIZATION: basic {b}','GIT_TERMINAL_PROMPT':'0'}); return e
+          def disable_lfs(d):
+              empty=d/'.yaiwes-empty-hooks'; empty.mkdir(exist_ok=True)
+              run(['git','config','core.hooksPath',str(empty)],d)
+              run(['git','config','filter.lfs.clean','cat'],d); run(['git','config','filter.lfs.smudge','cat'],d); run(['git','config','--unset-all','filter.lfs.process'],d,check=False); run(['git','config','filter.lfs.required','false'],d)
+          with tempfile.TemporaryDirectory(prefix='yaiwes-autogen-repair-') as td:
+              w=pathlib.Path(td); src=w/'source'; src.mkdir(); run(['git','init','-q'],src); run(['git','remote','add','origin',f'https://github.com/{SOURCE_REPO}.git'],src); run(['git','fetch','--depth=1','--filter=blob:none','origin','HEAD'],src); run(['git','checkout','-q','--detach','FETCH_HEAD'],src); source_commit=run(['git','rev-parse','HEAD'],src).strip()
+              raw=run(['git','ls-files','-s','-z'],src,binary=True); norm=w/'normalized'; norm.mkdir(); normalizations=[]; lfs=[]
+              for rec in raw.split(b'\0'):
+                  if not rec: continue
+                  meta,pb=rec.split(b'\t',1); mode,oid,_=meta.decode().split(); rel=pb.decode('utf-8','surrogateescape'); dst=norm/rel; dst.parent.mkdir(parents=True,exist_ok=True)
+                  blob=run(['git','cat-file','-p',oid],src,binary=True)
+                  if mode=='120000':
+                      target=blob.decode('utf-8','surrogateescape').strip(); resolved=(src/rel).parent/target
+                      if resolved.exists() and resolved.is_file(): shutil.copy2(resolved,dst); action='dereference_file'
+                      else: dst.write_text('YAIWES_NORMALIZED_BROKEN_SYMLINK_TARGET='+target+'\n'); action='materialize_target_marker'
+                      normalizations.append({'path':rel,'from':'symlink','target':target,'action':action}); continue
+                  dst.write_bytes(blob)
+                  if blob.startswith(LFS_PREFIX):
+                      lfs.append(rel); normalizations.append({'path':rel,'from':'git-lfs-pointer','action':'preserve_exact_tracked_pointer_blob'})
+              source_tree=tree_hash(norm)
+              archive=w/'AutoGen-Core.zip'
+              with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,allowZip64=True) as z:
+                  for p in sorted((x for x in norm.rglob('*') if x.is_file()),key=lambda x:x.relative_to(norm).as_posix()): z.write(p,p.relative_to(norm).as_posix())
+              with zipfile.ZipFile(archive) as z:
+                  bad=z.testzip()
+                  if bad: raise RuntimeError('ZIP_CRC_FAIL:'+bad)
+              ext=w/'extracted'; ms=w/'motor1-state.json'; env=dict(os.environ); env.update({'ARCHIVE_INPUT':str(archive),'DEST_DIR':str(ext),'STATE_FILE':str(ms),'BATCH_SIZE':'100','MAX_BATCHES':'0'}); out=run([sys.executable,str(MOTOR1)],env=env); payload=json.loads(out.splitlines()[-1]); ext_tree=tree_hash(ext)
+              if payload.get('verdict')!='VERIFIED_CLOSED' or ext_tree!=source_tree: raise RuntimeError('MOTOR1_OR_TREE_VERIFY_GAP')
+              manifest={'schema':'yaiwes.kernel.autogen-lfs-pointer-repair/v1','slug':SLUG,'source_repo':SOURCE_REPO,'source_commit':source_commit,'motor1_blob':'a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500','archive_sha256':sha(archive),'archive_bytes':archive.stat().st_size,'source_tree':source_tree,'extracted_tree':ext_tree,'extraction_verified':True,'lfs_pointer_count':len(lfs),'lfs_pointers_preserved':lfs,'normalizations':normalizations,'publish_policy':'tracked_git_blobs_as_normal_git_objects; lfs_hook_disabled; git_add_force'}
+              dest=w/'dest'; dest.mkdir(); e=auth(); rel=f'{DEST_ROOT}/{SLUG}'; run(['git','init','-q'],dest); disable_lfs(dest); run(['git','remote','add','origin','https://github.com/maxbry123-commits/agentes.git'],dest); run(['git','sparse-checkout','init','--no-cone'],dest); (dest/'.git/info/sparse-checkout').write_text('/'+rel+'/\n'); run(['git','fetch','--depth=1','--filter=blob:none','origin','main'],dest,env=e); run(['git','checkout','-q','-B','main','FETCH_HEAD'],dest); target=dest/rel
+              if target.exists(): shutil.rmtree(target)
+              target.mkdir(parents=True); shutil.copytree(ext,target/'code'); (target/'DOWNLOAD_EXTRACT_MANIFEST.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n'); disable_lfs(dest); run(['git','config','user.name','yaiwes-autogen-repair'],dest); run(['git','config','user.email','yaiwes-autogen-repair@users.noreply.github.com'],dest); run(['git','add','-f','--sparse','--',rel],dest); run(['git','commit','-m','build(yaiwes): repair AutoGen-Core as exact tracked source tree'],dest)
+              pushed=False; last=''
+              for i in range(1,11):
+                  run(['git','fetch','origin','main'],dest,env=e); rb=run(['git','rebase','origin/main'],dest,env=e,check=False)
+                  if 'CONFLICT' in rb: run(['git','rebase','--abort'],dest,check=False); raise RuntimeError('NON_FAST_FORWARD_CONFLICT')
+                  last=run(['git','-c','core.hooksPath=/dev/null','push','origin','HEAD:main'],dest,env=e,check=False)
+                  if 'rejected' not in last.lower() and 'error:' not in last.lower() and 'fatal:' not in last.lower(): pushed=True; break
+                  time.sleep(min(i*3,15))
+              if not pushed: raise RuntimeError('PUSH_RETRIES_EXHAUSTED:'+last[-4000:])
+              commit=run(['git','rev-parse','HEAD'],dest).strip()
+              rb=w/'readback'; rb.mkdir(); run(['git','init','-q'],rb); disable_lfs(rb); run(['git','remote','add','origin','https://github.com/maxbry123-commits/agentes.git'],rb); run(['git','sparse-checkout','init','--no-cone'],rb); (rb/'.git/info/sparse-checkout').write_text('/'+rel+'/\n'); run(['git','fetch','--depth=1','--filter=blob:none','origin','main'],rb,env=e); run(['git','checkout','-q','--detach','FETCH_HEAD'],rb); actual=tree_hash(rb/rel/'code'); remote=json.loads((rb/rel/'DOWNLOAD_EXTRACT_MANIFEST.json').read_text())
+              if actual!=remote['extracted_tree']: raise RuntimeError('DEEP_READBACK_HASH_GAP:'+json.dumps({'actual':actual,'expected':remote['extracted_tree']}))
+              state={'schema':'yaiwes.kernel.autogen-lfs-pointer-repair-state/v1','status':'VERIFIED_CLOSED','source_commit':source_commit,'publish_commit':commit,'tree':actual,'lfs_pointer_count':len(lfs),'manifest':rel+'/DOWNLOAD_EXTRACT_MANIFEST.json'}
+              pathlib.Path('/tmp/autogen-state.json').write_text(json.dumps(state,indent=2,sort_keys=True)+'\n'); print(json.dumps(state))
+          PY
+
+      - name: Persist AutoGen repair state
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f /tmp/autogen-state.json ]; then
+            printf '%s\n' '{"schema":"yaiwes.kernel.autogen-lfs-pointer-repair-state/v1","status":"FAILED_BEFORE_DEEP_READBACK"}' > /tmp/autogen-state.json
+          fi
+          cp /tmp/autogen-state.json /tmp/autogen.keep.json
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5 6; do
+            git fetch origin main; git reset --hard origin/main
+            mkdir -p "$(dirname "$STATE_FILE")"; cp /tmp/autogen.keep.json "$STATE_FILE"; git add -f --sparse -- "$STATE_FILE"
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'watchdog(yaiwes): persist AutoGen-Core LFS repair state'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt*3))
+          done
+          exit 1
+
+      - name: Final AutoGen read-back gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show 'origin/main:Core kernel Yaiwes/AutoGen-Core/DOWNLOAD_EXTRACT_MANIFEST.json' > /tmp/manifest.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/manifest.json'))
+          assert d.get('extraction_verified') is True
+          assert d.get('extracted_tree',{}).get('files',0) > 0
+          print('AUTOGEN_CORE_DOWNLOAD_EXTRACT=VERIFIED_CLOSED')
+          print('LFS_POINTERS_PRESERVED='+str(d.get('lfs_pointer_count')))
+          PY

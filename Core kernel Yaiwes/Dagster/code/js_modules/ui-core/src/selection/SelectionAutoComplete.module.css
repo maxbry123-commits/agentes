@@ -1,0 +1,9 @@
+.nullString {
+  color: var(--color-text-lighter);
+  font-style: italic;
+}
+
+.attributeValue {
+  flex: 1;
+  min-width: 0;
+}

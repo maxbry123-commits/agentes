@@ -1,0 +1,62 @@
+name: Yaiwes canonical quiesce
+run-name: Yaiwes canonical quiesce • ${{ github.run_id }}
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/canonical-quiesce.yml']
+permissions:
+  actions: write
+  contents: read
+concurrency:
+  group: yaiwes-canonical-quiesce
+  cancel-in-progress: true
+jobs:
+  stop-loop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Cancel stale or duplicate repair runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          now="$(date -u +%s)"
+          handled=0
+          for status in in_progress queued; do
+            gh api "repos/${repo}/actions/runs?status=${status}&per_page=100" --paginate \
+              --jq '.workflow_runs[] | [.id,.path,.created_at] | @tsv' |
+            while IFS=$'\t' read -r id path created; do
+              [ -n "$id" ] || continue
+              [ "$id" = "$GITHUB_RUN_ID" ] && continue
+              created_epoch="$(date -u -d "$created" +%s)"
+              age=$((now-created_epoch))
+              stale=false
+              [ "$age" -gt 86400 ] && stale=true
+              duplicate=false
+              case "$path" in
+                .github/workflows/canonical-retry-*.yml|.github/workflows/canonical-lfs-*.yml|.github/workflows/canonical-watchdog.yml|.github/workflows/canonical-dataset-*.yml)
+                  duplicate=true
+                  ;;
+              esac
+              if [ "$stale" = true ] || [ "$duplicate" = true ]; then
+                echo "handle id=$id status=$status age_seconds=$age path=$path"
+                if gh api --method POST "repos/${repo}/actions/runs/${id}/cancel"; then
+                  handled=$((handled+1)); continue
+                fi
+                if gh api --method POST "repos/${repo}/actions/runs/${id}/force-cancel"; then
+                  handled=$((handled+1)); continue
+                fi
+                if [ "$age" -gt 1209600 ]; then
+                  echo "cancel endpoints rejected stale run; deleting run id=$id"
+                  if gh api --method DELETE "repos/${repo}/actions/runs/${id}"; then
+                    handled=$((handled+1)); continue
+                  fi
+                fi
+                echo "STALE_RUN_CONTROL_GAP id=$id path=$path"
+              fi
+            done
+          done
+          echo "QUIESCED handled=${handled}"

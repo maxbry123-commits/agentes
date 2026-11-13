@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 20296,
+  "bundle_sha256": "35a29c661b342ce25e11a7469e2348757dc2fa86390d1d315635dd875b7287ea",
+  "extracted_tree": {
+    "bytes": 45834,
+    "files": 25,
+    "sha256": "395fa908cf686f98a81c57fbdfc7830a69e14e773878f64580841f17b16d9cf2"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 20296,
+      "name": "simple-pid.bundle.zip.part-0001",
+      "sha256": "35a29c661b342ce25e11a7469e2348757dc2fa86390d1d315635dd875b7287ea"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "simple-pid",
+  "source_bytes": 45834,
+  "source_commit": "6e6f4b000cdf7830635674cb89a6e823f5025784",
+  "source_files": 25,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/m-lundberg/simple-pid.git",
+  "source_tree": {
+    "bytes": 45834,
+    "files": 25,
+    "sha256": "395fa908cf686f98a81c57fbdfc7830a69e14e773878f64580841f17b16d9cf2"
+  }
+}

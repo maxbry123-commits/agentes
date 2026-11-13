@@ -1,0 +1,53 @@
+{
+  "bundle_bytes": 59586259,
+  "bundle_sha256": "d418e7914af464c0328e8c5454c8953a200db3e93cbdb274900cabfec93b3549",
+  "extracted_tree": {
+    "bytes": 69192315,
+    "files": 519,
+    "sha256": "a7f2ae4e8a5351cf0c7d37d9ba34d7ccb6faacefcc24e3666bfb06bb601c0874"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "Meta-Agent-Cookbook-2026.bundle.zip.part-0001",
+      "sha256": "c8c43fab4a6d5bd09a5470e4ace0d4b0c9b34b17fa5096f3329240375380f9fe"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Meta-Agent-Cookbook-2026.bundle.zip.part-0002",
+      "sha256": "96c6de87274a40402adf8850ea84488787861f330742e564bb0eecd701c56cfe"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Meta-Agent-Cookbook-2026.bundle.zip.part-0003",
+      "sha256": "fc757f5386a8ba43b086de9aaa3d21de9d878650b33583da4f74b481d6f96eef"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Meta-Agent-Cookbook-2026.bundle.zip.part-0004",
+      "sha256": "9a98690f3dbd0feb94c1325dea9b709353c3b82fb3add5d0efef8d96f7844293"
+    },
+    {
+      "bytes": 9254611,
+      "name": "Meta-Agent-Cookbook-2026.bundle.zip.part-0005",
+      "sha256": "32af66c5beadc8f4ed498f3c31fa03c08a6b8e91a6c9bd0771fc9945fa450fc0"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Meta-Agent-Cookbook-2026",
+  "source_bytes": 69192315,
+  "source_commit": "fb440d68f9f1eb735faca57092b0729ad6195d96",
+  "source_files": 519,
+  "source_ref": "fb440d68f9f1eb735faca57092b0729ad6195d96",
+  "source_repo": "meta-models/meta-model-cookbook",
+  "source_tree": {
+    "bytes": 69192315,
+    "files": 519,
+    "sha256": "a7f2ae4e8a5351cf0c7d37d9ba34d7ccb6faacefcc24e3666bfb06bb601c0874"
+  }
+}

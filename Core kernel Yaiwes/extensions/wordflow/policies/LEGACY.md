@@ -1,0 +1,1 @@
+S4 source preserved. Destinations: agente-yaiwes/kernel-principal/extension-kernel/abi-mount and agente-yaiwes/control-governance/sentinel + sheriff-bridge. See Paso 3.

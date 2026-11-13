@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "C19_PRE_GATE_OUTPUT.schema.json",
+  "title": "ProgrammingPipeline pre_gate stage output",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["allow"],
+  "properties": {
+    "allow": {"type": "boolean"}
+  },
+  "examples": [{"allow":true}]
+}

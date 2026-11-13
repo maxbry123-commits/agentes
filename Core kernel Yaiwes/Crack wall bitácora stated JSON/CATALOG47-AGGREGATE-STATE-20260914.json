@@ -1,0 +1,43 @@
+{
+  "autogen_old20_closed": false,
+  "catalog47_closed": 40,
+  "catalog47_gaps": [
+    {
+      "gap": "MANIFEST_MISSING",
+      "id": "C47-003",
+      "slug": "Hermes-Agent"
+    },
+    {
+      "gap": "MANIFEST_MISSING",
+      "id": "C47-004",
+      "slug": "OpenClaw"
+    },
+    {
+      "gap": "MANIFEST_MISSING",
+      "id": "C47-007",
+      "slug": "Bayesian-Agent"
+    },
+    {
+      "gap": "MANIFEST_MISSING",
+      "id": "C47-009",
+      "slug": "Life-Harness"
+    },
+    {
+      "gap": "MANIFEST_MISSING",
+      "id": "C47-011",
+      "slug": "ZERA"
+    },
+    {
+      "gap": "MANIFEST_MISSING",
+      "id": "C47-028",
+      "slug": "GrayMatter"
+    },
+    {
+      "gap": "MANIFEST_MISSING",
+      "id": "C47-036",
+      "slug": "LlamaFirewall"
+    }
+  ],
+  "catalog47_total": 47,
+  "schema": "yaiwes.kernel.catalog47.aggregate-gate/v1"
+}

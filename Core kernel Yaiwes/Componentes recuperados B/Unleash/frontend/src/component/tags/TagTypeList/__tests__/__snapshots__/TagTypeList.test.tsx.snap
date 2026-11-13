@@ -1,0 +1,781 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renders an empty list correctly 1`] = `
+<DocumentFragment>
+  <div
+    aria-busy="true"
+    aria-live="polite"
+  >
+    <div
+      class="MuiPaper-root MuiPaper-elevation MuiPaper-rounded MuiPaper-elevation1 mui-1d2p440-MuiPaper-root"
+      style="--Paper-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2),0px 1px 1px 0px rgba(0,0,0,0.14),0px 1px 3px 0px rgba(0,0,0,0.12);"
+    >
+      <div
+        class="header mui-1vdhda9-headerPadding"
+      >
+        <div
+          class="mui-j7qwjs"
+        >
+          <div
+            class="mui-mt0dvk"
+          >
+            <div
+              class="mui-1kxj5dx skeleton"
+              data-loading="true"
+            >
+              <h1
+                class="MuiTypography-root MuiTypography-h1 mui-1el6hlj-MuiTypography-root"
+              >
+                Tag types (5)
+              </h1>
+            </div>
+            <div
+              class="mui-j2179i"
+            >
+              <div
+                class="mui-non55o"
+              >
+                <div
+                  class="mui-1om4ep4"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium mui-1u0z9hs-MuiSvgIcon-root"
+                    data-testid="SearchIcon"
+                    focusable="false"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"
+                    />
+                  </svg>
+                  <div
+                    class="MuiInputBase-root MuiInputBase-colorPrimary mui-12wn7bb-MuiInputBase-root"
+                  >
+                    <input
+                      aria-label="Search (Ctrl+Shift+K)"
+                      class="MuiInputBase-input mui-10xnd0u-MuiInputBase-input"
+                      data-testid="SEARCH_INPUT"
+                      placeholder="Search (Ctrl+Shift+K)"
+                      type="text"
+                      value=""
+                    />
+                  </div>
+                  <div
+                    class="MuiBox-root mui-1ty7gog"
+                  />
+                </div>
+              </div>
+              <div
+                aria-orientation="vertical"
+                class="MuiDivider-root MuiDivider-middle MuiDivider-vertical mui-ngwdxa-MuiDivider-root"
+                role="separator"
+              />
+              <button
+                aria-labelledby="useId-0"
+                class="MuiButtonBase-root MuiButton-root MuiButton-contained MuiButton-sizeLarge MuiButton-colorPrimary MuiButton-disableElevation mui-1oby3tl-MuiButtonBase-root-MuiButton-root"
+                tabindex="0"
+                type="button"
+              >
+                New tag type
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        class="body mui-ccg7sp-bodyContainer"
+      >
+        <table
+          class="MuiTable-root mui-xfo33b-MuiTable-root"
+        >
+          <thead
+            class="MuiTableHead-root mui-5x8cdn-MuiTableHead-root"
+          >
+            <tr
+              class="MuiTableRow-root MuiTableRow-head mui-11ykd7w-MuiTableRow-root skeleton"
+              data-loading="true"
+            >
+              <th
+                class="MuiTableCell-root MuiTableCell-head MuiTableCell-sizeMedium mui-v5ykp5-MuiTableCell-root"
+                scope="col"
+              >
+                <div />
+              </th>
+              <th
+                aria-sort="ascending"
+                class="MuiTableCell-root MuiTableCell-head MuiTableCell-sizeMedium mui-aoexvr-MuiTableCell-root"
+                scope="col"
+                style="width: 90%;"
+              >
+                <button
+                  aria-label=""
+                  class="mui-abwubk"
+                  data-mui-internal-clone-element="true"
+                  type="button"
+                >
+                  <span
+                    aria-hidden="true"
+                    class="mui-15yxmxx"
+                  >
+                    <span
+                      class="mui-1w3kvnb"
+                      data-text="Name"
+                      tabindex="-1"
+                    >
+                      Name
+                    </span>
+                    <svg
+                      aria-hidden="true"
+                      class="MuiSvgIcon-root MuiSvgIcon-fontSizeInherit mui-1wcp32s-MuiSvgIcon-root"
+                      data-testid="KeyboardArrowUpIcon"
+                      focusable="false"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z"
+                      />
+                    </svg>
+                  </span>
+                  <span
+                    class="mui-y8b3t8"
+                  >
+                    <span
+                      tabindex="-1"
+                    >
+                      <span>
+                        Name
+                      </span>
+                    </span>
+                    <svg
+                      aria-hidden="true"
+                      class="MuiSvgIcon-root MuiSvgIcon-fontSizeInherit sort-arrow mui-1wcp32s-MuiSvgIcon-root"
+                      data-testid="KeyboardArrowUpIcon"
+                      focusable="false"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z"
+                      />
+                    </svg>
+                  </span>
+                </button>
+              </th>
+              <th
+                class="MuiTableCell-root MuiTableCell-head MuiTableCell-sizeMedium mui-v5ykp5-MuiTableCell-root"
+                scope="col"
+                style="width: 150px;"
+              >
+                <div
+                  style="justify-content: center; text-align: center;"
+                >
+                  Actions
+                </div>
+              </th>
+            </tr>
+          </thead>
+          <tbody
+            class="MuiTableBody-root mui-gmh7jj-MuiTableBody-root"
+          >
+            <tr
+              class="MuiTableRow-root MuiTableRow-hover mui-11ykd7w-MuiTableRow-root"
+            >
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-7n01ps skeleton"
+                  data-loading="true"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="MuiSvgIcon-root MuiSvgIcon-colorDisabled MuiSvgIcon-fontSizeMedium mui-1xsay48-MuiSvgIcon-root"
+                    data-testid="LabelIcon"
+                    focusable="false"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12z"
+                    />
+                  </svg>
+                </div>
+              </td>
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-70qvj9"
+                >
+                  <div
+                    class="mui-1prhjm6"
+                  >
+                    <div
+                      class="mui-u8cmsa"
+                    >
+                      <span
+                        aria-label=""
+                        class="MuiBox-root mui-gzore8 skeleton"
+                        data-loading="true"
+                        data-mui-internal-clone-element="true"
+                      >
+                        <span>
+                          Tag type name
+                        </span>
+                      </span>
+                      <span
+                        aria-label=""
+                        class="MuiBox-root mui-gzore8 skeleton"
+                        data-loading="true"
+                        data-mui-internal-clone-element="true"
+                      >
+                        Tag type description when loading
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-1bvc4cc skeleton"
+                  data-loading="true"
+                >
+                  <div
+                    aria-label="Edit tag type"
+                    class=""
+                    data-mui-internal-clone-element="true"
+                    id="useId-1"
+                  >
+                    <button
+                      aria-labelledby="useId-1"
+                      class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeLarge mui-v6ysme-MuiButtonBase-root-MuiIconButton-root"
+                      tabindex="0"
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium mui-1umw9bq-MuiSvgIcon-root"
+                        data-testid="EditIcon"
+                        focusable="false"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <div
+                    aria-label="Delete tag type"
+                    class=""
+                    data-mui-internal-clone-element="true"
+                    id="useId-2"
+                  >
+                    <button
+                      aria-labelledby="useId-2"
+                      class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeLarge mui-v6ysme-MuiButtonBase-root-MuiIconButton-root"
+                      tabindex="0"
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium mui-1umw9bq-MuiSvgIcon-root"
+                        data-testid="DeleteIcon"
+                        focusable="false"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <tr
+              class="MuiTableRow-root MuiTableRow-hover mui-11ykd7w-MuiTableRow-root"
+            >
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-7n01ps skeleton"
+                  data-loading="true"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="MuiSvgIcon-root MuiSvgIcon-colorDisabled MuiSvgIcon-fontSizeMedium mui-1xsay48-MuiSvgIcon-root"
+                    data-testid="LabelIcon"
+                    focusable="false"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12z"
+                    />
+                  </svg>
+                </div>
+              </td>
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-70qvj9"
+                >
+                  <div
+                    class="mui-1prhjm6"
+                  >
+                    <div
+                      class="mui-u8cmsa"
+                    >
+                      <span
+                        aria-label=""
+                        class="MuiBox-root mui-gzore8 skeleton"
+                        data-loading="true"
+                        data-mui-internal-clone-element="true"
+                      >
+                        <span>
+                          Tag type name
+                        </span>
+                      </span>
+                      <span
+                        aria-label=""
+                        class="MuiBox-root mui-gzore8 skeleton"
+                        data-loading="true"
+                        data-mui-internal-clone-element="true"
+                      >
+                        Tag type description when loading
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-1bvc4cc skeleton"
+                  data-loading="true"
+                >
+                  <div
+                    aria-label="Edit tag type"
+                    class=""
+                    data-mui-internal-clone-element="true"
+                    id="useId-3"
+                  >
+                    <button
+                      aria-labelledby="useId-3"
+                      class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeLarge mui-v6ysme-MuiButtonBase-root-MuiIconButton-root"
+                      tabindex="0"
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium mui-1umw9bq-MuiSvgIcon-root"
+                        data-testid="EditIcon"
+                        focusable="false"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <div
+                    aria-label="Delete tag type"
+                    class=""
+                    data-mui-internal-clone-element="true"
+                    id="useId-4"
+                  >
+                    <button
+                      aria-labelledby="useId-4"
+                      class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeLarge mui-v6ysme-MuiButtonBase-root-MuiIconButton-root"
+                      tabindex="0"
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium mui-1umw9bq-MuiSvgIcon-root"
+                        data-testid="DeleteIcon"
+                        focusable="false"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <tr
+              class="MuiTableRow-root MuiTableRow-hover mui-11ykd7w-MuiTableRow-root"
+            >
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-7n01ps skeleton"
+                  data-loading="true"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="MuiSvgIcon-root MuiSvgIcon-colorDisabled MuiSvgIcon-fontSizeMedium mui-1xsay48-MuiSvgIcon-root"
+                    data-testid="LabelIcon"
+                    focusable="false"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12z"
+                    />
+                  </svg>
+                </div>
+              </td>
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-70qvj9"
+                >
+                  <div
+                    class="mui-1prhjm6"
+                  >
+                    <div
+                      class="mui-u8cmsa"
+                    >
+                      <span
+                        aria-label=""
+                        class="MuiBox-root mui-gzore8 skeleton"
+                        data-loading="true"
+                        data-mui-internal-clone-element="true"
+                      >
+                        <span>
+                          Tag type name
+                        </span>
+                      </span>
+                      <span
+                        aria-label=""
+                        class="MuiBox-root mui-gzore8 skeleton"
+                        data-loading="true"
+                        data-mui-internal-clone-element="true"
+                      >
+                        Tag type description when loading
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-1bvc4cc skeleton"
+                  data-loading="true"
+                >
+                  <div
+                    aria-label="Edit tag type"
+                    class=""
+                    data-mui-internal-clone-element="true"
+                    id="useId-5"
+                  >
+                    <button
+                      aria-labelledby="useId-5"
+                      class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeLarge mui-v6ysme-MuiButtonBase-root-MuiIconButton-root"
+                      tabindex="0"
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium mui-1umw9bq-MuiSvgIcon-root"
+                        data-testid="EditIcon"
+                        focusable="false"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <div
+                    aria-label="Delete tag type"
+                    class=""
+                    data-mui-internal-clone-element="true"
+                    id="useId-6"
+                  >
+                    <button
+                      aria-labelledby="useId-6"
+                      class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeLarge mui-v6ysme-MuiButtonBase-root-MuiIconButton-root"
+                      tabindex="0"
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium mui-1umw9bq-MuiSvgIcon-root"
+                        data-testid="DeleteIcon"
+                        focusable="false"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <tr
+              class="MuiTableRow-root MuiTableRow-hover mui-11ykd7w-MuiTableRow-root"
+            >
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-7n01ps skeleton"
+                  data-loading="true"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="MuiSvgIcon-root MuiSvgIcon-colorDisabled MuiSvgIcon-fontSizeMedium mui-1xsay48-MuiSvgIcon-root"
+                    data-testid="LabelIcon"
+                    focusable="false"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12z"
+                    />
+                  </svg>
+                </div>
+              </td>
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-70qvj9"
+                >
+                  <div
+                    class="mui-1prhjm6"
+                  >
+                    <div
+                      class="mui-u8cmsa"
+                    >
+                      <span
+                        aria-label=""
+                        class="MuiBox-root mui-gzore8 skeleton"
+                        data-loading="true"
+                        data-mui-internal-clone-element="true"
+                      >
+                        <span>
+                          Tag type name
+                        </span>
+                      </span>
+                      <span
+                        aria-label=""
+                        class="MuiBox-root mui-gzore8 skeleton"
+                        data-loading="true"
+                        data-mui-internal-clone-element="true"
+                      >
+                        Tag type description when loading
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-1bvc4cc skeleton"
+                  data-loading="true"
+                >
+                  <div
+                    aria-label="Edit tag type"
+                    class=""
+                    data-mui-internal-clone-element="true"
+                    id="useId-7"
+                  >
+                    <button
+                      aria-labelledby="useId-7"
+                      class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeLarge mui-v6ysme-MuiButtonBase-root-MuiIconButton-root"
+                      tabindex="0"
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium mui-1umw9bq-MuiSvgIcon-root"
+                        data-testid="EditIcon"
+                        focusable="false"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <div
+                    aria-label="Delete tag type"
+                    class=""
+                    data-mui-internal-clone-element="true"
+                    id="useId-8"
+                  >
+                    <button
+                      aria-labelledby="useId-8"
+                      class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeLarge mui-v6ysme-MuiButtonBase-root-MuiIconButton-root"
+                      tabindex="0"
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium mui-1umw9bq-MuiSvgIcon-root"
+                        data-testid="DeleteIcon"
+                        focusable="false"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <tr
+              class="MuiTableRow-root MuiTableRow-hover mui-11ykd7w-MuiTableRow-root"
+            >
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-7n01ps skeleton"
+                  data-loading="true"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="MuiSvgIcon-root MuiSvgIcon-colorDisabled MuiSvgIcon-fontSizeMedium mui-1xsay48-MuiSvgIcon-root"
+                    data-testid="LabelIcon"
+                    focusable="false"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12z"
+                    />
+                  </svg>
+                </div>
+              </td>
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-70qvj9"
+                >
+                  <div
+                    class="mui-1prhjm6"
+                  >
+                    <div
+                      class="mui-u8cmsa"
+                    >
+                      <span
+                        aria-label=""
+                        class="MuiBox-root mui-gzore8 skeleton"
+                        data-loading="true"
+                        data-mui-internal-clone-element="true"
+                      >
+                        <span>
+                          Tag type name
+                        </span>
+                      </span>
+                      <span
+                        aria-label=""
+                        class="MuiBox-root mui-gzore8 skeleton"
+                        data-loading="true"
+                        data-mui-internal-clone-element="true"
+                      >
+                        Tag type description when loading
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td
+                class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium mui-fdtqkd-MuiTableCell-root"
+              >
+                <div
+                  class="MuiBox-root mui-1bvc4cc skeleton"
+                  data-loading="true"
+                >
+                  <div
+                    aria-label="Edit tag type"
+                    class=""
+                    data-mui-internal-clone-element="true"
+                    id="useId-9"
+                  >
+                    <button
+                      aria-labelledby="useId-9"
+                      class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeLarge mui-v6ysme-MuiButtonBase-root-MuiIconButton-root"
+                      tabindex="0"
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium mui-1umw9bq-MuiSvgIcon-root"
+                        data-testid="EditIcon"
+                        focusable="false"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <div
+                    aria-label="Delete tag type"
+                    class=""
+                    data-mui-internal-clone-element="true"
+                    id="useId-10"
+                  >
+                    <button
+                      aria-labelledby="useId-10"
+                      class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeLarge mui-v6ysme-MuiButtonBase-root-MuiIconButton-root"
+                      tabindex="0"
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium mui-1umw9bq-MuiSvgIcon-root"
+                        data-testid="DeleteIcon"
+                        focusable="false"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div
+    aria-live="polite"
+    class="mui-raue2m"
+    data-testid="ANNOUNCER_ELEMENT_TEST_ID"
+    role="log"
+  >
+    <div>
+      Navigated to Tag types (5)
+    </div>
+  </div>
+</DocumentFragment>
+`;

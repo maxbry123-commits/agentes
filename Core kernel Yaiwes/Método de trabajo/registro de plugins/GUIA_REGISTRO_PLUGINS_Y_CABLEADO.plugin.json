@@ -1,0 +1,9 @@
+{
+  "plugin_id": "metodo-trabajo.registro-plugins.cableado",
+  "version": "1.0.0",
+  "type": "method-guide",
+  "entrypoint": "Método de trabajo/registro de plugins/GUIA_REGISTRO_PLUGINS_Y_CABLEADO.md",
+  "applies_to": ["code", "document", "plugin", "adapter", "cable"],
+  "rule": "create -> validate -> register -> freeze -> connect by plugin",
+  "immutable_component": true
+}

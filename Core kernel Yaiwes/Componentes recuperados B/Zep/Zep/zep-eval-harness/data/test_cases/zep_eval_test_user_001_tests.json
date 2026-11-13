@@ -1,0 +1,33 @@
+{
+  "user_id": "zep_eval_test_user_001",
+  "test_cases": [
+    {
+      "id": "test_001_budget",
+      "category": "basic_facts",
+      "query": "What is my budget for buying a home?",
+      "golden_answer": "Your budget is around $550,000.",
+      "needles": [
+        {
+          "description": "Sarah states her home-buying budget is around $550,000",
+          "source_file": "data/conversations/zep_eval_test_user_001_conv_001.json",
+          "source_line": 7,
+          "excerpt": "My budget is around $550,000"
+        }
+      ]
+    },
+    {
+      "id": "test_001_dog",
+      "category": "basic_facts",
+      "query": "What is the name of my dog?",
+      "golden_answer": "Your dog's name is Biscuit.",
+      "needles": [
+        {
+          "description": "Sarah mentions her golden retriever is named Biscuit",
+          "source_file": "data/conversations/zep_eval_test_user_001_conv_002.json",
+          "source_line": 7,
+          "excerpt": "The backyard was perfect for our golden retriever, Biscuit."
+        }
+      ]
+    }
+  ]
+}

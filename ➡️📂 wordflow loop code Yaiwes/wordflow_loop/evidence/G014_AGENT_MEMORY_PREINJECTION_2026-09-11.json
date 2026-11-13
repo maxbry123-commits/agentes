@@ -1,0 +1,41 @@
+{
+  "schema": "yaiwes.g014.agent_memory_preinjection/v1",
+  "gap": "G-014",
+  "owner": "ASTRA_GPT_LOOP",
+  "snapshot_head": "31ebeee2130b71976f9a655ff9ae3bee3dd8c3e3",
+  "authorized_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "finding": "18 memory contracts and deterministic loader existed, but AgentFleetAdapter.invoke sent the task payload directly without loading or prepending the selected agent memory.",
+  "implementation": {
+    "adapter": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_adapter.py",
+    "adapter_blob": "0804ca517ccb60166e0137b5e7061e86cc3a2c4d",
+    "loader": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/agent_memory_loader.py",
+    "loader_blob": "84c57bae2c069a01a03fa9fa7d5086ab2cb677cc",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_agent_memory_loader.py",
+    "tests_blob": "30be562559b26c4a359408fcf7c26bf1ec69e07a",
+    "behavior": "invoke builds a deterministic pre_execution_context containing agent memory before canonical JSON task contract, then sends the prepared payload through command or HTTP transport."
+  },
+  "inventory": {
+    "memory_count": 18,
+    "memory_tree_git_sha": "ae869d990d5e757230bb6e06b1275d0e3631b3d1",
+    "exact_filename": "agente-readme-memoria.md",
+    "verify_all_memories": "PASS_18_OF_18"
+  },
+  "execution": {
+    "command": "python /workspace/scratch/0142f1806a2d/g014_microtest.py",
+    "result": "PASS_5_OF_5",
+    "assertions": [
+      "18 real-tree memories load",
+      "subprocess invoke receives prepared payload",
+      "memory SHA matches selected agent",
+      "memory precedes TASK CONTRACT",
+      "original task payload preserved"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.027,
+    "pytest": "NOT_EXECUTED_DEPENDENCY_MISSING_No_module_named_pytest"
+  },
+  "external_agent_runtime_execution": "NOT_CLAIMED",
+  "lfs": false,
+  "force": false,
+  "verdict": "CLOSED_VERIFIED_LOCAL"
+}

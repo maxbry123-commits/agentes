@@ -1,0 +1,59 @@
+---
+title: "Add a custom LLM"
+description: "How to connect a custom provider with OpenWork"
+---
+
+<Note>
+**Local provider setup.** A custom provider can stay entirely in your workspace. OpenWork remains free, and you do not need to sign in to OpenWork Cloud. For centrally managed team access, see [Adding a managed LLM provider](/cloud/share-with-your-team/managed-llm-provider).
+</Note>
+
+Because `OpenWork` is built on `OpenCode` primitives, we support everything that you could modify in `.opencode.json`, like adding a [model](https://opencode.ai/docs/models/). However, our recommendation is to add it to `/path-to-your-workspace/.config/opencode/opencode.json` instead of modifying `~/.config/opencode/opencode.json`.
+
+Inside `/path-to-your-workspace/.config/opencode/opencode.json`:
+```
+{
+  "provider": {
+    "my-api": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "My model",
+      "options": {
+        "baseURL": "https://your API address/v1"
+      },
+      "models": {
+        "model-name": {
+          "name": "Model name"
+        }
+      }
+    }
+  }
+}
+```
+
+### Functional example: Ollama (Qwen3 8B)
+
+This setup a local [Ollama](https://docs.ollama.com/api/openai-compatibility) instance running `qwen3:8b`. 
+
+```
+{
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama",
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      },
+      "models": {
+        "qwen3:8b": {
+          "name": "Qwen3 8B"
+        }
+      }
+    }
+  }
+}
+```
+
+Pull the model first with `ollama pull qwen3:8b`, then make sure the Ollama server is reachable at `http://localhost:11434` with `ollama serve`
+
+Open your desktop, change the provider name and voila! You have an fully local LLM running in your machine.
+
+For teams, manage the provider in OpenWork Cloud under [Models > Bring your Own Keys](/cloud/share-with-your-team/managed-llm-provider), then make it available from `Settings > Cloud Providers` in the desktop app.

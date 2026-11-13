@@ -1,0 +1,195 @@
+import { Channel, ClientFactory } from 'nice-grpc';
+import {
+  BulkPushEventRequest,
+  EventsServiceClient,
+  EventsServiceDefinition,
+  PushEventRequest,
+} from '@hatchet/protoc/events/events';
+import { getErrorMessage, toHatchetError } from '@util/errors/hatchet-error';
+import { ClientConfig } from '@clients/hatchet-client/client-config';
+import { Logger } from '@hatchet/util/logger';
+import { retrier } from '@hatchet/util/retrier';
+import { applyNamespace } from '@hatchet/util/apply-namespace';
+import { HatchetClient } from '@hatchet/v1';
+import { parentRunContextManager } from '@hatchet/v1/parent-run-context-vars';
+
+export enum LogLevel {
+  INFO = 'INFO',
+  WARN = 'WARN',
+  ERROR = 'ERROR',
+  DEBUG = 'DEBUG',
+}
+
+export interface PushEventOptions {
+  additionalMetadata?: Record<string, string>;
+  priority?: number;
+  scope?: string;
+}
+
+export interface EventWithMetadata<T> {
+  payload: T;
+  additionalMetadata?: Record<string, unknown>;
+  priority?: number;
+  scope?: string;
+}
+
+function injectSourceInfo(metadata: Record<string, string>): Record<string, string> {
+  const ctx = parentRunContextManager.getContext();
+  if (!ctx?.parentId || !ctx?.parentTaskRunExternalId) {
+    return metadata;
+  }
+  return {
+    ...metadata,
+    hatchet__source_workflow_run_id: ctx.parentId,
+    hatchet__source_step_run_id: ctx.parentTaskRunExternalId,
+  };
+}
+
+export class EventClient {
+  config: ClientConfig;
+  client: EventsServiceClient;
+  retrier: typeof retrier;
+  api: HatchetClient['api'];
+  tenantId: string;
+
+  logger: Logger;
+
+  constructor(
+    config: ClientConfig,
+    channel: Channel,
+    factory: ClientFactory,
+    api: HatchetClient['api']
+  ) {
+    this.config = config;
+    this.client = factory.create(EventsServiceDefinition, channel);
+    this.logger = config.logger(`Dispatcher`, config.log_level);
+    this.retrier = retrier;
+    this.api = api;
+    this.tenantId = config.tenant_id;
+  }
+
+  /**
+   * @important This method is instrumented by HatchetInstrumentor._patchPushEvent.
+   * Keep the signature in sync with the instrumentor wrapper.
+   */
+  push<T>(type: string, input: T, options: PushEventOptions = {}) {
+    const namespacedType = applyNamespace(type, this.config.namespace);
+
+    const enhancedMetadata = injectSourceInfo(options.additionalMetadata ?? {});
+
+    const req: PushEventRequest = {
+      key: namespacedType,
+      payload: JSON.stringify(input),
+      eventTimestamp: new Date(),
+      additionalMetadata:
+        Object.keys(enhancedMetadata).length > 0 ? JSON.stringify(enhancedMetadata) : undefined,
+      priority: options.priority,
+      scope: options.scope,
+    };
+
+    return this.retrier(async () => this.client.push(req), this.logger, this.config.retrier)
+      .then((result) => {
+        this.logger.info(`Event pushed: ${namespacedType}`);
+        return result;
+      })
+      .catch((e: unknown) => {
+        throw toHatchetError(e);
+      });
+  }
+
+  /**
+   * @important This method is instrumented by HatchetInstrumentor._patchBulkPushEvent.
+   * Keep the signature in sync with the instrumentor wrapper.
+   */
+  bulkPush<T>(type: string, inputs: EventWithMetadata<T>[], options: PushEventOptions = {}) {
+    const namespacedType = applyNamespace(type, this.config.namespace);
+
+    const events = inputs.map((input) => {
+      const baseMeta =
+        (input.additionalMetadata as Record<string, string>) ?? options.additionalMetadata ?? {};
+      const enhanced = injectSourceInfo(baseMeta);
+
+      return {
+        key: namespacedType,
+        payload: JSON.stringify(input.payload),
+        eventTimestamp: new Date(),
+        additionalMetadata: Object.keys(enhanced).length > 0 ? JSON.stringify(enhanced) : undefined,
+        priority: input.priority ?? options.priority,
+        scope: input.scope ?? options.scope,
+      };
+    });
+
+    const req: BulkPushEventRequest = {
+      events,
+    };
+
+    return this.retrier(async () => this.client.bulkPush(req), this.logger, this.config.retrier)
+      .then((result) => {
+        this.logger.info(`Bulk events pushed for type: ${namespacedType}`);
+        return result;
+      })
+      .catch((e: unknown) => {
+        throw toHatchetError(e);
+      });
+  }
+
+  async putLog(
+    taskRunExternalId: string,
+    log: string,
+    level?: LogLevel,
+    taskRetryCount?: number,
+    metadata?: Record<string, unknown>
+  ) {
+    const createdAt = new Date();
+
+    if (log.length > 1_000) {
+      this.logger.warn(`log is too long, skipping: ${log.length} characters`);
+      return;
+    }
+
+    //  fire and forget the log
+    await this.client
+      .putLog({
+        taskRunExternalId,
+        createdAt,
+        message: log,
+        level: level || LogLevel.INFO,
+        taskRetryCount,
+        metadata: metadata ? JSON.stringify(metadata) : undefined,
+      })
+      .catch((e: unknown) => {
+        this.logger.warn(`Could not put log: ${getErrorMessage(e)}`);
+      });
+  }
+
+  async putStream(taskRunExternalId: string, data: string | Uint8Array, index: number | undefined) {
+    const createdAt = new Date();
+
+    let dataBytes: Uint8Array;
+    if (typeof data === 'string') {
+      dataBytes = new TextEncoder().encode(data);
+    } else if (data instanceof Uint8Array) {
+      dataBytes = data;
+    } else {
+      throw new Error('Invalid data type. Expected string or Uint8Array.');
+    }
+
+    retrier(
+      async () =>
+        this.client.putStreamEvent({
+          taskRunExternalId,
+          createdAt,
+          message: dataBytes,
+          eventIndex: index,
+        }),
+      this.logger
+    ).catch((e: unknown) => {
+      this.logger.warn(`Could not put log: ${getErrorMessage(e)}`);
+    });
+  }
+
+  async list(opts?: Parameters<typeof this.api.v1EventList>[1]) {
+    const { data } = await this.api.v1EventList(this.tenantId, opts);
+    return data;
+  }
+}

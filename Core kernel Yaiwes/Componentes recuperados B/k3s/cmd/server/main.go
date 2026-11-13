@@ -1,0 +1,102 @@
+package main
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+
+	"github.com/k3s-io/k3s/pkg/cli/agent"
+	"github.com/k3s-io/k3s/pkg/cli/cert"
+	"github.com/k3s-io/k3s/pkg/cli/cmds"
+	"github.com/k3s-io/k3s/pkg/cli/completion"
+	"github.com/k3s-io/k3s/pkg/cli/crictl"
+	"github.com/k3s-io/k3s/pkg/cli/ctr"
+	"github.com/k3s-io/k3s/pkg/cli/etcdsnapshot"
+	"github.com/k3s-io/k3s/pkg/cli/kubectl"
+	"github.com/k3s-io/k3s/pkg/cli/secretsencrypt"
+	"github.com/k3s-io/k3s/pkg/cli/server"
+	"github.com/k3s-io/k3s/pkg/cli/token"
+	"github.com/k3s-io/k3s/pkg/configfilearg"
+	"github.com/k3s-io/k3s/pkg/containerd"
+	ctr2 "github.com/k3s-io/k3s/pkg/ctr"
+	"github.com/k3s-io/k3s/pkg/daemons/executor"
+	"github.com/k3s-io/k3s/pkg/executor/embed"
+	kubectl2 "github.com/k3s-io/k3s/pkg/kubectl"
+	"github.com/k3s-io/k3s/pkg/util/errors"
+	"github.com/moby/sys/reexec"
+	"github.com/sirupsen/logrus"
+	"github.com/urfave/cli/v2"
+	crictl2 "sigs.k8s.io/cri-tools/cmd/crictl"
+)
+
+func init() {
+	reexec.Register("containerd", containerd.Main)
+	reexec.Register("kubectl", kubectl2.Main)
+	reexec.Register("crictl", crictl2.Main)
+	reexec.Register("ctr", ctr2.Main)
+}
+
+func initExecutor(af cli.ActionFunc) cli.ActionFunc {
+	return func(app *cli.Context) error {
+		ex, err := embed.New(app.Context, &cmds.AgentConfig)
+		if err != nil {
+			return errors.WithMessage(err, "failed to initialize executor")
+		}
+		executor.Set(ex)
+		return af(app)
+	}
+}
+
+func main() {
+	cmd := os.Args[0]
+	os.Args[0] = filepath.Base(os.Args[0])
+	if reexec.Init() {
+		return
+	}
+	os.Args[0] = cmd
+
+	app := cmds.NewApp()
+	app.DisableSliceFlagSeparator = true
+	app.Commands = []*cli.Command{
+		cmds.NewServerCommand(initExecutor(server.Run)),
+		cmds.NewAgentCommand(initExecutor(agent.Run)),
+		cmds.NewKubectlCommand(kubectl.Run),
+		cmds.NewCRICTL(crictl.Run),
+		cmds.NewCtrCommand(ctr.Run),
+		cmds.NewTokenCommands(
+			token.Create,
+			token.Delete,
+			token.Generate,
+			token.List,
+			token.Rotate,
+		),
+		cmds.NewEtcdSnapshotCommands(
+			etcdsnapshot.Delete,
+			etcdsnapshot.List,
+			etcdsnapshot.Prune,
+			etcdsnapshot.Save,
+		),
+		cmds.NewSecretsEncryptCommands(
+			secretsencrypt.Status,
+			secretsencrypt.Enable,
+			secretsencrypt.Disable,
+			secretsencrypt.Prepare,
+			secretsencrypt.Rotate,
+			secretsencrypt.Reencrypt,
+			secretsencrypt.RotateKeys,
+		),
+		cmds.NewCertCommands(
+			cert.Check,
+			cert.Rotate,
+			cert.RotateCA,
+		),
+		cmds.NewCompletionCommand(
+			completion.Bash,
+			completion.Zsh,
+		),
+	}
+
+	if err := app.Run(configfilearg.MustParse(os.Args)); err != nil && !errors.Is(err, context.Canceled) {
+		logrus.Fatalf("Error: %v", err)
+	}
+}

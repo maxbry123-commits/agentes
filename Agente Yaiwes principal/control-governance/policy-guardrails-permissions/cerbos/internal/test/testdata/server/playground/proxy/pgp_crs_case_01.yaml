@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=../../../.jsonschema/ServerTestCase.schema.json
+---
+description: "Valid CheckResourceSet request without meta"
+wantStatus:
+  httpStatusCode: 200
+  grpcStatusCode: 0
+playgroundProxy:
+  input: {
+    "playgroundId": "test",
+    "files": [
+      {
+        "fileName": "derived_roles_01.yaml",
+        "contents": "{{ fileString `store/derived_roles/derived_roles_01.yaml` | b64enc }}",
+      },
+      {
+        "fileName": "derived_roles_02.yaml",
+        "contents": "{{ fileString `store/derived_roles/derived_roles_02.yaml` | b64enc }}",
+      },
+      {
+        "fileName": "policy_01.yaml",
+        "contents": "{{ fileString `store/resource_policies/policy_01.yaml` | b64enc }}",
+      },
+      {
+        "fileName": "policy_02.yaml",
+        "contents": "{{ fileString `store/principal_policies/policy_01.yaml` | b64enc }}",
+      },
+      {
+        "fileName": "_schemas/principal.json",
+        "contents": "{{ fileString `store/_schemas/principal.json` | b64enc }}",
+      },
+      {
+        "fileName": "_schemas/resources/leave_request.json",
+        "contents": "{{ fileString `store/_schemas/resources/leave_request.json` | b64enc }}",
+      }
+    ],
+    "checkResourceSet": {
+      "requestId": "test",
+      "actions": [
+        "view:public",
+        "approve"
+      ],
+      "principal": {
+        "id": "john",
+        "policyVersion": "20210210",
+        "roles": [
+          "employee"
+        ],
+        "attr": {
+          "department": "marketing",
+          "geography": "GB",
+          "team": "design"
+        }
+      },
+      "resource": {
+        "kind": "leave_request",
+        "policyVersion": "20210210",
+        "instances": {
+          "XX125": {
+            "attr": {
+              "department": "marketing",
+              "geography": "GB",
+              "id": "XX125",
+              "owner": "john",
+              "team": "design"
+            }
+          }
+        }
+      }
+    }
+  }
+  wantResponse: {
+    "playgroundId": "test",
+    "checkResourceSet": {
+      "requestId": "test",
+      "resourceInstances": {
+        "XX125": {
+          "actions": {
+            "view:public": "EFFECT_ALLOW",
+            "approve": "EFFECT_DENY"
+          }
+        }
+      }
+    }
+  }

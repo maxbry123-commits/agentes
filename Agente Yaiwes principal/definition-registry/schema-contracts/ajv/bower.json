@@ -1,0 +1,11 @@
+{
+  "name": "ajv",
+  "description": "Another JSON Schema Validator",
+  "main": "bundle/ajv.min.js",
+  "authors": ["Evgeny Poberezkin"],
+  "license": "MIT",
+  "keywords": ["JSON", "schema", "validator"],
+  "homepage": "https://github.com/ajv-validator/ajv",
+  "moduleType": ["amd", "globals", "node"],
+  "ignore": ["node_modules", "bower_components", "spec"]
+}

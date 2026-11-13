@@ -1,0 +1,50 @@
+operators:
+- id: args_dataset
+  config:
+    type: function
+    function: data_strategies.commons.create_constant_dataset
+    function_config:
+      language: English
+      batch_size: 50
+      min_docsearch_score: 0.01
+      airoboros_subset: wordgame
+
+- id: generate_instructions
+  config:
+    type: completions
+    map: list  
+    map_config:
+      user_message: |
+        Here are a few example prompts:
+        Example 1: Generate a sentence with every word starting with a single letter of the alphabet, starting with z and going in reverse order.
+        Example 2: Generate a list of 18 words that start with 'en'
+        Example 3: Give me a list of 12 words that have 'anan' somewhere in them.
+        Example 4: Write a poem about whales with exactly 50 words.
+        Example 5: Write a haiku with three words that have no vowels.
+        Example 6. Write a sentence where all words start with the letter "r".
+
+        Generate a set of {{batch_size}} new similar prompts.
+
+        All output tasks should be in {{language}}.
+      output_column: instruction
+    model: gpt-4o-mini
+    temperature: 0.7
+    top_p: 0.5
+    presence_penalty: 2.0
+    n_repeat: 1000 # to get to target count
+  input_ids:
+    - args_dataset
+
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns: 
+        - language
+        - batch_size
+  input_ids:
+    - generate_instructions
+
+# target count is 10000
+# min_docsearch_score: 0.01

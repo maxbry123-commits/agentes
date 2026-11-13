@@ -1,0 +1,15 @@
+name: unpinned-uses-composite-action
+description: unpinned-uses-composite-action
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+runs:
+  using: composite
+  steps:
+    - name: true-positive-1
+      uses: asdf-vm/actions/setup@v3
+
+    - name: true-positive-2
+      uses: asdf-vm/actions/setup@main

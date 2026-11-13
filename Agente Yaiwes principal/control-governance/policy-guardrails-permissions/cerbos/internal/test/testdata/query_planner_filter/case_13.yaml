@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=../.jsonschema/QueryPlannerFilterTestCase.schema.json
+---
+description: membership test
+input:
+  kind: KIND_CONDITIONAL
+  condition:
+    expression:
+      operator: in
+      operands:
+        - variable: request.resource.attr.accountId
+        - value: ["accountId1", "accountId2"]
+wantFilter:
+  kind: KIND_CONDITIONAL
+  condition:
+    expression:
+      operator: in
+      operands:
+        - variable: request.resource.attr.accountId
+        - value: ["accountId1", "accountId2"]
+wantString: "(in request.resource.attr.accountId [\"accountId1\",\"accountId2\"])"

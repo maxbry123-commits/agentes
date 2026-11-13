@@ -1,0 +1,129 @@
+/*
+Copyright 2024 The Dapr Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package fake
+
+import (
+	"context"
+
+	"google.golang.org/grpc"
+
+	mcpserverapi "github.com/dapr/dapr/pkg/apis/mcpserver/v1alpha1"
+	runtimev1pb "github.com/dapr/dapr/pkg/proto/runtime/v1"
+	"github.com/dapr/dapr/pkg/runtime/compstore"
+	"github.com/dapr/dapr/pkg/runtime/wfengine/inprocess"
+	"github.com/dapr/dapr/pkg/security"
+	"github.com/dapr/durabletask-go/backend"
+)
+
+type Fake struct {
+	runFn                func(context.Context) error
+	initFn               func() error
+	registerGrpcServerFn func(*grpc.Server)
+	waitForReadyFn       func(context.Context) error
+	clientFn             func() backend.TaskHubClient
+	runtimeMetadataFn    func() *runtimev1pb.MetadataWorkflows
+}
+
+func New() *Fake {
+	return &Fake{
+		runFn:                func(context.Context) error { return nil },
+		initFn:               func() error { return nil },
+		registerGrpcServerFn: func(*grpc.Server) {},
+		waitForReadyFn:       func(context.Context) error { return nil },
+		clientFn:             func() backend.TaskHubClient { return NewClient() },
+		runtimeMetadataFn:    func() *runtimev1pb.MetadataWorkflows { return &runtimev1pb.MetadataWorkflows{} },
+	}
+}
+
+func (f *Fake) WithRun(runFn func(ctx context.Context) error) *Fake {
+	f.runFn = runFn
+	return f
+}
+
+func (f *Fake) WithInit(initFn func() error) *Fake {
+	f.initFn = initFn
+	return f
+}
+
+func (f *Fake) WithRegisterGrpcServer(registerGrpcServerFn func(grpcServer *grpc.Server)) *Fake {
+	f.registerGrpcServerFn = registerGrpcServerFn
+	return f
+}
+
+func (f *Fake) WithWaitForReady(waitForReadyFn func(ctx context.Context) error) *Fake {
+	f.waitForReadyFn = waitForReadyFn
+	return f
+}
+
+func (f *Fake) WithClient(clientFn func() backend.TaskHubClient) *Fake {
+	f.clientFn = clientFn
+	return f
+}
+
+func (f *Fake) WithRuntimeMetadata(runtimeMetadataFn func() *runtimev1pb.MetadataWorkflows) *Fake {
+	f.runtimeMetadataFn = runtimeMetadataFn
+	return f
+}
+
+func (f *Fake) Run(ctx context.Context) error {
+	return f.runFn(ctx)
+}
+
+func (f *Fake) Init() error {
+	return f.initFn()
+}
+
+func (f *Fake) RegisterGrpcServer(grpcServer *grpc.Server) {
+	f.registerGrpcServerFn(grpcServer)
+}
+
+func (f *Fake) WaitForReady(ctx context.Context) error {
+	return f.waitForReadyFn(ctx)
+}
+
+func (f *Fake) Client() backend.TaskHubClient {
+	return f.clientFn()
+}
+
+func (f *Fake) ActivityActorType() string {
+	return ""
+}
+
+func (f *Fake) WorkflowActorType() string {
+	return ""
+}
+
+func (f *Fake) RuntimeMetadata() *runtimev1pb.MetadataWorkflows {
+	return f.runtimeMetadataFn()
+}
+
+func (f *Fake) ActivateMCPServers(ctx context.Context) error {
+	return nil
+}
+
+func (f *Fake) InProcessExecutor() *inprocess.Executor {
+	return nil
+}
+
+func (f *Fake) EnsureActorsRegistered(_ context.Context) error {
+	return nil
+}
+
+func (f *Fake) RegisterMCPServer(_ context.Context, _ mcpserverapi.MCPServer, _ *compstore.ComponentStore, _ security.Handler) error {
+	return nil
+}
+
+func (f *Fake) UnregisterMCPServer(_ string) {}

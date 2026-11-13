@@ -1,0 +1,362 @@
+package extproc
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/config"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/observability/logging"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/routerreplay"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/routerreplay/store"
+)
+
+func createReplayRuntime(cfg *config.RouterConfig) (map[string]*routerreplay.Recorder, *routerreplay.Recorder, bool, error) {
+	backend := resolveReplayStoreBackend(cfg.RouterReplay)
+	if usesSharedReplayStorage(backend) {
+		recorders, replayRecorder, err := initializeSharedReplayRecorders(cfg, backend)
+		return recorders, replayRecorder, replayRecorder != nil, err
+	}
+
+	replayRecorders, err := initializeIsolatedReplayRecorders(cfg, backend)
+	if err != nil {
+		return nil, nil, false, err
+	}
+
+	return replayRecorders, nil, false, nil
+}
+
+// initializeReplayRecorders creates replay recorders for decisions with router_replay plugin configured.
+func initializeReplayRecorders(cfg *config.RouterConfig) map[string]*routerreplay.Recorder {
+	backend := resolveReplayStoreBackend(cfg.RouterReplay)
+	if usesSharedReplayStorage(backend) {
+		recorders, _, _ := initializeSharedReplayRecorders(cfg, backend)
+		return recorders
+	}
+	recorders, _ := initializeIsolatedReplayRecorders(cfg, backend)
+	return recorders
+}
+
+func initializeIsolatedReplayRecorders(
+	cfg *config.RouterConfig,
+	backend string,
+) (map[string]*routerreplay.Recorder, error) {
+	recorders := make(map[string]*routerreplay.Recorder)
+
+	for _, ref := range cfg.RoutingDecisionRefs() {
+		decision := ref.Decision
+		pluginCfg := cfg.EffectiveRouterReplayConfig(decision)
+		if pluginCfg == nil {
+			continue
+		}
+		key := config.RoutingDecisionKey(ref.Recipe, decision.Name)
+
+		recorder, err := createReplayRecorder(key, backend, pluginCfg, &cfg.RouterReplay)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize replay recorder for decision %s: %w", decision.Name, err)
+		}
+
+		recorders[key] = recorder
+	}
+
+	return recorders, nil
+}
+
+func initializeSharedReplayRecorders(
+	cfg *config.RouterConfig,
+	backend string,
+) (map[string]*routerreplay.Recorder, *routerreplay.Recorder, error) {
+	recorders := make(map[string]*routerreplay.Recorder)
+	var (
+		sharedStore    store.Storage
+		replayRecorder *routerreplay.Recorder
+	)
+
+	for _, ref := range cfg.RoutingDecisionRefs() {
+		decision := ref.Decision
+		pluginCfg := cfg.EffectiveRouterReplayConfig(decision)
+		if pluginCfg == nil {
+			continue
+		}
+
+		if sharedStore == nil {
+			storage, err := createSharedReplayStore(backend, &cfg.RouterReplay)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to initialize shared replay store for backend %s: %w", backend, err)
+			}
+			sharedStore = storage
+		}
+
+		recorder := createSharedReplayRecorder(sharedStore, pluginCfg)
+		recorders[config.RoutingDecisionKey(ref.Recipe, decision.Name)] = recorder
+		if replayRecorder == nil {
+			replayRecorder = recorder
+		}
+	}
+
+	return recorders, replayRecorder, nil
+}
+
+// createReplayRecorder creates a single replay recorder with the appropriate storage backend.
+func createReplayRecorder(
+	decisionName string,
+	backend string,
+	pluginCfg *config.RouterReplayPluginConfig,
+	globalCfg *config.RouterReplayConfig,
+) (*routerreplay.Recorder, error) {
+	maxBodyBytes := resolveReplayMaxBodyBytes(pluginCfg.MaxBodyBytes)
+
+	storage, err := createReplayStore(decisionName, backend, pluginCfg, globalCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	recorder := routerreplay.NewRecorder(storage)
+	recorder.SetCapturePolicy(pluginCfg.CaptureRequestBody, pluginCfg.CaptureResponseBody, maxBodyBytes)
+	recorder.SetMaxToolTraceBytes(pluginCfg.MaxToolTraceBytes)
+	recorder.SetMaxToolTraceSteps(pluginCfg.MaxToolTraceSteps)
+	return recorder, nil
+}
+
+func createSharedReplayRecorder(
+	storage store.Storage,
+	pluginCfg *config.RouterReplayPluginConfig,
+) *routerreplay.Recorder {
+	recorder := routerreplay.NewRecorder(storage)
+	recorder.SetCapturePolicy(
+		pluginCfg.CaptureRequestBody,
+		pluginCfg.CaptureResponseBody,
+		resolveReplayMaxBodyBytes(pluginCfg.MaxBodyBytes),
+	)
+	recorder.SetMaxToolTraceBytes(pluginCfg.MaxToolTraceBytes)
+	recorder.SetMaxToolTraceSteps(pluginCfg.MaxToolTraceSteps)
+	return recorder
+}
+
+func usesSharedReplayStorage(backend string) bool {
+	switch backend {
+	case "postgres", "redis", "milvus", "qdrant":
+		return true
+	default:
+		return false
+	}
+}
+
+func resolveReplayStoreBackend(cfg config.RouterReplayConfig) string {
+	if backend := strings.ToLower(strings.TrimSpace(cfg.StoreBackend)); backend != "" {
+		return backend
+	}
+	if cfg.Postgres != nil {
+		return "postgres"
+	}
+	if cfg.Redis != nil {
+		return "redis"
+	}
+	if cfg.Milvus != nil {
+		return "milvus"
+	}
+	if cfg.Qdrant != nil {
+		return "qdrant"
+	}
+	return "memory"
+}
+
+func resolveReplayMaxBodyBytes(maxBodyBytes int) int {
+	if maxBodyBytes <= 0 {
+		return routerreplay.DefaultMaxBodyBytes
+	}
+	return maxBodyBytes
+}
+
+func createReplayStore(
+	decisionName string,
+	backend string,
+	pluginCfg *config.RouterReplayPluginConfig,
+	globalCfg *config.RouterReplayConfig,
+) (store.Storage, error) {
+	switch backend {
+	case "memory":
+		logging.Warnf("Router replay store_backend is set to %q — all replay records "+
+			"will be lost on router restart. Use \"postgres\" or \"redis\" for durable storage in production.",
+			"memory")
+		return createReplayMemoryStore(decisionName, pluginCfg, globalCfg), nil
+	case "redis":
+		return createReplayRedisStore(globalCfg)
+	case "postgres":
+		return createReplayPostgresStore(globalCfg)
+	case "milvus":
+		return createReplayMilvusStore(globalCfg)
+	case "qdrant":
+		return createReplayQdrantStore(globalCfg)
+	default:
+		return nil, fmt.Errorf(
+			"unknown store_backend: %s (supported: memory, redis, postgres, milvus, qdrant)",
+			backend,
+		)
+	}
+}
+
+func createSharedReplayStore(
+	backend string,
+	globalCfg *config.RouterReplayConfig,
+) (store.Storage, error) {
+	switch backend {
+	case "redis":
+		return createReplayRedisStore(globalCfg)
+	case "postgres":
+		return createReplayPostgresStore(globalCfg)
+	case "milvus":
+		return createReplayMilvusStore(globalCfg)
+	case "qdrant":
+		return createReplayQdrantStore(globalCfg)
+	default:
+		return nil, fmt.Errorf("shared replay storage not supported for backend %s", backend)
+	}
+}
+
+func createReplayMemoryStore(
+	decisionName string,
+	pluginCfg *config.RouterReplayPluginConfig,
+	globalCfg *config.RouterReplayConfig,
+) store.Storage {
+	maxRecords := pluginCfg.MaxRecords
+	if maxRecords <= 0 {
+		maxRecords = routerreplay.DefaultMaxRecords
+	}
+	logging.Debugf("Router replay for %s using memory backend (max_records=%d)", decisionName, maxRecords)
+	return store.NewMemoryStore(maxRecords, globalCfg.TTLSeconds)
+}
+
+func createReplayRedisStore(globalCfg *config.RouterReplayConfig) (store.Storage, error) {
+	if globalCfg.Redis == nil {
+		return nil, fmt.Errorf("redis config required when store_backend is 'redis'")
+	}
+
+	redisConfig := buildReplayRedisConfig(globalCfg.Redis)
+	storage, err := store.NewRedisStore(redisConfig, globalCfg.TTLSeconds, globalCfg.AsyncWrites)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create redis store: %w", err)
+	}
+	logging.Debugf(
+		"Router replay using redis backend (address=%s, key_prefix=%s, ttl=%ds, async=%v)",
+		redisConfig.Address,
+		redisConfig.KeyPrefix,
+		globalCfg.TTLSeconds,
+		globalCfg.AsyncWrites,
+	)
+	return storage, nil
+}
+
+func buildReplayRedisConfig(redisCfg *config.RouterReplayRedisConfig) *store.RedisConfig {
+	return &store.RedisConfig{
+		Address:       redisCfg.Address,
+		DB:            redisCfg.DB,
+		Password:      redisCfg.Password,
+		UseTLS:        redisCfg.UseTLS,
+		TLSSkipVerify: redisCfg.TLSSkipVerify,
+		MaxRetries:    redisCfg.MaxRetries,
+		PoolSize:      redisCfg.PoolSize,
+		KeyPrefix:     redisCfg.KeyPrefix,
+	}
+}
+
+func createReplayPostgresStore(globalCfg *config.RouterReplayConfig) (store.Storage, error) {
+	if globalCfg.Postgres == nil {
+		return nil, fmt.Errorf("postgres config required when store_backend is 'postgres'")
+	}
+
+	pgConfig := buildReplayPostgresConfig(globalCfg.Postgres)
+	storage, err := store.NewPostgresStore(pgConfig, globalCfg.TTLSeconds, globalCfg.AsyncWrites)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create postgres store: %w", err)
+	}
+	tableName := pgConfig.TableName
+	if tableName == "" {
+		tableName = store.DefaultPostgresTableName
+	}
+	logging.Debugf(
+		"Router replay using postgres backend (host=%s, db=%s, table=%s, ttl=%ds, async=%v)",
+		pgConfig.Host,
+		pgConfig.Database,
+		tableName,
+		globalCfg.TTLSeconds,
+		globalCfg.AsyncWrites,
+	)
+	return storage, nil
+}
+
+func buildReplayPostgresConfig(postgresCfg *config.RouterReplayPostgresConfig) *store.PostgresConfig {
+	return &store.PostgresConfig{
+		Host:            postgresCfg.Host,
+		Port:            postgresCfg.Port,
+		Database:        postgresCfg.Database,
+		User:            postgresCfg.User,
+		Password:        postgresCfg.Password,
+		SSLMode:         postgresCfg.SSLMode,
+		MaxOpenConns:    postgresCfg.MaxOpenConns,
+		MaxIdleConns:    postgresCfg.MaxIdleConns,
+		ConnMaxLifetime: postgresCfg.ConnMaxLifetime,
+		TableName:       postgresCfg.TableName,
+	}
+}
+
+func createReplayMilvusStore(globalCfg *config.RouterReplayConfig) (store.Storage, error) {
+	if globalCfg.Milvus == nil {
+		return nil, fmt.Errorf("milvus config required when store_backend is 'milvus'")
+	}
+
+	milvusConfig := buildReplayMilvusConfig(globalCfg.Milvus)
+	storage, err := store.NewMilvusStore(milvusConfig, globalCfg.TTLSeconds, globalCfg.AsyncWrites)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create milvus store: %w", err)
+	}
+	logging.Debugf(
+		"Router replay using milvus backend (address=%s, collection=%s, ttl=%ds, async=%v)",
+		milvusConfig.Address,
+		milvusConfig.CollectionName,
+		globalCfg.TTLSeconds,
+		globalCfg.AsyncWrites,
+	)
+	return storage, nil
+}
+
+func buildReplayMilvusConfig(milvusCfg *config.RouterReplayMilvusConfig) *store.MilvusConfig {
+	return &store.MilvusConfig{
+		Address:          milvusCfg.Address,
+		Username:         milvusCfg.Username,
+		Password:         milvusCfg.Password,
+		CollectionName:   milvusCfg.CollectionName,
+		ConsistencyLevel: milvusCfg.ConsistencyLevel,
+		ShardNum:         milvusCfg.ShardNum,
+	}
+}
+
+func createReplayQdrantStore(globalCfg *config.RouterReplayConfig) (store.Storage, error) {
+	if globalCfg.Qdrant == nil {
+		return nil, fmt.Errorf("qdrant config required when store_backend is 'qdrant'")
+	}
+
+	qdrantConfig := buildReplayQdrantConfig(globalCfg.Qdrant)
+	storage, err := store.NewQdrantStore(qdrantConfig, globalCfg.TTLSeconds, globalCfg.AsyncWrites)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create qdrant store: %w", err)
+	}
+	logging.Debugf(
+		"Router replay using qdrant backend (host=%s, port=%d, collection=%s, ttl=%ds, async=%v)",
+		qdrantConfig.Host,
+		qdrantConfig.Port,
+		qdrantConfig.CollectionName,
+		globalCfg.TTLSeconds,
+		globalCfg.AsyncWrites,
+	)
+	return storage, nil
+}
+
+func buildReplayQdrantConfig(qdrantCfg *config.RouterReplayQdrantConfig) *store.QdrantConfig {
+	return &store.QdrantConfig{
+		Host:           qdrantCfg.Host,
+		Port:           qdrantCfg.Port,
+		APIKey:         qdrantCfg.APIKey,
+		UseTLS:         qdrantCfg.UseTLS,
+		CollectionName: qdrantCfg.CollectionName,
+	}
+}

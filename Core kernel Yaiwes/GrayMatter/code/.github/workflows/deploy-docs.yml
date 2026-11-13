@@ -1,0 +1,78 @@
+name: docs
+
+# Deploys the documentation site only when something it renders changes.
+# Code-only PRs never trigger this workflow: the docs are a render of
+# www/ (site) + docs/ (canonical content), so those are the only paths
+# that can change the output.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'www/**'
+      - 'docs/**'
+      - '.github/workflows/deploy-docs.yml'
+  pull_request:
+    paths:
+      - 'www/**'
+      - 'docs/**'
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: www/package-lock.json
+
+      - name: Install
+        working-directory: www
+        run: npm ci
+
+      - name: Build
+        working-directory: www
+        run: npm run build
+
+      # main: promote straight to the active deployment.
+      - name: Publish (main)
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: www
+          command: deploy
+
+      # PRs: upload a version and get a preview URL without touching
+      # production traffic. The URL lands in this step's log and in the
+      # Worker's Version History.
+      #
+      # Skipped for pull requests from forks. GitHub withholds secrets from
+      # them by design, so wrangler would run with an empty token and fail:
+      # a red check on every outside contribution, for a reason that has
+      # nothing to do with the contribution. Install and Build still run, so
+      # a fork PR that breaks the site is still caught; only the upload is
+      # skipped. The fix is NOT pull_request_target: that runs with the base
+      # repository secrets while checking out the fork code, which is
+      # precisely how a preview job becomes a credential leak.
+      - name: Preview (PR)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: www
+          command: versions upload --message docs-preview-pr-${{ github.event.number }}

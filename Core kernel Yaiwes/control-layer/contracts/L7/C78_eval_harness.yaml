@@ -1,0 +1,17 @@
+# C78 — L7. B6 SALIDA4
+id: C78
+layer: L7
+name: eval_harness
+implementado: true
+critical: false
+description: "Harness de evaluación"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C78 aplica en capa L7"
+checks:
+  - eval_harness_check
+evidence:
+  type: eval_harness_marker
+  required: false

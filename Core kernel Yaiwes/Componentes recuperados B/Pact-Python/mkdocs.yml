@@ -1,0 +1,183 @@
+---
+site_name: Pact Python
+site_url: https://pact-foundation.github.io/pact-python/
+
+repo_name: pact-foundation/pact-python
+repo_url: https://github.com/pact-foundation/pact-python
+
+edit_uri: edit/develop/docs
+
+hooks:
+  - docs/scripts/rewrite-docs-links.py
+
+plugins:
+  - gen-files:
+      scripts:
+        - docs/scripts/markdown.py
+        - docs/scripts/python.py
+        # - docs/scripts/other.py
+  - search
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - section-index
+  - gh-admonitions
+  - mkdocstrings:
+      default_handler: python
+      enable_inventory: true
+      handlers:
+        python:
+          inventories:
+            - https://docs.aiohttp.org/en/stable/objects.inv
+            - https://docs.pydantic.dev/latest/objects.inv
+            - https://docs.python.org/3/objects.inv
+            - https://fastapi.tiangolo.com/objects.inv
+            - https://flask.palletsprojects.com/en/stable/objects.inv
+            - https://googleapis.dev/python/protobuf/latest/objects.inv
+            - https://grpc.github.io/grpc/python/objects.inv
+            - https://requests.readthedocs.io/en/latest/objects.inv
+          options:
+            # General
+            allow_inspection: true
+            extensions:
+              - dataclasses
+              - griffe_generics
+              # - griffe_inherited_method_crossrefs  # Waiting on upstream fix
+              - griffe_pydantic
+              - griffe_warnings_deprecated
+            show_inheritance_diagram: true
+            show_source: true
+            # Headings
+            heading_level: 2
+            show_category_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            # Members
+            filters:
+              - '!^_'
+              - '!^__'
+            # Docstrings
+            docstring_style: google
+            docstring_options:
+              ignore_init_summary: true
+            docstring_section_style: spacy
+            merge_init_into_class: true
+            # relative_crossrefs: true
+            scoped_crossrefs: true
+            show_if_no_docstring: true
+            # Signature
+            annotations_path: brief
+            modernize_annotations: true
+            overloads_only: true
+            show_signature_annotations: true
+            show_signature_type_parameters: true
+            signature_crossrefs: true
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Usage documentation:
+          - api/*.md
+          - api/**/*.md
+        Examples:
+          - examples/*.md
+  - social
+  - blog:
+      blog_toc: true
+      post_excerpt: required
+
+markdown_extensions:
+  # Python Markdown
+  - abbr
+  - attr_list
+  - footnotes
+  - meta
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+  # Python Markdown Extensions
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.blocks.admonition
+  - pymdownx.blocks.definition
+  - pymdownx.blocks.details
+  - pymdownx.blocks.html:
+  - pymdownx.blocks.tab:
+      alternate_style: true
+  - pymdownx.caret
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.pathconverter:
+      absolute: false
+  - pymdownx.smartsymbols
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+copyright: Copyright &copy; 2025 Pact Foundation
+
+theme:
+  name: material
+
+  icon:
+    repo: fontawesome/brands/github
+
+  features:
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.tooltips
+    - content.tabs.link
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - navigation.tracking
+    - navigation.footer
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+
+  palette:
+    - media: (prefers-color-scheme)
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: '(prefers-color-scheme: light)'
+      scheme: default
+      primary: cyan
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: '(prefers-color-scheme: dark)'
+      scheme: slate
+      primary: cyan
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Switch to system preference
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/pact-foundation/pact-python

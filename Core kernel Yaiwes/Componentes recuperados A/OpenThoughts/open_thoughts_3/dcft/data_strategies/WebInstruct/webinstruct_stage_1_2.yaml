@@ -1,0 +1,50 @@
+operators:
+  - id: mix_fasttext_train_positive
+    config:
+      type: load_preexisting
+      framework_name: webinstruct_stage_1_1
+
+  - id: sample_dclm_refined_web_shards
+    config:
+      type: dclm_refinedweb_source
+      num_shards: 10
+      seed: 42
+      s3_bucket: commoncrawl
+      s3_prefix: contrib/datacomp/DCLM-refinedweb/
+
+  - id: sample_dclm_refinedweb_docs
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample
+      function_config:
+        num_samples: 40_000
+    input_ids:
+      - sample_dclm_refined_web_shards
+      
+  - id: clean_dclm_refinedweb_docs
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.clean_dataset
+      function_config:
+        input_column: text
+        output_column: cleaned_text
+    input_ids:
+      - sample_dclm_refinedweb_docs
+
+  - id: train_fasttext_classifier
+    config:
+      type: train_fasttext
+      text_column: cleaned_text
+      positive_input_ids:
+        - mix_fasttext_train_positive
+      negative_input_ids:
+        - clean_dclm_refinedweb_docs
+      dim: 256
+      epoch: 3
+      lr: 0.1
+      word_ngrams: 3
+      min_count: 3
+      hf_repo_id: mlfoundations-dev/fasttext_webinstruct_stage_1_2_20k_stemez_20k_mathhelpforum_40k_negative_refinedweb
+    input_ids:
+      - mix_fasttext_train_positive
+      - clean_dclm_refinedweb_docs

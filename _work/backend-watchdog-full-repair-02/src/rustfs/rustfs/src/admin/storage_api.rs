@@ -1,0 +1,1064 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::ops::Deref;
+use std::sync::Arc;
+
+use rustfs_storage_api as storage_contracts;
+use time::OffsetDateTime;
+
+mod ecstore_bucket {
+    pub(crate) use crate::storage::storage_api::ecstore_bucket::{
+        bandwidth, bucket_target_sys, durability, lifecycle, metadata, metadata_sys, object_lock, quota, remote_s3_client,
+        replication, target, utils, versioning, versioning_sys,
+    };
+}
+
+mod ecstore_capacity {
+    pub(crate) use crate::storage::storage_api::ecstore_capacity::is_reserved_or_invalid_bucket;
+}
+
+mod ecstore_client {
+    pub(crate) use crate::storage::storage_api::ecstore_client::admin_handler_utils;
+}
+
+pub(crate) mod ecstore_cluster {
+    pub(crate) use crate::storage::storage_api::ecstore_cluster::{
+        ClusterDriveMembership, ClusterEndpointType, ClusterLocalNodeStorage, ClusterLocalNodeStorageSnapshot,
+        ClusterMembershipSnapshot, ClusterNodeMembership, ClusterPeerHealth, ClusterPeerHealthSnapshot, ClusterPoolState,
+        ClusterPoolStateSnapshot, ClusterRpcBoundarySnapshot, ClusterRpcChannelSnapshot, ClusterRpcPlane, ClusterRpcTransport,
+    };
+}
+
+mod ecstore_config {
+    pub(crate) use crate::storage::storage_api::ecstore_config::{com, init, storageclass};
+}
+
+#[allow(unused_imports)]
+mod ecstore_disk {
+    pub(crate) use crate::storage::storage_api::ecstore_disk::{RUSTFS_META_BUCKET, endpoint};
+}
+
+mod ecstore_error {
+    pub(crate) use crate::storage::storage_api::ecstore_error::{StorageError, is_err_bucket_not_found};
+}
+
+#[allow(unused_imports)]
+mod ecstore_layout {
+    pub(crate) use crate::storage::storage_api::ecstore_layout::{EndpointServerPools, Endpoints, PoolEndpoints};
+}
+
+mod ecstore_metrics {
+    pub(crate) use crate::storage::storage_api::ecstore_metrics::{CollectMetricsOpts, MetricType, collect_local_metrics};
+}
+
+mod ecstore_notification {
+    pub(crate) use crate::storage::storage_api::ecstore_notification::{
+        ClusterTierDailyStats, CrossPoolFenceFleetProofToken, NotificationSys, acquire_cross_pool_fence_fleet_proof,
+    };
+}
+
+#[allow(unused_imports)]
+pub(crate) mod ecstore_rebalance {
+    #[cfg(test)]
+    pub(crate) use crate::storage::storage_api::ecstore_rebalance::test_util;
+    pub(crate) use crate::storage::storage_api::ecstore_rebalance::{
+        DiskStat, RebalSaveOpt, RebalStatus, RebalanceCleanupWarningEntry, RebalanceCleanupWarnings, RebalanceInfo,
+        RebalanceMeta, RebalanceStats, RebalanceStopPropagationRecord, decode_rebalance_stop_propagation_record,
+        encode_rebalance_stop_propagation_record,
+    };
+}
+
+mod ecstore_rpc {
+    pub(crate) use crate::storage::storage_api::ecstore_rpc::PeerRestClient;
+}
+
+mod ecstore_storage {
+    pub(crate) use crate::storage::storage_api::ecstore_storage::{ECStore, ScannerDataMovementPauseStatus};
+}
+
+mod ecstore_tier {
+    pub(crate) use crate::storage::storage_api::ecstore_tier::{tier, tier_admin, tier_config, tier_handlers};
+}
+
+pub(crate) const RUSTFS_META_BUCKET: &str = ecstore_disk::RUSTFS_META_BUCKET;
+pub(crate) const STORAGE_CLASS_SUB_SYS: &str = ecstore_config::com::STORAGE_CLASS_SUB_SYS;
+
+pub(crate) type AdminError = ecstore_client::admin_handler_utils::AdminError;
+pub(crate) type CollectMetricsOpts = ecstore_metrics::CollectMetricsOpts;
+pub(crate) type DiskStat = ecstore_rebalance::DiskStat;
+pub(crate) type ECStore = ecstore_storage::ECStore;
+pub(crate) type EndpointServerPools = ecstore_layout::EndpointServerPools;
+pub(crate) type MetricType = ecstore_metrics::MetricType;
+pub(crate) type NotificationSys = ecstore_notification::NotificationSys;
+pub(crate) type ClusterTierDailyStats = ecstore_notification::ClusterTierDailyStats;
+pub(crate) type PeerRestClient = ecstore_rpc::PeerRestClient;
+pub(crate) type RebalSaveOpt = ecstore_rebalance::RebalSaveOpt;
+pub(crate) type RebalanceCleanupWarnings = ecstore_rebalance::RebalanceCleanupWarnings;
+pub(crate) type RebalanceMeta = ecstore_rebalance::RebalanceMeta;
+pub(crate) type RebalanceStats = ecstore_rebalance::RebalanceStats;
+pub(crate) type RebalanceStopPropagationRecord = ecstore_rebalance::RebalanceStopPropagationRecord;
+pub(crate) type ScannerDataMovementPauseStatus = ecstore_storage::ScannerDataMovementPauseStatus;
+pub(crate) type StorageError = ecstore_error::StorageError;
+pub(crate) type Error = StorageError;
+pub(crate) type Result<T> = core::result::Result<T, Error>;
+pub(crate) type TierConfig = ecstore_tier::tier_config::TierConfig;
+pub(crate) type TierCreds = ecstore_tier::tier_admin::TierCreds;
+pub(crate) type TierType = ecstore_tier::tier_config::TierType;
+pub(crate) type TierConfigUpdateError = crate::storage::storage_api::TierConfigUpdateError;
+
+pub(crate) fn acquire_cross_pool_fence_fleet_proof() -> Option<ecstore_notification::CrossPoolFenceFleetProofToken> {
+    ecstore_notification::acquire_cross_pool_fence_fleet_proof()
+}
+
+pub(crate) mod runtime_sources {
+    pub(crate) type DailyAllTierStats = super::DailyAllTierStats;
+    pub(crate) type ECStore = super::ECStore;
+    pub(crate) type NotificationSys = super::NotificationSys;
+    pub(crate) type ScannerMetricsReport = rustfs_scanner_metrics::metrics::ScannerMetricsReport;
+    pub(crate) type StorageClassConfig = crate::storage::storage_api::ecstore_config::storageclass::Config;
+    pub(crate) type TierConfigMgr = crate::storage::storage_api::TierConfigMgr;
+}
+
+#[cfg(test)]
+pub(crate) type Endpoint = ecstore_disk::endpoint::Endpoint;
+#[cfg(test)]
+pub(crate) type Endpoints = ecstore_layout::Endpoints;
+#[cfg(test)]
+pub(crate) type PoolEndpoints = ecstore_layout::PoolEndpoints;
+#[cfg(test)]
+pub(crate) type RebalStatus = ecstore_rebalance::RebalStatus;
+#[cfg(test)]
+pub(crate) type RebalanceCleanupWarningEntry = ecstore_rebalance::RebalanceCleanupWarningEntry;
+#[cfg(test)]
+pub(crate) type RebalanceInfo = ecstore_rebalance::RebalanceInfo;
+
+pub(crate) fn decode_rebalance_stop_propagation_record(message: &str) -> Option<RebalanceStopPropagationRecord> {
+    ecstore_rebalance::decode_rebalance_stop_propagation_record(message)
+}
+
+#[cfg(test)]
+pub(crate) fn encode_rebalance_stop_propagation_record(record: &RebalanceStopPropagationRecord) -> String {
+    ecstore_rebalance::encode_rebalance_stop_propagation_record(record)
+}
+
+pub(crate) trait AdminReplicationConfigExt {
+    fn filter_all_replication_target_arns(&self) -> Vec<String>;
+    fn has_existing_object_replication(&self, arn: &str) -> (bool, bool);
+}
+
+impl AdminReplicationConfigExt for s3s::dto::ReplicationConfiguration {
+    fn filter_all_replication_target_arns(&self) -> Vec<String> {
+        let obj = ecstore_bucket::replication::ObjectOpts {
+            op_type: ecstore_bucket::replication::ReplicationType::All,
+            ..Default::default()
+        };
+        <s3s::dto::ReplicationConfiguration as ecstore_bucket::replication::ReplicationConfigurationExt>::filter_target_arns(
+            self, &obj,
+        )
+    }
+
+    fn has_existing_object_replication(&self, arn: &str) -> (bool, bool) {
+        <s3s::dto::ReplicationConfiguration as ecstore_bucket::replication::ReplicationConfigurationExt>::has_existing_object_replication(
+            self, arn,
+        )
+    }
+}
+
+pub(crate) trait AdminVersioningConfigExt {
+    fn enabled(&self) -> bool;
+}
+
+impl AdminVersioningConfigExt for s3s::dto::VersioningConfiguration {
+    fn enabled(&self) -> bool {
+        <s3s::dto::VersioningConfiguration as ecstore_bucket::versioning::VersioningApi>::enabled(self)
+    }
+}
+
+pub(crate) trait AdminObjectLockConfigExt {
+    fn enabled(&self) -> bool;
+}
+
+impl AdminObjectLockConfigExt for s3s::dto::ObjectLockConfiguration {
+    fn enabled(&self) -> bool {
+        <s3s::dto::ObjectLockConfiguration as ecstore_bucket::object_lock::ObjectLockApi>::enabled(self)
+    }
+}
+
+pub(crate) mod bandwidth {
+    pub(crate) mod monitor {
+        pub(crate) type BandwidthDetails = super::super::ecstore_bucket::bandwidth::monitor::BandwidthDetails;
+    }
+}
+
+pub(crate) mod bucket_target_sys {
+    pub(crate) use super::ecstore_bucket::bucket_target_sys::append_version_id_query;
+    pub(crate) use super::ecstore_bucket::bucket_target_sys::resolve_delete_api_version_id;
+    pub(crate) type AdvancedPutOptions = super::ecstore_bucket::bucket_target_sys::AdvancedPutOptions;
+    pub(crate) type BucketTargetError = super::ecstore_bucket::bucket_target_sys::BucketTargetError;
+    pub(crate) type BucketTargetSys = super::ecstore_bucket::bucket_target_sys::BucketTargetSys;
+    pub(crate) type PutObjectOptions = super::ecstore_bucket::bucket_target_sys::PutObjectOptions;
+    pub(crate) type RemoveObjectOptions = super::ecstore_bucket::bucket_target_sys::RemoveObjectOptions;
+    pub(crate) type S3ClientError = super::ecstore_bucket::bucket_target_sys::S3ClientError;
+    pub(crate) type SsecPassthroughCapability = super::ecstore_bucket::bucket_target_sys::SsecPassthroughCapability;
+    pub(crate) type VersionIdentityCapability = super::ecstore_bucket::bucket_target_sys::VersionIdentityCapability;
+    pub(crate) type TargetClient = super::ecstore_bucket::bucket_target_sys::TargetClient;
+}
+
+pub(crate) mod lifecycle {
+    pub(crate) use super::ecstore_bucket::lifecycle::manual_transition_job::{
+        ManualTransitionJobRecord, ManualTransitionJobState, ManualTransitionScopeAdmission, ManualTransitionScopeAdmissionClaim,
+        claim_manual_transition_scope_admission, delete_manual_transition_scope_admission_if_current,
+        load_manual_transition_job_record, load_manual_transition_scope_admission, manual_transition_job_lease_expired,
+        manual_transition_scope_admission_lease_expired, persist_manual_transition_job_progress_if_owned,
+        renew_manual_transition_job_lease_if_owned, request_manual_transition_job_cancel, save_manual_transition_job_record,
+        update_manual_transition_job_record,
+    };
+    pub(crate) type ManualTransitionCancelCheck =
+        super::ecstore_bucket::lifecycle::bucket_lifecycle_ops::ManualTransitionCancelCheck;
+    pub(crate) type ManualTransitionQueueSnapshot =
+        super::ecstore_bucket::lifecycle::bucket_lifecycle_ops::ManualTransitionQueueSnapshot;
+    pub(crate) type ManualTransitionProgressSink =
+        super::ecstore_bucket::lifecycle::bucket_lifecycle_ops::ManualTransitionProgressSink;
+    pub(crate) type ManualTransitionRunOptions =
+        super::ecstore_bucket::lifecycle::bucket_lifecycle_ops::ManualTransitionRunOptions;
+    pub(crate) type ManualTransitionRunReport = super::ecstore_bucket::lifecycle::bucket_lifecycle_ops::ManualTransitionRunReport;
+    pub(crate) use super::ecstore_bucket::lifecycle::recovery_control::{
+        IlmRecoveryClassification, IlmRecoveryControlView, IlmRecoveryProtocol, inspect_recovery_control, list_recovery_controls,
+    };
+    pub(crate) use super::ecstore_bucket::lifecycle::recovery_disposition::{
+        IlmRecoveryDispositionExecutionOutcome, IlmRecoveryDispositionReasonCode, IlmRecoveryDispositionState,
+        dry_run_recovery_disposition, execute_recovery_disposition,
+    };
+    pub(crate) use super::ecstore_bucket::lifecycle::recovery_export::{
+        IlmRecoveryExportObservation, create_recovery_export, inspect_recovery_export_observation, load_recovery_export,
+    };
+    pub(crate) use super::ecstore_bucket::lifecycle::transition_transaction::{
+        TransitionOperatorDeleteResult, TransitionOperatorError, TransitionRecoveryRetryResult, TransitionRecoveryRetryStatus,
+        delete_transition_candidate_for_operator, finalize_missing_transition_transaction_for_operator,
+        inspect_transition_recovery_retry_for_operator, inspect_transition_transaction_for_operator,
+        retry_transition_recovery_for_operator,
+    };
+
+    pub(crate) async fn enqueue_transition_for_existing_objects_scoped(
+        api: std::sync::Arc<super::ECStore>,
+        bucket: &str,
+        options: ManualTransitionRunOptions,
+    ) -> super::Result<ManualTransitionRunReport> {
+        super::ecstore_bucket::lifecycle::bucket_lifecycle_ops::enqueue_transition_for_existing_objects_scoped(
+            api, bucket, options,
+        )
+        .await
+    }
+
+    pub(crate) fn manual_transition_queue_snapshot() -> ManualTransitionQueueSnapshot {
+        super::ecstore_bucket::lifecycle::bucket_lifecycle_ops::manual_transition_queue_snapshot()
+    }
+
+    pub(crate) mod tier_last_day_stats {
+        #[cfg(test)]
+        pub(crate) type LastDayTierStats = super::super::ecstore_bucket::lifecycle::tier_last_day_stats::LastDayTierStats;
+    }
+}
+
+pub(crate) mod metadata {
+    pub(crate) const BUCKET_CORS_CONFIG: &str = super::ecstore_bucket::metadata::BUCKET_CORS_CONFIG;
+    pub(crate) const BUCKET_LIFECYCLE_CONFIG: &str = super::ecstore_bucket::metadata::BUCKET_LIFECYCLE_CONFIG;
+    pub(crate) const BUCKET_NOTIFICATION_CONFIG: &str = super::ecstore_bucket::metadata::BUCKET_NOTIFICATION_CONFIG;
+    pub(crate) const BUCKET_POLICY_CONFIG: &str = super::ecstore_bucket::metadata::BUCKET_POLICY_CONFIG;
+    pub(crate) const BUCKET_QUOTA_CONFIG_FILE: &str = super::ecstore_bucket::metadata::BUCKET_QUOTA_CONFIG_FILE;
+    pub(crate) const BUCKET_REPLICATION_CONFIG: &str = super::ecstore_bucket::metadata::BUCKET_REPLICATION_CONFIG;
+    pub(crate) const BUCKET_SSECONFIG: &str = super::ecstore_bucket::metadata::BUCKET_SSECONFIG;
+    pub(crate) const BUCKET_TAGGING_CONFIG: &str = super::ecstore_bucket::metadata::BUCKET_TAGGING_CONFIG;
+    pub(crate) const BUCKET_TARGETS_FILE: &str = super::ecstore_bucket::metadata::BUCKET_TARGETS_FILE;
+    pub(crate) const BUCKET_VERSIONING_CONFIG: &str = super::ecstore_bucket::metadata::BUCKET_VERSIONING_CONFIG;
+    pub(crate) const BUCKET_DURABILITY_CONFIG: &str = super::ecstore_bucket::metadata::BUCKET_DURABILITY_CONFIG;
+    pub(crate) const BUCKET_ON_DEMAND_MIGRATION_CONFIG: &str = super::ecstore_bucket::metadata::BUCKET_ON_DEMAND_MIGRATION_CONFIG;
+    pub(crate) const OBJECT_LOCK_CONFIG: &str = super::ecstore_bucket::metadata::OBJECT_LOCK_CONFIG;
+
+    pub(crate) type BucketMetadata = super::ecstore_bucket::metadata::BucketMetadata;
+
+    pub(crate) fn table_catalog_path_hash(value: &str) -> String {
+        super::ecstore_bucket::metadata::table_catalog_path_hash(value)
+    }
+}
+
+pub(crate) mod durability {
+    pub(crate) type BucketDurabilityConfig = super::ecstore_bucket::durability::BucketDurabilityConfig;
+}
+
+pub(crate) mod remote_s3_client {
+    pub(crate) type PathStyle = super::ecstore_bucket::remote_s3_client::PathStyle;
+    pub(crate) type RemoteCredentials = super::ecstore_bucket::remote_s3_client::RemoteCredentials;
+    pub(crate) type RemoteS3ClientError = super::ecstore_bucket::remote_s3_client::RemoteS3ClientError;
+    pub(crate) type RemoteS3RetryPolicy = super::ecstore_bucket::remote_s3_client::RemoteS3RetryPolicy;
+}
+
+pub(crate) mod metadata_sys {
+    #[cfg(test)]
+    pub(crate) use super::ecstore_bucket::metadata_sys::ConfigWriteLockProbe;
+    use std::sync::Arc;
+
+    use rustfs_policy::policy::BucketPolicy;
+    use s3s::dto::{ObjectLockConfiguration, ServerSideEncryptionConfiguration, VersioningConfiguration};
+    use time::OffsetDateTime;
+
+    use super::Result;
+    use super::metadata::BucketMetadata;
+    use super::quota::BucketQuota;
+    use super::target::BucketTargets;
+
+    pub(crate) type BucketMetadataSys = super::ecstore_bucket::metadata_sys::BucketMetadataSys;
+
+    pub(crate) async fn get(bucket: &str) -> Result<Arc<BucketMetadata>> {
+        super::ecstore_bucket::metadata_sys::get(bucket).await
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn update(bucket: &str, config_file: &str, data: Vec<u8>) -> Result<OffsetDateTime> {
+        crate::storage::storage_api::update_bucket_metadata_config(bucket, config_file, data).await
+    }
+
+    pub(crate) async fn update_config_with<F>(bucket: &str, config_file: &str, mutate: F) -> Result<OffsetDateTime>
+    where
+        F: FnOnce(&BucketMetadata) -> Result<Vec<u8>> + Send,
+    {
+        super::ecstore_bucket::metadata_sys::update_config_with(bucket, config_file, mutate).await
+    }
+
+    pub(crate) async fn update_if_incarnation(
+        bucket: &str,
+        config_file: &str,
+        data: Vec<u8>,
+        expected_incarnation_id: uuid::Uuid,
+    ) -> Result<OffsetDateTime> {
+        super::ecstore_bucket::metadata_sys::update_if_incarnation(bucket, config_file, data, expected_incarnation_id).await
+    }
+
+    /// [`update_if_incarnation`] stamping the config with a replicated edit's
+    /// source `updated_at` instead of the local clock (backlog#2292).
+    pub(crate) async fn update_if_incarnation_at(
+        bucket: &str,
+        config_file: &str,
+        data: Vec<u8>,
+        expected_incarnation_id: uuid::Uuid,
+        updated_at: OffsetDateTime,
+    ) -> Result<OffsetDateTime> {
+        super::ecstore_bucket::metadata_sys::update_if_incarnation_at(
+            bucket,
+            config_file,
+            data,
+            expected_incarnation_id,
+            updated_at,
+        )
+        .await
+    }
+
+    pub(crate) async fn update_quota_if_incarnation(
+        bucket: &str,
+        data: Vec<u8>,
+        expected_incarnation_id: uuid::Uuid,
+        proof: &super::ecstore_notification::CrossPoolFenceFleetProofToken,
+    ) -> Result<OffsetDateTime> {
+        super::ecstore_bucket::metadata_sys::update_quota_if_incarnation(bucket, data, expected_incarnation_id, proof).await
+    }
+
+    /// [`update_quota_if_incarnation`] stamping the quota with a replicated
+    /// edit's source `updated_at` instead of the local clock (backlog#2292).
+    pub(crate) async fn update_quota_if_incarnation_at(
+        bucket: &str,
+        data: Vec<u8>,
+        expected_incarnation_id: uuid::Uuid,
+        proof: &super::ecstore_notification::CrossPoolFenceFleetProofToken,
+        updated_at: OffsetDateTime,
+    ) -> Result<OffsetDateTime> {
+        super::ecstore_bucket::metadata_sys::update_quota_if_incarnation_at(
+            bucket,
+            data,
+            expected_incarnation_id,
+            proof,
+            updated_at,
+        )
+        .await
+    }
+
+    pub(crate) async fn capture_bucket_metadata_incarnation(bucket: &str) -> Result<uuid::Uuid> {
+        super::ecstore_bucket::metadata_sys::capture_bucket_metadata_incarnation(bucket).await
+    }
+
+    pub(crate) async fn acquire_bucket_metadata_transaction_lock(
+        bucket: &str,
+    ) -> Result<super::ecstore_bucket::metadata_sys::BucketMetadataMutationGuard> {
+        crate::storage::storage_api::acquire_bucket_metadata_transaction_lock(bucket).await
+    }
+
+    pub(crate) async fn acquire_bucket_metadata_transaction_lock_for_incarnation(
+        bucket: &str,
+        expected_incarnation_id: uuid::Uuid,
+    ) -> Result<super::ecstore_bucket::metadata_sys::BucketMetadataMutationGuard> {
+        super::ecstore_bucket::metadata_sys::acquire_bucket_metadata_transaction_lock_for_incarnation(
+            bucket,
+            expected_incarnation_id,
+        )
+        .await
+    }
+
+    pub(crate) async fn update_under_transaction_lock(
+        guard: &super::ecstore_bucket::metadata_sys::BucketMetadataMutationGuard,
+        bucket: &str,
+        config_file: &str,
+        data: Vec<u8>,
+    ) -> Result<OffsetDateTime> {
+        super::ecstore_bucket::metadata_sys::update_under_transaction_lock(guard, bucket, config_file, data).await
+    }
+
+    pub(crate) async fn delete_under_transaction_lock(
+        guard: &super::ecstore_bucket::metadata_sys::BucketMetadataMutationGuard,
+        bucket: &str,
+        config_file: &str,
+    ) -> Result<OffsetDateTime> {
+        super::ecstore_bucket::metadata_sys::delete_under_transaction_lock(guard, bucket, config_file).await
+    }
+
+    pub(crate) async fn update_bucket_targets_under_transaction_lock(
+        guard: &super::ecstore_bucket::metadata_sys::BucketMetadataMutationGuard,
+        bucket: &str,
+        data: Vec<u8>,
+    ) -> Result<OffsetDateTime> {
+        crate::storage::storage_api::update_bucket_targets_under_transaction_lock(guard, bucket, data).await
+    }
+
+    pub(crate) async fn delete_if_incarnation(
+        bucket: &str,
+        config_file: &str,
+        expected_incarnation_id: uuid::Uuid,
+    ) -> Result<OffsetDateTime> {
+        super::ecstore_bucket::metadata_sys::delete_if_incarnation(bucket, config_file, expected_incarnation_id).await
+    }
+
+    /// [`delete_if_incarnation`] stamping the cleared config with a replicated
+    /// deletion's source `updated_at` instead of the local clock (backlog#2292).
+    pub(crate) async fn delete_if_incarnation_at(
+        bucket: &str,
+        config_file: &str,
+        expected_incarnation_id: uuid::Uuid,
+        updated_at: OffsetDateTime,
+    ) -> Result<OffsetDateTime> {
+        super::ecstore_bucket::metadata_sys::delete_if_incarnation_at(bucket, config_file, expected_incarnation_id, updated_at)
+            .await
+    }
+
+    pub(crate) async fn get_bucket_policy(bucket: &str) -> Result<(BucketPolicy, OffsetDateTime)> {
+        super::ecstore_bucket::metadata_sys::get_bucket_policy(bucket).await
+    }
+
+    pub(crate) async fn get_bucket_targets_config(bucket: &str) -> Result<BucketTargets> {
+        super::ecstore_bucket::metadata_sys::get_bucket_targets_config(bucket).await
+    }
+
+    pub(crate) async fn get_config_from_disk(bucket: &str) -> Result<BucketMetadata> {
+        super::ecstore_bucket::metadata_sys::get_config_from_disk(bucket).await
+    }
+
+    pub(crate) async fn list_bucket_targets_from_disk(bucket: &str) -> Result<BucketTargets> {
+        let metadata = get_config_from_disk(bucket).await?;
+        if metadata.bucket_targets_config_json.is_empty() {
+            return Ok(BucketTargets::default());
+        }
+        serde_json::from_slice(&metadata.bucket_targets_config_json).map_err(super::Error::other)
+    }
+
+    pub(crate) async fn get_object_lock_config(bucket: &str) -> Result<(ObjectLockConfiguration, OffsetDateTime)> {
+        super::ecstore_bucket::metadata_sys::get_object_lock_config(bucket).await
+    }
+
+    pub(crate) async fn get_durability_config(
+        bucket: &str,
+    ) -> Result<(Option<super::durability::BucketDurabilityConfig>, OffsetDateTime)> {
+        super::ecstore_bucket::metadata_sys::get_durability_config(bucket).await
+    }
+
+    pub(crate) async fn get_quota_config(bucket: &str) -> Result<(BucketQuota, OffsetDateTime)> {
+        super::ecstore_bucket::metadata_sys::get_quota_config(bucket).await
+    }
+
+    pub(crate) async fn get_replication_config(bucket: &str) -> Result<(s3s::dto::ReplicationConfiguration, OffsetDateTime)> {
+        super::ecstore_bucket::metadata_sys::get_replication_config(bucket).await
+    }
+
+    pub(crate) async fn get_sse_config(bucket: &str) -> Result<(ServerSideEncryptionConfiguration, OffsetDateTime)> {
+        super::ecstore_bucket::metadata_sys::get_sse_config(bucket).await
+    }
+
+    pub(crate) async fn get_versioning_config(bucket: &str) -> Result<(VersioningConfiguration, OffsetDateTime)> {
+        super::ecstore_bucket::metadata_sys::get_versioning_config(bucket).await
+    }
+
+    pub(crate) async fn list_bucket_targets(bucket: &str) -> Result<BucketTargets> {
+        super::ecstore_bucket::metadata_sys::list_bucket_targets(bucket).await
+    }
+}
+
+pub(crate) mod quota {
+    pub(crate) mod checker {
+        pub(crate) type QuotaChecker = super::super::ecstore_bucket::quota::checker::QuotaChecker;
+    }
+
+    pub(crate) type BucketQuota = super::ecstore_bucket::quota::BucketQuota;
+    pub(crate) type QuotaError = super::ecstore_bucket::quota::QuotaError;
+    pub(crate) type QuotaOperation = super::ecstore_bucket::quota::QuotaOperation;
+}
+
+pub(crate) mod replication {
+    pub(crate) use super::ecstore_bucket::replication::{
+        OperatorRuleContract, REMOTE_TARGET_CAPABILITY_CONTRACT_VERSION, REMOTE_TARGET_READ_ONLY_HISTORICAL_FIELDS,
+        REMOTE_TARGET_UNSUPPORTED_FIELDS, REMOTE_TARGET_WRITABLE_FIELDS, REPLICATION_CAPABILITY_CONTRACT_VERSION,
+        REPLICATION_READ_ONLY_HISTORICAL_FIELDS, REPLICATION_WRITABLE_FIELDS, assign_site_replication_rule_priorities,
+        merge_incoming_replication_config, replication_target_arn_deployment_id,
+    };
+    pub(crate) type BucketReplicationResyncStatus = super::ecstore_bucket::replication::BucketReplicationResyncStatus;
+    pub(crate) type BucketStats = super::ecstore_bucket::replication::BucketStats;
+    pub(crate) type BucketReplicationStats = super::ecstore_bucket::replication::BucketReplicationStats;
+    pub(crate) type BucketReplicationStat = super::ecstore_bucket::replication::BucketReplicationStat;
+    pub(crate) type InQueueMetric = super::ecstore_bucket::replication::InQueueMetric;
+    pub(crate) type XferStats = super::ecstore_bucket::replication::XferStats;
+    pub(crate) type ReplicationStatusType = super::ecstore_bucket::replication::ReplicationStatusType;
+    pub(crate) type ResyncOpts = super::ecstore_bucket::replication::ResyncOpts;
+    pub(crate) type ResyncStatusType = super::ecstore_bucket::replication::ResyncStatusType;
+    pub(crate) type TargetReplicationResyncStatus = super::ecstore_bucket::replication::TargetReplicationResyncStatus;
+    pub(crate) type DurableMrfBacklog = super::ecstore_bucket::replication::DurableMrfBacklog;
+    #[cfg(test)]
+    pub(crate) type MrfReplicateEntry = super::ecstore_bucket::replication::MrfReplicateEntry;
+    #[cfg(test)]
+    pub(crate) type MrfOpKind = super::ecstore_bucket::replication::MrfOpKind;
+
+    pub(crate) async fn read_durable_mrf_backlog(api: std::sync::Arc<super::ECStore>) -> DurableMrfBacklog {
+        super::ecstore_bucket::replication::read_durable_mrf_backlog(api).await
+    }
+
+    pub(crate) fn resync_opts(
+        bucket: &str,
+        arn: String,
+        resync_id: &str,
+        resync_before: Option<super::OffsetDateTime>,
+    ) -> ResyncOpts {
+        ResyncOpts {
+            bucket: bucket.to_string(),
+            arn,
+            resync_id: resync_id.to_string(),
+            resync_before,
+        }
+    }
+
+    pub(crate) fn resync_start_conflict_id(error: &super::Error) -> Option<&str> {
+        super::ecstore_bucket::replication::resync_start_conflict_id(error)
+    }
+
+    pub(crate) async fn commit_resync_target<Admit, AdmitFuture, Persist, PersistFuture, Activate, ActivateFuture>(
+        mut targets: super::target::BucketTargets,
+        opts: ResyncOpts,
+        admit: Admit,
+        persist: Persist,
+        activate: Activate,
+    ) -> super::Result<super::target::BucketTargets>
+    where
+        Admit: FnOnce(ResyncOpts) -> AdmitFuture,
+        AdmitFuture: std::future::Future<Output = super::Result<bool>>,
+        Persist: FnOnce(Vec<u8>) -> PersistFuture,
+        PersistFuture: std::future::Future<Output = super::Result<()>>,
+        Activate: FnOnce(ResyncOpts, bool) -> ActivateFuture,
+        ActivateFuture: std::future::Future<Output = super::Result<()>>,
+    {
+        let target = targets
+            .targets
+            .iter_mut()
+            .find(|target| target.arn == opts.arn)
+            .ok_or_else(|| super::Error::other("replication resync target is not configured"))?;
+        target.reset_id = opts.resync_id.clone();
+        target.reset_before_date = opts.resync_before;
+        let encoded = serde_json::to_vec(&targets).map_err(super::Error::other)?;
+
+        let new_run = admit(opts.clone()).await?;
+        persist(encoded).await?;
+        activate(opts, !new_run).await?;
+        Ok(targets)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use tokio::sync::Mutex;
+
+        fn targets() -> super::super::target::BucketTargets {
+            super::super::target::BucketTargets {
+                targets: vec![
+                    super::super::target::BucketTarget {
+                        arn: "arn:primary".to_string(),
+                        reset_id: "old-primary".to_string(),
+                        ..Default::default()
+                    },
+                    super::super::target::BucketTarget {
+                        arn: "arn:other".to_string(),
+                        reset_id: "other-node-value".to_string(),
+                        ..Default::default()
+                    },
+                ],
+            }
+        }
+
+        fn opts() -> ResyncOpts {
+            ResyncOpts {
+                bucket: "bucket".to_string(),
+                arn: "arn:primary".to_string(),
+                resync_id: "accepted-id".to_string(),
+                resync_before: Some(time::OffsetDateTime::UNIX_EPOCH),
+            }
+        }
+
+        #[tokio::test]
+        async fn admission_failure_never_mutates_or_persists_target_metadata() {
+            let persist_calls = Arc::new(AtomicUsize::new(0));
+            let activate_calls = Arc::new(AtomicUsize::new(0));
+            let original = targets();
+            let error = commit_resync_target(
+                original.clone(),
+                opts(),
+                |_| async { Err(super::super::Error::other("pool unavailable")) },
+                {
+                    let persist_calls = persist_calls.clone();
+                    move |_| async move {
+                        persist_calls.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    }
+                },
+                {
+                    let activate_calls = activate_calls.clone();
+                    move |_, _| async move {
+                        activate_calls.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    }
+                },
+            )
+            .await
+            .expect_err("admission failure must fail closed");
+
+            assert!(error.to_string().contains("pool unavailable"));
+            assert_eq!(persist_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(activate_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(original.targets[0].reset_id, "old-primary");
+        }
+
+        #[tokio::test]
+        async fn commit_failure_after_durable_admission_waits_for_recovery_without_rollback() {
+            let admitted = Arc::new(AtomicBool::new(false));
+            let activate_calls = Arc::new(AtomicUsize::new(0));
+            let result = commit_resync_target(
+                targets(),
+                opts(),
+                {
+                    let admitted = admitted.clone();
+                    move |_| async move {
+                        admitted.store(true, Ordering::SeqCst);
+                        Ok(true)
+                    }
+                },
+                |_| async { Err(super::super::Error::other("injected target write failure")) },
+                {
+                    let activate_calls = activate_calls.clone();
+                    move |_, _| async move {
+                        activate_calls.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    }
+                },
+            )
+            .await;
+
+            assert!(result.is_err());
+            assert!(admitted.load(Ordering::SeqCst));
+            assert_eq!(activate_calls.load(Ordering::SeqCst), 0);
+        }
+
+        #[tokio::test]
+        async fn committed_resync_changes_only_its_target_and_activates_after_write() {
+            let persisted = Arc::new(Mutex::new(Vec::new()));
+            let write_finished = Arc::new(AtomicBool::new(false));
+            let committed = commit_resync_target(
+                targets(),
+                opts(),
+                |_| async { Ok(true) },
+                {
+                    let persisted = persisted.clone();
+                    let write_finished = write_finished.clone();
+                    move |encoded| async move {
+                        *persisted.lock().await = encoded;
+                        write_finished.store(true, Ordering::SeqCst);
+                        Ok(())
+                    }
+                },
+                {
+                    let write_finished = write_finished.clone();
+                    move |_, recovering| async move {
+                        assert!(!recovering);
+                        assert!(write_finished.load(Ordering::SeqCst));
+                        Ok(())
+                    }
+                },
+            )
+            .await
+            .expect("transaction should commit");
+
+            assert_eq!(committed.targets[0].reset_id, "accepted-id");
+            assert_eq!(committed.targets[1].reset_id, "other-node-value");
+            let persisted: super::super::target::BucketTargets =
+                serde_json::from_slice(&persisted.lock().await).expect("persisted targets should decode");
+            assert_eq!(persisted.targets[0].reset_id, "accepted-id");
+            assert_eq!(persisted.targets[1].reset_id, "other-node-value");
+        }
+    }
+}
+
+pub(crate) mod target {
+    pub(crate) use super::ecstore_bucket::target::{ARN, duration_from_secs_or_nanos};
+    pub(crate) type BucketTarget = super::ecstore_bucket::target::BucketTarget;
+    pub(crate) type BucketTargetType = super::ecstore_bucket::target::BucketTargetType;
+    pub(crate) type BucketTargets = super::ecstore_bucket::target::BucketTargets;
+    pub(crate) type Credentials = super::ecstore_bucket::target::Credentials;
+    pub(crate) type LatencyStat = super::ecstore_bucket::target::LatencyStat;
+}
+
+pub(crate) mod ecstore_utils {
+    pub(crate) fn deserialize<T>(input: &[u8]) -> s3s::xml::DeResult<T>
+    where
+        T: for<'xml> s3s::xml::Deserialize<'xml>,
+    {
+        super::ecstore_bucket::utils::deserialize(input)
+    }
+
+    pub(crate) fn is_valid_object_prefix(object: &str) -> bool {
+        super::ecstore_bucket::utils::is_valid_object_prefix(object)
+    }
+
+    pub(crate) fn serialize<T: s3s::xml::Serialize>(val: &T) -> s3s::xml::SerResult<Vec<u8>> {
+        super::ecstore_bucket::utils::serialize(val)
+    }
+}
+
+pub(crate) mod versioning {}
+
+pub(crate) mod versioning_sys {
+    pub(crate) type BucketVersioningSys = super::ecstore_bucket::versioning_sys::BucketVersioningSys;
+}
+
+pub(crate) mod storageclass {
+    pub(crate) const CAPABILITY_CONTRACT_VERSION: u32 = super::ecstore_config::storageclass::CAPABILITY_CONTRACT_VERSION;
+    #[cfg(test)]
+    pub(crate) const CLASS_STANDARD: &str = super::ecstore_config::storageclass::CLASS_STANDARD;
+    pub(crate) const INLINE_BLOCK_ENV: &str = super::ecstore_config::storageclass::INLINE_BLOCK_ENV;
+    pub(crate) const LEGACY_LABEL_BEHAVIOR: &str = super::ecstore_config::storageclass::LEGACY_LABEL_BEHAVIOR;
+    pub(crate) const OPTIMIZE_ENV: &str = super::ecstore_config::storageclass::OPTIMIZE_ENV;
+    #[cfg(test)]
+    pub(crate) const RRS: &str = super::ecstore_config::storageclass::RRS;
+    pub(crate) const RRS_ENV: &str = super::ecstore_config::storageclass::RRS_ENV;
+    #[cfg(test)]
+    pub(crate) const STANDARD: &str = super::ecstore_config::storageclass::STANDARD;
+    pub(crate) const STANDARD_ENV: &str = super::ecstore_config::storageclass::STANDARD_ENV;
+    pub(crate) const SUPPORTED_WRITE_CLASSES: [&str; 2] = super::ecstore_config::storageclass::SUPPORTED_WRITE_CLASSES;
+    pub(crate) const UNSUPPORTED_WRITE_ERROR: &str = super::ecstore_config::storageclass::UNSUPPORTED_WRITE_ERROR;
+
+    pub(crate) type Config = super::ecstore_config::storageclass::Config;
+
+    pub(crate) fn lookup_config_for_pools(
+        kvs: &rustfs_config::server_config::KVS,
+        set_drive_counts: &[usize],
+    ) -> super::Result<Config> {
+        super::ecstore_config::storageclass::lookup_config_for_pools(kvs, set_drive_counts)
+    }
+}
+
+pub(crate) type DailyAllTierStats = ecstore_bucket::lifecycle::tier_last_day_stats::DailyAllTierStats;
+
+pub(crate) fn is_reserved_or_invalid_bucket(bucket_entry: &str, strict: bool) -> bool {
+    ecstore_capacity::is_reserved_or_invalid_bucket(bucket_entry, strict)
+}
+
+pub(crate) async fn read_admin_config(api: Arc<ECStore>, file: &str) -> Result<Vec<u8>> {
+    ecstore_config::com::read_config(api, file).await
+}
+
+pub(crate) async fn read_admin_config_without_migrate(api: Arc<ECStore>) -> Result<rustfs_config::server_config::Config> {
+    ecstore_config::com::read_config_without_migrate(api).await
+}
+
+pub(crate) async fn read_existing_admin_server_config_no_lock(api: Arc<ECStore>) -> Result<rustfs_config::server_config::Config> {
+    ecstore_config::com::read_existing_server_config_no_lock(api).await
+}
+
+#[cfg(test)]
+pub(crate) async fn read_admin_config_without_migrate_no_lock(api: Arc<ECStore>) -> Result<rustfs_config::server_config::Config> {
+    ecstore_config::com::read_config_without_migrate_no_lock(api).await
+}
+
+pub(crate) type AdminServerConfigSnapshot = ecstore_config::com::ServerConfigSnapshot;
+pub(crate) type AdminServerConfigSaveResult = ecstore_config::com::ServerConfigSaveResult;
+
+pub(crate) async fn save_admin_config(api: Arc<ECStore>, file: &str, data: Vec<u8>) -> Result<()> {
+    ecstore_config::com::save_config(api, file, data).await
+}
+
+pub(crate) async fn delete_admin_config(api: Arc<ECStore>, file: &str) -> Result<()> {
+    ecstore_config::com::delete_config(api, file).await
+}
+
+#[cfg(test)]
+pub(crate) async fn save_admin_server_config(api: Arc<ECStore>, cfg: &rustfs_config::server_config::Config) -> Result<()> {
+    ecstore_config::com::save_server_config(api, cfg).await
+}
+
+#[cfg(test)]
+pub(crate) async fn save_admin_server_config_no_lock(
+    api: Arc<ECStore>,
+    cfg: &rustfs_config::server_config::Config,
+) -> Result<()> {
+    ecstore_config::com::save_server_config_no_lock(api, cfg).await
+}
+
+#[cfg(test)]
+pub(crate) async fn with_admin_server_config_write_lock<F, Fut, T>(api: Arc<ECStore>, operation: F) -> Result<T>
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    ecstore_config::com::with_server_config_write_lock(api, operation).await
+}
+
+pub(crate) async fn read_admin_server_config_snapshot(api: Arc<ECStore>) -> Result<AdminServerConfigSnapshot> {
+    ecstore_config::com::read_server_config_snapshot(api).await
+}
+
+pub(crate) async fn save_admin_server_config_snapshot(
+    api: Arc<ECStore>,
+    cfg: &rustfs_config::server_config::Config,
+    snapshot: &AdminServerConfigSnapshot,
+) -> Result<AdminServerConfigSaveResult> {
+    ecstore_config::com::save_server_config_snapshot_with_generation(api, cfg, snapshot).await
+}
+
+pub(crate) async fn with_admin_server_config_read_lock<F, Fut, T>(api: Arc<ECStore>, operation: F) -> Result<T>
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    ecstore_config::com::with_server_config_read_lock(api, operation).await
+}
+
+pub(crate) fn init_admin_config_defaults() {
+    ecstore_config::init();
+}
+
+pub(crate) async fn collect_local_metrics(
+    types: MetricType,
+    opts: &CollectMetricsOpts,
+) -> rustfs_madmin::metrics::RealtimeMetrics {
+    ecstore_metrics::collect_local_metrics(types, opts).await
+}
+
+pub(crate) struct AdminErrorRef(fn() -> &'static AdminError);
+
+impl Deref for AdminErrorRef {
+    type Target = AdminError;
+
+    fn deref(&self) -> &Self::Target {
+        (self.0)()
+    }
+}
+
+pub(crate) static ERR_TIER_BACKEND_IN_USE: AdminErrorRef = AdminErrorRef(|| &ecstore_tier::tier::ERR_TIER_BACKEND_IN_USE);
+pub(crate) static ERR_TIER_BACKEND_NOT_EMPTY: AdminErrorRef = AdminErrorRef(|| &ecstore_tier::tier::ERR_TIER_BACKEND_NOT_EMPTY);
+pub(crate) static ERR_TIER_MISSING_CREDENTIALS: AdminErrorRef =
+    AdminErrorRef(|| &ecstore_tier::tier::ERR_TIER_MISSING_CREDENTIALS);
+pub(crate) static ERR_TIER_ALREADY_EXISTS: AdminErrorRef =
+    AdminErrorRef(|| &ecstore_tier::tier_handlers::ERR_TIER_ALREADY_EXISTS);
+pub(crate) static ERR_TIER_CONNECT_ERR: AdminErrorRef = AdminErrorRef(|| &ecstore_tier::tier_handlers::ERR_TIER_CONNECT_ERR);
+pub(crate) static ERR_TIER_INVALID_CONFIG: AdminErrorRef = AdminErrorRef(|| &ecstore_tier::tier::ERR_TIER_INVALID_CONFIG);
+pub(crate) static ERR_TIER_INVALID_CREDENTIALS: AdminErrorRef =
+    AdminErrorRef(|| &ecstore_tier::tier_handlers::ERR_TIER_INVALID_CREDENTIALS);
+pub(crate) static ERR_TIER_NAME_NOT_UPPERCASE: AdminErrorRef =
+    AdminErrorRef(|| &ecstore_tier::tier_handlers::ERR_TIER_NAME_NOT_UPPERCASE);
+pub(crate) static ERR_TIER_NOT_FOUND: AdminErrorRef = AdminErrorRef(|| &ecstore_tier::tier_handlers::ERR_TIER_NOT_FOUND);
+pub(crate) static ERR_TIER_RESERVED_NAME: AdminErrorRef = AdminErrorRef(|| &ecstore_tier::tier_handlers::ERR_TIER_RESERVED_NAME);
+
+pub(crate) mod data_usage {
+    use std::sync::Arc;
+
+    pub(crate) async fn apply_bucket_usage_memory_overlay(data_usage_info: &mut rustfs_data_usage::DataUsageInfo) {
+        crate::storage::storage_api::ecstore_data_usage::apply_bucket_usage_memory_overlay(data_usage_info).await;
+    }
+
+    pub(crate) async fn load_data_usage_from_backend(
+        store: Arc<crate::storage::storage_api::ECStore>,
+    ) -> Result<rustfs_data_usage::DataUsageInfo, crate::storage::storage_api::StorageError> {
+        crate::storage::storage_api::ecstore_data_usage::load_data_usage_from_backend(store).await
+    }
+
+    pub(crate) async fn load_admin_data_usage_from_backend_cached(
+        store: Arc<crate::storage::storage_api::ECStore>,
+    ) -> Result<rustfs_data_usage::DataUsageInfo, crate::storage::storage_api::StorageError> {
+        crate::storage::storage_api::ecstore_data_usage::load_admin_data_usage_from_backend_cached(store).await
+    }
+}
+
+pub(crate) mod access {
+    pub(crate) use crate::storage::storage_api::access_consumer::{
+        ReqInfo, authorize_internal_object_request, authorize_request,
+    };
+    pub(crate) use crate::storage::storage_api::request_context_consumer::{RequestContext, spawn_traced};
+}
+
+pub(crate) mod bucket {
+    pub(crate) use super::bandwidth;
+    pub(crate) use super::bucket_target_sys as target_sys;
+    pub(crate) use super::durability;
+    #[cfg(test)]
+    pub(crate) use super::lifecycle;
+    pub(crate) use super::metadata;
+    pub(crate) use super::metadata_sys;
+    pub(crate) use super::quota;
+    pub(crate) use super::remote_s3_client;
+    pub(crate) use super::replication;
+    pub(crate) use super::target;
+    pub(crate) use super::versioning_sys;
+    pub(crate) use super::{
+        AdminObjectLockConfigExt, AdminReplicationConfigExt, AdminVersioningConfigExt, is_reserved_or_invalid_bucket,
+    };
+
+    pub(crate) mod utils {
+        pub(crate) use super::super::ecstore_utils::{deserialize, is_valid_object_prefix, serialize};
+    }
+}
+
+pub(crate) mod cluster {
+    pub(crate) use super::ecstore_cluster::{
+        ClusterDriveMembership, ClusterEndpointType, ClusterLocalNodeStorage, ClusterLocalNodeStorageSnapshot,
+        ClusterMembershipSnapshot, ClusterNodeMembership, ClusterPeerHealth, ClusterPeerHealthSnapshot, ClusterPoolState,
+        ClusterPoolStateSnapshot, ClusterRpcBoundarySnapshot, ClusterRpcChannelSnapshot, ClusterRpcPlane, ClusterRpcTransport,
+    };
+    pub(crate) use super::storage_contracts::{
+        CapabilitySnapshotError, CapabilityState, CapabilityStatus, ObservabilitySnapshot, ObservabilitySnapshotProvider,
+        TopologySnapshot, TopologySnapshotProvider,
+    };
+
+    #[cfg(test)]
+    pub(crate) use super::storage_contracts::{
+        MemorySamplingState, PlatformSupport, TopologyCapabilities, UserspaceProfilingCapability,
+    };
+}
+
+pub(crate) mod config {
+    pub(crate) use super::storageclass;
+    pub(crate) use super::{
+        AdminServerConfigSaveResult, AdminServerConfigSnapshot, RUSTFS_META_BUCKET, STORAGE_CLASS_SUB_SYS, delete_admin_config,
+        init_admin_config_defaults, read_admin_config, read_admin_config_without_migrate, read_admin_server_config_snapshot,
+        read_existing_admin_server_config_no_lock, save_admin_config, save_admin_server_config_snapshot,
+        with_admin_server_config_read_lock,
+    };
+    #[cfg(test)]
+    pub(crate) use super::{
+        read_admin_config_without_migrate_no_lock, save_admin_server_config, save_admin_server_config_no_lock,
+        with_admin_server_config_write_lock,
+    };
+}
+
+pub(crate) mod contract {
+    pub(crate) mod admin {
+        pub(crate) use super::super::storage_contracts::StorageAdminApi;
+    }
+
+    pub(crate) mod bucket {
+        pub(crate) use super::super::storage_contracts::{
+            BucketOperations, BucketOptions, DeleteBucketOptions, MakeBucketOptions, SRBucketDeleteOp,
+        };
+    }
+
+    pub(crate) mod list {
+        pub(crate) use super::super::storage_contracts::ListOperations;
+    }
+
+    pub(crate) mod object {
+        pub(crate) use super::super::storage_contracts::{ObjectIO, ObjectOperations};
+    }
+}
+
+pub(crate) mod error {
+    pub(crate) use super::ecstore_error::is_err_bucket_not_found;
+    pub(crate) use super::{Error, StorageError};
+}
+
+pub(crate) mod metrics {
+    pub(crate) use super::{CollectMetricsOpts, MetricType, collect_local_metrics};
+}
+
+pub(crate) mod object {
+    pub(crate) use crate::storage::storage_api::StorageObjectOptions;
+}
+
+pub(crate) mod rebalance {
+    pub(crate) use super::{
+        DiskStat, RebalSaveOpt, RebalanceCleanupWarnings, RebalanceMeta, RebalanceStats, RebalanceStopPropagationRecord,
+        decode_rebalance_stop_propagation_record,
+    };
+
+    #[cfg(test)]
+    pub(crate) use super::{RebalStatus, RebalanceCleanupWarningEntry, RebalanceInfo, encode_rebalance_stop_propagation_record};
+}
+
+pub(crate) mod runtime {
+    pub(crate) use super::{ECStore, EndpointServerPools, NotificationSys, PeerRestClient};
+
+    #[cfg(test)]
+    pub(crate) use super::{Endpoint, Endpoints, PoolEndpoints};
+    /// Test-only: the process instance context, so a handler test can publish
+    /// the endpoint topology that server startup normally installs.
+    #[cfg(test)]
+    pub(crate) use crate::storage::storage_api::ecstore_runtime::bootstrap_ctx;
+}
+
+pub(crate) mod s3 {
+    #[cfg(test)]
+    pub(crate) use s3s::auth;
+    pub(crate) use s3s::{Body, S3Error, S3ErrorCode, S3Request, S3Response, S3Result, header};
+
+    /// Build an `S3Error` without reaching for the `s3s` error macro.
+    ///
+    /// The macro expands to the very constructor this calls, but it puts an
+    /// `s3s` dependency in every file that reports an error. Routing the
+    /// construction through here keeps that dependency in this facade, which is
+    /// the boundary the s3gate migration replaces
+    /// (`scripts/check_s3s_footprint.sh`, rustfs/backlog#1677 F1).
+    pub(crate) fn error(code: S3ErrorCode, message: impl Into<std::borrow::Cow<'static, str>>) -> S3Error {
+        S3Error::with_message(code, message)
+    }
+}
+
+pub(crate) mod tier {
+    pub(crate) use super::{
+        AdminError, ClusterTierDailyStats, DailyAllTierStats, ECStore, ERR_TIER_ALREADY_EXISTS, ERR_TIER_BACKEND_IN_USE,
+        ERR_TIER_BACKEND_NOT_EMPTY, ERR_TIER_CONNECT_ERR, ERR_TIER_INVALID_CONFIG, ERR_TIER_INVALID_CREDENTIALS,
+        ERR_TIER_MISSING_CREDENTIALS, ERR_TIER_NAME_NOT_UPPERCASE, ERR_TIER_NOT_FOUND, ERR_TIER_RESERVED_NAME, TierConfig,
+        TierConfigUpdateError, TierCreds, TierType,
+    };
+}

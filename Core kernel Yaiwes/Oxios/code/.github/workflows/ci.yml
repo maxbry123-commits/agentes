@@ -1,0 +1,238 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+# Restrict default token permissions; jobs that need more (e.g. release) override.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ─── Formatting & Linting ────────────────────────────────────────
+  fmt:
+    name: fmt
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read rust-toolchain channel
+        id: rust-channel
+        run: |
+          if grep -q 'channel = "' rust-toolchain.toml 2>/dev/null; then
+            CHANNEL=$(grep 'channel = "' rust-toolchain.toml | sed 's/.*= "\([^"]*\)".*/\1/')
+            echo "channel=$CHANNEL" >> $GITHUB_OUTPUT
+          else
+            echo "channel=stable" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
+          components: rustfmt, clippy
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (core crates + binary, all targets)
+        run: |
+          cargo clippy \
+            --all-targets \
+            -p oxios-kernel \
+            -p oxios-ouroboros -p oxios-gateway -p oxios-markdown \
+            -p oxios-mcp -p oxios-calendar \
+            -p oxios \
+            -- \
+            -D warnings
+      - name: Shellcheck (managed installer)
+        run: |
+          command -v shellcheck >/dev/null 2>&1 || brew install shellcheck
+          shellcheck share/install.sh
+
+  # ─── Frontend ─────────────────────────────────────────────────────
+  # Verifies web app: install deps, typecheck, run unit tests, build.
+  frontend:
+    name: frontend
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Use system bun
+        run: which bun && bun --version
+
+      - name: Install deps
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: Type check
+        working-directory: web
+        run: bun run typecheck
+
+      - name: Unit tests
+        working-directory: web
+        run: bun run test
+
+      - name: Lint
+        working-directory: web
+        run: bun run lint
+
+      - name: Build
+        working-directory: web
+        run: bun run build
+
+  # ─── Test Suite ────────────────────────────────────────────────────
+  test:
+    name: test
+    runs-on: [self-hosted, macOS, ARM64]
+    needs: [fmt, frontend]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read rust-toolchain channel
+        id: rust-channel
+        run: |
+          if grep -q 'channel = "' rust-toolchain.toml 2>/dev/null; then
+            CHANNEL=$(grep 'channel = "' rust-toolchain.toml | sed 's/.*= "\([^"]*\)".*/\1/')
+            echo "channel=$CHANNEL" >> $GITHUB_OUTPUT
+          else
+            echo "channel=stable" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
+
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      # Build web assets before Rust compilation: build.rs emits the
+      # `web_embedded` cfg when web/dist exists, baking the UI into the binary.
+      - name: Use system bun
+        run: which bun && bun --version
+
+      - name: Build web assets
+        working-directory: web
+        run: bun install --frozen-lockfile && bun run build
+
+      - name: Run tests
+        run: cargo nextest run --workspace --profile ci --no-fail-fast
+
+      - name: Run doc tests
+        run: cargo test --workspace --doc
+
+  # ─── Feature Tests ────────────────────────────────────────────────
+  # Executes (not just compiles) oxios-kernel tests with every feature
+  # enabled so feature-gated suites — notably `wasm-sandbox` — actually run.
+  test-features:
+    name: kernel + bridge feature tests
+    runs-on: [self-hosted, macOS, ARM64]
+    needs: [fmt]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read rust-toolchain channel
+        id: rust-channel
+        run: |
+          if grep -q 'channel = "' rust-toolchain.toml 2>/dev/null; then
+            CHANNEL=$(grep 'channel = "' rust-toolchain.toml | sed 's/.*= "\([^"]*\)".*/\1/')
+            echo "channel=$CHANNEL" >> $GITHUB_OUTPUT
+          else
+            echo "channel=stable" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
+
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Run feature-gated tests
+        run: |
+          cargo nextest run \
+            -p oxios-kernel \
+            --all-features \
+            --profile ci \
+            --no-fail-fast
+          cargo nextest run \
+            -p oxios \
+            --features web \
+            --profile ci \
+            --no-fail-fast
+
+  # ─── Security Audit ────────────────────────────────────────────────
+  audit:
+    name: audit
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read rust-toolchain channel
+        id: rust-channel
+        run: |
+          if grep -q 'channel = "' rust-toolchain.toml 2>/dev/null; then
+            CHANNEL=$(grep 'channel = "' rust-toolchain.toml | sed 's/.*= "\([^"]*\)".*/\1/')
+            echo "channel=$CHANNEL" >> $GITHUB_OUTPUT
+          else
+            echo "channel=stable" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: Security audit
+        # Audit failures are non-blocking by policy — see audit.toml for ignored
+        # advisories. Review the run log and open an issue for any new RUSTSEC.
+        continue-on-error: true
+        run: cargo audit
+
+  # ─── Summary ───────────────────────────────────────────────────────
+  summary:
+    name: summary
+    needs: [fmt, frontend, test, test-features, audit]
+    runs-on: [self-hosted, macOS, ARM64]
+    if: always()
+    steps:
+      - name: Check required upstream jobs
+        env:
+          FMT_RESULT: ${{ needs.fmt.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          TEST_FEATURES_RESULT: ${{ needs.test-features.result }}
+          AUDIT_RESULT: ${{ needs.audit.result }}
+        run: |
+          echo "Upstream job results:"
+          echo "  fmt=$FMT_RESULT"
+          echo "  frontend=$FRONTEND_RESULT"
+          echo "  test=$TEST_RESULT"
+          echo "  test-features=$TEST_FEATURES_RESULT"
+          echo "  audit=$AUDIT_RESULT (non-blocking)"
+          FAILED=0
+          for r in "$FMT_RESULT" "$FRONTEND_RESULT" "$TEST_RESULT" "$TEST_FEATURES_RESULT"; do
+            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then
+              echo "::error::Required upstream job failed (result=$r)"
+              FAILED=1
+            fi
+          done
+          if [ "$FAILED" -ne 0 ]; then
+            echo "❌ CI failed — see upstream job logs above"
+            exit 1
+          fi
+          echo "✅ All required CI checks passed (audit result=$AUDIT_RESULT; non-blocking)"

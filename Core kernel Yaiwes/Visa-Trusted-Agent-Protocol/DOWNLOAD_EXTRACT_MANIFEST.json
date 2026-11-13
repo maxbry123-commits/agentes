@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 3871233,
+  "bundle_sha256": "948956b6301343aa7f06386e7afae6e5ac1b91eee9f91e0b7a39224d62ca04d5",
+  "extracted_tree": {
+    "bytes": 4447918,
+    "files": 71,
+    "sha256": "df52b7788c3757e219c6e00f6cef0a216b40e5f2a0b4d91f57ec68d76654b038"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 3871233,
+      "name": "Visa-Trusted-Agent-Protocol.bundle.zip.part-0001",
+      "sha256": "948956b6301343aa7f06386e7afae6e5ac1b91eee9f91e0b7a39224d62ca04d5"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Visa-Trusted-Agent-Protocol",
+  "source_bytes": 4447918,
+  "source_commit": "16d59bdf3f8a542bc538d0962edbb80ea30a02af",
+  "source_files": 71,
+  "source_ref": "HEAD",
+  "source_repo": "visa/trusted-agent-protocol",
+  "source_tree": {
+    "bytes": 4447918,
+    "files": 71,
+    "sha256": "df52b7788c3757e219c6e00f6cef0a216b40e5f2a0b4d91f57ec68d76654b038"
+  }
+}

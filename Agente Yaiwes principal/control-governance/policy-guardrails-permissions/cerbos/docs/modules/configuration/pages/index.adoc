@@ -1,0 +1,55 @@
+include::ROOT:partial$attributes.adoc[]
+
+[[configuration]]
+= Configuration
+
+include::ROOT:partial$version-check.adoc[]
+
+
+The Cerbos server is configured with a YAML file, conventionally named `.cerbos.yaml`. Start the server by passing the configuration file using the `--config` flag. The values defined in the file can be overridden from the command-line by using the `--set` flag. The `--set` flag can be used multiple times. For example, to override `server.httpListenAddr` and `engine.defaultPolicyVersion`, the `--set` flag can be used as follows:
+
+[source,sh,subs="attributes"]
+----
+./{app-name} server --config=/path/to/.cerbos.yaml --set=server.httpListenAddr=:3592 --set=engine.defaultPolicyVersion=staging
+----
+
+NOTE: Config values can reference environment variables by enclosing them between `${}`, for example `$$${HOME}$$`. Defaults can be set using `$$${VAR:default}$$`.
+
+
+[id="minimal-configuration"]
+== Minimal Configuration
+At a minimum, Cerbos requires a storage driver to be configured. If no explicit configuration is provided using the `--config` flag, Cerbos defaults to a `disk` driver configured to  look for policies in a directory named `policies` in the current working directory.
+
+.Default configuration
+[source,yaml,linenums]
+----
+---
+server:
+  httpListenAddr: ":3592"
+  grpcListenAddr: ":3593"
+
+engine:
+  defaultPolicyVersion: "default"
+
+auxData:
+  jwt:
+    disableVerification: true
+
+storage:
+  driver: "disk"
+  disk:
+    directory: "${PWD}/policies"
+    watchForChanges: true
+----
+
+
+[id="full-configuration"]
+== Full Configuration
+Cerbos has many configuration options that are either optional or has reasonable defaults built-in. The following section describes all user-configurable options and their defaults.
+
+.Cerbos configuration file
+[source,yaml,linenums]
+----
+---
+include::partial$fullconfiguration.adoc[]
+----

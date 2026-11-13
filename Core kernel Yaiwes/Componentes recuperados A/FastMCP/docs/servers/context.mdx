@@ -1,0 +1,423 @@
+---
+title: MCP Context
+sidebarTitle: Context
+description: Access MCP capabilities like logging, progress, and resources within your MCP objects.
+icon: rectangle-code
+---
+import { VersionBadge } from '/snippets/version-badge.mdx'
+
+When defining FastMCP [tools](/servers/tools), [resources](/servers/resources), resource templates, or [prompts](/servers/prompts), your functions might need to interact with the underlying MCP session or access advanced server capabilities. FastMCP provides the `Context` object for this purpose.
+
+<Note>
+You access Context through FastMCP's dependency injection system. For other injectable values like HTTP requests, access tokens, and custom dependencies, see [Dependency Injection](/servers/dependency-injection).
+</Note>
+
+## What Is Context?
+
+The `Context` object provides a clean interface to access MCP features within your functions, including:
+
+- **Logging**: Send debug, info, warning, and error messages back to the client
+- **Progress Reporting**: Update the client on the progress of long-running operations
+- **Resource Access**: List and read data from resources registered with the server
+- **Prompt Access**: List and retrieve prompts registered with the server
+- **User Elicitation**: Request structured input from users during tool execution
+- **Request State**: Pass values and non-serializable resources between middleware and handlers within a request (for state that persists across requests, see [Session State](/servers/sessions))
+- **Session Visibility**: [Control which components are visible](/servers/visibility#per-session-visibility) to the current session
+- **Request Information**: Access metadata about the current request
+- **Server Access**: When needed, access the underlying FastMCP server instance
+
+## Accessing the Context
+
+<VersionBadge version="2.14" />
+
+The preferred way to access context is using the `CurrentContext()` dependency:
+
+```python {1, 6}
+from fastmcp import FastMCP
+from fastmcp.dependencies import CurrentContext
+from fastmcp.server.context import Context
+
+mcp = FastMCP(name="Context Demo")
+
+@mcp.tool
+async def process_file(file_uri: str, ctx: Context = CurrentContext()) -> str:
+    """Processes a file, using context for logging and resource access."""
+    await ctx.info(f"Processing {file_uri}")
+    return "Processed file"
+```
+
+This works with tools, resources, and prompts:
+
+```python
+from fastmcp import FastMCP
+from fastmcp.dependencies import CurrentContext
+from fastmcp.server.context import Context
+
+mcp = FastMCP(name="Context Demo")
+
+@mcp.resource("resource://user-data")
+async def get_user_data(ctx: Context = CurrentContext()) -> dict:
+    await ctx.debug("Fetching user data")
+    return {"user_id": "example"}
+
+@mcp.prompt
+async def data_analysis_request(dataset: str, ctx: Context = CurrentContext()) -> str:
+    return f"Please analyze the following dataset: {dataset}"
+```
+
+**Key Points:**
+
+- Dependency parameters are automatically excluded from the MCP schema—clients never see them.
+- Context methods are async, so your function usually needs to be async as well.
+- **Each MCP request receives a new context object.** State set with `ctx.set_state()` is scoped to that request and is not available in subsequent ones. To persist state across requests, use [Session State](/servers/sessions).
+- Context is only available during a request; attempting to use context methods outside a request will raise errors.
+
+### Legacy Type-Hint Injection
+
+For backwards compatibility, you can still access context by simply adding a parameter with the `Context` type hint. FastMCP will automatically inject the context instance:
+
+```python {1, 6}
+from fastmcp import FastMCP, Context
+
+mcp = FastMCP(name="Context Demo")
+
+@mcp.tool
+async def process_file(file_uri: str, ctx: Context) -> str:
+    """Processes a file, using context for logging and resource access."""
+    # Context is injected automatically based on the type hint
+    return "Processed file"
+```
+
+This approach still works for tools, resources, and prompts. The parameter name doesn't matter—only the `Context` type hint is important. The type hint can also be a union (`Context | None`) or use `Annotated[]`.
+
+### Via `get_context()` Function
+
+<VersionBadge version="2.2.11" />
+
+For code nested deeper within your function calls where passing context through parameters is inconvenient, use `get_context()` to retrieve the active context from anywhere within a request's execution flow:
+
+```python {2,9}
+from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_context
+
+mcp = FastMCP(name="Dependency Demo")
+
+# Utility function that needs context but doesn't receive it as a parameter
+async def process_data(data: list[float]) -> dict:
+    # Get the active context - only works when called within a request
+    ctx = get_context()
+    await ctx.info(f"Processing {len(data)} data points")
+
+@mcp.tool
+async def analyze_dataset(dataset_name: str) -> dict:
+    # Call utility function that uses context internally
+    data = load_data(dataset_name)
+    await process_data(data)
+```
+
+**Important Notes:**
+
+- The `get_context()` function should only be used within the context of a server request. Calling it outside of a request will raise a `RuntimeError`.
+- The `get_context()` function is server-only and should not be used in client code.
+
+## Context Capabilities
+
+FastMCP provides several advanced capabilities through the context object. Each capability has dedicated documentation with comprehensive examples and best practices:
+
+### Logging
+
+Send debug, info, warning, and error messages back to the MCP client for visibility into function execution.
+
+```python
+await ctx.debug("Starting analysis")
+await ctx.info(f"Processing {len(data)} items") 
+await ctx.warning("Deprecated parameter used")
+await ctx.error("Processing failed")
+```
+
+See [Server Logging](/servers/logging) for complete documentation and examples.
+### Client Elicitation
+
+<VersionBadge version="2.10.0" />
+
+Request structured input from clients during tool execution, enabling interactive workflows and progressive disclosure. This is a new feature in the 6/18/2025 MCP spec.
+
+```python
+result = await ctx.elicit("Enter your name:", response_type=str)
+if result.action == "accept":
+    name = result.data
+```
+
+See [User Elicitation](/servers/elicitation) for detailed examples and supported response types.
+
+### Sampling and Roots
+
+Neither capability has a `Context` method. Both used to *push* a request into a live client connection, which the modern MCP protocol has no channel to carry, so a tool now asks for them by returning the request and reading the answer on the next round — the same [guard pattern](/servers/elicitation#sampling-and-roots) elicitation uses on modern connections. That route is the natural one for roots; for generation, [call an LLM directly from your server](/servers/sampling).
+
+### Progress Reporting
+
+Update clients on the progress of long-running operations, enabling progress indicators and better user experience.
+
+```python
+await ctx.report_progress(progress=50, total=100)  # 50% complete
+```
+
+See [Progress Reporting](/servers/progress) for detailed patterns and examples.
+
+### Resource Access
+
+List and read data from resources registered with your FastMCP server, allowing access to files, configuration, or dynamic content.
+
+```python
+# List available resources
+resources = await ctx.list_resources()
+
+# Read a specific resource
+resource_result = await ctx.read_resource("resource://config")
+content = resource_result.contents[0].content
+```
+
+**Method signatures:**
+- **`ctx.list_resources() -> list[mcp.types.Resource]`**: <VersionBadge version="2.13.0" /> Returns list of all available resources
+- **`ctx.read_resource(uri: str | AnyUrl) -> ResourceResult`**: Returns a `ResourceResult` whose `.contents` list contains the resource content parts
+
+### Prompt Access
+
+<VersionBadge version="2.13.0" />
+
+List and retrieve prompts registered with your FastMCP server, allowing tools and middleware to discover and use available prompts programmatically.
+
+```python
+# List available prompts
+prompts = await ctx.list_prompts()
+
+# Get a specific prompt with arguments
+result = await ctx.get_prompt("analyze_data", {"dataset": "users"})
+messages = result.messages
+```
+
+**Method signatures:**
+- **`ctx.list_prompts() -> list[MCPPrompt]`**: Returns list of all available prompts
+- **`ctx.get_prompt(name: str, arguments: dict[str, Any] | None = None) -> GetPromptResult`**: Get a specific prompt with optional arguments
+
+### Request State
+
+<VersionBadge version="3.0.0" />
+
+Request state carries values *within a single request*, across the middleware → handler pipeline. A request runs through any middleware you've added and then the handler — separate functions that don't share a stack frame, so a plain local variable can't pass anything between them. `ctx.set_state` / `ctx.get_state` is that channel.
+
+The common case is a middleware that resolves something once and every tool reads it, rather than each tool recomputing it:
+
+```python
+from fastmcp import FastMCP, Context
+from fastmcp.server.middleware import Middleware, MiddlewareContext
+
+mcp = FastMCP("app")
+
+
+class Enrich(Middleware):
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        await context.fastmcp_context.set_state("caller", "alice")
+        return await call_next(context)
+
+
+mcp.add_middleware(Enrich())
+
+
+@mcp.tool
+async def whoami(ctx: Context) -> str:
+    return await ctx.get_state("caller") or "unknown"
+```
+
+The state is scoped to the one request and discarded when it returns. State is also inherited by mounted children, so a value a parent middleware sets is visible to a mounted server's tools within the same request.
+
+**Method signatures:**
+
+- **`await ctx.set_state(key, value, *, serializable=True)`** — store a value
+- **`await ctx.get_state(key)`** — retrieve a value (returns `None` if not set)
+- **`await ctx.delete_state(key)`** — remove a value
+
+#### Non-serializable resources
+
+The most useful thing request state holds is objects you *can't* persist — a database connection or an HTTP client that a middleware or the [lifespan](/servers/lifespan) opens and a handler uses. Pass `serializable=False`:
+
+```python
+@mcp.tool
+async def my_tool(ctx: Context) -> str:
+    client = SomeHTTPClient(base_url="https://api.example.com")
+    await ctx.set_state("client", client, serializable=False)
+
+    client = await ctx.get_state("client")
+    return await client.fetch("/data")
+```
+
+A `serializable=False` value lives on the request context for the current call only. It is inherently request-scoped — a live connection can't be serialized and stored — which is exactly why it belongs here rather than in a persistent store.
+
+#### Persisting across requests
+
+Request state does not survive from one call to the next. When you need a cart, a conversation, or any state that outlives a single request, use [Session State](/servers/sessions) — it stores server-side, keyed by the authenticated user, and works on every protocol era. (On session-based, handshake-era connections, serializable request state also persists across the session, but Session State is the deliberate, cross-era way to do it.)
+
+### Session Visibility
+
+<VersionBadge version="3.0.0" />
+
+Tools can customize which components are visible to their current session using `ctx.enable_components()`, `ctx.disable_components()`, and `ctx.reset_visibility()`. They accept the same filters as the server-level methods, so `names={"search"}` targets a component by name and `tags` targets a group. These methods apply visibility rules that affect only the calling session, leaving other sessions unchanged. See [Per-Session Visibility](/servers/visibility#per-session-visibility) for complete documentation, filter criteria, and patterns like namespace activation.
+
+### Change Notifications
+
+<VersionBadge version="3.0.0" />
+
+FastMCP automatically sends list change notifications when components (such as tools, resources, or prompts) are added, removed, enabled, or disabled. In rare cases where you need to manually trigger these notifications, you can use the context's notification methods:
+
+```python
+from mcp.types import (
+    PromptListChangedNotification,
+    ResourceListChangedNotification,
+    ToolListChangedNotification,
+)
+
+@mcp.tool
+async def custom_tool_management(ctx: Context) -> str:
+    """Example of manual notification after custom tool changes."""
+    await ctx.send_notification(ToolListChangedNotification())
+    await ctx.send_notification(ResourceListChangedNotification())
+    await ctx.send_notification(PromptListChangedNotification())
+    return "Notifications sent"
+```
+
+These methods are primarily used internally by FastMCP's automatic notification system and most users will not need to invoke them directly.
+
+### FastMCP Server
+
+To access the underlying FastMCP server instance, you can use the `ctx.fastmcp` property:
+
+```python
+@mcp.tool
+async def my_tool(ctx: Context) -> None:
+    # Access the FastMCP server instance
+    server_name = ctx.fastmcp.name
+    ...
+```
+
+### Transport
+
+<VersionBadge version="3.0.0" />
+
+The `ctx.transport` property indicates which transport is being used to run the server. This is useful when your tool needs to behave differently depending on whether the server is running over STDIO, SSE, or Streamable HTTP. For example, you might want to return shorter responses over STDIO or adjust timeout behavior based on transport characteristics.
+
+The transport type is set once when the server starts and remains constant for the server's lifetime. It returns `None` when called outside of a server context (for example, in unit tests or when running code outside of an MCP request).
+
+```python
+from fastmcp import FastMCP, Context
+
+mcp = FastMCP("example")
+
+@mcp.tool
+def connection_info(ctx: Context) -> str:
+    if ctx.transport == "stdio":
+        return "Connected via STDIO"
+    elif ctx.transport == "sse":
+        return "Connected via SSE"
+    elif ctx.transport == "streamable-http":
+        return "Connected via Streamable HTTP"
+    else:
+        return "Transport unknown"
+```
+
+**Property signature:** `ctx.transport -> Literal["stdio", "sse", "streamable-http"] | None`
+
+### MCP Request
+
+Access metadata about the current request and client.
+
+```python
+@mcp.tool
+async def request_info(ctx: Context) -> dict:
+    """Return information about the current request."""
+    return {
+        "request_id": ctx.request_id,
+        "client_id": ctx.client_id or "Unknown client"
+    }
+```
+
+**Available Properties:**
+
+- **`ctx.request_id -> str`**: Get the unique ID for the current MCP request
+- **`ctx.client_id -> str | None`**: Get the ID of the client making the request, if provided during initialization
+- **`ctx.session_id -> str`**: Get the MCP session ID for session-based data sharing. Raises `RuntimeError` if the MCP session is not yet established.
+
+#### Request Context Availability
+
+<VersionBadge version="2.13.1" />
+
+The `ctx.request_context` property provides access to the underlying MCP request context, but returns `None` when the MCP session has not been established yet. This typically occurs:
+
+- During middleware execution in the `on_request` hook before the MCP handshake completes
+- During the initialization phase of client connections
+
+The MCP request context is distinct from the HTTP request. For HTTP transports, HTTP request data may be available even when the MCP session is not yet established.
+
+To safely access the request context in situations where it may not be available:
+
+```python
+from fastmcp import FastMCP, Context
+from fastmcp.server.dependencies import get_http_request
+
+mcp = FastMCP(name="Session Aware Demo")
+
+@mcp.tool
+async def session_info(ctx: Context) -> dict:
+    """Return session information when available."""
+
+    # Check if MCP session is available
+    if ctx.request_context:
+        # MCP session available - can access MCP-specific attributes
+        return {
+            "session_id": ctx.session_id,
+            "request_id": ctx.request_id,
+            "has_meta": ctx.request_context.meta is not None
+        }
+    else:
+        # MCP session not available - use HTTP helpers for request data (if using HTTP transport)
+        request = get_http_request()
+        return {
+            "message": "MCP session not available",
+            "user_agent": request.headers.get("user-agent", "Unknown")
+        }
+```
+
+For HTTP request access that works regardless of MCP session availability (when using HTTP transports), use the [HTTP request helpers](/servers/dependency-injection#http-request) like `get_http_request()` and `get_http_headers()`.
+
+#### Client Metadata
+
+<VersionBadge version="2.13.1" />
+
+Clients can send contextual information with their requests using the `meta` parameter. This metadata is accessible through `ctx.request_context.meta` and is available for all MCP operations (tools, resources, prompts).
+
+The `meta` field is `None` when clients don't provide metadata. When provided, metadata is accessible via attribute access (e.g., `meta.user_id`) rather than dictionary access. The structure of metadata is determined by the client making the request.
+
+```python
+@mcp.tool
+def send_email(to: str, subject: str, body: str, ctx: Context) -> str:
+    """Send an email, logging metadata about the request."""
+
+    # Access client-provided metadata
+    meta = ctx.request_context.meta
+
+    if meta:
+        # Meta is accessed as an object with attribute access
+        user_id = meta.user_id if hasattr(meta, 'user_id') else None
+        trace_id = meta.trace_id if hasattr(meta, 'trace_id') else None
+
+        # Use metadata for logging, observability, etc.
+        if trace_id:
+            log_with_trace(f"Sending email for user {user_id}", trace_id)
+
+    # Send the email...
+    return f"Email sent to {to}"
+```
+
+<Warning>
+The MCP request is part of the low-level MCP SDK and intended for advanced use cases. Most users will not need to use it directly.
+</Warning>
+

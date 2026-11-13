@@ -1,0 +1,35 @@
+{
+  "schema": "yaiwes.source-provenance/v1",
+  "upstream": "https://github.com/google-research/timesfm",
+  "source_commit": "e31dadd84cb26bd5153fde6687502b8312e918fb",
+  "downloaded_scope": "lightweight_only_no_model_weights",
+  "artifacts": [
+    {
+      "source_path": "timesfm-forecasting/SKILL.md",
+      "destination_path": "Core kernel Yaiwes/TimesFM-Native-Capability/upstream/timesfm-forecasting/SKILL.md",
+      "github_blob_sha": "3adc53ca71137838c0bc51f5836c186f156cc923"
+    },
+    {
+      "source_path": "timesfm-forecasting/scripts/forecast_csv.py",
+      "destination_path": "Core kernel Yaiwes/TimesFM-Native-Capability/upstream/timesfm-forecasting/scripts/forecast_csv.py",
+      "github_blob_sha": "4739215669d3768e527d837875d43480d391d904"
+    },
+    {
+      "source_path": "timesfm-forecasting/scripts/check_system.py",
+      "destination_path": "Core kernel Yaiwes/TimesFM-Native-Capability/upstream/timesfm-forecasting/scripts/check_system.py",
+      "github_blob_sha": "e61a7d0d67debaa944207378cf890481b2f8640f"
+    },
+    {
+      "source_path": "timesfm-forecasting/references/api_reference.md",
+      "destination_path": "Core kernel Yaiwes/TimesFM-Native-Capability/upstream/timesfm-forecasting/references/api_reference.md",
+      "github_blob_sha": "bbff790a6a8afbf594b3d2bad527277730ee761f"
+    },
+    {
+      "source_path": "timesfm-forecasting/references/data_preparation.md",
+      "destination_path": "Core kernel Yaiwes/TimesFM-Native-Capability/upstream/timesfm-forecasting/references/data_preparation.md",
+      "github_blob_sha": "28c31c13702ffa5701e7afb699479a3a9c7c1abf"
+    }
+  ],
+  "anomaly_example": "https://github.com/google-research/timesfm/tree/master/timesfm-forecasting/examples/anomaly-detection",
+  "model_weights_downloaded": false
+}

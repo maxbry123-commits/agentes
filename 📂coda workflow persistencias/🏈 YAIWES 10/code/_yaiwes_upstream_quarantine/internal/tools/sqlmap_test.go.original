@@ -1,0 +1,129 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/scope"
+)
+
+// buildFakeSqlmapServer stands up an httptest server that implements the
+// minimum slice of sqlmapapi we drive — just enough to walk the adapter
+// through a complete task lifecycle without ever installing sqlmap.
+func buildFakeSqlmapServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/task/new", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "taskid": "fake-task-1"})
+	})
+	mux.HandleFunc("/option/fake-task-1/set", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+	})
+	mux.HandleFunc("/scan/fake-task-1/start", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+	})
+	mux.HandleFunc("/scan/fake-task-1/status", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "terminated", "returncode": 0})
+	})
+	mux.HandleFunc("/scan/fake-task-1/data", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success": true,
+			"data": []map[string]any{
+				{
+					"type":        "vulnerable",
+					"parameter":   "id",
+					"place":       "GET",
+					"technique":   "UNION query",
+					"db_password": "s3cret!",
+					"raw_note":    "admin_password=hunter2",
+				},
+			},
+		})
+	})
+	mux.HandleFunc("/task/fake-task-1/delete", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+	})
+	return httptest.NewServer(mux)
+}
+
+func TestSqlmapTool_LifecycleAndRedaction(t *testing.T) {
+	srv := buildFakeSqlmapServer(t)
+	defer srv.Close()
+
+	tool := NewSqlmapTool()
+	ctx := WithScope(context.Background(), &scope.ScopeDefinition{
+		AllowedDomains: []string{"example.com"},
+	})
+
+	result, err := tool.Run(ctx, "http://example.com/item?id=1", Options{
+		"sqlmap_endpoint": srv.URL,
+		"timeout":         5,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(result.ParsedFindings) != 1 {
+		t.Fatalf("want 1 finding, got %d", len(result.ParsedFindings))
+	}
+	f := result.ParsedFindings[0]
+	if f["db_password"] != "[REDACTED]" {
+		t.Errorf("db_password should be redacted, got %v", f["db_password"])
+	}
+	if s, _ := f["raw_note"].(string); !strings.Contains(s, "[REDACTED]") {
+		t.Errorf("inline key=value credential not redacted: %s", s)
+	}
+	if f["type"] != "vulnerable" || f["parameter"] != "id" {
+		t.Errorf("non-secret fields should be preserved: %+v", f)
+	}
+}
+
+func TestSqlmapTool_ScopeViolation(t *testing.T) {
+	tool := NewSqlmapTool()
+	ctx := WithScope(context.Background(), &scope.ScopeDefinition{
+		AllowedDomains: []string{"example.com"},
+	})
+	_, err := tool.Run(ctx, "http://evil.com/", Options{})
+	if err == nil {
+		t.Fatal("out-of-scope target must fail")
+	}
+}
+
+func TestSqlmapTool_TimeoutCancels(t *testing.T) {
+	// Server that never terminates the scan — the adapter should honor timeout.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/task/new", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "taskid": "slow-1"})
+	})
+	mux.HandleFunc("/option/slow-1/set", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+	})
+	mux.HandleFunc("/scan/slow-1/start", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+	})
+	mux.HandleFunc("/scan/slow-1/status", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "running", "returncode": -1})
+	})
+	mux.HandleFunc("/task/slow-1/delete", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tool := NewSqlmapTool()
+	ctx := WithScope(context.Background(), &scope.ScopeDefinition{AllowedDomains: []string{"example.com"}})
+
+	start := time.Now()
+	_, err := tool.Run(ctx, "http://example.com/", Options{"sqlmap_endpoint": srv.URL, "timeout": 1})
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if time.Since(start) > 10*time.Second {
+		t.Fatal("adapter didn't honor timeout promptly")
+	}
+}

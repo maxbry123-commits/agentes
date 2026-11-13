@@ -1,0 +1,87 @@
+name: pre-release
+on:
+  push:
+    branches:
+      - master
+
+permissions: read-all
+
+env:
+  IMAGE_REPO: openpolicyagent/gatekeeper
+  CRD_IMAGE_REPO: openpolicyagent/gatekeeper-crds
+  GATOR_IMAGE_REPO: openpolicyagent/gator
+
+jobs:
+  pre-release:
+    name: "Pre Release"
+    runs-on: oracle-vm-8cpu-32gb-x86-64
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push' && github.repository == 'open-policy-agent/gatekeeper'
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish development
+        run: |
+          make docker-login
+
+          tokenUri="https://auth.docker.io/token?service=registry.docker.io&scope=repository:${{ env.IMAGE_REPO }}:pull&scope=repository:${{ env.CRD_IMAGE_REPO }}:pull&scope=repository:${{ env.GATOR_IMAGE_REPO }}:pull"
+          bearerToken="$(curl --silent --get $tokenUri | jq --raw-output '.token')"
+          listUri="https://registry-1.docker.io/v2/${{ env.IMAGE_REPO }}/tags/list"
+          authz="Authorization: Bearer $bearerToken"
+          version_list="$(curl --silent --get -H "Accept: application/json" -H "$authz" $listUri | jq --raw-output '.')"
+          exists=$(echo $version_list | jq --arg t ${GITHUB_SHA::7} '.tags | index($t)')
+          if [[ $exists == null ]]
+          then
+            make docker-buildx-dev \
+              DEV_TAG=${GITHUB_SHA::7} \
+              PLATFORM="linux/amd64,linux/arm64,linux/arm/v7" \
+              OUTPUT_TYPE=type=registry \
+              GENERATE_ATTESTATIONS=true \
+              PUSH_TO_GHCR=true
+          fi
+
+          listUri="https://registry-1.docker.io/v2/${{ env.CRD_IMAGE_REPO }}/tags/list"
+          version_list="$(curl --silent --get -H "Accept: application/json" -H "$authz" $listUri | jq --raw-output '.')"
+          exists=$(echo $version_list | jq --arg t ${GITHUB_SHA::7} '.tags | index($t)')
+          if [[ $exists == null ]]
+          then
+            make docker-buildx-crds-dev \
+              DEV_TAG=${GITHUB_SHA::7} \
+              PLATFORM="linux/amd64,linux/arm64" \
+              OUTPUT_TYPE=type=registry \
+              GENERATE_ATTESTATIONS=true \
+              PUSH_TO_GHCR=true \
+              CI=true
+          fi
+
+          listUri="https://registry-1.docker.io/v2/${{ env.GATOR_IMAGE_REPO }}/tags/list"
+          version_list="$(curl --silent --get -H "Accept: application/json" -H "$authz" $listUri | jq --raw-output '.')"
+          exists=$(echo $version_list | jq --arg t ${GITHUB_SHA::7} '.tags | index($t)')
+          if [[ $exists == null ]]
+          then
+            make docker-buildx-gator-dev \
+              DEV_TAG=${GITHUB_SHA::7} \
+              PLATFORM="linux/amd64,linux/arm64,linux/arm/v7" \
+              OUTPUT_TYPE=type=registry \
+              GENERATE_ATTESTATIONS=true \
+              PUSH_TO_GHCR=true
+          fi
+        env:
+          DOCKER_USER: ${{ secrets.DOCKER_USER }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}

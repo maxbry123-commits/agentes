@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 675945,
+  "bundle_sha256": "50c44cb8459439d1e6672137f57aedc18ae475c2b6bc2a72cd444dd1c1a5b1d5",
+  "extracted_tree": {
+    "bytes": 1288480,
+    "files": 320,
+    "sha256": "e02a0d24420970d1851bb1b1a965014b66a3fb44271d8248b0e43c191618d7f1"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 675945,
+      "name": "llm-guard.bundle.zip.part-0001",
+      "sha256": "50c44cb8459439d1e6672137f57aedc18ae475c2b6bc2a72cd444dd1c1a5b1d5"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "llm-guard",
+  "source_bytes": 1288480,
+  "source_commit": "168c1034ffdb33837e7ae6fd6a16b80567c1be03",
+  "source_files": 320,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/protectai/llm-guard.git",
+  "source_tree": {
+    "bytes": 1288480,
+    "files": 320,
+    "sha256": "e02a0d24420970d1851bb1b1a965014b66a3fb44271d8248b0e43c191618d7f1"
+  }
+}

@@ -1,0 +1,116 @@
+name: Pentest Swarm AI
+description: >
+  Run the Pentest Swarm AI against a target inside a GitHub Actions
+  workflow. Emits SARIF that GitHub Code Scanning understands, so
+  findings land directly in the repository Security tab.
+author: Armur AI
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  target:
+    description: The target to scan (domain, URL, or CIDR).
+    required: true
+  scope:
+    description: Comma-separated domain / CIDR list for scope enforcement.
+    required: true
+  mode:
+    description: manual | bugbounty | asm | ctf
+    required: false
+    default: manual
+  objective:
+    description: Natural-language goal for the swarm (e.g. "find RCE").
+    required: false
+    default: find all vulnerabilities
+  swarm:
+    description: Set to 'true' to use the stigmergic swarm scheduler.
+    required: false
+    default: "false"
+  dry-run:
+    description: Set to 'true' to plan without executing exploitation commands.
+    required: false
+    default: "false"
+  api-key:
+    description: Claude API key. If omitted, reads ANTHROPIC_API_KEY from env.
+    required: false
+  version:
+    description: Pentest Swarm AI release to pin (e.g. v0.2.0). Default = latest.
+    required: false
+    default: latest
+  fail-on:
+    description: Lowest severity that fails the job (critical | high | medium | low | none).
+    required: false
+    default: high
+
+outputs:
+  report-path:
+    description: Path to the generated Markdown report.
+    value: ${{ steps.scan.outputs.report-path }}
+  sarif-path:
+    description: Path to the SARIF file (uploadable to GitHub Code Scanning).
+    value: ${{ steps.scan.outputs.sarif-path }}
+  findings-count:
+    description: Total number of findings in the report.
+    value: ${{ steps.scan.outputs.findings-count }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Pentest Swarm AI
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION="${{ inputs.version }}"
+        ARCH="$(uname -m)"
+        case "$ARCH" in
+          x86_64)  ARCH=amd64 ;;
+          aarch64) ARCH=arm64 ;;
+          arm64)   ARCH=arm64 ;;
+          *) echo "unsupported arch $ARCH"; exit 1 ;;
+        esac
+        if [ "$VERSION" = "latest" ]; then
+          VERSION=$(curl -sSL https://api.github.com/repos/Armur-Ai/Pentest-Swarm-AI/releases/latest \
+            | grep -m1 tag_name | awk -F'"' '{print $4}')
+        fi
+        URL="https://github.com/Armur-Ai/Pentest-Swarm-AI/releases/download/${VERSION}/pentestswarm-linux-${ARCH}"
+        curl -sSL -o /usr/local/bin/pentestswarm "$URL"
+        chmod +x /usr/local/bin/pentestswarm
+        pentestswarm --version
+
+    - name: Run scan
+      id: scan
+      shell: bash
+      env:
+        PENTESTSWARM_ORCHESTRATOR_API_KEY: ${{ inputs.api-key || env.ANTHROPIC_API_KEY }}
+      run: |
+        set -euo pipefail
+        ARGS=(scan "${{ inputs.target }}"
+              --scope "${{ inputs.scope }}"
+              --mode "${{ inputs.mode }}"
+              --objective "${{ inputs.objective }}"
+              --format all
+              --output ./pentest-report)
+        [ "${{ inputs.swarm }}"   = "true" ] && ARGS+=(--swarm)
+        [ "${{ inputs.dry-run }}" = "true" ] && ARGS+=(--dry-run)
+        pentestswarm "${ARGS[@]}"
+        REPORT=$(ls ./pentest-report/*.md 2>/dev/null | head -n1 || true)
+        SARIF=$(ls ./pentest-report/*.sarif 2>/dev/null | head -n1 || true)
+        echo "report-path=$REPORT" >> "$GITHUB_OUTPUT"
+        echo "sarif-path=$SARIF" >> "$GITHUB_OUTPUT"
+
+    - name: Enforce severity threshold
+      if: inputs.fail-on != 'none'
+      shell: bash
+      run: |
+        REPORT="${{ steps.scan.outputs.report-path }}"
+        case "${{ inputs.fail-on }}" in
+          critical) PATTERN='\| Critical \|' ;;
+          high)     PATTERN='\| (Critical|High) \|' ;;
+          medium)   PATTERN='\| (Critical|High|Medium) \|' ;;
+          low)      PATTERN='\| (Critical|High|Medium|Low) \|' ;;
+        esac
+        if [ -n "$REPORT" ] && grep -E "$PATTERN" "$REPORT" >/dev/null 2>&1; then
+          echo "::error::Pentest Swarm AI found findings at or above '${{ inputs.fail-on }}' severity."
+          exit 1
+        fi

@@ -1,0 +1,138 @@
+---
+title: 'Troubleshooting Dagster+ deployments and optimizing performance'
+description: Configure your agent and code server container settings for optimal performance of your Dagster+ deployment.
+sidebar_position: 100
+---
+
+import HybridResources from '@site/docs/partials/_HybridResources.md';
+
+To ensure the best performance of your Dagster+ deployment, we recommend following the guidance in the [performance optimization](#performance-optimization) section of this doc to tune your [agent](/deployment/dagster-plus/hybrid/architecture#the-agent) and [code server](/deployment/dagster-plus/hybrid/architecture#code-server) container settings to meet your organization's needs.
+
+If you run into issues as you scale your deployment (especially as asset counts increase), you can use the [troubleshooting guidance](#troubleshooting) to diagnose and fix them.
+
+## Performance optimization
+
+<HybridResources />
+
+## Troubleshooting
+
+### General guidance
+
+- Look for `exit code 137` / `OOMKilled` in the agent or code server container logs — this is the strongest signal that the issue is insufficient memory.
+- Correlate heartbeat timeouts (agent or code server) with CPU spikes or container restarts.
+- Distinguish issues where the run never starts (agent can’t schedule workers) from those where the run starts, then dies (worker or code server out of memory).
+- If errors disappear when you lower concurrency, this is a signal that you were hitting CPU/RAM saturation with the previous concurrency settings.
+
+### Agent server troubleshooting
+
+| Symptom                                                                                                                                                      | Solution                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| "Agent heartbeat timed out", "No healthy agents available", or agent disconnected messages.                                                                  | Correlate heartbeat timeouts with CPU spikes or container restarts; increase CPU in agent container as needed. |
+| Runs sitting in "Queued" or "Starting" for a long time with no worker ever spawned                                                                           |                                                                                                                |
+| "Failed to start run worker", "Run worker never started", or repeated retries to launch tasks.                                                               |                                                                                                                |
+| Repeated agent restarts; logs show `OOMKilled`, `exit code 137`, or generic `Killed`                                                                         | Increase memory in agent container.                                                                            |
+| `gRPC DeadlineExceeded` or `UNAVAILABLE` between Dagster+ and the agent, especially under load. This usually indicates too little network egress to keep up. | Update network settings.                                                                                       |
+| Backpressure symptoms, such as log streaming interruptions, sporadic "unable to report event"-style messages                                                 |                                                                                                                |
+
+### Code server troubleshooting
+
+| Symptom                                                                                                                                                                                                                                             | Solution                                  |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| "Failed to load code location" error with `MemoryError`, `OutOfMemory`, or plain `Killed / exit 137`.                                                                                                                                               | Increase memory in code server container. |
+| Kubernetes pod or ECS task shows `OOMKilled`, `CrashLoopBackOff`, or ECS `OutOfMemoryError`.                                                                                                                                                        | Increase memory in code server container. |
+| gRPC server crashed, `UserCodeUnreachable` errors, or `Can’t connect to user code server` errors (often after long import times).                                                                                                                   |                                           |
+| Load or health check timeouts when you click into the location or expand assets in the UI.                                                                                                                                                          |                                           |
+| During runs:<br /><ul><li>`Worker exited with SIGKILL (OOM)` error</li><li>Python `MemoryError` from libraries (pandas, numpy, PyTorch, etc.)</li><li>gRPC DeadlineExceeded mid-run when the user code process stalls under GC or thrash.</li></ul> | Increase memory in code server container. |
+| Sensors/schedules that query a large graph timing out when the code server has limited CPU.                                                                                                                                                         | Increase CPU in code server container.    |
+
+### Network connectivity troubleshooting
+
+If you see errors like the following in your agent logs, your agent may be experiencing network connectivity issues when communicating with the Dagster+ API:
+
+```text
+dagster_cloud_cli.core.errors.GraphQLStorageError: HTTPSConnectionPool(host='{organisation}.agent.dagster.cloud', port=443): Read timed out. (read timeout=60)
+```
+
+```text
+requests.exceptions.ConnectionError: ('Connection aborted.', ConnectionResetError(104, 'Connection reset by peer'))
+```
+
+These errors typically occur in Hybrid deployments where network egress traverses NAT gateways or proxies that impose connection timeouts or drop idle connections. Common causes include:
+
+- **NAT gateway timeouts:** Cloud NAT services (such as GCP CloudNAT or AWS NAT Gateway) may drop idle connections
+- **Port/IP exhaustion:** High traffic through NAT gateways can exhaust available ports
+- **Proxy connection limits:** Corporate proxies may impose connection duration limits
+
+#### Reproducing connectivity issues \{#reproducing-connectivity-issues}
+
+To confirm that you are hitting a network connectivity issue — and to check whether a fix has had an effect — you can run the following script directly on your agent pod. It opens a number of concurrent connections to the Dagster+ API and issues a simple GraphQL query on each, surfacing the same read timeouts and connection resets you would otherwise see intermittently in agent logs.
+
+Run the script from a shell on the agent pod (for example, `kubectl exec` into the agent container). The pod already has `DAGSTER_HOME` set and a configured `dagster.yaml`, so the script connects to the same Dagster+ deployment over the same network path your agent uses. Adjust `NUM_TRIALS` and `CONCURRENCY` as needed to reproduce the issue, then re-run it after applying a fix (such as the TCP keepalive settings below) to confirm the errors no longer occur.
+
+<CodeExample
+  path="docs_snippets/docs_snippets/deployment/dagster_plus/hybrid/test_connection.py"
+  title="test_connection.py"
+/>
+
+To narrow down whether the problem is specific to your agent's network path (rather than the Dagster+ API itself), you can also run the script locally — for example, from your laptop or a VM in a different network — and compare the results. Point a local `dagster.yaml` at the same deployment, set `DAGSTER_HOME` to that directory, and run the script the same way:
+
+```bash
+export DAGSTER_HOME=~/dagster_home
+python test_connection.py
+```
+
+For instructions on creating a local `dagster.yaml`, see [Step 2 of the local agent guide](/deployment/dagster-plus/hybrid/local#step-2-configure-the-local-agent).
+
+If the errors reproduce from the agent pod but not from a different network location, the issue is likely in the agent's egress path (NAT gateway, proxy, or firewall) rather than in Dagster+.
+
+#### Enable TCP keepalive \{#tcp-keepalive}
+
+You can configure TCP keepalive settings to prevent NAT gateways and proxies from dropping idle connections. For Kubernetes agents, add the following to your Helm `values.yaml`:
+
+```yaml
+# values.yaml
+dagsterCloud:
+  socketOptions:
+    - ['SOL_SOCKET', 'SO_KEEPALIVE', 1]
+    - ['IPPROTO_TCP', 'TCP_KEEPIDLE', 11]
+    - ['IPPROTO_TCP', 'TCP_KEEPINTVL', 7]
+    - ['IPPROTO_TCP', 'TCP_KEEPCNT', 5]
+```
+
+```shell
+helm --namespace dagster-cloud upgrade agent \
+    dagster-cloud/dagster-cloud-agent \
+    --values ./values.yaml
+```
+
+These settings configure the TCP stack to:
+
+- Enable keepalive probes on connections (`SO_KEEPALIVE`)
+- Send the first keepalive probe after 11 seconds of idle time (`TCP_KEEPIDLE`)
+- Send subsequent probes every 7 seconds (`TCP_KEEPINTVL`)
+- Close the connection after 5 failed probes (`TCP_KEEPCNT`)
+
+### Handling duplicate code locations
+
+When restarting Dagster agent pods or updating configurations, you may encounter duplicate code locations if the agent-to-Dagster+ communication is disrupted. This can happen when:
+
+- Deleting and recreating agent pods
+- Using `dagster-cloud deployment settings set-from-file`
+
+To minimize the occurrence of duplicate code locations, use `kubectl rollout restart` when possible, as this ensures a more graceful shutdown and restart of the agent.
+
+Note that in cases where configuration changes are needed, you'll need to:
+
+1. First apply the configuration changes:
+
+   ```bash
+   kubectl apply -f <your-config-file>.yaml
+   ```
+
+2. Then perform the rollout restart if needed.
+
+If duplicate code locations do appear, they may need to be manually cleaned up through the Dagster interface. This issue can occur due to:
+
+- New code locations being created instead of updating existing ones
+- Old locations not being properly deregistered
+- Race conditions during agent reconnection

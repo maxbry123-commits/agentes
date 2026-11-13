@@ -1,0 +1,33 @@
+<template>
+    <template v-if="ready">
+        <ExecutionRootTopBar :routeInfo="routeInfo" />
+        <Tabs
+            :routeName="routeName"
+            :tabs="tabs"
+        />
+    </template>
+    <div v-else class="full-space" v-ks-loading="true">
+        {{ executionsStore.execution?.id }}
+    </div>
+</template>
+
+<script setup lang="ts">
+    import {useExecutionsStore} from "../../stores/executions"
+    import {useExecutionRoot} from "./composables/useExecutionRoot"
+    import useRouteContext from "../../composables/useRouteContext"
+    import Tabs from "../../components/Tabs.vue"
+    import ExecutionRootTopBar from "./ExecutionRootTopBar.vue"
+
+    const executionsStore = useExecutionsStore()
+
+    const {routeInfo, routeName, ready, tabs, setupLifecycle} = useExecutionRoot()
+
+    useRouteContext(routeInfo as any, false)
+
+    setupLifecycle()
+</script>
+<style scoped lang="scss">
+    .full-space {
+        flex: 1 1 auto;
+    }
+</style>

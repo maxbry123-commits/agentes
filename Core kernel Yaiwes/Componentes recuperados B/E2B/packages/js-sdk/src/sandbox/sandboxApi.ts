@@ -1,0 +1,1967 @@
+import { ApiClient, apiErrorFromCode, components, handleApiError } from '../api'
+import {
+  ClientFactory,
+  ConnectionConfig,
+  ConnectionOpts,
+  DEFAULT_SANDBOX_TIMEOUT_MS,
+} from '../connectionConfig'
+import { compareVersions } from 'compare-versions'
+import { ALL_TRAFFIC } from './network'
+import { iamTokenPlaceholders, validateIamTokenName } from './iam'
+import {
+  InvalidArgumentError,
+  NotFoundError,
+  SandboxError,
+  SandboxNotFoundError,
+  TemplateError,
+} from '../errors'
+import { Paginator } from '../paginator'
+import { timeoutToSeconds } from '../utils'
+import type { Volume } from '../volume'
+import type { McpServer as BaseMcpServer } from './mcp'
+
+/**
+ * Extended MCP server configuration that includes base servers
+ * and allows dynamic GitHub-based MCP servers with custom run and install commands.
+ */
+export type McpServer = BaseMcpServer | GitHubMcpServer
+
+export type GitHubMcpServer = {
+  [key: `github/${string}`]: {
+    /**
+     * Command to run the MCP server. Must start a stdio-compatible server.
+     */
+    runCmd: string
+    /**
+     * Command to install dependencies for the MCP server. Working directory is the root of the github repository.
+     */
+    installCmd?: string
+    /**
+     * Environment variables to set in the MCP process.
+     */
+    envs?: Record<string, string>
+  }
+}
+
+/**
+ * Transform applied to egress requests matching a {@link SandboxNetworkRule}.
+ */
+export type SandboxNetworkTransform = {
+  /**
+   * Headers to inject into the outbound request. Values override any headers
+   * already present on the request.
+   */
+  headers?: Record<string, string>
+}
+
+/**
+ * Context passed to a {@link SandboxNetworkRule} `transform` callback. Its
+ * values are literal placeholder strings that the egress proxy resolves per
+ * request, so the secret itself never leaves the platform.
+ */
+export type SandboxNetworkTransformContext = {
+  /** Workload identity placeholders. */
+  iam: {
+    /**
+     * Placeholder for each workload token registered in
+     * {@link SandboxOpts.iam}, keyed by token name. `tokens.aws` is the string
+     * `'${e2b.identity.tokens.aws}'`, which the egress proxy replaces with a
+     * freshly minted token when it forwards the request.
+     *
+     * Reading a name that is not registered throws
+     * {@link InvalidArgumentError} — the proxy never turns an unregistered name
+     * into a token, so a typo would surface as a confusing auth failure at the
+     * destination. The four names the runtime reads off any object it
+     * serializes, awaits or coerces (`toJSON`, `then`, `toString`, `valueOf`)
+     * throw on use rather than on the read.
+     */
+    tokens: Record<string, string>
+  }
+}
+
+/**
+ * Callback form of {@link SandboxNetworkRule.transform}. Invoked once while the
+ * request is being built, with a context of placeholder strings.
+ */
+export type SandboxNetworkTransformResolver = (
+  ctx: SandboxNetworkTransformContext
+) => SandboxNetworkTransform
+
+/**
+ * Per-domain rule applied to egress requests.
+ */
+export type SandboxNetworkRule = {
+  /**
+   * Transform applied to requests matching this rule.
+   *
+   * Accepts either a static object or a callback that receives a
+   * {@link SandboxNetworkTransformContext} of placeholder strings — use the
+   * callback to inject a workload identity token the proxy mints per request.
+   *
+   * @example
+   * ```ts
+   * {
+   *   transform: ({ iam }) => ({
+   *     headers: { Authorization: `Bearer ${iam.tokens.aws}` },
+   *   }),
+   * }
+   * ```
+   */
+  transform?: SandboxNetworkTransform | SandboxNetworkTransformResolver
+}
+
+/**
+ * Map of host (or CIDR / IP) to ordered list of rules applied to outbound
+ * requests for that host. Accepts either a plain object or a `Map`.
+ * Registering a host here does not allow egress on its own — the host must
+ * also appear in {@link SandboxNetworkOpts.allowOut}.
+ */
+export type SandboxNetworkRules =
+  | Record<string, SandboxNetworkRule[]>
+  | Map<string, SandboxNetworkRule[]>
+
+/**
+ * Per-domain rule as returned by the sandbox info endpoint. Mirrors
+ * {@link SandboxNetworkRule} but with `transform` always materialized to the
+ * static {@link SandboxNetworkTransform} shape — no callback variant.
+ */
+export type SandboxNetworkRuleInfo = {
+  transform?: SandboxNetworkTransform
+}
+
+/**
+ * Context passed to {@link SandboxNetworkOpts.allowOut} and
+ * {@link SandboxNetworkOpts.denyOut} when they are defined as functions.
+ */
+export type SandboxNetworkSelectorContext = {
+  /** All traffic sentinel — equivalent to `'0.0.0.0/0'`. */
+  allTraffic: string
+  /** Rules registered in {@link SandboxNetworkOpts.rules}. */
+  rules: Map<string, SandboxNetworkRule[]>
+}
+
+/**
+ * Egress rule list, either a static array of CIDR blocks / IP addresses /
+ * hostnames, or a callback that receives `{ allTraffic, rules }` and returns
+ * the same.
+ */
+export type SandboxNetworkSelector =
+  | string[]
+  | ((ctx: SandboxNetworkSelectorContext) => string[])
+
+/**
+ * SOCKS5 proxy the sandbox's outbound TCP is tunneled through — "bring your
+ * own proxy".
+ *
+ * Tunneling happens on the host, after
+ * {@link SandboxNetworkOpts.allowOut}/{@link SandboxNetworkOpts.denyOut}
+ * filtering, so nothing runs inside the sandbox and code running there can
+ * neither see the proxy nor route around it. UDP-based traffic — DNS and
+ * QUIC/HTTP3 — is not tunneled and leaves the sandbox the usual way.
+ *
+ * Egress fails closed: when the proxy is unreachable or does not speak SOCKS5,
+ * outbound connections fail rather than falling back to a direct connection.
+ *
+ * @example
+ * ```ts
+ * const sandbox = await Sandbox.create({
+ *   network: {
+ *     egressProxy: {
+ *       address: 'proxy.example.com:1080',
+ *       username: 'proxy-user',
+ *       password: 'proxy-password',
+ *     },
+ *   },
+ * })
+ * ```
+ */
+export type SandboxEgressProxyOpts = {
+  /**
+   * SOCKS5 proxy address in `host:port` form, e.g.
+   * `'proxy.example.com:1080'`. The host can be a hostname or an IP literal;
+   * a hostname is re-resolved at dial time and the resolved address is pinned
+   * for that connection, so a DNS change cannot redirect a connection that is
+   * already being established.
+   *
+   * The proxy has to be reachable from E2B's infrastructure: an address that
+   * does not resolve, or that resolves into a private or otherwise internal
+   * range, is rejected before the sandbox exists.
+   */
+  address: string
+
+  /**
+   * SOCKS5 username
+   * ([RFC 1929](https://datatracker.ietf.org/doc/html/rfc1929)), up to 255
+   * bytes. Omit it for a proxy that takes no credentials.
+   */
+  username?: string
+
+  /**
+   * SOCKS5 password, up to 255 bytes. Only valid together with
+   * {@link SandboxEgressProxyOpts.username}.
+   */
+  password?: string
+}
+
+/**
+ * Egress proxy as returned by the sandbox info endpoint. Mirrors
+ * {@link SandboxEgressProxyOpts} without `password` — the API never returns
+ * it.
+ */
+export type SandboxEgressProxyInfo = {
+  /** See {@link SandboxEgressProxyOpts.address}. */
+  address: string
+  /** See {@link SandboxEgressProxyOpts.username}. */
+  username?: string
+}
+
+export type SandboxNetworkOpts = {
+  /**
+   * Allow outbound traffic from the sandbox to the specified addresses.
+   * If `allowOut` is not specified, all outbound traffic is allowed.
+   *
+   * Accepts either a static array of CIDR blocks, IP addresses, or hostnames,
+   * or a callback that receives `{ allTraffic, rules }` and returns the same.
+   * `allTraffic` is `'0.0.0.0/0'`; `rules` is a `Map` view of
+   * {@link SandboxNetworkOpts.rules}.
+   *
+   * Examples:
+   * - Static list: `["1.1.1.1", "8.8.8.0/24"]`
+   * - Allow only rule-registered hosts:
+   *   `({ rules }) => [...rules.keys()]`
+   */
+  allowOut?: SandboxNetworkSelector
+
+  /**
+   * Deny outbound traffic from the sandbox to the specified addresses.
+   *
+   * Accepts the same shapes as {@link allowOut}.
+   *
+   * Examples:
+   * - Static list: `["1.1.1.1", "8.8.8.0/24"]`
+   * - Block all egress: `({ allTraffic }) => [allTraffic]`
+   */
+  denyOut?: SandboxNetworkSelector
+
+  /**
+   * Per-domain transform rules applied to matching egress HTTP/HTTPS
+   * requests. Keys are domains (e.g. `"api.example.com"`); values are
+   * ordered lists of rules.
+   *
+   * Registering a host here does not allow egress on its own — the host must
+   * also appear in {@link allowOut}. Hosts registered here are exposed to the
+   * `allowOut`/`denyOut` callbacks via `rules`.
+   *
+   * A rule's `transform` can also be a callback receiving a
+   * {@link SandboxNetworkTransformContext}, which is how a workload identity
+   * token from {@link SandboxOpts.iam} gets injected without the SDK ever
+   * seeing its value.
+   *
+   * @example
+   * ```ts
+   * await Sandbox.create({
+   *   network: {
+   *     allowOut: ({ rules }) => [...rules.keys()],
+   *     rules: {
+   *       'api.openai.com': [
+   *         { transform: { headers: { Authorization: `Bearer ${token}` } } },
+   *       ],
+   *       'api.internal.example.com': [
+   *         {
+   *           transform: ({ iam }) => ({
+   *             headers: { Authorization: `Bearer ${iam.tokens.aws}` },
+   *           }),
+   *         },
+   *       ],
+   *     },
+   *   },
+   * })
+   * ```
+   */
+  rules?: SandboxNetworkRules
+
+  /**
+   * Tunnel the sandbox's outbound TCP through a SOCKS5 proxy you operate.
+   *
+   * Filtering runs first, so a connection {@link denyOut} blocks never reaches
+   * the proxy, and per-host {@link rules} transforms still apply before the
+   * connection is dialed. Omit it to send the sandbox's traffic out directly.
+   *
+   * Available on E2B Cloud and in BYOC deployments; a sandbox that names a
+   * proxy on a deployment built from the open source `e2b-dev/infra`
+   * repository is rejected as unsupported.
+   *
+   * @example
+   * ```ts
+   * // Deny everything except api.example.com, and tunnel what is left
+   * await Sandbox.create({
+   *   network: {
+   *     allowOut: ['api.example.com'],
+   *     denyOut: ({ allTraffic }) => [allTraffic],
+   *     egressProxy: { address: 'proxy.example.com:1080' },
+   *   },
+   * })
+   * ```
+   */
+  egressProxy?: SandboxEgressProxyOpts
+
+  /**
+   * Specify if the sandbox URLs should be accessible only with authentication.
+   * @default true
+   */
+  allowPublicTraffic?: boolean
+
+  /** Specify host mask which will be used for all sandbox requests in the header.
+   * You can use the ${PORT} variable that will be replaced with the actual port number of the service.
+   *
+   * @default ${PORT}-sandboxid.e2b.app
+   */
+  maskRequestHost?: string
+}
+
+/**
+ * Network configuration as returned by the sandbox info endpoint. Mirrors
+ * {@link SandboxNetworkOpts} but with `allowOut`/`denyOut` always materialized
+ * to plain string arrays.
+ */
+export type SandboxNetworkInfo = {
+  allowOut?: string[]
+  denyOut?: string[]
+  rules?: Record<string, SandboxNetworkRuleInfo[]>
+  /**
+   * Proxy the sandbox's egress is currently tunneled through, absent when it
+   * goes out directly. See {@link SandboxEgressProxyInfo} for why the password
+   * is missing.
+   */
+  egressProxy?: SandboxEgressProxyInfo
+  allowPublicTraffic?: boolean
+  maskRequestHost?: string
+}
+
+/**
+ * Subset of {@link SandboxNetworkOpts} accepted by {@link SandboxApi.updateNetwork}.
+ * The update endpoint replaces all egress rules atomically — fields that are
+ * omitted are cleared on the server.
+ */
+export type SandboxNetworkUpdate = {
+  /** See {@link SandboxNetworkOpts.allowOut}. */
+  allowOut?: SandboxNetworkSelector
+  /** See {@link SandboxNetworkOpts.denyOut}. */
+  denyOut?: SandboxNetworkSelector
+  /**
+   * See {@link SandboxNetworkOpts.rules}. A `transform` callback works here
+   * too, but the update payload carries no `iam` config, so token names cannot
+   * be checked against the sandbox's registered tokens — every name resolves to
+   * its placeholder and a typo only surfaces at the destination.
+   */
+  rules?: SandboxNetworkRules
+  /**
+   * See {@link SandboxNetworkOpts.egressProxy}. Sets or replaces the proxy on a
+   * sandbox that is already running, with no restart.
+   *
+   * The update replaces the whole configuration instead of merging into it, so
+   * an update that leaves this out stops tunneling and sends the sandbox's
+   * traffic out directly — even when the update was only meant to change the
+   * allow and deny lists. Repeat it in every update that should keep
+   * tunneling.
+   */
+  egressProxy?: SandboxEgressProxyOpts
+  /**
+   * Allow sandbox to access the internet. When set to `false`, it behaves the
+   * same as specifying `denyOut: ['0.0.0.0/0']` in the network config.
+   */
+  allowInternetAccess?: boolean
+}
+
+/**
+ * Workload token type. `'JWT-SVID'` is the only type the API accepts in this
+ * version; the set is defined server-side and may grow, so any string is
+ * allowed.
+ */
+export type SandboxIamTokenType = 'JWT-SVID' | (string & {})
+
+/**
+ * Workload token definition for sandbox workload identity.
+ */
+export interface SandboxIamToken {
+  /**
+   * Audience of the workload token, stored exactly as provided.
+   */
+  audience: string
+
+  /**
+   * Workload token type.
+   */
+  tokenType: SandboxIamTokenType
+}
+
+/**
+ * Sandbox workload identity configuration. A non-empty `tokens` map enables
+ * workload identity for the sandbox.
+ */
+export interface SandboxIamOpts {
+  /**
+   * Named workload-token definitions, keyed by a caller-chosen token name.
+   * Values can be created with `Secret.iamToken()`.
+   *
+   * A name is interpolated into the `'${e2b.identity.tokens.<name>}'`
+   * placeholder a network transform resolves, so it cannot be empty or contain
+   * `{`, `}` or control characters.
+   */
+  tokens?: Record<string, SandboxIamToken>
+}
+
+/**
+ * What happens when the sandbox timeout is reached. Either the bare action
+ * (`'pause'` / `'kill'`), or an object form that also controls the pause
+ * snapshot kind via `keepMemory`.
+ *
+ * The object form is a discriminated union on `action`: `keepMemory` is only
+ * accepted alongside `action: 'pause'`. Passing `keepMemory` with
+ * `action: 'kill'` is a compile-time type error.
+ */
+export type SandboxOnTimeout =
+  | 'pause'
+  | 'kill'
+  | {
+      /** Auto-pause the sandbox when the timeout is reached. */
+      action: 'pause'
+
+      /**
+       * Whether the timeout auto-pause keeps a full memory snapshot.
+       *
+       * When `false`, the auto-pause drops the in-memory state and persists only
+       * the filesystem (a filesystem-only snapshot); resuming such a sandbox
+       * cold-boots (reboots) it from disk, losing running processes and open
+       * connections.
+       *
+       * Cannot be combined with `autoResume`: auto-resume wakes a paused sandbox
+       * on inbound traffic by restoring its memory snapshot in place, so the
+       * request that woke it hits an already-running process. A filesystem-only
+       * snapshot has no memory to restore — resuming cold-boots it — so it can't
+       * be woken transparently by traffic and must be resumed explicitly via
+       * `connect()`.
+       *
+       * Left unset, the flag is omitted from the create request and the API's own
+       * default (currently enabled) applies.
+       */
+      keepMemory?: boolean
+    }
+  | {
+      /** Kill the sandbox when the timeout is reached. */
+      action: 'kill'
+    }
+
+export type SandboxLifecycle = {
+  /**
+   * Action to take when sandbox timeout is reached. Accepts either `'pause'` /
+   * `'kill'`, or `{ action, keepMemory }` to also control the pause snapshot kind.
+   * Omitted from the create request when unset, leaving the API's default
+   * (currently `kill`) in effect.
+   */
+  onTimeout: SandboxOnTimeout
+
+  /**
+   * Auto-resume enabled flag.
+   *
+   * Leave unset to let the API pick the behavior. Set `false` to opt out
+   * explicitly and keep auto-resume off even if the API's default changes.
+   * Can be `true` only when `onTimeout` is `pause`. Not supported when
+   * `keepMemory` is `false` (a filesystem-only snapshot must be resumed
+   * explicitly via `connect()`).
+   */
+  autoResume?: boolean
+}
+
+export type SandboxInfoLifecycle = {
+  /**
+   * Action to take when sandbox timeout is reached.
+   */
+  onTimeout: 'pause' | 'kill'
+
+  /**
+   * Whether the sandbox can auto-resume.
+   */
+  autoResume: boolean
+}
+
+/**
+ * Options for request to the Sandbox API.
+ */
+export interface SandboxApiOpts
+  extends Partial<
+    Pick<
+      ConnectionOpts,
+      | 'apiKey'
+      | 'validateApiKey'
+      | 'headers'
+      | 'apiHeaders'
+      | 'debug'
+      | 'domain'
+      | 'requestTimeoutMs'
+      | 'signal'
+    >
+  > {}
+
+/**
+ * Options for pausing a sandbox.
+ */
+export interface SandboxPauseOpts extends SandboxApiOpts {
+  /**
+   * Whether to keep a full memory snapshot.
+   *
+   * When `false`, the in-memory state is dropped and only the filesystem is
+   * persisted (a filesystem-only snapshot); resuming such a sandbox cold-boots
+   * (reboots) it from disk, losing running processes and open connections.
+   *
+   * @default true
+   */
+  keepMemory?: boolean
+}
+
+/**
+ * Options for forking a sandbox.
+ */
+export interface SandboxForkOpts extends ConnectionOpts {
+  /**
+   * Number of forked sandboxes to create.
+   *
+   * All forks boot from the same snapshot — the snapshot is captured once
+   * regardless of count. Each fork succeeds or fails independently; the
+   * outcome of each is reported in its entry of the returned array.
+   *
+   * @default 1
+   */
+  count?: number
+
+  /**
+   * Timeout for the forked sandboxes in **milliseconds**.
+   * Maximum time a sandbox can be kept alive is 24 hours (86_400_000 milliseconds) for Pro users and 1 hour (3_600_000 milliseconds) for Hobby users.
+   *
+   * @default 300_000 // 5 minutes
+   */
+  timeoutMs?: number
+}
+
+/**
+ * Result of one requested fork as returned by the API — either the raw
+ * connection info of the created sandbox, or the error that prevented it
+ * from starting. Per-fork error codes map to the same error classes as other
+ * API errors (e.g. 429 to `RateLimitError`).
+ */
+type SandboxForkResponse =
+  | {
+      sandboxId: string
+      sandboxDomain?: string
+      envdVersion: string
+      envdAccessToken?: string
+      trafficAccessToken?: string
+    }
+  | Error
+
+/**
+ * Options for creating a new Sandbox.
+ */
+export interface SandboxOpts extends ConnectionOpts {
+  /**
+   * Sandbox template name or ID.
+   *
+   * @default 'base' (or 'mcp-gateway' when `mcp` option is set)
+   */
+  template?: string
+
+  /**
+   * Custom metadata for the sandbox.
+   *
+   * @default {}
+   */
+  metadata?: Record<string, string>
+
+  /**
+   * Custom environment variables for the sandbox.
+   *
+   * Used when executing commands and code in the sandbox.
+   * Can be overridden with the `envs` argument when executing commands or code.
+   *
+   * @default {}
+   */
+  envs?: Record<string, string>
+
+  /**
+   * Timeout for the sandbox in **milliseconds**.
+   * Maximum time a sandbox can be kept alive is 24 hours (86_400_000 milliseconds) for Pro users and 1 hour (3_600_000 milliseconds) for Hobby users.
+   *
+   * @default 300_000 // 5 minutes
+   */
+  timeoutMs?: number
+
+  /**
+   * Secure all traffic coming to the sandbox controller with auth token
+   *
+   * @default true
+   */
+  secure?: boolean
+
+  /**
+   * Allow sandbox to access the internet. If set to `False`, it works the same as setting network `denyOut` to `[0.0.0.0/0]`.
+   *
+   * @default true
+   */
+  allowInternetAccess?: boolean
+
+  /**
+   * MCP server to enable in the sandbox
+   * @default undefined
+   */
+  mcp?: McpServer
+
+  /**
+   * Sandbox network configuration
+   */
+  network?: SandboxNetworkOpts
+
+  /**
+   * Sandbox workload identity configuration. Providing a non-empty
+   * `tokens` map enables workload identity for the sandbox.
+   *
+   * Registered tokens are exposed to {@link SandboxNetworkOpts.rules}
+   * `transform` callbacks as `iam.tokens.<name>` placeholders, which the egress
+   * proxy resolves per request.
+   *
+   * @example
+   * ```ts
+   * const sandbox = await Sandbox.create({
+   *   iam: {
+   *     tokens: {
+   *       aws: Secret.iamToken({
+   *         audience: 'sts.amazonaws.com',
+   *         tokenType: 'JWT-SVID',
+   *       }),
+   *     },
+   *   },
+   * })
+   * ```
+   */
+  iam?: SandboxIamOpts
+
+  /**
+   * Volume mounts for the sandbox.
+   *
+   * The keys are mount paths inside the sandbox and the values are either
+   * a `Volume` instance or a string representing the volume name.
+   *
+   * @default undefined
+   */
+  volumeMounts?: Record<string, Volume | string>
+
+  /**
+   * Sandbox URL. Used for local development
+   */
+  sandboxUrl?: string
+
+  /**
+   * Sandbox lifecycle configuration.
+   */
+  lifecycle?: SandboxLifecycle
+}
+
+/**
+ * Options for connecting to a Sandbox.
+ */
+export type SandboxConnectOpts = ConnectionOpts & {
+  /**
+   * Timeout for the sandbox in **milliseconds**.
+   * For running sandboxes, the timeout will update only if the new timeout is longer than the existing one.
+   * Maximum time a sandbox can be kept alive is 24 hours (86_400_000 milliseconds) for Pro users and 1 hour (3_600_000 milliseconds) for Hobby users.
+   *
+   * @default 300_000 // 5 minutes
+   */
+  timeoutMs?: number
+}
+
+/**
+ * State of the sandbox.
+ */
+export type SandboxState = 'running' | 'paused'
+
+/**
+ * Sort order for listing sandboxes by start time.
+ */
+export type SandboxListOrder = 'asc' | 'desc'
+
+export interface SandboxListOpts extends Omit<SandboxApiOpts, 'signal'> {
+  /**
+   * Filter the list of sandboxes, e.g. by metadata `metadata:{"key": "value"}`, if there are multiple filters they are combined with AND.
+   *
+   */
+  query?: {
+    metadata?: Record<string, string>
+    /**
+     * Filter the list of sandboxes by state.
+     * @default ['running', 'paused']
+     */
+    state?: Array<SandboxState>
+    /**
+     * Filter the list of sandboxes to those started at or after this time.
+     */
+    startedAfter?: Date
+    /**
+     * Filter the list of sandboxes by a template ID or name.
+     */
+    template?: string
+  }
+
+  /**
+   * Sort order of the list of sandboxes by start time, applied across the
+   * whole result set before pagination (not within a page).
+   *
+   * @default 'desc'
+   */
+  order?: SandboxListOrder
+
+  /**
+   * Number of sandboxes to return per page.
+   *
+   * @default 100
+   */
+  limit?: number
+
+  /**
+   * Token to the next page.
+   */
+  nextToken?: string
+}
+
+export interface SandboxMetricsOpts extends SandboxApiOpts {
+  /**
+   * Start time for the metrics, defaults to the start of the sandbox
+   */
+  start?: Date
+  /**
+   * End time for the metrics, defaults to the current time
+   */
+  end?: Date
+}
+
+/**
+ * Options for listing snapshots.
+ */
+export interface SnapshotListOpts extends Omit<SandboxApiOpts, 'signal'> {
+  /**
+   * Filter snapshots by source sandbox ID.
+   */
+  sandboxId?: string
+
+  /**
+   * Filter snapshots by name or ID, optionally tag-qualified
+   * (e.g. "my-snapshot", "my-project/my-snapshot" or "my-snapshot:v1").
+   */
+  name?: string
+
+  /**
+   * Number of snapshots to return per page.
+   *
+   * @default 100
+   */
+  limit?: number
+
+  /**
+   * Token to the next page.
+   */
+  nextToken?: string
+}
+
+/**
+ * Information about a snapshot.
+ */
+export interface SnapshotInfo {
+  /**
+   * Snapshot identifier — template ID with tag, or namespaced name with tag (e.g. my-snapshot:latest).
+   * Can be used with Sandbox.create() to create a new sandbox from this snapshot.
+   */
+  snapshotId: string
+
+  /**
+   * Full names of the snapshot template including project slug and tag (e.g. project-slug/my-snapshot:v2).
+   */
+  names: string[]
+}
+
+/**
+ * Options for creating a snapshot.
+ */
+export interface CreateSnapshotOpts extends SandboxApiOpts {
+  /**
+   * Optional name for the snapshot template.
+   * If a snapshot template with this name already exists, a new build will be assigned
+   * to the existing template instead of creating a new one.
+   */
+  name?: string
+}
+
+/**
+ * Information about a sandbox.
+ */
+export interface SandboxInfo {
+  /**
+   * Sandbox ID.
+   */
+  sandboxId: string
+
+  /**
+   * Template ID.
+   */
+  templateId: string
+
+  /**
+   * Template name.
+   */
+  name?: string
+
+  /**
+   * Saved sandbox metadata.
+   */
+  metadata: Record<string, string>
+
+  /**
+   * Sandbox start time.
+   */
+  startedAt: Date
+
+  /**
+   * Sandbox expiration date.
+   */
+  endAt: Date
+
+  /**
+   * Sandbox state.
+   *
+   * @string can be `running` or `paused`
+   */
+  state: SandboxState
+
+  /**
+   * Sandbox CPU count.
+   */
+  cpuCount: number
+
+  /**
+   * Sandbox Memory size in MiB.
+   */
+  memoryMB: number
+
+  /**
+   * Envd version.
+   */
+  envdVersion: string
+
+  /**
+   * Whether internet access was explicitly enabled or disabled for the sandbox.
+   */
+  allowInternetAccess?: boolean | undefined
+
+  /**
+   * Sandbox network configuration.
+   */
+  network?: SandboxNetworkInfo
+
+  /**
+   * Sandbox lifecycle configuration.
+   */
+  lifecycle?: SandboxInfoLifecycle
+
+  /**
+   * Volume mounts for the sandbox.
+   */
+  volumeMounts?: Array<{ name: string; path: string }>
+
+  /**
+   * Sandbox domain.
+   */
+  sandboxDomain?: string
+}
+
+/**
+ * Sandbox resource usage metrics.
+ */
+export interface SandboxMetrics {
+  /**
+   * Timestamp of the metrics.
+   */
+  timestamp: Date
+
+  /**
+   * CPU usage in percentage.
+   */
+  cpuUsedPct: number
+
+  /**
+   * Number of CPU cores.
+   */
+  cpuCount: number
+
+  /**
+   * Memory usage in bytes.
+   */
+  memUsed: number
+
+  /**
+   * Total memory available in bytes.
+   */
+  memTotal: number
+
+  /**
+   * Cached memory (page cache) in bytes.
+   */
+  memCache: number
+
+  /**
+   * Used disk space in bytes.
+   */
+  diskUsed: number
+
+  /**
+   * Total disk space available in bytes.
+   */
+  diskTotal: number
+}
+
+function resolveNetworkSelector(
+  selector: SandboxNetworkSelector | undefined,
+  rules: Map<string, SandboxNetworkRule[]>
+): string[] | undefined {
+  if (selector === undefined) {
+    return undefined
+  }
+
+  if (typeof selector === 'function') {
+    return selector({ allTraffic: ALL_TRAFFIC, rules })
+  }
+
+  return selector
+}
+
+/**
+ * Build the context handed to `transform` callbacks. See
+ * {@link iamTokenPlaceholders} for what `validate` controls.
+ */
+function buildTransformContext(
+  tokenNames: string[],
+  { validate }: { validate: boolean }
+): SandboxNetworkTransformContext {
+  return { iam: { tokens: iamTokenPlaceholders(tokenNames, { validate }) } }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
+/** Name the shape a `transform` callback returned, for the error message. */
+function describeValue(value: unknown): string {
+  if (value === null) {
+    return 'null'
+  }
+
+  if (typeof value !== 'object') {
+    return typeof value
+  }
+
+  return Array.isArray(value) ? 'array' : (value.constructor?.name ?? 'object')
+}
+
+function resolveRulesForBody(
+  rules: Map<string, SandboxNetworkRule[]>,
+  ctx: SandboxNetworkTransformContext
+): Record<string, { transform?: SandboxNetworkTransform }[]> {
+  const out: Record<string, { transform?: SandboxNetworkTransform }[]> = {}
+  for (const [host, hostRules] of rules) {
+    out[host] = hostRules.map((rule) => {
+      // `== null` also covers an explicit `transform: null`, which Python's
+      // `rule.get('transform') is None` treats as no transform too.
+      if (rule.transform == null) {
+        return {}
+      }
+
+      if (typeof rule.transform !== 'function') {
+        return { transform: rule.transform }
+      }
+
+      const transform: unknown = rule.transform(ctx)
+      // A callback that returns something other than a transform resolves to no
+      // headers at all, which would silently create the rule without the headers
+      // it is for.
+      if (typeof (transform as PromiseLike<unknown>)?.then === 'function') {
+        // Swallow a later rejection so the caller gets this error instead of an
+        // unhandled rejection.
+        void Promise.resolve(transform).catch(() => {})
+        throw new InvalidArgumentError(
+          `Network transform callback for '${host}' must be synchronous, it returned a promise. Resolve the value before creating the sandbox.`
+        )
+      }
+
+      // Mirrors Python's `isinstance(transform, Mapping)`: an array, `Map`,
+      // `Date` or class instance serializes to something the API cannot read.
+      if (!isPlainObject(transform)) {
+        throw new InvalidArgumentError(
+          `Network transform callback for '${host}' must return a transform object, got ${describeValue(transform)}.`
+        )
+      }
+
+      return { transform: transform as SandboxNetworkTransform }
+    })
+  }
+  return out
+}
+
+/**
+ * Rebuild the proxy config from the known fields so stray properties on the
+ * caller's object never reach the wire and a later mutation of it cannot alter
+ * the in-flight request. Address reachability is the server's — it is the only
+ * side that can tell whether the address resolves, and to where. The required
+ * `address` is checked here so an untyped caller that omits it is told which
+ * option is wrong instead of getting an API error about a body it never wrote.
+ */
+function buildEgressProxyBody(
+  egressProxy: SandboxEgressProxyOpts
+): components['schemas']['SandboxEgressProxyConfig'] {
+  // Re-check at runtime for callers that bypass the type; Python's
+  // `_build_egress_proxy` checks the same way.
+  if (!isPlainObject(egressProxy) || typeof egressProxy.address !== 'string') {
+    throw new InvalidArgumentError(
+      `network egressProxy must be an object with a string 'address' (e.g. 'proxy.example.com:1080').`
+    )
+  }
+
+  // `!= null` also skips a `null` credential, which is what reading one out of
+  // an unset environment variable yields and what "this proxy takes no
+  // credentials" means; the API only accepts a string.
+  return {
+    address: egressProxy.address,
+    ...(egressProxy.username != null ? { username: egressProxy.username } : {}),
+    ...(egressProxy.password != null ? { password: egressProxy.password } : {}),
+  }
+}
+
+type NetworkEgressBody = {
+  allowOut?: string[]
+  denyOut?: string[]
+  egressProxy?: components['schemas']['SandboxEgressProxyConfig']
+  rules?: Record<string, { transform?: SandboxNetworkTransform }[]>
+}
+
+function buildNetworkEgress(
+  network: {
+    allowOut?: SandboxNetworkSelector
+    denyOut?: SandboxNetworkSelector
+    egressProxy?: SandboxEgressProxyOpts
+    rules?: SandboxNetworkRules
+  },
+  transformContext: SandboxNetworkTransformContext
+): NetworkEgressBody {
+  const rules =
+    network.rules instanceof Map
+      ? network.rules
+      : new Map(Object.entries(network.rules ?? {}))
+  const allowOut = resolveNetworkSelector(network.allowOut, rules)
+  const denyOut = resolveNetworkSelector(network.denyOut, rules)
+
+  return {
+    ...(allowOut !== undefined ? { allowOut } : {}),
+    ...(denyOut !== undefined ? { denyOut } : {}),
+    // `!= null` also covers an explicit `egressProxy: null`, which untyped
+    // callers spell "no proxy" as; Python checks `is not None` the same way
+    // (not truthiness — an empty object must still reach the builder).
+    ...(network.egressProxy != null
+      ? { egressProxy: buildEgressProxyBody(network.egressProxy) }
+      : {}),
+    ...(network.rules !== undefined
+      ? { rules: resolveRulesForBody(rules, transformContext) }
+      : {}),
+  }
+}
+
+/**
+ * Map the wire proxy config into the SDK-owned shape: `password` is dropped
+ * because the API never returns it, and the wire's `null` for "no proxy" is
+ * normalized so the union never reaches a consumer.
+ */
+function fromApiEgressProxy(
+  egressProxy: components['schemas']['SandboxEgressProxyConfig'] | undefined
+): SandboxEgressProxyInfo | undefined {
+  if (!egressProxy) {
+    return undefined
+  }
+
+  return {
+    address: egressProxy.address,
+    ...(egressProxy.username !== undefined
+      ? { username: egressProxy.username }
+      : {}),
+  }
+}
+
+function buildNetworkBody(
+  network: SandboxNetworkOpts | undefined,
+  iam: components['schemas']['SandboxIam'] | undefined
+): components['schemas']['SandboxNetworkConfig'] | undefined {
+  if (!network) {
+    return undefined
+  }
+
+  return {
+    ...buildNetworkEgress(
+      network,
+      buildTransformContext(Object.keys(iam?.tokens ?? {}), { validate: true })
+    ),
+    ...(network.allowPublicTraffic !== undefined
+      ? { allowPublicTraffic: network.allowPublicTraffic }
+      : {}),
+    ...(network.maskRequestHost !== undefined
+      ? { maskRequestHost: network.maskRequestHost }
+      : {}),
+  }
+}
+
+function buildIamBody(
+  iam: SandboxIamOpts | undefined
+): components['schemas']['SandboxIam'] | undefined {
+  // Rebuild the body from the known fields so stray properties on the
+  // caller's objects never reach the wire and later mutations of the
+  // caller's map cannot alter the in-flight request.
+  const tokens: components['schemas']['SandboxIamTokens'] = {}
+  for (const [name, token] of Object.entries(iam?.tokens ?? {})) {
+    // Untyped callers can leave holes in the map (conditionally included
+    // tokens); those don't count toward a non-empty config.
+    if (!token) {
+      continue
+    }
+
+    if (
+      typeof token.audience !== 'string' ||
+      typeof token.tokenType !== 'string'
+    ) {
+      throw new InvalidArgumentError(
+        `iam token '${name}' must have string 'audience' and 'tokenType' properties.`
+      )
+    }
+
+    // A network transform placeholder is the only way to consume a workload
+    // token, so a name that cannot appear in one is rejected where it is
+    // registered rather than at the reference that would have used it.
+    validateIamTokenName(name)
+
+    tokens[name] = { audience: token.audience, tokenType: token.tokenType }
+  }
+
+  // Only a non-empty tokens map enables workload identity, so an empty
+  // iam config is omitted from the payload entirely.
+  if (Object.keys(tokens).length === 0) {
+    return undefined
+  }
+
+  return { tokens }
+}
+
+function buildNetworkUpdateBody(
+  network: SandboxNetworkUpdate
+): components['schemas']['SandboxNetworkUpdateConfig'] {
+  return {
+    ...buildNetworkEgress(
+      network,
+      buildTransformContext([], { validate: false })
+    ),
+    ...(network.allowInternetAccess !== undefined
+      ? { allow_internet_access: network.allowInternetAccess }
+      : {}),
+  }
+}
+export class SandboxApi extends ClientFactory {
+  protected constructor() {
+    super()
+  }
+
+  /**
+   * Kill the sandbox specified by sandbox ID.
+   *
+   * @param sandboxId sandbox ID.
+   * @param opts connection options.
+   *
+   * @returns `true` if the sandbox was found and killed, `false` otherwise.
+   */
+  static async kill(
+    sandboxId: string,
+    opts?: SandboxApiOpts
+  ): Promise<boolean> {
+    const apiOpts = this.resolveOpts(opts)
+    const config = new ConnectionConfig(apiOpts)
+
+    if (config.debug) {
+      // Skip killing the sandbox in debug mode
+      return true
+    }
+
+    const client = new ApiClient(config)
+
+    const res = await client.api.DELETE('/sandboxes/{sandboxID}', {
+      params: {
+        path: {
+          sandboxID: sandboxId,
+        },
+      },
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    if (res.error?.code === 404) {
+      return false
+    }
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+
+    return true
+  }
+
+  /**
+   * Get sandbox information like sandbox ID, template, metadata, started at/end at date.
+   *
+   * @param sandboxId sandbox ID.
+   * @param opts connection options.
+   *
+   * @returns sandbox information.
+   */
+  static async getInfo(
+    sandboxId: string,
+    opts?: SandboxApiOpts
+  ): Promise<SandboxInfo> {
+    const apiOpts = this.resolveOpts(opts)
+    const config = new ConnectionConfig(apiOpts)
+    const client = new ApiClient(config)
+
+    const res = await client.api.GET('/sandboxes/{sandboxID}', {
+      params: {
+        path: {
+          sandboxID: sandboxId,
+        },
+      },
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    if (res.error?.code === 404) {
+      throw new SandboxNotFoundError(`Sandbox ${sandboxId} not found`)
+    }
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+
+    if (!res.data) {
+      throw new Error('Sandbox not found')
+    }
+
+    return {
+      sandboxId: res.data.sandboxID,
+      templateId: res.data.templateID,
+      ...(res.data.alias && { name: res.data.alias }),
+      metadata: res.data.metadata ?? {},
+      allowInternetAccess: res.data.allowInternetAccess ?? undefined,
+      envdVersion: res.data.envdVersion,
+      startedAt: new Date(res.data.startedAt),
+      endAt: new Date(res.data.endAt),
+      state: res.data.state,
+      cpuCount: res.data.cpuCount,
+      memoryMB: res.data.memoryMB,
+      network: res.data.network
+        ? {
+            allowOut: res.data.network.allowOut,
+            denyOut: res.data.network.denyOut,
+            rules: res.data.network.rules ?? undefined,
+            egressProxy: fromApiEgressProxy(res.data.network.egressProxy),
+            allowPublicTraffic: res.data.network.allowPublicTraffic,
+            maskRequestHost: res.data.network.maskRequestHost,
+          }
+        : undefined,
+      lifecycle: res.data.lifecycle
+        ? {
+            onTimeout: res.data.lifecycle.onTimeout,
+            autoResume: res.data.lifecycle.autoResume,
+          }
+        : undefined,
+      sandboxDomain: res.data.domain || undefined,
+      volumeMounts: res.data.volumeMounts ?? [],
+    }
+  }
+
+  /**
+   * @deprecated Use {@link Sandbox.getInfo} instead.
+   *
+   * @param sandboxId sandbox ID.
+   * @param opts connection options.
+   *
+   * @returns sandbox information.
+   */
+  static async getFullInfo(
+    sandboxId: string,
+    opts?: SandboxApiOpts
+  ): Promise<SandboxInfo> {
+    return await this.getInfo(sandboxId, opts)
+  }
+
+  /**
+   * Get the metrics of the sandbox.
+   *
+   * @param sandboxId sandbox ID.
+   * @param opts sandbox metrics options.
+   *
+   * @returns  List of sandbox metrics containing CPU, memory and disk usage information.
+   */
+  static async getMetrics(
+    sandboxId: string,
+    opts?: SandboxMetricsOpts
+  ): Promise<SandboxMetrics[]> {
+    const apiOpts = this.resolveOpts(opts)
+    const config = new ConnectionConfig(apiOpts)
+
+    if (config.debug) {
+      // Skip getting the metrics in debug mode
+      return []
+    }
+
+    const client = new ApiClient(config)
+
+    // JS timestamp is in milliseconds, convert to unix (seconds)
+    const start = apiOpts?.start
+      ? Math.round(apiOpts.start.getTime() / 1000)
+      : undefined
+    const end = apiOpts?.end
+      ? Math.round(apiOpts.end.getTime() / 1000)
+      : undefined
+    const res = await client.api.GET('/sandboxes/{sandboxID}/metrics', {
+      params: {
+        path: {
+          sandboxID: sandboxId,
+        },
+        query: {
+          start,
+          end,
+        },
+      },
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    if (res.error?.code === 404) {
+      throw new SandboxNotFoundError(`Sandbox ${sandboxId} not found`)
+    }
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+
+    return (
+      res.data?.map((metric: components['schemas']['SandboxMetric']) => ({
+        timestamp: new Date(metric.timestamp),
+        cpuUsedPct: metric.cpuUsedPct,
+        cpuCount: metric.cpuCount,
+        memUsed: metric.memUsed,
+        memTotal: metric.memTotal,
+        memCache: metric.memCache,
+        diskUsed: metric.diskUsed,
+        diskTotal: metric.diskTotal,
+      })) ?? []
+    )
+  }
+
+  /**
+   * Set the timeout of the specified sandbox.
+   * After the timeout expires the sandbox will be automatically killed.
+   *
+   * This method can extend or reduce the sandbox timeout set when creating the sandbox or from the last call to {@link Sandbox.setTimeout}.
+   *
+   * Maximum time a sandbox can be kept alive is 24 hours (86_400_000 milliseconds) for Pro users and 1 hour (3_600_000 milliseconds) for Hobby users.
+   *
+   * @param sandboxId sandbox ID.
+   * @param timeoutMs timeout in **milliseconds**.
+   * @param opts connection options.
+   */
+  static async setTimeout(
+    sandboxId: string,
+    timeoutMs: number,
+    opts?: SandboxApiOpts
+  ): Promise<void> {
+    const apiOpts = this.resolveOpts(opts)
+    const config = new ConnectionConfig(apiOpts)
+    const client = new ApiClient(config)
+
+    const res = await client.api.POST('/sandboxes/{sandboxID}/timeout', {
+      params: {
+        path: {
+          sandboxID: sandboxId,
+        },
+      },
+      body: {
+        timeout: timeoutToSeconds(timeoutMs),
+      },
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    if (res.error?.code === 404) {
+      throw new SandboxNotFoundError(`Sandbox ${sandboxId} not found`)
+    }
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+  }
+
+  /**
+   * Update the network configuration of a running sandbox.
+   *
+   * Replaces the current egress configuration atomically — fields that are
+   * omitted are cleared on the server.
+   *
+   * @param sandboxId sandbox ID.
+   * @param network new network configuration.
+   * @param opts connection options.
+   */
+  static async updateNetwork(
+    sandboxId: string,
+    network: SandboxNetworkUpdate,
+    opts?: SandboxApiOpts
+  ): Promise<void> {
+    const apiOpts = this.resolveOpts(opts)
+    const config = new ConnectionConfig(apiOpts)
+    const client = new ApiClient(config)
+
+    const res = await client.api.PUT('/sandboxes/{sandboxID}/network', {
+      params: {
+        path: {
+          sandboxID: sandboxId,
+        },
+      },
+      body: buildNetworkUpdateBody(network),
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    if (res.error?.code === 404) {
+      throw new SandboxNotFoundError(`Sandbox ${sandboxId} not found`)
+    }
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+  }
+
+  /**
+   * Pause the sandbox specified by sandbox ID.
+   *
+   * @param sandboxId sandbox ID.
+   * @param opts pause options, including `keepMemory` and connection options.
+   *
+   * @returns `true` if the sandbox got paused, `false` if the sandbox was already paused.
+   */
+  static async pause(
+    sandboxId: string,
+    opts?: SandboxPauseOpts
+  ): Promise<boolean> {
+    const apiOpts = this.resolveOpts(opts)
+    const config = new ConnectionConfig(apiOpts)
+    const client = new ApiClient(config)
+
+    const res = await client.api.POST('/sandboxes/{sandboxID}/pause', {
+      params: {
+        path: {
+          sandboxID: sandboxId,
+        },
+      },
+      body: {
+        memory: apiOpts?.keepMemory ?? true,
+      },
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    if (res.error?.code === 404) {
+      throw new SandboxNotFoundError(`Sandbox ${sandboxId} not found`)
+    }
+
+    if (res.error?.code === 409) {
+      // Sandbox is already paused
+      return false
+    }
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+
+    return true
+  }
+
+  /**
+   * @deprecated Use {@link SandboxApi.pause} instead.
+   */
+  static async betaPause(
+    sandboxId: string,
+    opts?: SandboxPauseOpts
+  ): Promise<boolean> {
+    return this.pause(sandboxId, opts)
+  }
+
+  /**
+   * Create a snapshot from a sandbox.
+   *
+   * The sandbox will be paused while the snapshot is being created.
+   * The snapshot can be used to create new sandboxes with the same state.
+   * The snapshot is a persistent image that survives sandbox deletion.
+   *
+   * @param sandboxId sandbox ID to create snapshot from.
+   * @param opts snapshot creation options including optional name and connection options.
+   *
+   * @returns snapshot information including the snapshot name that can be used with Sandbox.create().
+   */
+  static async createSnapshot(
+    sandboxId: string,
+    opts?: CreateSnapshotOpts
+  ): Promise<SnapshotInfo> {
+    const apiOpts = this.resolveOpts(opts)
+    const config = new ConnectionConfig(apiOpts)
+    const client = new ApiClient(config)
+
+    const res = await client.api.POST('/sandboxes/{sandboxID}/snapshots', {
+      params: {
+        path: {
+          sandboxID: sandboxId,
+        },
+      },
+      body: apiOpts?.name ? { name: apiOpts.name } : {},
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    if (res.error?.code === 404) {
+      throw new SandboxNotFoundError(`Sandbox ${sandboxId} not found`)
+    }
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+
+    return {
+      snapshotId: res.data!.snapshotID,
+      names: res.data!.names ?? [],
+    }
+  }
+
+  /**
+   * List all snapshots.
+   *
+   * @param opts list options including filters and pagination.
+   *
+   * @returns paginator for listing snapshots.
+   */
+  static listSnapshots(opts?: SnapshotListOpts): SnapshotPaginator {
+    return new SnapshotPaginator(this.resolveOpts(opts))
+  }
+
+  /**
+   * Delete a snapshot.
+   *
+   * @param snapshotId snapshot ID.
+   * @param opts connection options.
+   *
+   * @returns `true` if the snapshot was deleted, `false` if it was not found.
+   */
+  static async deleteSnapshot(
+    snapshotId: string,
+    opts?: SandboxApiOpts
+  ): Promise<boolean> {
+    const apiOpts = this.resolveOpts(opts)
+    const config = new ConnectionConfig(apiOpts)
+    const client = new ApiClient(config)
+
+    const res = await client.api.DELETE('/templates/{templateID}', {
+      params: {
+        path: {
+          templateID: snapshotId,
+        },
+      },
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    if (res.error?.code === 404) {
+      return false
+    }
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+
+    return true
+  }
+
+  protected static async createSandbox(
+    template: string,
+    timeoutMs: number,
+    opts?: SandboxOpts
+  ) {
+    const apiOpts = this.resolveOpts(opts)
+    const config = new ConnectionConfig(apiOpts)
+    const client = new ApiClient(config)
+    // onTimeout accepts a bare action (`'pause'` / `'kill'`) or the object form
+    // `{ action, keepMemory }`. The discriminated union type forbids `keepMemory`
+    // on `action: 'kill'`; re-check at runtime for untyped callers.
+    const requestedOnTimeout = opts?.lifecycle?.onTimeout
+    // A missing (or explicitly nullish, for untyped callers) onTimeout is not a
+    // choice of `kill` — it leaves the timeout action to the API. Locally it
+    // still resolves to kill semantics for the validation below.
+    const onTimeoutConfigured = requestedOnTimeout != null
+    const onTimeout = requestedOnTimeout ?? 'kill'
+    const action = typeof onTimeout === 'string' ? onTimeout : onTimeout.action
+    const hasKeepMemory =
+      typeof onTimeout !== 'string' && 'keepMemory' in onTimeout
+    const keepMemory =
+      typeof onTimeout !== 'string' && 'keepMemory' in onTimeout
+        ? (onTimeout.keepMemory ?? true)
+        : true
+    // A missing autoResume (or an explicit null from an untyped caller) is left
+    // out of the request entirely, so the API keeps ownership of the default
+    // instead of receiving the SDK's local one as an explicit opt-out.
+    const autoResume = opts?.lifecycle?.autoResume ?? undefined
+
+    if (hasKeepMemory && action !== 'pause') {
+      throw new InvalidArgumentError(
+        "onTimeout.keepMemory is only allowed when action is 'pause'."
+      )
+    }
+
+    if (autoResume && action !== 'pause') {
+      throw new InvalidArgumentError(
+        "autoResume can only be true when onTimeout action is 'pause'."
+      )
+    }
+
+    if (!keepMemory && autoResume) {
+      throw new InvalidArgumentError(
+        'autoResume: true is not a valid value when keepMemory: false - a filesystem-only snapshot cannot be auto-resumed by traffic and must be resumed explicitly using Sandbox.connect().'
+      )
+    }
+
+    // Built before the network config: `transform` callbacks are resolved
+    // against the workload tokens this request registers.
+    const iam = buildIamBody(opts?.iam)
+
+    const body: components['schemas']['NewSandbox'] = {
+      templateID: template,
+      metadata: opts?.metadata,
+      mcp: opts?.mcp as Record<string, unknown> | undefined,
+      envVars: opts?.envs,
+      timeout: timeoutToSeconds(timeoutMs),
+      secure: opts?.secure ?? true,
+      allow_internet_access: opts?.allowInternetAccess ?? true,
+      network: buildNetworkBody(opts?.network, iam),
+      iam,
+      autoPause: onTimeoutConfigured ? action === 'pause' : undefined,
+      autoPauseMemory:
+        action === 'pause' && hasKeepMemory ? keepMemory : undefined,
+      autoResume:
+        autoResume === undefined ? undefined : { enabled: autoResume },
+    }
+
+    if (opts?.volumeMounts) {
+      body.volumeMounts = Object.entries(opts.volumeMounts).map(
+        ([mountPath, vol]) => ({
+          name: typeof vol === 'string' ? vol : vol.name,
+          path: mountPath,
+        })
+      )
+    }
+
+    const res = await client.api.POST('/sandboxes', {
+      body,
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+
+    if (compareVersions(res.data!.envdVersion, '0.1.0') < 0) {
+      await this.kill(res.data!.sandboxID, apiOpts)
+      throw new TemplateError(
+        'You need to update the template to use the new SDK.'
+      )
+    }
+
+    return {
+      sandboxId: res.data!.sandboxID,
+      sandboxDomain: res.data!.domain || undefined,
+      envdVersion: res.data!.envdVersion,
+      envdAccessToken: res.data!.envdAccessToken,
+      trafficAccessToken: res.data!.trafficAccessToken || undefined,
+    }
+  }
+
+  protected static async forkSandbox(
+    sandboxId: string,
+    timeoutMs: number,
+    count: number,
+    opts?: SandboxApiOpts
+  ): Promise<SandboxForkResponse[]> {
+    if (count < 1) {
+      throw new InvalidArgumentError('count must be at least 1')
+    }
+
+    const apiOpts = this.resolveOpts(opts)
+    const config = new ConnectionConfig(apiOpts)
+    const client = new ApiClient(config)
+
+    const res = await client.api.POST('/sandboxes/{sandboxID}/fork', {
+      params: {
+        path: {
+          sandboxID: sandboxId,
+        },
+      },
+      body: {
+        timeout: timeoutToSeconds(timeoutMs),
+        count,
+      },
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    // check the status, not the parsed error body — openapi-fetch leaves
+    // `error` unset for non-2xx responses with an empty body
+    if (res.response.status === 404) {
+      throw new SandboxNotFoundError(
+        res.error?.message ?? `Sandbox ${sandboxId} not found`
+      )
+    }
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+
+    return (res.data ?? []).map(
+      (result: components['schemas']['SandboxForkResult']) => {
+        if (result.error || !result.sandbox) {
+          if (!result.error) {
+            return new SandboxError('Failed to start forked sandbox')
+          }
+          // 404 is call-site-specific in the SDK, so apiErrorFromCode leaves
+          // it to the caller. A per-fork 404 refers to a resource needed to
+          // start that fork (e.g. the snapshot) — not the source sandbox,
+          // which would have failed the whole request — so stay generic.
+          if (result.error.code === 404) {
+            return new NotFoundError(
+              `${result.error.code}: ${result.error.message}`
+            )
+          }
+          return apiErrorFromCode(result.error.code, result.error.message)
+        }
+
+        return {
+          sandboxId: result.sandbox.sandboxID,
+          sandboxDomain: result.sandbox.domain || undefined,
+          envdVersion: result.sandbox.envdVersion,
+          envdAccessToken: result.sandbox.envdAccessToken,
+          trafficAccessToken: result.sandbox.trafficAccessToken || undefined,
+        }
+      }
+    )
+  }
+
+  protected static async connectSandbox(
+    sandboxId: string,
+    opts?: SandboxConnectOpts
+  ) {
+    const apiOpts = this.resolveOpts(opts)
+    const timeoutMs = apiOpts?.timeoutMs ?? DEFAULT_SANDBOX_TIMEOUT_MS
+
+    const config = new ConnectionConfig(apiOpts)
+    const client = new ApiClient(config)
+
+    const res = await client.api.POST('/sandboxes/{sandboxID}/connect', {
+      params: {
+        path: {
+          sandboxID: sandboxId,
+        },
+      },
+      body: {
+        timeout: timeoutToSeconds(timeoutMs),
+      },
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    if (res.error?.code === 404) {
+      throw new SandboxNotFoundError(`Paused sandbox ${sandboxId} not found`)
+    }
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+
+    return {
+      sandboxId: res.data!.sandboxID,
+      sandboxDomain: res.data!.domain || undefined,
+      envdVersion: res.data!.envdVersion,
+      envdAccessToken: res.data!.envdAccessToken,
+      trafficAccessToken: res.data!.trafficAccessToken || undefined,
+    }
+  }
+}
+
+/**
+ * Paginator for listing sandboxes.
+ *
+ * @example
+ * ```ts
+ * const paginator = Sandbox.list()
+ * while (paginator.hasNext) {
+ *   const sandboxes = await paginator.nextItems()
+ *   console.log(sandboxes)
+ * }
+ * ```
+ */
+export class SandboxPaginator extends Paginator<SandboxInfo, SandboxApiOpts> {
+  private query: SandboxListOpts['query']
+  private order: SandboxListOrder | undefined
+
+  constructor(opts?: SandboxListOpts) {
+    super(opts, opts?.limit, opts?.nextToken)
+
+    this.query = opts?.query
+    this.order = opts?.order
+  }
+
+  async nextItems(opts?: SandboxApiOpts): Promise<SandboxInfo[]> {
+    if (!this.hasNext) {
+      throw new Error('No more items to fetch')
+    }
+
+    let metadata = undefined
+    if (this.query?.metadata) {
+      const encodedPairs: Record<string, string> = Object.fromEntries(
+        Object.entries(this.query.metadata).map(([key, value]) => [
+          encodeURIComponent(key),
+          encodeURIComponent(value),
+        ])
+      )
+
+      metadata = new URLSearchParams(encodedPairs).toString()
+    }
+
+    const apiOpts = ConnectionConfig.mergeOpts(this.opts, opts)
+    const config = new ConnectionConfig(apiOpts)
+    const client = new ApiClient(config)
+
+    const res = await client.api.GET('/v2/sandboxes', {
+      params: {
+        query: {
+          metadata,
+          state: this.query?.state,
+          startedAfter: this.query?.startedAfter?.toISOString(),
+          template: this.query?.template || undefined,
+          order: this.order,
+          limit: this.limit,
+          nextToken: this.nextToken,
+        },
+      },
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+
+    this.updatePagination(res.response)
+
+    return (res.data ?? []).map(
+      (sandbox: components['schemas']['ListedSandbox']) => ({
+        sandboxId: sandbox.sandboxID,
+        templateId: sandbox.templateID,
+        ...(sandbox.alias && { name: sandbox.alias }),
+        metadata: sandbox.metadata ?? {},
+        startedAt: new Date(sandbox.startedAt),
+        endAt: new Date(sandbox.endAt),
+        state: sandbox.state,
+        cpuCount: sandbox.cpuCount,
+        memoryMB: sandbox.memoryMB,
+        envdVersion: sandbox.envdVersion,
+        volumeMounts: sandbox.volumeMounts ?? [],
+      })
+    )
+  }
+}
+
+/**
+ * Paginator for listing snapshots.
+ *
+ * @example
+ * ```ts
+ * const paginator = Sandbox.listSnapshots()
+ * while (paginator.hasNext) {
+ *   const snapshots = await paginator.nextItems()
+ *   console.log(snapshots)
+ * }
+ * ```
+ */
+export class SnapshotPaginator extends Paginator<SnapshotInfo, SandboxApiOpts> {
+  private readonly sandboxId?: string
+  private readonly name?: string
+
+  constructor(opts?: SnapshotListOpts) {
+    super(opts, opts?.limit, opts?.nextToken)
+
+    this.sandboxId = opts?.sandboxId
+    this.name = opts?.name
+  }
+
+  async nextItems(opts?: SandboxApiOpts): Promise<SnapshotInfo[]> {
+    if (!this.hasNext) {
+      throw new Error('No more items to fetch')
+    }
+
+    const apiOpts = ConnectionConfig.mergeOpts(this.opts, opts)
+    const config = new ConnectionConfig(apiOpts)
+    const client = new ApiClient(config)
+
+    const res = await client.api.GET('/snapshots', {
+      params: {
+        query: {
+          sandboxID: this.sandboxId,
+          name: this.name,
+          limit: this.limit,
+          nextToken: this.nextToken,
+        },
+      },
+      signal: config.getSignal(apiOpts?.requestTimeoutMs, apiOpts?.signal),
+    })
+
+    const err = handleApiError(res)
+    if (err) {
+      throw err
+    }
+
+    this.updatePagination(res.response)
+
+    return (res.data ?? []).map(
+      (snapshot: components['schemas']['SnapshotInfo']) => ({
+        snapshotId: snapshot.snapshotID,
+        names: snapshot.names ?? [],
+      })
+    )
+  }
+}

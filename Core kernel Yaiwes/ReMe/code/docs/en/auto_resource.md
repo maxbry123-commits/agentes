@@ -1,0 +1,131 @@
+# Auto Resource `Beta`
+
+Auto Resource is ReMe's entry point for interpreting resources and is currently in **Beta**. Resource files first enter
+`resource/`, preferably under a date directory, and are then interpreted into daily resource cards. Each card's filename
+comes from the LLM-generated frontmatter `name`, and `source_resource` links the card back to its original file.
+
+<p align="center">
+  <img src="../figure/auto-memory-resource.svg" alt="ReMe Auto Memory and Auto Resource writing daily memory cards" width="92%">
+</p>
+
+For the general file semantics of workspace layers, `resource/`, and `daily/`, see
+[Memory as File](./memory_as_file.md). For the flow that writes conversations to daily, see
+[Auto Memory](./auto_memory.md).
+
+```text
+resource/[YYYY-MM-DD/]<resource_file>
+  ├─ step 1: daily/YYYY-MM-DD/<generated_name>.md # interpreted resource card
+  ├─ step 2: source_resource points to the original resource
+  └─ step 3: daily/YYYY-MM-DD.md                  # daily index linking the cards
+```
+
+## What It Records
+
+Auto Resource does more than copy file content. It extracts information that will make the resource easier to retrieve
+and understand later:
+
+- Core content: what the resource is mainly about.
+- Structure: its sections, tables, fields, and data organization.
+- Key details: important numbers, names, dates, and conclusions.
+- Context and purpose: why the resource exists and how it relates to current work.
+- Actionable items: tasks, deadlines, and follow-up work.
+
+In short, it turns "a file was archived" into "the resource is usable."
+
+## Original Resource Entry Point
+
+Auto Resource uses `resource/` as the entry point for source material. Date directories are recommended, and their date
+determines which daily memory layer receives the interpreted card. A file directly under `resource/` is also supported
+and uses today in the application timezone when it is first processed. On later days, an exact `source_resource` match
+keeps updates and deletion tied to that original daily card instead of creating a new card or leaving an orphan.
+
+Example directory:
+
+```text
+workspace/
+  resource/
+    quick-note.txt             # enters today's daily layer
+    2026-06-20/
+      market-report.md
+      meeting-notes.csv
+```
+
+Text resources such as `md`, `txt`, `json`, `jsonl`, `csv`, `yaml`, and `html` are the primary fit. Image resources
+(`png`, `jpg`, `jpeg`, `webp`, `gif`, `bmp`, `tiff`, `heic`) produce caption cards as described in
+[Image Resources](#image-resources).
+
+Internally, one `AutoResourceStep` receives each change batch and sends every item to the first configured processor
+whose class-level matcher accepts it. `AutoImageResourceStep` handles image suffixes and `AutoTextResourceStep` is the
+final fallback. A new modality can therefore add a registered processor, its prompt, and one `dispatch_steps` entry
+without changing the router.
+
+## Image Resources
+
+Image files are interpreted the same way: a vision model writes a caption card that links back to the original image.
+The card body starts with an `![[resource/...]]` embed link and the frontmatter carries `kind: image` and `media_type`,
+so text search reaches image content through the caption.
+
+The vision model is the `vision` instance of `as_llm` when configured, and otherwise falls back to the `default`
+instance — a multimodal default model needs no extra configuration. Images wider or taller than 2048px are downscaled,
+and provider-unfriendly formats are re-encoded, in memory for the request only; the original file under
+`resource/` is never modified. Before a full decode, image dimensions are checked against a default limit of 40,000,000
+pixels; images over the limit and Pillow decompression-bomb warnings fail only that resource. EXIF orientation is
+applied to the in-memory request copy before resizing or conversion. Oversized JPEGs first use decoder-level
+downsampling, followed by a final thumbnail pass when needed. The VLM request MIME and the card's frontmatter
+`media_type` use the format Pillow detects from the image bytes, rather than trusting the filename extension. When an
+image changes, its card is rewritten in place; when the image is deleted, the card is removed with it.
+
+Image preprocessing uses Pillow from the `core` extra. HEIC resources additionally require the optional
+`image-heif` extra: `pip install "reme-ai[image-heif]"`. Other supported image formats do not load or require the HEIF
+plugin.
+
+## Resource Cards
+
+Each resource file produces one daily resource card. The system initially uses the resource file's stem as a temporary
+path. After the matching processor writes the card, the file is renamed according to its frontmatter `name`:
+
+```text
+resource/2026-06-20/market-report.md
+        ↓
+daily/2026-06-20/market-report-highlights.md
+```
+
+The resource card links to the original file through frontmatter:
+
+```yaml
+source_resource: "[[resource/2026-06-20/market-report.md]]"
+```
+
+When a resource changes, Auto Resource finds and updates the corresponding card through an exact `source_resource`
+match. When a resource is deleted, only the explicitly linked daily note is removed. A same-stem note without that
+provenance marker is treated as user-owned and left untouched; new resource cards use a collision-free path instead.
+
+## Daily Index
+
+Resource cards enter the same daily memory layer as Auto Memory cards. The day's `YYYY-MM-DD.md` page acts as an index
+and organizes those resource cards:
+
+```text
+daily/
+  2026-06-20.md
+  2026-06-20/
+    market-report-highlights.md
+    meeting-notes-summary.md
+```
+
+To review which resources were processed on a day, start with `YYYY-MM-DD.md`. To inspect what was distilled from one
+resource, open its corresponding resource card.
+
+## Preserving the Original Resource
+
+The interpreted daily note is optimized for readability; the original resource is retained for trust and verification.
+
+Auto Resource does not move the original file. It remains at its original path under `resource/`. Resources can
+therefore enter the daily memory flow while their source files stay in their original location.
+
+## What Happens Next
+
+Auto Resource only creates resource interpretations in the daily layer. To distill long-term knowledge from resources
+into `digest/`, use [Auto Dream](./auto_dream.md). The default live index covers daily cards and digest nodes. Manual
+`reindex` only rebuilds search indexes from chunks already accepted by an ingestion path; it does not add the original
+resource files to search. See [Memory Search](./memory_search.md).

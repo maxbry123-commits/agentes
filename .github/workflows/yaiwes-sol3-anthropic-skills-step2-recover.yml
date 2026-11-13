@@ -1,0 +1,97 @@
+name: YAIWES SOL3 Anthropic-Skills STEP2 Recover
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-sol3-anthropic-skills-step2-recover.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-sol3-anthropic-skills-step2-recover
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    env:
+      WALL: '📂 Bitácora stated JSON Craxy wall.json'
+      INVENTORY: 'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json'
+      SRC: 'Core kernel Yaiwes/Componentes recuperados B/Anthropic-Skills'
+      DST: 'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/anthropic-skills'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 8
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-sol3-anthropic-skills-step2-recover.yml
+            /📂 Bitácora stated JSON Craxy wall.json
+            /Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/anthropic-skills/
+
+      - name: Physical read-back without pipe SIGPIPE
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test -z "$(git ls-tree -r --name-only origin/main -- "$SRC")"
+          git ls-tree -r --name-only origin/main -- "$DST" > /tmp/anthropic-target-tree.txt
+          test -s /tmp/anthropic-target-tree.txt
+          grep -Fxq "$DST/README.md" /tmp/anthropic-target-tree.txt
+          grep -Fxq "$DST/skills/mcp-builder/SKILL.md" /tmp/anthropic-target-tree.txt
+          git show "origin/main:$DST/README.md" >/dev/null
+          git show "origin/main:$DST/skills/mcp-builder/SKILL.md" | sed -n '1,6p' | grep -Fq 'name: mcp-builder'
+          echo ANTHROPIC_SKILLS_STEP2_PHYSICAL_READBACK_PASS
+
+      - name: Record exact GAP and recovered STEP2 PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main; git reset --hard origin/main
+            python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          with open(os.environ['WALL'],encoding='utf-8') as f:data=json.load(f)
+          node=next(n for n in data['nodes'] if n.get('component')=='Anthropic-Skills')
+          if node.get('current_step')!=2 or node.get('owner')!='SOL' or node.get('lock')!='CLAIMED':
+              raise SystemExit(f"STATE_CHANGED:{node.get('current_step')}:{node.get('owner')}:{node.get('lock')}:{node.get('status')}")
+          ev=node.setdefault('evidence',[])
+          items=[
+            'step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5',
+            'step2:run:34718394662',
+            'step2:motor4:VERIFIED_CLOSED:417_files:failed=0:pending=0:source_files_remaining=0',
+            'step2:move_commit:37797c972',
+            'step2:gap_exact:readback_pipeline_exit_141_SIGPIPE_grep_Fq_under_pipefail',
+            'step2:strategy_delta:capture_git_ls_tree_to_file_then_exact_grep_no_SIGPIPE',
+            f"step2:recovery_run:{os.environ['GITHUB_RUN_ID']}",
+            'step2:readback:source_404+target_README+skills/mcp-builder/SKILL.md_PASS'
+          ]
+          for x in items:
+              if x not in ev:ev.append(x)
+          node['history'].append({'at':now,'actor':'SOL','label':'SOL integración 3','event':'STEP2_GAP_READBACK_PIPEFAIL_SIGPIPE_141','run':34718394662})
+          node['history'].append({'at':now,'actor':'SOL','label':'SOL integración 3','event':'STEP2_PASS_RECOVERED_RELEASE','run':int(os.environ['GITHUB_RUN_ID']),'commit':'37797c972'})
+          node['checkpoint']['after']='STEP2 PASS RECOVERED: Motor4 run 34718394662 VERIFIED_CLOSED 417/417; source absent; target README + real SKILL.md read-back PASS. Prior workflow failure was read-back shell SIGPIPE 141 from grep -Fq under pipefail, not component/MOVE failure. MOVE NOT REPEATED.'
+          node['status']='PASS_STEP2';node['current_step']=3;node['owner']=None;node['lock']='FREE';node['next_action']='STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST'
+          data['updated_at']=now
+          with open(os.environ['INVENTORY'],encoding='utf-8') as f:inv=json.load(f)
+          comp=next(c for c in inv['components'] if c.get('name')=='Anthropic-Skills');comp['wall_node_id']=node['id'];comp['wall_status']=node['status'];comp['wall_current_step']=3;comp['wall_target']=node['target']
+          with open(os.environ['WALL'],'w',encoding='utf-8') as f:json.dump(data,f,ensure_ascii=False,indent=2);f.write('\n')
+          with open(os.environ['INVENTORY'],'w',encoding='utf-8') as f:json.dump(inv,f,ensure_ascii=False,indent=2);f.write('\n')
+          PY
+            git add -- "$WALL" "$INVENTORY"
+            git commit -m "crazy-wall: SOL3 recover Anthropic-Skills STEP2 run $GITHUB_RUN_ID" || true
+            if git pull --rebase origin main && git push origin HEAD:main; then ok=1; break; fi
+            git rebase --abort || true; sleep $((attempt*2))
+          done
+          test "$ok" -eq 1

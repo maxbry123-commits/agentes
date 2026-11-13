@@ -1,0 +1,157 @@
+// Copyright (c) 2024 - Restate Software, Inc., Restate GmbH
+//
+// This file is part of the Restate service protocol, which is
+// released under the MIT license.
+//
+// You can find a copy of the license in file LICENSE in the root
+// directory of this repository or package, or at
+// https://github.com/restatedev/proto/blob/main/LICENSE
+
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "restate/cluster.proto";
+import "restate/common.proto";
+
+package restate.node_ctl_svc;
+
+service NodeCtlSvc {
+  // Get identity information from this node.
+  rpc GetIdent(google.protobuf.Empty) returns (IdentResponse);
+
+  // Get metadata given the metadata kind
+  rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse);
+
+  // Provision the Restate cluster on this node.
+  rpc ProvisionCluster(ProvisionClusterRequest)
+      returns (ProvisionClusterResponse);
+
+  // todo: Remove in v1.7.0 once the REST endpoint /cluster-health is removed
+  // Returns the cluster health from the point of view of this node.
+  rpc ClusterHealth(google.protobuf.Empty) returns (ClusterHealthResponse);
+
+  // Trigger manual compaction of RocksDB databases on this node.
+  rpc TriggerCompaction(TriggerCompactionRequest)
+      returns (TriggerCompactionResponse);
+}
+
+enum ClusterFeature {
+  ClusterFeature_UNKNOWN = 0;
+  CONTROLLED_IDEMPOTENT_SHARDING = 1;
+} 
+
+message ProvisionClusterRequest {
+  bool dry_run = 1;
+  // if unset then the configured cluster num partitions will be used
+  optional uint32 num_partitions = 2;
+  // if unset partition replication will default to
+  // `admin.default-partition-replication`. Otherwise it's limited to the
+  // provided replication property
+  optional restate.cluster.ReplicationProperty partition_replication = 3;
+  // if unset then the configured cluster default log provider will be used
+  optional string log_provider = 4;
+  // only used if provider = "replicated"
+  // if unset then the configured cluster default log replication will be used
+  optional restate.cluster.ReplicationProperty log_replication = 5;
+  // only used if provider = "replicated"
+  // if unset then the configured cluster default target nodeset size will be
+  // used
+  optional uint32 target_nodeset_size = 6;
+  // A set of cluster-wide features to opt out of. At provision time the server
+  // enables all default features except those listed here. Leaving this empty
+  // (or sending it from an older client that doesn't know about a feature) will
+  // result in all current default features being enabled.
+  repeated ClusterFeature disabled_features = 7;
+}
+
+message ProvisionClusterResponse {
+  bool dry_run = 1;
+  restate.cluster.ClusterConfiguration cluster_configuration = 2;
+  // The features that will be enabled on this cluster (defaults minus
+  // disabled_features from the request). Populated by the server so older
+  // clients can render an authoritative preview.
+  repeated ClusterFeature enabled_features = 3;
+}
+
+message IdentResponse {
+  enum AddressKind {
+    UNKNOWN = 0;
+    TCP = 1;
+    HTTP = 2;
+    UNIX = 3;
+  }
+  message NetAddress {
+    string name = 1;
+    string address = 2;
+    AddressKind kind = 3;
+  }
+  restate.common.NodeStatus status = 1;
+  // node id may be unset if the node hasn't yet joined a cluster
+  optional restate.common.NodeId node_id = 2;
+  string cluster_name = 3;
+  // indicates which roles are enabled on this node
+  repeated string roles = 4;
+  // Age of the running node in seconds (how many seconds since the daemon
+  // started)
+  uint64 age_s = 5;
+  restate.common.AdminStatus admin_status = 6;
+  restate.common.WorkerStatus worker_status = 7;
+  restate.common.LogServerStatus log_server_status = 8;
+  restate.common.MetadataServerStatus metadata_server_status = 9;
+  uint32 nodes_config_version = 10;
+  uint32 logs_version = 11;
+  uint32 schema_version = 12;
+  uint32 partition_table_version = 13;
+  repeated NetAddress bound_addresses = 14;
+  repeated NetAddress advertised_addresses = 15;
+}
+
+message GetMetadataRequest {
+  reserved 1;
+  restate.common.MetadataKind kind = 2;
+}
+
+message GetMetadataResponse {
+  // polymorphic. The value depends on the MetadataKind requested
+  bytes encoded = 1;
+}
+
+message ClusterHealthResponse {
+  string cluster_name = 1;
+  // Some value if the cluster has been configured to use the embedded metadata
+  // store
+  optional EmbeddedMetadataClusterHealth metadata_cluster_health = 2;
+}
+
+message EmbeddedMetadataClusterHealth {
+  repeated restate.common.NodeId members = 1;
+}
+
+message TriggerCompactionRequest {
+  repeated restate.common.DatabaseKind databases = 1;
+  ManualCompactionOptions options = 2;
+}
+
+message TriggerCompactionResponse {
+  repeated DatabaseCompactionResult results = 1;
+}
+
+enum BottommostLevelCompaction {
+  BOTTOMMOST_LEVEL_COMPACTION_UNSPECIFIED = 0;
+  BOTTOMMOST_LEVEL_COMPACTION_SKIP = 1;
+  BOTTOMMOST_LEVEL_COMPACTION_IF_HAVE_COMPACTION_FILTER = 2;
+  BOTTOMMOST_LEVEL_COMPACTION_FORCE = 3;
+  BOTTOMMOST_LEVEL_COMPACTION_FORCE_OPTIMIZED = 4;
+}
+
+message ManualCompactionOptions {
+  BottommostLevelCompaction bottommost_level_compaction = 1;
+  bool recalculate_level = 2;
+}
+
+message DatabaseCompactionResult {
+  string db_name = 1;
+  bool success = 2;
+  optional string error = 3;
+  uint32 column_families_compacted = 4;
+}

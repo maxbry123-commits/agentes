@@ -1,0 +1,34 @@
+FROM kalilinux/kali-rolling:latest
+
+# 配置阿里云镜像源（加速）
+RUN echo "deb http://mirrors.aliyun.com/kali kali-rolling main non-free contrib" > /etc/apt/sources.list && \
+    echo "deb-src http://mirrors.aliyun.com/kali kali-rolling main non-free contrib" >> /etc/apt/sources.list
+
+# 更新软件包列表
+RUN apt-get update
+
+# 安装常用渗透测试工具
+RUN apt-get install -y --no-install-recommends \
+    nmap \
+    sqlmap \
+    nikto \
+    dirb \
+    gobuster \
+    masscan \
+    hydra \
+    metasploit-framework \
+    exploitdb \
+    curl \
+    wget \
+    git \
+    netcat-traditional \
+    whois \
+    dnsutils \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建工作目录
+WORKDIR /pentest
+
+# 保持容器运行
+CMD ["sleep", "infinity"]

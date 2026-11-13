@@ -1,0 +1,83 @@
+#![allow(clippy::unwrap_used)]
+
+use std::fs::{self, File};
+use std::path::Path;
+use std::{env, io};
+
+use fst::{MapBuilder, SetBuilder};
+
+fn do_context_capabilities() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let source = Path::new(&manifest_dir).join("data/context-capabilities.csv");
+
+    println!(
+        "cargo::rerun-if-changed={source}",
+        source = source.display()
+    );
+
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let out_path = Path::new(&out_dir).join("context-capabilities.fst");
+
+    let out = io::BufWriter::new(File::create(out_path).unwrap());
+    let mut build = MapBuilder::new(out).unwrap();
+
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .from_path(source)
+        .unwrap();
+
+    for record in rdr.records() {
+        let record = record.unwrap();
+        let context = record.get(0).unwrap();
+        let capability = match record.get(1).unwrap() {
+            "arbitrary" => 0,
+            "structured" => 1,
+            "fixed" => 2,
+            _ => panic!("Unknown capability"),
+        };
+
+        build.insert(context, capability).unwrap();
+    }
+
+    build.finish().unwrap();
+}
+
+fn do_codeql_injection_sinks() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let source = Path::new(&manifest_dir).join("data/codeql-injection-sinks.json");
+    let target = Path::new(&env::var("OUT_DIR").unwrap()).join("codeql-injection-sinks.json");
+
+    println!(
+        "cargo::rerun-if-changed={source}",
+        source = source.display()
+    );
+
+    fs::copy(source, target).unwrap();
+}
+
+fn do_archived_action_repos() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let source = Path::new(&manifest_dir).join("data/archived-repos.txt");
+    let target = Path::new(&env::var("OUT_DIR").unwrap()).join("archived-repos.fst");
+
+    println!(
+        "cargo::rerun-if-changed={source}",
+        source = source.display()
+    );
+
+    let out = io::BufWriter::new(File::create(target).unwrap());
+    let mut build = SetBuilder::new(out).unwrap();
+
+    let contents = fs::read_to_string(source).unwrap();
+    for line in contents.lines() {
+        build.insert(line).unwrap();
+    }
+
+    build.finish().unwrap();
+}
+
+fn main() {
+    do_context_capabilities();
+    do_codeql_injection_sinks();
+    do_archived_action_repos();
+}

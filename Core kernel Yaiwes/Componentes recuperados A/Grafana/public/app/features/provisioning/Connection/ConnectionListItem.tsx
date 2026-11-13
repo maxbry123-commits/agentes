@@ -1,0 +1,62 @@
+import { textUtil } from '@grafana/data';
+import { Trans, t } from '@grafana/i18n';
+import { Card, LinkButton, Stack, Text, TextLink } from '@grafana/ui';
+import { type Connection } from 'app/api/clients/provisioning/v0alpha1';
+
+import { RepoIcon } from '../Shared/RepoIcon';
+import { type RepoType } from '../Wizard/types';
+import { CONNECTIONS_URL } from '../constants';
+import { connectionProviderType, isOAuthConnectionType } from '../utils/connectionOAuth';
+
+import { ConnectionStatusBadge } from './ConnectionStatusBadge';
+
+interface Props {
+  connection: Connection;
+  isSelected?: boolean;
+  onClick?: () => void;
+}
+
+export function ConnectionListItem({ connection, isSelected, onClick }: Props) {
+  const { metadata, spec, status } = connection;
+  const name = metadata?.name ?? '';
+  const title = spec?.title || name;
+  const description = spec?.description;
+  const url = spec?.url;
+  const providerType: RepoType = connectionProviderType(spec?.type) ?? 'github';
+  const kindLabel = isOAuthConnectionType(spec?.type)
+    ? t('provisioning.connections.kind-oauth-app', 'OAuth App')
+    : t('provisioning.connections.kind-github-app', 'GitHub App');
+  return (
+    <Card noMargin key={name} isSelected={isSelected} onClick={onClick}>
+      <Card.Figure>
+        <RepoIcon type={providerType} autoHeight />
+      </Card.Figure>
+      <Card.Heading>
+        <Stack gap={2} direction="row" alignItems="center">
+          <Text variant="h3">{title}</Text>
+          <ConnectionStatusBadge status={status} />
+        </Stack>
+      </Card.Heading>
+
+      <Card.Meta>
+        <Stack direction="column">
+          <Text color="secondary">{kindLabel}</Text>
+          {description && <Text color="secondary">{description}</Text>}
+          {url && (
+            <TextLink external href={textUtil.sanitizeUrl(url)}>
+              {url}
+            </TextLink>
+          )}
+        </Stack>
+      </Card.Meta>
+
+      {!onClick && (
+        <Card.Actions>
+          <LinkButton icon="eye" href={`${CONNECTIONS_URL}/${name}/edit`} variant="primary" size="md">
+            <Trans i18nKey="provisioning.connections.view">View</Trans>
+          </LinkButton>
+        </Card.Actions>
+      )}
+    </Card>
+  );
+}

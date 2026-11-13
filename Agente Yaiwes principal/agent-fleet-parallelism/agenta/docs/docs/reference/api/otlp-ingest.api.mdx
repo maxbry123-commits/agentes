@@ -1,0 +1,86 @@
+---
+id: otlp-ingest
+title: "Ingest traces via OTLP"
+description: "Ingest traces via the OTLP/HTTP protobuf protocol."
+sidebar_label: "Ingest traces via OTLP"
+hide_title: true
+hide_table_of_contents: true
+api: eJztVs1uGzcQfpUBc0gCrH7sJBf1Ujl1G9dJbFgK0MIreOndkZYJd7gmh7I3goA+RJ+wT1KQ1Mo/ufRawKflksOZ+b7540awXDkxuRRnLdIcNTbIthOLTFToSqtaVobERJzQCh0DW1mig7WSwDXC2fzj+ejDfH4OrTVsrv0yLUqjhznlNK+VA6SqNYoYZFliyw4kOLRKavUdq5yK47vWWJ4HzTO0a1XiBd54dFzstQ7hPGmg7t5mTqXRGks2FoyF2S+nIBmK87PZHEaGdTtaH4ySwwVIqsC1khzcKq1hqc1tTorYRBxONggqQXRsUTYgXTyZrpBYDkiyWuMeiovovjgEDghvayTojAepLcqqg1quAzmoQZFj65ugJDAJ2ChmRaucAo4h/GosEN6CIsaVjTLBsGSoDL1kIMQKrLyNsDNoLS7R5rRDGdApWo0islECUMA/f/0NioHlN3Tw++zsc7anPsF56XIidIwVuFq2CJWyWLLussSTt8sY5lZah7CUSnuLDlTTYKUko+4i/hcv4L0hRuLBvGsx3VXfEbRqFAeJI0XSdvfJYUh38Kp4eGsCsm21KiP00d2gly1eD3MKzkfkoByQ6VMIqyHscsSBlnaFNnBGMWKloaVaeRty61pyWSd34FWFS+k1w8EYPh1l4BChmP52/Hk+vQomrj5N/7g6ms7ff7g6+nN+PCteg0X2lnIq3h686Q3CMbHiDubGwMdguui5uEDXGnIYfme+LNG5pdd9WiVdDorD8RjOTgu4VVz/l1JISh/VwuOwmIg7J7tz8NpU3c4cFG/H4+InaKReGttgXwP96bt4euMNy5zwrpbexSzdO/t2/KYYwkf1DSO3uzLYQWol1y5LKnOSFuHGo8cqeCThAivl9tVEFbRonYpJJ11HZW0NGe90F/PVIeZ0OU/5HHemQQhurWIMlU4h13nxahQrAKnEkWzVYOVVhX0dvIiKB/HOoL8yOBwfvh6KTJgWU4GdVGIiQoO4SkBEJuyOZicmG3E4HofP4wb4IKJ9TEQmypTJQfxhGn914c5GuLLGRoZVa4N5VsmCY8k+rrhrUUyEY6toJTLBinXYmCWJp234AmWlCF0kVtFqCEXsOAU0KCm1LGs8ow0V0xhPkW+q9h0gVVPEPRTbbdZ7YK6/YpmouPHKYhWGws7Pxb1f71PLTe49IOKxm9HIvu/bvdM9zcHyNhhvkGsTwtGaGIeQUmIinrRvkQmHdo02TKqN8FYHGdkqsc3635q5dZPRCP2w1MZXQxlb3VCqJLgIOkpvFXdRyfT85BS7DygrtGJyuXgoMAthS5F6LLaPl2zVKXYiEySb8D/1XBurvsfwi0yowEKdbgWcipYmXt/RmPowTM9PfuDu0VHIL1nG/OotxWORPYF9j1ZkAhupwiGjbH7en4htJgKHycx4eDAch63AfCPpgYkfZ32I51NHN/fJ//w6eH4dPL8Onl8H/+fXwa6xM97xqNVSUeiNscdudlPpMr4ZRCbWB0E+TaZFJuowuiaXYrO5lg6/WL3dhu0bjzaMmkUm1tIqeR0a/+Vim/VzIUyhb9iFnh7zNmiW2qfx8uQtEabTflaG6hbb7b+8eOke
+sidebar_class_name: "post api-method"
+info_path: reference/api/agenta-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+import Translate from "@docusaurus/Translate";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Ingest traces via OTLP"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/otlp/v1/traces"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Ingest traces via the OTLP/HTTP protobuf protocol.
+
+This endpoint accepts a serialized
+`ExportTraceServiceRequest` protobuf. Point any OTLP/HTTP
+collector or SDK at `POST /otlp/v1/traces` and spans will flow
+into the same ingest stream as the Agenta-native endpoints.
+
+Use this when you already have OTel instrumentation emitting
+OTLP. For new integrations that don't need raw OTLP, prefer
+`POST /tracing/spans/ingest` — it takes JSON, accepts Agenta's
+nested shape directly, and surfaces parse failures immediately.
+
+## Content-Type and size limit
+
+Binary protobuf only (`Content-Type: application/x-protobuf`).
+JSON OTLP is not accepted. Requests larger than the configured
+batch limit (default 10 MB, see `AGENTA_OTLP_MAX_BATCH_BYTES`) return
+`413 Request Entity Too Large`.
+
+## Response
+
+Successful ingest returns `200 OK` with a serialized
+`ExportTraceServiceResponse` protobuf. Parse failures on the
+request body return `400`; malformed spans return `500`; quota
+exhaustion returns `403`. Like the native ingest paths, spans
+are queued on a Redis stream and persisted asynchronously — see
+[Tracing — Async write
+contract](/reference/api-guide/tracing#async-write-contract-202).
+
+<ParamsDetails>
+  
+</ParamsDetails>
+
+<RequestSchema
+  {...require("./otlp-ingest.RequestSchema.json")}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  {...require("./otlp-ingest.StatusCodes.json")}
+>
+  
+</StatusCodes>
+
+
+      

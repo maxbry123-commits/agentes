@@ -1,0 +1,415 @@
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+import os
+from pathlib import Path
+import uuid
+
+import pytest
+from sqlalchemy.exc import OperationalError
+from sqlmodel import select
+
+from app.models.chat import ChatSession, SessionMessage
+from app.services.artifact_cleanup import _dir_size, cleanup_generated_artifacts
+
+pytestmark = pytest.mark.usefixtures("setup_db")
+
+
+def test_dir_size_uses_one_stat_per_descendant_and_preserves_symlink_sizes(
+    tmp_path, monkeypatch
+):
+    regular = tmp_path / "regular.txt"
+    regular.write_bytes(b"abc")
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "inside.txt").write_bytes(b"12345")
+    (tmp_path / "file-link").symlink_to(regular)
+    linked_directory = tmp_path.parent / "linked-directory"
+    linked_directory.mkdir()
+    (linked_directory / "outside.txt").write_bytes(b"not counted")
+    (tmp_path / "directory-link").symlink_to(linked_directory, target_is_directory=True)
+    disappearing = tmp_path / "disappearing.txt"
+    disappearing.write_bytes(b"ignored")
+
+    original_stat = Path.stat
+    original_is_file = Path.is_file
+    stat_calls = 0
+    is_file_calls = 0
+
+    def count_stat(path, *args, **kwargs):
+        nonlocal stat_calls
+        stat_calls += 1
+        if path == disappearing:
+            raise OSError("file disappeared during traversal")
+        return original_stat(path, *args, **kwargs)
+
+    def count_is_file(path, *args, **kwargs):
+        nonlocal is_file_calls
+        is_file_calls += 1
+        return original_is_file(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", count_stat)
+    monkeypatch.setattr(Path, "is_file", count_is_file)
+
+    assert _dir_size(tmp_path) == 11
+    assert is_file_calls == 1
+    assert stat_calls == 6
+
+
+@pytest.mark.asyncio
+async def test_cleanup_targets_orphaned_session_artifacts(tmp_path, monkeypatch):
+    from app.core import db as core_db
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "OPENAGENTD_DATA_DIR", str(tmp_path / "data"))
+    old_session_id = str(uuid.uuid4())
+    artifact_dir = tmp_path / "data" / "sessions" / old_session_id
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / ".todos.json").write_text("{}", encoding="utf-8")
+    old_time = (datetime.now(timezone.utc) - timedelta(days=30)).timestamp()
+    artifact_dir.touch()
+    (artifact_dir / ".todos.json").touch()
+    os.utime(artifact_dir, (old_time, old_time))
+    os.utime(artifact_dir / ".todos.json", (old_time, old_time))
+
+    async with core_db.async_session_factory() as session:
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=True
+        )
+
+    assert artifact_dir in [candidate.path for candidate in result.candidates]
+    assert any(
+        candidate.reason == "orphaned session artifacts"
+        for candidate in result.candidates
+    )
+
+
+@pytest.mark.asyncio
+async def test_cleanup_ignores_legacy_workspace_directories(tmp_path, monkeypatch):
+    from app.core import db as core_db
+    from app.core.config import settings
+
+    workspace_root = tmp_path / "workspace"
+    monkeypatch.setattr(settings, "OPENAGENTD_WORKSPACE_DIR", str(workspace_root))
+    legacy = workspace_root / str(uuid.uuid4())
+    legacy.mkdir(parents=True)
+    (legacy / "user-file.txt").write_text("keep", encoding="utf-8")
+    old_time = (datetime.now(timezone.utc) - timedelta(days=30)).timestamp()
+    os.utime(legacy, (old_time, old_time))
+
+    async with core_db.async_session_factory() as session:
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=False
+        )
+
+    assert legacy not in [candidate.path for candidate in result.candidates]
+    assert legacy not in result.deleted
+    assert legacy.exists()
+    assert (legacy / "user-file.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_keeps_live_session_artifacts(tmp_path, monkeypatch):
+    from app.core import db as core_db
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "OPENAGENTD_DATA_DIR", str(tmp_path / "data"))
+    live_id = uuid.uuid4()
+    artifact_dir = tmp_path / "data" / "sessions" / str(live_id)
+    artifact_dir.mkdir(parents=True)
+    old_time = (datetime.now(timezone.utc) - timedelta(days=30)).timestamp()
+    os.utime(artifact_dir, (old_time, old_time))
+
+    async with core_db.async_session_factory() as session:
+        session.add(ChatSession(id=live_id, agent_name="lead"))
+        await session.commit()
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=True
+        )
+
+    assert artifact_dir not in [candidate.path for candidate in result.candidates]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_falls_back_when_chat_sessions_query_fails(tmp_path, monkeypatch):
+    from app.core import db as core_db
+    from app.core.config import settings
+    from app.services import artifact_cleanup as cleanup_mod
+
+    monkeypatch.setattr(settings, "OPENAGENTD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(
+        settings, "OPENAGENTD_WORKSPACE_DIR", str(tmp_path / "workspace")
+    )
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", str(tmp_path / "state"))
+
+    orphan_id = str(uuid.uuid4())
+    artifact_dir = tmp_path / "data" / "sessions" / orphan_id
+    artifact_dir.mkdir(parents=True)
+    snapshot_dir = tmp_path / "state" / "snapshot" / orphan_id
+    snapshot_dir.mkdir(parents=True)
+    worktree_dir = tmp_path / "data" / "worktrees" / "repo-abc" / "task-1"
+    worktree_dir.mkdir(parents=True)
+    old_time = (datetime.now(timezone.utc) - timedelta(days=30)).timestamp()
+    for path in (artifact_dir, snapshot_dir, worktree_dir):
+        os.utime(path, (old_time, old_time))
+
+    orig_exec = core_db.AsyncSession.exec
+
+    class _OrigExc(Exception):
+        pass
+
+    async def flaky_exec(self, statement, *args, **kwargs):
+        if "chat_sessions" in str(statement):
+            raise OperationalError(
+                "SELECT chat_sessions.id FROM chat_sessions",
+                {},
+                _OrigExc("no such table: chat_sessions"),
+            )
+        return await orig_exec(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(core_db.AsyncSession, "exec", flaky_exec)
+
+    async def _fake_source(path):
+        return str(tmp_path / "repo")
+
+    monkeypatch.setattr(cleanup_mod, "find_managed_worktree_source", _fake_source)
+
+    async with core_db.async_session_factory() as session:
+        result = await cleanup_mod.cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=True
+        )
+
+    reasons = {candidate.reason for candidate in result.candidates}
+    paths = {candidate.path for candidate in result.candidates}
+    assert "orphaned session artifacts" in reasons
+    assert "old session snapshots" in reasons
+    assert "old managed git worktrees" in reasons
+    assert artifact_dir in paths
+    assert snapshot_dir in paths
+    assert worktree_dir in paths
+
+
+@pytest.mark.asyncio
+async def test_cleanup_apply_deletes_old_sessions_and_linked_storage(
+    tmp_path, monkeypatch
+):
+    from app.core import db as core_db
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "OPENAGENTD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(
+        settings, "OPENAGENTD_WORKSPACE_DIR", str(tmp_path / "workspace")
+    )
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", str(tmp_path / "state"))
+
+    old_id = uuid.uuid4()
+    new_id = uuid.uuid4()
+    old_workspace = tmp_path / "workspace" / str(old_id)
+    new_workspace = tmp_path / "workspace" / str(new_id)
+    old_artifacts = tmp_path / "data" / "sessions" / str(old_id)
+    new_artifacts = tmp_path / "data" / "sessions" / str(new_id)
+    old_snapshot = tmp_path / "state" / "snapshot" / str(old_id)
+    new_snapshot = tmp_path / "state" / "snapshot" / str(new_id)
+    for path in (
+        old_workspace,
+        new_workspace,
+        old_artifacts,
+        new_artifacts,
+        old_snapshot,
+        new_snapshot,
+    ):
+        path.mkdir(parents=True)
+
+    old_time = datetime.now(timezone.utc) - timedelta(days=30)
+
+    async with core_db.async_session_factory() as session:
+        old_session = ChatSession(
+            id=old_id,
+            agent_name="lead",
+            created_at=old_time,
+            updated_at=old_time,
+        )
+        new_session = ChatSession(id=new_id, agent_name="lead")
+        session.add(old_session)
+        session.add(new_session)
+        await session.flush()
+        session.add(SessionMessage(session_id=old_id, role="user", content="old"))
+        session.add(SessionMessage(session_id=new_id, role="user", content="new"))
+        await session.commit()
+
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=False
+        )
+
+        remaining_sessions = (await session.exec(select(ChatSession))).all()
+        remaining_messages = (await session.exec(select(SessionMessage))).all()
+
+    deleted_paths = set(result.deleted)
+    assert old_workspace not in deleted_paths
+    assert old_artifacts in deleted_paths
+    assert old_snapshot in deleted_paths
+    assert old_workspace.exists()
+    assert not old_artifacts.exists()
+    assert not old_snapshot.exists()
+    assert new_workspace.exists()
+    assert new_artifacts.exists()
+    assert new_snapshot.exists()
+    assert [row.id for row in remaining_sessions] == [new_id]
+    assert [row.session_id for row in remaining_messages] == [new_id]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_apply_deletes_old_coding_session_metadata_but_keeps_worktree(
+    tmp_path, monkeypatch
+):
+    from app.core import db as core_db
+    from app.core.config import settings
+    from app.services import artifact_cleanup as cleanup_mod
+
+    monkeypatch.setattr(settings, "OPENAGENTD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", str(tmp_path / "state"))
+
+    coding_id = uuid.uuid4()
+    worktree_dir = tmp_path / "data" / "worktrees" / "repo-abc" / "task-1"
+    snapshot_dir = tmp_path / "state" / "snapshot" / str(coding_id)
+    artifact_dir = tmp_path / "data" / "sessions" / str(coding_id)
+    for path in (worktree_dir, snapshot_dir, artifact_dir):
+        path.mkdir(parents=True)
+    old_time = datetime.now(timezone.utc) - timedelta(days=30)
+
+    async with core_db.async_session_factory() as session:
+        session.add(
+            ChatSession(
+                id=coding_id,
+                agent_name="lead",
+                mode="coding",
+                workspace=str(worktree_dir),
+                created_at=old_time,
+                updated_at=old_time,
+            )
+        )
+        await session.flush()
+        session.add(SessionMessage(session_id=coding_id, role="user", content="old"))
+        await session.commit()
+
+        async def _fake_source(path):
+            return str(tmp_path / "repo") if path == worktree_dir else None
+
+        monkeypatch.setattr(cleanup_mod, "find_managed_worktree_source", _fake_source)
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=False
+        )
+
+        remaining_sessions = (await session.exec(select(ChatSession))).all()
+        remaining_messages = (await session.exec(select(SessionMessage))).all()
+
+    deleted_paths = set(result.deleted)
+    assert artifact_dir in deleted_paths
+    assert snapshot_dir in deleted_paths
+    assert not artifact_dir.exists()
+    assert not snapshot_dir.exists()
+    assert worktree_dir.exists()
+    assert worktree_dir not in deleted_paths
+    assert remaining_sessions == []
+    assert remaining_messages == []
+
+
+@pytest.mark.asyncio
+async def test_cleanup_dry_run_reports_expired_db_rows_without_paths(
+    tmp_path, monkeypatch
+):
+    from app.core import db as core_db
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "OPENAGENTD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(
+        settings, "OPENAGENTD_WORKSPACE_DIR", str(tmp_path / "workspace")
+    )
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", str(tmp_path / "state"))
+
+    old_id = uuid.uuid4()
+    old_time = datetime.now(timezone.utc) - timedelta(days=30)
+
+    async with core_db.async_session_factory() as session:
+        session.add(
+            ChatSession(
+                id=old_id,
+                agent_name="lead",
+                created_at=old_time,
+                updated_at=old_time,
+            )
+        )
+        await session.flush()
+        session.add(SessionMessage(session_id=old_id, role="user", content="old"))
+        session.add(
+            SessionMessage(session_id=old_id, role="assistant", content="reply")
+        )
+        await session.commit()
+
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=True
+        )
+
+    assert result.expired_sessions == 1
+    assert result.expired_messages == 2
+    assert result.candidates == []
+
+
+@pytest.mark.asyncio
+async def test_cleanup_reads_only_session_fields_needed_for_candidates(monkeypatch):
+    """Cleanup avoids loading large session payload columns just to find paths."""
+    from app.core import db as core_db
+
+    statements = []
+    original_exec = core_db.AsyncSession.exec
+
+    async def recording_exec(self, statement, *args, **kwargs):
+        statements.append(str(statement))
+        return await original_exec(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(core_db.AsyncSession, "exec", recording_exec)
+
+    async with core_db.async_session_factory() as session:
+        await cleanup_generated_artifacts(session, dry_run=True)
+
+    session_query = next(
+        statement for statement in statements if "chat_sessions" in statement
+    )
+    assert "chat_sessions.title" not in session_query
+    assert "chat_sessions.extra" not in session_query
+
+
+@pytest.mark.asyncio
+async def test_cleanup_counts_expired_messages_in_sql(monkeypatch):
+    """Dry-run totals do not materialize every expired message id."""
+    from app.core import db as core_db
+
+    old_session = ChatSession(
+        agent_name="lead", created_at=datetime.now(timezone.utc) - timedelta(days=30)
+    )
+    async with core_db.async_session_factory() as session:
+        session.add(old_session)
+        await session.flush()
+        session.add(
+            SessionMessage(session_id=old_session.id, role="user", content="old")
+        )
+        await session.commit()
+
+    statements = []
+    original_exec = core_db.AsyncSession.exec
+
+    async def recording_exec(self, statement, *args, **kwargs):
+        rendered = str(statement)
+        if "session_messages" in rendered:
+            statements.append(rendered)
+        return await original_exec(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(core_db.AsyncSession, "exec", recording_exec)
+    async with core_db.async_session_factory() as session:
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=True
+        )
+
+    assert result.expired_messages == 1
+    assert "count(*)" in statements[0].lower()
+    assert "session_messages.id" not in statements[0]

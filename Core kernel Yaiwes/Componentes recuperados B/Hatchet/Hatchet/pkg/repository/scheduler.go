@@ -1,0 +1,154 @@
+package repository
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlcv1"
+)
+
+type SchedulerRepository interface {
+	Concurrency() ConcurrencyRepository
+	Lease() LeaseRepository
+	QueueFactory() QueueFactoryRepository
+	BatchQueue() BatchQueueFactoryRepository
+	RateLimit() RateLimitRepository
+	Assignment() AssignmentRepository
+	Optimistic() OptimisticSchedulingRepository
+}
+
+type LeaseRepository interface {
+	ListQueues(ctx context.Context, tenantId uuid.UUID) ([]*sqlcv1.V1Queue, error)
+	ListActiveWorkers(ctx context.Context, tenantId uuid.UUID) ([]*ListActiveWorkersResult, error)
+	GetActiveWorker(ctx context.Context, tenantId, workerId uuid.UUID) (*ListActiveWorkersResult, error)
+	ListConcurrencyStrategies(ctx context.Context, tenantId uuid.UUID) ([]*sqlcv1.V1StepConcurrency, error)
+	GetConcurrencyStrategy(ctx context.Context, tenantId uuid.UUID, id int64) (*sqlcv1.V1StepConcurrency, error)
+
+	AcquireOrExtendLeases(ctx context.Context, tenantId uuid.UUID, kind sqlcv1.LeaseKind, resourceIds []string, existingLeases []*sqlcv1.Lease) ([]*sqlcv1.Lease, error)
+	ReleaseLeases(ctx context.Context, tenantId uuid.UUID, leases []*sqlcv1.Lease) error
+}
+
+type QueueFactoryRepository interface {
+	NewQueue(tenantId uuid.UUID, queueName string) QueueRepository
+}
+
+type QueueRepository interface {
+	ListQueueItems(ctx context.Context, limit int) ([]*sqlcv1.V1QueueItem, error)
+	MarkQueueItemsProcessed(ctx context.Context, r *AssignResults) (succeeded []*AssignedItem, failed []*AssignedItem, err error)
+
+	GetTaskRateLimits(ctx context.Context, tx *OptimisticTx, queueItems []*sqlcv1.V1QueueItem) (map[int64]map[string]int32, error)
+	RequeueRateLimitedItems(ctx context.Context, tenantId uuid.UUID, queueName string) ([]*sqlcv1.RequeueRateLimitedQueueItemsRow, error)
+	GetDesiredLabels(ctx context.Context, tx *OptimisticTx, stepIds []uuid.UUID) (map[uuid.UUID][]*sqlcv1.GetDesiredLabelsRow, error)
+	GetStepSlotRequests(ctx context.Context, tx *OptimisticTx, stepIds []uuid.UUID) (map[uuid.UUID]map[string]int32, error)
+	GetStepBatchConfigs(ctx context.Context, tx *OptimisticTx, stepIds []uuid.UUID) (map[string]bool, error)
+	ListWorkflowNamesByIds(ctx context.Context, workflowIds []uuid.UUID) (map[uuid.UUID]string, error)
+	Cleanup()
+}
+
+type AssignmentRepository interface {
+	ListActionsForWorkers(ctx context.Context, tenantId uuid.UUID, workerIds []uuid.UUID) ([]*sqlcv1.ListActionsForWorkersRow, error)
+	ListAvailableSlotsForWorkers(ctx context.Context, tenantId uuid.UUID, params sqlcv1.ListAvailableSlotsForWorkersParams) ([]*sqlcv1.ListAvailableSlotsForWorkersRow, error)
+	ListAvailableSlotsForWorkersAndTypes(ctx context.Context, tenantId uuid.UUID, params sqlcv1.ListAvailableSlotsForWorkersAndTypesParams) ([]*sqlcv1.ListAvailableSlotsForWorkersAndTypesRow, error)
+	ListWorkerSlotConfigs(ctx context.Context, tenantId uuid.UUID, workerIds []uuid.UUID) ([]*sqlcv1.ListWorkerSlotConfigsRow, error)
+}
+
+type OptimisticSchedulingRepository interface {
+	StartTx(ctx context.Context) (*OptimisticTx, error)
+
+	TriggerFromEvents(ctx context.Context, tx *OptimisticTx, tenantId uuid.UUID, opts []EventTriggerOpts) ([]*sqlcv1.V1QueueItem, *TriggerFromEventsResult, error)
+
+	TriggerFromNames(ctx context.Context, tx *OptimisticTx, tenantId uuid.UUID, opts []*WorkflowNameTriggerOpts) ([]*sqlcv1.V1QueueItem, []*V1TaskWithPayload, []*DAGWithData, []IdempotencyCollision, error)
+
+	MarkQueueItemsProcessed(ctx context.Context, tx *OptimisticTx, tenantId uuid.UUID, r *AssignResults) (succeeded []*AssignedItem, failed []*AssignedItem, err error)
+}
+
+type schedulerRepository struct {
+	concurrency  ConcurrencyRepository
+	lease        LeaseRepository
+	queueFactory QueueFactoryRepository
+	rateLimit    RateLimitRepository
+	batchQueue   BatchQueueFactoryRepository
+	assignment   AssignmentRepository
+	optimistic   OptimisticSchedulingRepository
+}
+
+func newSchedulerRepository(shared *sharedRepository) *schedulerRepository {
+	return &schedulerRepository{
+		concurrency:  newConcurrencyRepository(shared),
+		lease:        newLeaseRepository(shared),
+		queueFactory: newQueueFactoryRepository(shared),
+		rateLimit:    newRateLimitRepository(shared),
+		batchQueue:   newBatchQueueFactoryRepository(shared),
+		assignment:   newAssignmentRepository(shared),
+		optimistic:   newOptimisticSchedulingRepository(shared),
+	}
+}
+
+func (d *schedulerRepository) Concurrency() ConcurrencyRepository {
+	return d.concurrency
+}
+
+func (d *schedulerRepository) Lease() LeaseRepository {
+	return d.lease
+}
+
+func (d *schedulerRepository) QueueFactory() QueueFactoryRepository {
+	return d.queueFactory
+}
+
+func (d *schedulerRepository) RateLimit() RateLimitRepository {
+	return d.rateLimit
+}
+
+func (d *schedulerRepository) Assignment() AssignmentRepository {
+	return d.assignment
+}
+
+func (d *schedulerRepository) Optimistic() OptimisticSchedulingRepository {
+	return d.optimistic
+}
+
+type BatchQueueFactoryRepository interface {
+	NewBatchQueue(tenantId uuid.UUID) BatchQueueRepository
+}
+
+type BatchQueueRepository interface {
+	ListBatchResources(ctx context.Context) ([]*sqlcv1.ListDistinctBatchResourcesRow, error)
+
+	ListBatchedQueueItems(ctx context.Context, stepId uuid.UUID, excludeIds []int64, limit int32) ([]*sqlcv1.V1BatchedQueueItem, error)
+	ListExistingBatchedQueueItemIds(ctx context.Context, ids []int64) (map[int64]struct{}, error)
+	GetBatchedQueueItemsByIds(ctx context.Context, ids []int64) ([]*sqlcv1.V1BatchedQueueItem, error)
+	DeleteBatchedQueueItems(ctx context.Context, ids []int64) error
+	MoveBatchedQueueItems(ctx context.Context, ids []int64) ([]*sqlcv1.MoveBatchedQueueItemsRow, error)
+	CommitAssignments(ctx context.Context, assignments []*BatchAssignment) ([]*BatchAssignment, error)
+
+	// ReserveAndCommitBatchRun atomically reserves a batch run slot bounded by maxRuns and, if
+	// granted, commits the given assignments in the SAME transaction. This is to prevent races amongst
+	// concurrent batch schedulers that would cause maxRuns to not be respected.
+	ReserveAndCommitBatchRun(
+		ctx context.Context,
+		tenantId, stepId uuid.UUID,
+		actionId, batchKey, batchId string,
+		maxRuns int,
+		assignments []*BatchAssignment,
+	) (reserved bool, succeeded []*BatchAssignment, err error)
+}
+
+type BatchAssignment struct {
+	BatchQueueItemID int64
+	TaskID           int64
+	TaskInsertedAt   pgtype.Timestamptz
+	RetryCount       int32
+	WorkerID         uuid.UUID
+
+	BatchID  string
+	StepID   uuid.UUID
+	ActionID string
+	BatchKey string
+}
+
+func (d *schedulerRepository) BatchQueue() BatchQueueFactoryRepository {
+	return d.batchQueue
+}

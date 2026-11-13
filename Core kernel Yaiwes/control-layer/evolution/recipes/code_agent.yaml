@@ -1,0 +1,15 @@
+id: code_agent_v1
+source_type: agent
+fingerprint_match:
+  has_code_gen: true
+policy_id: code_agent
+rules:
+  cognitive: preserve
+  execution: adapt
+  control: subordinate
+  state: adapt
+  presentation: isolate
+never_remove:
+  - reasoning
+  - code_generation
+  - code_analysis

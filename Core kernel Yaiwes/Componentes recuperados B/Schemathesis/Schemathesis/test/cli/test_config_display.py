@@ -1,0 +1,97 @@
+import click
+
+
+def _serve(ctx, app_runner, paths):
+    schema = ctx.openapi.build_schema(paths)
+    app = ctx.openapi.make_permissive_flask_app(schema)
+    base_url = app_runner.openapi_url(app, path="")
+    schema_path = ctx.openapi.write_schema(paths)
+    return base_url, schema_path
+
+
+def test_base_url_not_truncated_on_narrow_terminal(ctx, cli):
+    schema_path = ctx.openapi.write_schema({})
+    long_url = "https://internal.staging.example.com/api/v3/internal/prefix/of/something-very-long"
+    result = cli.run(
+        str(schema_path),
+        f"--url={long_url}",
+        env={"PYTEST_VERSION": None, "COLUMNS": "80"},
+    )
+    assert long_url in "".join(click.unstyle(result.output).split())
+
+
+def test_cli_displays_config_path(ctx, cli, app_runner, snapshot_cli):
+    paths = {
+        "/test": {
+            "get": {
+                "responses": {"200": {"description": "OK"}},
+            }
+        }
+    }
+    base_url, schema_path = _serve(ctx, app_runner, paths)
+
+    # Run with config parameter - cli fixture will write config file
+    assert (
+        cli.run(
+            str(schema_path),
+            f"--url={base_url}/api",
+            "-c",
+            "not_a_server_error",
+            "--max-examples=1",
+            config={"headers": {"X-Test": "value"}},
+        )
+        == snapshot_cli
+    )
+
+
+def test_cli_no_config_display_without_file(ctx, cli, app_runner, snapshot_cli):
+    paths = {
+        "/test": {
+            "get": {
+                "responses": {"200": {"description": "OK"}},
+            }
+        }
+    }
+    base_url, schema_path = _serve(ctx, app_runner, paths)
+
+    # Run without config parameter - no config file used
+    assert (
+        cli.run(
+            str(schema_path),
+            f"--url={base_url}/api",
+            "-c",
+            "not_a_server_error",
+            "--max-examples=1",
+        )
+        == snapshot_cli
+    )
+
+
+def test_cli_displays_dictionary_stats(ctx, cli, app_runner, snapshot_cli):
+    paths = {
+        "/test": {
+            "get": {
+                "parameters": [{"name": "q", "in": "query", "schema": {"type": "string"}}],
+                "responses": {"200": {"description": "OK"}},
+            }
+        }
+    }
+    base_url, schema_path = _serve(ctx, app_runner, paths)
+
+    assert (
+        cli.run(
+            str(schema_path),
+            f"--url={base_url}/api",
+            "-c",
+            "not_a_server_error",
+            "--max-examples=1",
+            config={
+                "dictionaries": {
+                    "edge": {"values": ["admin", "root", "guest"]},
+                    "ids": {"values": ["abc", "def"]},
+                },
+                "parameters": {"query.q": {"dictionary": "edge"}},
+            },
+        )
+        == snapshot_cli
+    )

@@ -1,0 +1,125 @@
+name: YAIWES V6 select operational anchors
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-v6-select-operational-anchors.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /📂coda workflow persistencias/*/INTERNAL-SURGICAL-MANIFEST-V5.json
+            /📂coda workflow persistencias/*/code/**/*.py
+            /📂coda workflow persistencias/*/code/**/*.js
+            /📂coda workflow persistencias/*/code/**/*.jsx
+            /📂coda workflow persistencias/*/code/**/*.ts
+            /📂coda workflow persistencias/*/code/**/*.tsx
+            /📂coda workflow persistencias/*/code/**/*.go
+            /📂coda workflow persistencias/*/code/**/*.rs
+            /📂coda workflow persistencias/*/code/**/*.java
+            /📂coda workflow persistencias/*/code/**/*.rb
+            /📂coda workflow persistencias/*/code/**/*.lua
+            /📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-WORKFLOW-CANDIDATES-V6.json
+
+      - name: Select actual operational anchors
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast, json, re
+          R=Path('📂coda workflow persistencias')
+          F=R/'🏈 cancha deportiva de fútbol'
+          src=json.loads((F/'YAIWES-INTERNAL-WORKFLOW-CANDIDATES-V6.json').read_text(encoding='utf-8'))
+          comps=sorted([p for p in R.iterdir() if p.is_dir() and p.name.startswith('🏈 ') and p.name!='🏈 cancha deportiva de fútbol'])
+          def ordinal(n):
+              m=re.match(r'^🏈\s+(?:YAIWES\s+)?(\d{2})(?:[- ]|$)',n)
+              return int(m.group(1)) if m else 999
+          comps=sorted(comps,key=lambda p:(ordinal(p.name),p.name))
+          assert len(comps)==24
+          EXCLUDE=('test/','tests/','/test_','_test.','/docs/','/examples/','frontend/','ui/','generated.','generated/','benchmark','bench.','scripts/test','docker/','migrations/','alembic/')
+          PATH_GOOD=('orchestr','workflow','planner','planning','loop','pipeline','coordinator','manager','agent','state','session','task','graph','memory','scheduler','controller')
+          SYMBOL_GOOD=('run','execute','start','process','resume','step','plan','next_task','get_next_task','call_agent','switch_agent','dispatch','coordinate','advance_phase')
+          def sig_python(text,symbol):
+              try: tree=ast.parse(text)
+              except Exception:return None
+              parts=symbol.split('.',1)
+              nodes=[]
+              if len(parts)==1:
+                  nodes=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)) and n.name==parts[0]]
+              else:
+                  cls,meth=parts
+                  for n in tree.body:
+                      if isinstance(n,ast.ClassDef) and n.name==cls:
+                          nodes=[x for x in n.body if isinstance(x,(ast.FunctionDef,ast.AsyncFunctionDef)) and x.name==meth]
+              if not nodes:return None
+              n=nodes[0]
+              if isinstance(n,ast.ClassDef): return {'kind':'class','args':[],'async':False}
+              args=[]
+              allargs=list(n.args.posonlyargs)+list(n.args.args)
+              defaults=[None]*(len(allargs)-len(n.args.defaults))+list(n.args.defaults)
+              for a,d in zip(allargs,defaults):
+                  if a.arg in {'self','cls'}:continue
+                  args.append({'name':a.arg,'required':d is None})
+              for a,d in zip(n.args.kwonlyargs,n.args.kw_defaults): args.append({'name':a.arg,'required':d is None})
+              return {'kind':'method' if len(parts)>1 else 'function','args':args,'async':isinstance(n,ast.AsyncFunctionDef)}
+          out={'schema':'yaiwes.internal.workflow.map/v6','policy':'ACTUAL_PRESERVED_CONTROL_FLOW_ONLY','components':[]}
+          bylabel={x['component']:x for x in src['components']}
+          for i,c in enumerate(comps,1):
+              label=f'YAIWES {i:02d}'
+              if i==24:
+                  out['components'].append({'component':label,'source_available':False,'status':'SOURCE_UNAVAILABLE','anchor':None})
+                  continue
+              d=bylabel[label]
+              eligible=[]
+              for x in d['top_candidates']:
+                  p=x['path'].lower(); s=x['symbol'].lower()
+                  if any(e in p for e in EXCLUDE):continue
+                  score=x['score']
+                  score += 18*any(k in p for k in PATH_GOOD)
+                  score += 22*any(s==k or s.endswith('.'+k) or k in s for k in SYMBOL_GOOD)
+                  score += 8*(x['decision']=='RESTORE_BENIGN')
+                  if x['kind']=='class':score-=8
+                  eligible.append((score,x))
+              if not eligible:
+                  raise SystemExit(f'NO_OPERATIONAL_ANCHOR:{label}')
+              eligible.sort(key=lambda z:(-z[0],z[1]['path'],z[1]['line']))
+              chosen=dict(eligible[0][1]); chosen['operational_score']=eligible[0][0]
+              ext=Path(chosen['path']).suffix.lower()
+              lang={'.py':'python','.go':'go','.js':'javascript','.jsx':'javascript','.ts':'typescript','.tsx':'typescript','.rs':'rust','.java':'java','.rb':'ruby','.lua':'lua'}.get(ext,'unknown')
+              chosen['language']=lang
+              active=c/'code'/chosen['path']
+              if not active.is_file():raise SystemExit(f'MISSING_ANCHOR_FILE:{label}:{chosen["path"]}')
+              text=active.read_text(encoding='utf-8')
+              chosen['signature']=sig_python(text,chosen['symbol']) if lang=='python' else None
+              out['components'].append({'component':label,'source_available':True,'status':'ANCHOR_SELECTED','anchor':chosen})
+          assert len(out['components'])==24
+          assert all(x['anchor'] for x in out['components'][:23])
+          (F/'YAIWES-INTERNAL-WORKFLOW-MAP-V6.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+          for x in out['components']:
+              a=x['anchor']
+              print(x['component'], 'SOURCE_UNAVAILABLE' if not a else f"{a['language']} {a['path']} :: {a['symbol']} decision={a['decision']} score={a['operational_score']} sig={a.get('signature')}")
+          PY
+
+      - name: Persist operational map
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- '📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-INTERNAL-WORKFLOW-MAP-V6.json'
+          git commit -m 'audit(coda): select operational internal workflow anchors v6' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main

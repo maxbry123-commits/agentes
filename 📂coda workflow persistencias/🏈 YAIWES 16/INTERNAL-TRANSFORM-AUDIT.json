@@ -1,0 +1,9 @@
+{
+  "schema": "yaiwes.internal.transform/v1",
+  "component": "🏈 16-Autonomous-Pentest-Agent",
+  "mode": "TRANSFORM",
+  "source_files": 28,
+  "candidates": 0,
+  "changed": 0,
+  "findings": []
+}

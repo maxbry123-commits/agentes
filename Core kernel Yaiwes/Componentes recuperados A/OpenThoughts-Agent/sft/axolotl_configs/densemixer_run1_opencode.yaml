@@ -1,0 +1,105 @@
+# axolotl SFT — Run 1 (DenseMixer ON) — Qwen3-30B-A3B-Thinking-2507 on opencode traces.
+# Experiment: axolotl-sft-opencode-densemoe (task #16). Paired-init controlled ablation:
+#   Run 1 = densemixer ON (this file), Run 2 = byte-identical EXCEPT `dense_mixer: false`.
+# Design/rationale: experiments/active/axolotl-sft-opencode-densemoe/{POLICY,STATE}.md.
+#
+# ⚠ LAUNCH PATH = DIRECT `axolotl.cli.train` (NOT hpc.launch). EmpireAI is NOT registered
+# in hpc.launch; the SFT path is torch.distributed.run -m axolotl.cli.train <this.yaml>
+# (bring-up Stage-3 recipe: ~/scripts/stage3_incontainer.sh, bond0 NCCL). The direct path
+# honors this WHOLE file verbatim — which is REQUIRED here: the hpc.launch translator
+# (hpc/axolotl_config_utils.py) would STRIP `plugins:`, `dense_mixer:` (rebuilds plugins
+# from a fixed whitelist) AND `fp8:` (unhandled key) → densemixer silently off + fp8 auto-on.
+#
+# ⚠ REQUIRES the densemixer-enabled image `mega_final_dm.sqsh` (densemixer==1.0.1 in the SFT
+# system python). The DenseMixerPlugin hard-raises "DenseMixer is not installed" otherwise.
+
+# θ₀ — the SHARED init both runs start from (control discipline). Pinned local snapshot.
+base_model: /mnt/home/bf996/experiments/densemixer/theta0    # Qwen/Qwen3-30B-A3B-Thinking-2507 @ 144afc2f...
+model_type: AutoModelForCausalLM
+trust_remote_code: true
+
+# === THE DenseMoE mechanism = DenseMixer (marin #7088; yaof20/DenseMixer) ===
+# Training-only patch of Qwen3MoeSparseMoeBlock.forward: dense forward through ALL experts +
+# full-softmax router + STE combine (forward value = sparse/identical; backward = dense
+# gradient) + per-expert grad hook (expert params still update sparsely). Net: the ROUTER
+# gets the dense all-experts gradient. Inference untouched. This IS the single Run-1/Run-2
+# differentiator — Run 2 flips ONLY `dense_mixer: false` (plugin becomes a no-op).
+plugins:
+  - axolotl.integrations.densemixer.DenseMixerPlugin
+dense_mixer: true                 # Run 1 = ON.  Run 2 = false (only-flag diff).
+
+# opencode SFT dataset — SERVE-PARITY REBUILD (bug ledger #2 fix). IDENTICAL for both runs.
+# The old `conversations` field was LOSSY (no system, empty turn-0, no <tools>, tool calls as
+# inline text, tool results as role:user) → model never learned the task/tools/read-edit workflow
+# → bash-spammed → swebench ~0. Rebuilt from the literal token columns via
+# `python -m data.opencode_literals_to_sft` (data/opencode_literals_to_sft/): `messages` (list) carries a system turn (the
+# opencode agent prompt), a task-grounded user turn-0, structured assistant `tool_calls` (NOT inline
+# text, args JSON-string → axolotl json.loads → dict), and role:tool observations; `tools` (JSON
+# string) is the 10 opencode function schemas. Source: laion/nemotron-code-oracle-opencode-sft-serveparity.
+datasets:
+  - path: /mnt/home/bf996/experiments/densemixer/data_opencode_serveparity
+    ds_type: parquet
+    data_files:
+      - /mnt/home/bf996/experiments/densemixer/data_opencode_serveparity/data/train-*.parquet
+    type: chat_template
+    field_messages: messages
+    field_tools: tools                    # render the <tools> system block (train==serve)
+    message_property_mappings:
+      role: role
+      content: content
+    split_thinking: false                 # keep <think> inline on all turns (Qwen3-Thinking parity)
+# TRAIN==SERVE (POLICY §7): tokenizer_default = the base Qwen3-30B-A3B-Thinking tokenizer's own
+# tools-aware template (4049 chars, `{% if tools %}` + `<tool_call>` + `<tool_response>`), byte-
+# identical to what opencode serves at eval; archived as chat_templates/chat_template_v1_base-tools-aware.jinja.
+# Also sidesteps axolotl export-strip bug #1: the saved template == the base tools-aware one (no bare-chatml clobber).
+chat_template: tokenizer_default
+dataset_prepared_path: /mnt/home/bf996/experiments/densemixer/prepared/run1_serveparity   # SHARED (multi-node sentinel); NEW path — old cache was the lossy tokenization
+val_set_size: 0.0
+dataset_num_proc: 1
+# Dataloader first-batch fix — the default async path (num_workers:1 + prefetch_factor:256)
+# wedged the multi-node first batch: the worker eagerly prefetched 256 packed 16384-tok batches
+# by mmap-reading the NFS-backed prepared arrow -> rank-0 stuck in folio_wait (mmap page I/O) +
+# an anon_pipe_read thread blocked on the worker, GPUs 0% (forward never started), no NCCL
+# collective in flight (job 31682, killed ~21min pre-step). prefetch_factor:2 kills the storm.
+dataloader_num_workers: 2
+dataloader_prefetch_factor: 2
+
+# === precision — bf16 + flash-attn (coordinator signal 2026-07-17; job 31623 HEALTHY). ===
+bf16: true
+fp16: false
+fp8: false                        # ⚠ MANDATORY EXPLICIT — axolotl 0.17 auto-enables fp8 on sm_100 → nan.
+tf32: false
+attn_implementation: flash_attention_2   # load-bearing: FA2 avoids the Blackwell cuDNN-SDPA bf16 backward nan
+                                          # (= the healthy job 31623 path; non-deprecated form of flash_attention:true)
+
+# === memory: 30B MoE + DENSE forward (all 128 experts materialized ≈ 16× expert-FFN FLOPs). ===
+# ZeRO-3 shards params/grads/optimizer; grad-checkpointing recomputes activations; chunked-CE
+# bounds the LM-head logit tensor WITHOUT a model monkeypatch (avoids any liger×densemixer
+# patch-interaction on qwen3_moe — deliberately NOT using enable_liger_kernel here).
+deepspeed: /opt/axolotl/deepspeed_configs/zero3_bf16.json
+gradient_checkpointing: true
+chunked_cross_entropy: true
+sequence_len: 16384               # conservative for the dense forward; raise to 32768 iff smoke shows headroom
+sample_packing: true              # OPERATOR: packing ON (cadence)
+
+# === control discipline — IDENTICAL both runs ===
+seed: 42
+micro_batch_size: 1
+gradient_accumulation_steps: 4    # 8 GPUs (2×4) × micro 1 × accum 4 = effective batch 32
+num_epochs: 3.0
+learning_rate: 2.0e-5
+lr_scheduler: cosine
+warmup_ratio: 0.1
+max_grad_norm: 1.0
+optimizer: adamw_torch_fused
+weight_decay: 0.0
+
+# === checkpoint cadence (POLICY §5.5) — θ₀ + intermediate + final for the Δθ trajectory. ===
+# save_steps → ~10-15 intermediate ckpts; FINALIZE once preprocess reveals the packed step-count.
+# θ₀ (step 0) = the pinned prestaged snapshot. Keep ALL ckpts (Δθ analysis) — do NOT prune.
+logging_steps: 1                  # instrument first 2-3 steps: grad_norm finite + loss real (nan → STOP→fp32)
+save_steps: 10
+save_total_limit: 100
+output_dir: /mnt/home/bf996/experiments/densemixer/run1_dense_out
+# Omit hub_model_id (offline init_hf_repo crash); push manually at cleanup. enable_db_registration: false.
+special_tokens: {}

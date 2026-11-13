@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec docker exec -i darkmoon darkmoon-mcp

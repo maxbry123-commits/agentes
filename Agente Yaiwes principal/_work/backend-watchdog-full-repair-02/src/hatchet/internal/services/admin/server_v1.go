@@ -1,0 +1,408 @@
+package admin
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"golang.org/x/sync/errgroup"
+
+	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/hatchet-dev/hatchet/internal/datautils"
+	"github.com/hatchet-dev/hatchet/internal/msgqueue"
+	"github.com/hatchet-dev/hatchet/internal/services/admin/contracts"
+	"github.com/hatchet-dev/hatchet/internal/services/controllers/task/trigger"
+	v1contracts "github.com/hatchet-dev/hatchet/internal/services/shared/proto/v1"
+	tasktypes "github.com/hatchet-dev/hatchet/internal/services/shared/tasktypes/v1"
+	"github.com/hatchet-dev/hatchet/pkg/constants"
+	grpcmiddleware "github.com/hatchet-dev/hatchet/pkg/grpc/middleware"
+	v1 "github.com/hatchet-dev/hatchet/pkg/repository"
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlcv1"
+	"github.com/hatchet-dev/hatchet/pkg/telemetry"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	schedulingv1 "github.com/hatchet-dev/hatchet/pkg/scheduling/v1"
+)
+
+func (a *AdminServiceImpl) triggerWorkflowV1(ctx context.Context, req *v1contracts.TriggerWorkflowRequest) (*contracts.TriggerWorkflowResponse, error) {
+	tenant := ctx.Value("tenant").(*sqlcv1.Tenant)
+	tenantId := tenant.ID
+
+	canCreateTR, trLimit, err := a.repov1.TenantLimit().CanCreate(
+		ctx,
+		sqlcv1.LimitResourceTASKRUN,
+		tenantId,
+		// NOTE: this isn't actually the number of tasks per workflow run, but we're just checking to see
+		// if we've exceeded the limit
+		1,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("could not check tenant limit: %w", err)
+	}
+
+	if !canCreateTR {
+		return nil, status.Error(
+			codes.ResourceExhausted,
+			fmt.Sprintf("tenant has reached %d%% of its task runs limit", trLimit),
+		)
+	}
+
+	opt, err := a.newTriggerOpt(ctx, tenantId, req)
+
+	if err != nil {
+		if re, ok := err.(*v1.TriggerOptInvalidArgumentError); ok {
+			return nil, status.Errorf(codes.InvalidArgument, "Invalid request: %s", re.Err)
+		}
+
+		return nil, fmt.Errorf("could not create trigger opt: %w", err)
+	}
+
+	if err := v1.ValidateJSONB(opt.Data, "payload"); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request: %s", err)
+	}
+
+	if err := v1.ValidateJSONB(opt.AdditionalMetadata, "additionalMetadata"); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request: %s", err)
+	}
+
+	err = a.generateExternalIds(ctx, tenantId, []*v1.WorkflowNameTriggerOpts{opt})
+
+	if err != nil {
+		return nil, fmt.Errorf("could not generate external ids: %w", err)
+	}
+
+	idempotencyKeyCollisions, err := a.ingest(
+		ctx,
+		tenantId,
+		opt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("could not trigger workflow: %w", err)
+	}
+
+	for _, collision := range idempotencyKeyCollisions {
+		if collision.RequestedExternalId == opt.ExternalId {
+			st, stErr := status.New(codes.AlreadyExists, "idempotency key collision").WithDetails(
+				&v1contracts.IdempotencyCollisionError{
+					ExistingRunExternalId: collision.ExistingExternalId.String(),
+				},
+			)
+
+			if stErr != nil {
+				return nil, status.Errorf(codes.Internal, "failed to build idempotency collision error: %v", stErr)
+			}
+
+			return nil, st.Err()
+		}
+	}
+
+	additionalMeta := ""
+	if req.AdditionalMetadata != nil {
+		additionalMeta = *req.AdditionalMetadata
+	}
+
+	corrId := datautils.ExtractCorrelationId(additionalMeta)
+
+	if corrId != nil {
+		ctx = context.WithValue(ctx, constants.CorrelationIdKey, *corrId)
+	}
+
+	ctx = context.WithValue(ctx, constants.ResourceIdKey, opt.ExternalId.String())
+	ctx = context.WithValue(ctx, constants.ResourceTypeKey, constants.ResourceTypeWorkflowRun)
+
+	grpcmiddleware.TriggerCallback(ctx)
+
+	return &contracts.TriggerWorkflowResponse{
+		WorkflowRunId: opt.ExternalId.String(),
+	}, nil
+}
+
+func (a *AdminServiceImpl) bulkTriggerWorkflowV1(ctx context.Context, req *contracts.BulkTriggerWorkflowRequest) (*contracts.BulkTriggerWorkflowResponse, error) {
+	tenant := ctx.Value("tenant").(*sqlcv1.Tenant)
+	tenantId := tenant.ID
+
+	opts := make([]*v1.WorkflowNameTriggerOpts, len(req.Workflows))
+
+	for i, workflow := range req.Workflows {
+		opt, err := a.newTriggerOpt(ctx, tenantId, workflow)
+
+		if err != nil {
+			if re, ok := err.(*v1.TriggerOptInvalidArgumentError); ok {
+				return nil, status.Errorf(codes.InvalidArgument, "Invalid request: %s", re.Err)
+			}
+
+			return nil, fmt.Errorf("could not create trigger opt: %w", err)
+		}
+
+		if err := v1.ValidateJSONB(opt.Data, "payload"); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "Invalid request: %s", err)
+		}
+
+		if err := v1.ValidateJSONB(opt.AdditionalMetadata, "additionalMetadata"); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "Invalid request: %s", err)
+		}
+
+		opts[i] = opt
+	}
+
+	err := a.generateExternalIds(ctx, tenantId, opts)
+
+	if err != nil {
+		return nil, fmt.Errorf("could not generate external ids: %w", err)
+	}
+
+	idempotencyKeyCollisions, err := a.ingest(
+		ctx,
+		tenantId,
+		opts...,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	runIds := make([]uuid.UUID, len(req.Workflows))
+	runIdStrs := make([]string, len(req.Workflows))
+
+	for i, opt := range opts {
+		runIds[i] = opt.ExternalId
+		runIdStrs[i] = opt.ExternalId.String()
+	}
+
+	for i, runId := range runIds {
+		additionalMeta := ""
+		if req.Workflows[i].AdditionalMetadata != nil {
+			additionalMeta = *req.Workflows[i].AdditionalMetadata
+		}
+		corrId := datautils.ExtractCorrelationId(additionalMeta)
+
+		ctx = context.WithValue(ctx, constants.CorrelationIdKey, corrId)
+		ctx = context.WithValue(ctx, constants.ResourceIdKey, runId.String())
+		ctx = context.WithValue(ctx, constants.ResourceTypeKey, constants.ResourceTypeWorkflowRun)
+
+		grpcmiddleware.TriggerCallback(ctx)
+	}
+
+	if len(idempotencyKeyCollisions) > 0 {
+		collisionSet := make(map[uuid.UUID]struct{}, len(idempotencyKeyCollisions))
+
+		for _, collision := range idempotencyKeyCollisions {
+			collisionSet[collision.RequestedExternalId] = struct{}{}
+		}
+
+		successfullyTriggeredRunIds := make([]string, 0, len(runIds))
+		collisions := make([]*v1contracts.IdempotencyCollisionError, 0, len(idempotencyKeyCollisions))
+
+		for _, runId := range runIds {
+			_, isCollision := collisionSet[runId]
+
+			if !isCollision {
+				successfullyTriggeredRunIds = append(successfullyTriggeredRunIds, runId.String())
+			}
+		}
+
+		for _, collision := range idempotencyKeyCollisions {
+			collisions = append(collisions, &v1contracts.IdempotencyCollisionError{
+				ExistingRunExternalId:  collision.ExistingExternalId.String(),
+				CollidingRunExternalId: collision.RequestedExternalId.String(),
+			})
+		}
+
+		st, stErr := status.New(codes.AlreadyExists, "idempotency key collision").WithDetails(
+			&v1contracts.BulkTriggerIdempotencyCollisionError{
+				SuccessfulWorkflowRunExternalIds: successfullyTriggeredRunIds,
+				Collisions:                       collisions,
+			},
+		)
+
+		if stErr != nil {
+			return nil, status.Errorf(codes.Internal, "failed to build idempotency collision error: %v", stErr)
+		}
+
+		return nil, st.Err()
+	}
+
+	return &contracts.BulkTriggerWorkflowResponse{
+		WorkflowRunIds: runIdStrs,
+	}, nil
+}
+
+func (i *AdminServiceImpl) newTriggerOpt(
+	ctx context.Context,
+	tenantId uuid.UUID,
+	req *v1contracts.TriggerWorkflowRequest,
+) (*v1.WorkflowNameTriggerOpts, error) {
+	ctx, span := telemetry.NewSpan(ctx, "admin_service.new_trigger_opt")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("admin_service.new_trigger_opt.workflow_name", req.Name),
+		attribute.Int("admin_service.new_trigger_opt.payload_size", len(req.Input)),
+		attribute.Bool("admin_service.new_trigger_opt.is_child_workflow", req.ParentTaskRunExternalId != nil),
+	)
+
+	var parentTask *sqlcv1.FlattenExternalIdsRow
+
+	if req.ParentTaskRunExternalId != nil {
+		parentTaskExternalId, err := uuid.Parse(*req.ParentTaskRunExternalId)
+
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "parentStepRunId must be a valid UUID: %s", err)
+		}
+
+		maybeParentTask, err := i.repov1.Tasks().GetTaskByExternalId(
+			ctx,
+			tenantId,
+			parentTaskExternalId,
+			false,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("could not find parent task: %w", err)
+		}
+
+		parentTask = maybeParentTask
+	}
+
+	t, err := i.repov1.Triggers().NewTriggerTaskData(ctx, tenantId, req, parentTask)
+
+	if err != nil {
+		if re, ok := err.(*v1.TriggerOptInvalidArgumentError); ok {
+			return nil, re
+		}
+
+		return nil, fmt.Errorf("could not create trigger opt: %w", err)
+	}
+
+	return &v1.WorkflowNameTriggerOpts{
+		TriggerTaskData: t,
+	}, nil
+}
+
+func (i *AdminServiceImpl) generateExternalIds(ctx context.Context, tenantId uuid.UUID, opts []*v1.WorkflowNameTriggerOpts) error {
+	return i.repov1.Triggers().PopulateExternalIdsForWorkflow(ctx, tenantId, opts)
+}
+
+func (i *AdminServiceImpl) ingest(ctx context.Context, tenantId uuid.UUID, opts ...*v1.WorkflowNameTriggerOpts) ([]v1.IdempotencyCollision, error) {
+	optsToSend := make([]*v1.WorkflowNameTriggerOpts, 0)
+
+	for _, opt := range opts {
+		if opt.ShouldSkip {
+			continue
+		}
+
+		optsToSend = append(optsToSend, opt)
+	}
+
+	if len(optsToSend) == 0 {
+		return nil, nil
+	}
+
+	if i.localScheduler != nil {
+		localWorkerIds := map[uuid.UUID]struct{}{}
+
+		if i.localDispatcher != nil {
+			localWorkerIds = i.localDispatcher.GetLocalWorkerIds()
+		}
+
+		localAssigned, idempotencyKeyCollisions, schedulingErr := i.localScheduler.RunOptimisticScheduling(ctx, tenantId, opts, localWorkerIds)
+
+		// if we have a scheduling error, we'll fall back to normal ingestion
+		if schedulingErr != nil {
+			if !errors.Is(schedulingErr, schedulingv1.ErrTenantNotFound) && !errors.Is(schedulingErr, schedulingv1.ErrNoOptimisticSlots) {
+				i.l.Error().Ctx(ctx).Err(schedulingErr).Msg("could not run optimistic scheduling")
+			}
+		}
+
+		if i.localDispatcher != nil && len(localAssigned) > 0 {
+			eg := errgroup.Group{}
+
+			for workerId, assignedItems := range localAssigned {
+				eg.Go(func() error {
+					err := i.localDispatcher.HandleLocalAssignments(ctx, tenantId, workerId, assignedItems)
+
+					if err != nil {
+						return fmt.Errorf("could not dispatch assigned items: %w", err)
+					}
+
+					return nil
+				})
+			}
+
+			dispatcherErr := eg.Wait()
+
+			if dispatcherErr != nil {
+				i.l.Error().Ctx(ctx).Err(dispatcherErr).Msg("could not handle local assignments")
+			}
+
+			// we return nil because the failed assignments would have been requeued by the local dispatcher,
+			// and we have already written the tasks to the database
+			return idempotencyKeyCollisions, nil
+		}
+
+		// if there's no scheduling error, we return here because the tasks have been scheduled optimistically
+		if schedulingErr == nil {
+			return idempotencyKeyCollisions, nil
+		}
+	} else if i.grpcTriggersEnabled {
+		idempotencyKeyCollisions, triggerErr := i.tw.TriggerFromWorkflowNames(ctx, tenantId, optsToSend)
+
+		// if we fail to trigger via gRPC, we fall back to normal ingestion
+		if triggerErr != nil && !errors.Is(triggerErr, trigger.ErrNoTriggerSlots) {
+			i.l.Error().Ctx(ctx).Err(triggerErr).Msg("could not trigger workflow runs via gRPC")
+		} else if triggerErr == nil {
+			return idempotencyKeyCollisions, nil
+		}
+	}
+
+	if err := i.repov1.Triggers().PopulateWorkflowIdempotencyPresence(ctx, tenantId, optsToSend); err != nil {
+		return nil, fmt.Errorf("could not populate workflow idempotency presence: %w", err)
+	}
+
+	hasIdempotencyKeys := false
+	for _, opt := range optsToSend {
+		if opt.HasIdempotencyKey {
+			hasIdempotencyKeys = true
+			break
+		}
+	}
+
+	// if we have _any_ runs to trigger with idempotency keys, we trigger everything in the batch directly to maintain atomicity
+	if hasIdempotencyKeys {
+		idempotencyKeyCollisions, err := i.tw.TriggerFromWorkflowNames(ctx, tenantId, optsToSend)
+		if err != nil {
+			return nil, fmt.Errorf("could not trigger workflows: %w", err)
+		}
+		return idempotencyKeyCollisions, nil
+	}
+
+	verifyErr := i.repov1.Triggers().PreflightVerifyWorkflowNameOpts(ctx, tenantId, optsToSend)
+
+	if verifyErr != nil {
+		namesNotFound := &v1.ErrNamesNotFound{}
+
+		if errors.As(verifyErr, &namesNotFound) {
+			return nil, status.Error(codes.InvalidArgument, verifyErr.Error())
+		}
+
+		return nil, fmt.Errorf("could not verify workflow name opts: %w", verifyErr)
+	}
+
+	msg, err := tasktypes.TriggerTaskMessage(tenantId, optsToSend...)
+
+	if err != nil {
+		return nil, fmt.Errorf("could not create event task: %w", err)
+	}
+
+	if err = i.mqv1.SendMessage(ctx, msgqueue.TASK_PROCESSING_QUEUE, msg); err != nil {
+		return nil, fmt.Errorf("could not add event to task queue: %w", err)
+	}
+
+	return nil, nil
+}

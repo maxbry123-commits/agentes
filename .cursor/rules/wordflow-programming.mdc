@@ -1,0 +1,18 @@
+---
+description: Wordflow programming laws — COPY-FIRST, forensic, no LLM PASS
+globs:
+  - extensions/wordflow/**
+  - extensions/wordflow_kernel/**
+  - PIPELINE/**
+---
+
+# Wordflow programming rules
+
+1. NO CONTEXT / NO HANDOFF → do not implement.
+2. COPY-FIRST: search existing code (name + component_catalog) before GENERATE.
+3. Priority: COPY/MOVE → LINK → PATCH → ADAPT → GENERATE LAST.
+4. After implement: forensic 4-pass contract; only VerdictAuthority may PASS.
+5. AI output is not proof.
+6. Evidence must reference path/test/commit.
+7. Prefer files ≤800 LOC; project LOC unlimited.
+8. Never claim DONE if code_path/programming gates blocked.

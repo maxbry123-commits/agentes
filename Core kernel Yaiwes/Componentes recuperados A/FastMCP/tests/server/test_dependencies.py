@@ -1,0 +1,1232 @@
+"""Tests for Docket-style dependency injection in FastMCP."""
+
+from contextlib import asynccontextmanager, contextmanager
+
+import pytest
+from mcp_types import TextContent, TextResourceContents
+
+from fastmcp import FastMCP
+from fastmcp.client import Client
+from fastmcp.dependencies import CurrentContext, Depends, Shared
+from fastmcp.server.context import Context
+from fastmcp_tasks import TasksExtension
+from tests.conftest import make_server_request_context
+
+HUZZAH = "huzzah!"
+
+
+class Connection:
+    """Test connection that tracks whether it's currently open."""
+
+    def __init__(self):
+        self.is_open = False
+
+    async def __aenter__(self):
+        self.is_open = True
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        self.is_open = False
+
+
+@asynccontextmanager
+async def get_connection():
+    """Dependency that provides an open connection."""
+    async with Connection() as conn:
+        yield conn
+
+
+@pytest.fixture
+def mcp():
+    """Create a FastMCP server for testing."""
+    return FastMCP("test-server")
+
+
+async def test_depends_with_sync_function(mcp: FastMCP):
+    """Test that Depends works with sync dependency functions."""
+
+    def get_config() -> dict[str, str]:
+        return {"api_key": "secret123", "endpoint": "https://api.example.com"}
+
+    @mcp.tool()
+    def fetch_data(query: str, config: dict[str, str] = Depends(get_config)) -> str:
+        return (
+            f"Fetching '{query}' from {config['endpoint']} with key {config['api_key']}"
+        )
+
+    result = await mcp.call_tool("fetch_data", {"query": "users"})
+    assert result.structured_content is not None
+    text = result.structured_content["result"]
+    assert "Fetching 'users' from https://api.example.com" in text
+    assert "secret123" in text
+
+
+async def test_depends_with_async_function(mcp: FastMCP):
+    """Test that Depends works with async dependency functions."""
+
+    async def get_user_id() -> int:
+        return 42
+
+    @mcp.tool()
+    async def greet_user(name: str, user_id: int = Depends(get_user_id)) -> str:
+        return f"Hello {name}, your ID is {user_id}"
+
+    result = await mcp.call_tool("greet_user", {"name": "Alice"})
+    assert result.structured_content is not None
+    assert result.structured_content["result"] == "Hello Alice, your ID is 42"
+
+
+async def test_depends_with_async_context_manager(mcp: FastMCP):
+    """Test that Depends works with async context managers for resource management."""
+    cleanup_called = False
+
+    @asynccontextmanager
+    async def get_database():
+        db = "db_connection"
+        try:
+            yield db
+        finally:
+            nonlocal cleanup_called
+            cleanup_called = True
+
+    @mcp.tool()
+    async def query_db(sql: str, db: str = Depends(get_database)) -> str:
+        return f"Executing '{sql}' on {db}"
+
+    result = await mcp.call_tool("query_db", {"sql": "SELECT * FROM users"})
+    assert result.structured_content is not None
+    assert (
+        "Executing 'SELECT * FROM users' on db_connection"
+        in result.structured_content["result"]
+    )
+    assert cleanup_called
+
+
+async def test_nested_dependencies(mcp: FastMCP):
+    """Test that dependencies can depend on other dependencies."""
+
+    def get_base_url() -> str:
+        return "https://api.example.com"
+
+    def get_api_client(base_url: str = Depends(get_base_url)) -> dict[str, str]:
+        return {"base_url": base_url, "version": "v1"}
+
+    @mcp.tool()
+    async def call_api(
+        endpoint: str, client: dict[str, str] = Depends(get_api_client)
+    ) -> str:
+        return f"Calling {client['base_url']}/{client['version']}/{endpoint}"
+
+    result = await mcp.call_tool("call_api", {"endpoint": "users"})
+    assert result.structured_content is not None
+    assert (
+        result.structured_content["result"]
+        == "Calling https://api.example.com/v1/users"
+    )
+
+
+async def test_dependencies_excluded_from_schema(mcp: FastMCP):
+    """Test that dependency parameters don't appear in the tool schema."""
+
+    def get_config() -> dict[str, str]:
+        return {"key": "value"}
+
+    @mcp.tool()
+    async def my_tool(
+        name: str, age: int, config: dict[str, str] = Depends(get_config)
+    ) -> str:
+        return f"{name} is {age} years old"
+
+    result = await mcp._on_list_tools(make_server_request_context(), None)
+    tool = next(t for t in result.tools if t.name == "my_tool")
+
+    assert "name" in tool.input_schema["properties"]
+    assert "age" in tool.input_schema["properties"]
+    assert "config" not in tool.input_schema["properties"]
+    assert len(tool.input_schema["properties"]) == 2
+
+
+async def test_current_context_dependency(mcp: FastMCP):
+    """Test that CurrentContext dependency provides access to FastMCP Context."""
+
+    @mcp.tool()
+    def use_context(ctx: Context = CurrentContext()) -> str:
+        assert isinstance(ctx, Context)
+        return HUZZAH
+
+    result = await mcp.call_tool("use_context", {})
+    assert result.structured_content is not None
+    assert result.structured_content["result"] == HUZZAH
+
+
+async def test_current_context_and_legacy_context_coexist(mcp: FastMCP):
+    """Test that CurrentContext dependency and legacy Context injection work together."""
+
+    @mcp.tool()
+    def use_both_contexts(
+        legacy_ctx: Context,
+        dep_ctx: Context = CurrentContext(),
+    ) -> str:
+        assert isinstance(legacy_ctx, Context)
+        assert isinstance(dep_ctx, Context)
+        assert legacy_ctx is dep_ctx
+        return HUZZAH
+
+    result = await mcp.call_tool("use_both_contexts", {})
+    assert result.structured_content is not None
+    assert result.structured_content["result"] == HUZZAH
+
+
+async def test_backward_compat_context_still_works(mcp: FastMCP):
+    """Test that existing Context injection via type annotation still works."""
+
+    @mcp.tool()
+    async def get_request_id(ctx: Context) -> str:
+        return ctx.request_id
+
+    async with Client(mcp) as client:
+        result = await client.call_tool("get_request_id", {})
+        assert len(result.content) == 1
+        content = result.content[0]
+        assert isinstance(content, TextContent)
+        assert len(content.text) > 0
+
+
+async def test_sync_tool_with_async_dependency(mcp: FastMCP):
+    """Test that sync tools work with async dependencies."""
+
+    async def fetch_config() -> str:
+        return "loaded_config"
+
+    @mcp.tool()
+    def process_data(value: int, config: str = Depends(fetch_config)) -> str:
+        return f"Processing {value} with {config}"
+
+    result = await mcp.call_tool("process_data", {"value": 100})
+    assert result.structured_content is not None
+    assert result.structured_content["result"] == "Processing 100 with loaded_config"
+
+
+async def test_dependency_caching(mcp: FastMCP):
+    """Test that dependencies are cached within a single tool call."""
+    call_count = 0
+
+    def expensive_dependency() -> int:
+        nonlocal call_count
+        call_count += 1
+        return 42
+
+    @mcp.tool()
+    async def tool_with_cached_dep(
+        dep1: int = Depends(expensive_dependency),
+        dep2: int = Depends(expensive_dependency),
+    ) -> str:
+        return f"{dep1} + {dep2} = {dep1 + dep2}"
+
+    result = await mcp.call_tool("tool_with_cached_dep", {})
+    assert result.structured_content is not None
+    assert result.structured_content["result"] == "42 + 42 = 84"
+    assert call_count == 1
+
+
+async def test_context_and_depends_together(mcp: FastMCP):
+    """Test that Context type injection and Depends can be used together."""
+
+    def get_multiplier() -> int:
+        return 10
+
+    @mcp.tool()
+    async def mixed_deps(
+        value: int, ctx: Context, multiplier: int = Depends(get_multiplier)
+    ) -> str:
+        assert isinstance(ctx, Context)
+        assert ctx.request_id
+        assert len(ctx.request_id) > 0
+        return (
+            f"Request {ctx.request_id}: {value} * {multiplier} = {value * multiplier}"
+        )
+
+    async with Client(mcp) as client:
+        result = await client.call_tool("mixed_deps", {"value": 5})
+        assert len(result.content) == 1
+        content = result.content[0]
+        assert isinstance(content, TextContent)
+        assert "5 * 10 = 50" in content.text
+        assert "Request " in content.text
+
+
+async def test_resource_with_dependency(mcp: FastMCP):
+    """Test that resources support dependency injection."""
+
+    def get_storage_path() -> str:
+        return "/data/config"
+
+    @mcp.resource("config://settings")
+    async def get_settings(storage: str = Depends(get_storage_path)) -> str:
+        return f"Settings loaded from {storage}"
+
+    result = await mcp.read_resource("config://settings")
+    assert len(result.contents) == 1
+    assert result.contents[0].content == "Settings loaded from /data/config"
+
+
+async def test_resource_with_context_and_dependency(mcp: FastMCP):
+    """Test that resources can use both Context and Depends."""
+
+    def get_prefix() -> str:
+        return "DATA"
+
+    @mcp.resource("config://info")
+    async def get_info(ctx: Context, prefix: str = Depends(get_prefix)) -> str:
+        return f"{prefix}: Request {ctx.request_id}"
+
+    async with Client(mcp) as client:
+        result = await client.read_resource("config://info")
+        assert len(result) == 1
+        content = result[0]
+        assert isinstance(content, TextResourceContents)
+        assert "DATA: Request " in content.text
+        assert len(content.text.split("Request ")[1]) > 0
+
+
+async def test_prompt_with_dependency(mcp: FastMCP):
+    """Test that prompts support dependency injection."""
+
+    def get_tone() -> str:
+        return "friendly and helpful"
+
+    @mcp.prompt()
+    async def custom_prompt(topic: str, tone: str = Depends(get_tone)) -> str:
+        return f"Write about {topic} in a {tone} tone"
+
+    result = await mcp.render_prompt("custom_prompt", {"topic": "Python"})
+    assert len(result.messages) == 1
+    message = result.messages[0]
+    content = message.content
+    assert isinstance(content, TextContent)
+    assert content.text == "Write about Python in a friendly and helpful tone"
+
+
+async def test_prompt_with_context_and_dependency(mcp: FastMCP):
+    """Test that prompts can use both Context and Depends."""
+
+    def get_style() -> str:
+        return "concise"
+
+    @mcp.prompt()
+    async def styled_prompt(
+        query: str, ctx: Context, style: str = Depends(get_style)
+    ) -> str:
+        assert isinstance(ctx, Context)
+        assert ctx.request_id
+        return f"Answer '{query}' in a {style} style"
+
+    async with Client(mcp) as client:
+        result = await client.get_prompt("styled_prompt", {"query": "What is MCP?"})
+        assert len(result.messages) == 1
+        message = result.messages[0]
+        content = message.content
+        assert isinstance(content, TextContent)
+        assert content.text == "Answer 'What is MCP?' in a concise style"
+
+
+async def test_resource_template_with_dependency(mcp: FastMCP):
+    """Test that resource templates support dependency injection."""
+
+    def get_base_path() -> str:
+        return "/var/data"
+
+    @mcp.resource("data://{filename}")
+    async def get_file(filename: str, base_path: str = Depends(get_base_path)) -> str:
+        return f"Reading {base_path}/{filename}"
+
+    result = await mcp.read_resource("data://config.txt")
+    assert len(result.contents) == 1
+    assert result.contents[0].content == "Reading /var/data/config.txt"
+
+
+async def test_resource_template_with_context_and_dependency(mcp: FastMCP):
+    """Test that resource templates can use both Context and Depends."""
+
+    def get_version() -> str:
+        return "v2"
+
+    @mcp.resource("api://{endpoint}")
+    async def call_endpoint(
+        endpoint: str, ctx: Context, version: str = Depends(get_version)
+    ) -> str:
+        assert isinstance(ctx, Context)
+        assert ctx.request_id
+        return f"Calling {version}/{endpoint}"
+
+    async with Client(mcp) as client:
+        result = await client.read_resource("api://users")
+        assert len(result) == 1
+        content = result[0]
+        assert isinstance(content, TextResourceContents)
+        assert content.text == "Calling v2/users"
+
+
+async def test_async_tool_context_manager_stays_open(mcp: FastMCP):
+    """Test that context manager dependencies stay open during async tool execution.
+
+    Context managers must remain open while the async function executes, not just
+    while it's being called (which only returns a coroutine).
+    """
+
+    @mcp.tool()
+    async def query_data(
+        query: str,
+        connection: Connection = Depends(get_connection),
+    ) -> str:
+        assert connection.is_open
+        return f"open={connection.is_open}"
+
+    result = await mcp.call_tool("query_data", {"query": "test"})
+    assert result.structured_content is not None
+    assert result.structured_content["result"] == "open=True"
+
+
+async def test_async_resource_context_manager_stays_open(mcp: FastMCP):
+    """Test that context manager dependencies stay open during async resource execution."""
+
+    @mcp.resource("data://config")
+    async def load_config(connection: Connection = Depends(get_connection)) -> str:
+        assert connection.is_open
+        return f"open={connection.is_open}"
+
+    result = await mcp.read_resource("data://config")
+    assert result.contents[0].content == "open=True"
+
+
+async def test_async_resource_template_context_manager_stays_open(mcp: FastMCP):
+    """Test that context manager dependencies stay open during async resource template execution."""
+
+    @mcp.resource("user://{user_id}")
+    async def get_user(
+        user_id: str,
+        connection: Connection = Depends(get_connection),
+    ) -> str:
+        assert connection.is_open
+        return f"open={connection.is_open},user={user_id}"
+
+    result = await mcp.read_resource("user://123")
+    assert isinstance(result.contents[0].content, str)
+    assert "open=True" in result.contents[0].content
+
+
+async def test_async_prompt_context_manager_stays_open(mcp: FastMCP):
+    """Test that context manager dependencies stay open during async prompt execution."""
+
+    @mcp.prompt()
+    async def research_prompt(
+        topic: str,
+        connection: Connection = Depends(get_connection),
+    ) -> str:
+        assert connection.is_open
+        return f"open={connection.is_open},topic={topic}"
+
+    result = await mcp.render_prompt("research_prompt", {"topic": "AI"})
+    message = result.messages[0]
+    content = message.content
+    assert isinstance(content, TextContent)
+    assert "open=True" in content.text
+
+
+async def test_argument_validation_with_dependencies(mcp: FastMCP):
+    """Test that user arguments are still validated when dependencies are present."""
+
+    def get_config() -> dict[str, str]:
+        return {"key": "value"}
+
+    @mcp.tool()
+    async def validated_tool(
+        age: int,  # Should validate type
+        config: dict[str, str] = Depends(get_config),
+    ) -> str:
+        return f"age={age}"
+
+    # Valid argument
+    result = await mcp.call_tool("validated_tool", {"age": 25})
+    assert result.structured_content is not None
+    assert result.structured_content["result"] == "age=25"
+
+    # Invalid argument type should fail validation. Argument-validation errors
+    # surface as fastmcp's ValidationError (see #4128), not raw pydantic.
+    from fastmcp.exceptions import ValidationError
+
+    with pytest.raises(ValidationError):
+        await mcp.call_tool("validated_tool", {"age": "not a number"})
+
+
+async def test_connection_dependency_excluded_from_tool_schema(mcp: FastMCP):
+    """Test that Connection dependency parameter is excluded from tool schema."""
+
+    @mcp.tool()
+    async def with_connection(
+        name: str,
+        connection: Connection = Depends(get_connection),
+    ) -> str:
+        return name
+
+    result = await mcp._on_list_tools(make_server_request_context(), None)
+    tool = next(t for t in result.tools if t.name == "with_connection")
+
+    assert "name" in tool.input_schema["properties"]
+    assert "connection" not in tool.input_schema["properties"]
+
+
+async def test_sync_tool_context_manager_stays_open(mcp: FastMCP):
+    """Test that sync context manager dependencies work with tools."""
+    conn = Connection()
+
+    @contextmanager
+    def get_sync_connection():
+        conn.is_open = True
+        try:
+            yield conn
+        finally:
+            conn.is_open = False
+
+    @mcp.tool()
+    async def query_sync(
+        query: str,
+        connection: Connection = Depends(get_sync_connection),
+    ) -> str:
+        assert connection.is_open
+        return f"open={connection.is_open}"
+
+    result = await mcp.call_tool("query_sync", {"query": "test"})
+    assert result.structured_content is not None
+    assert result.structured_content["result"] == "open=True"
+    assert not conn.is_open
+
+
+async def test_sync_resource_context_manager_stays_open(mcp: FastMCP):
+    """Test that sync context manager dependencies work with resources."""
+    conn = Connection()
+
+    @contextmanager
+    def get_sync_connection():
+        conn.is_open = True
+        try:
+            yield conn
+        finally:
+            conn.is_open = False
+
+    @mcp.resource("data://sync")
+    async def load_sync(connection: Connection = Depends(get_sync_connection)) -> str:
+        assert connection.is_open
+        return f"open={connection.is_open}"
+
+    result = await mcp.read_resource("data://sync")
+    assert result.contents[0].content == "open=True"
+    assert not conn.is_open
+
+
+async def test_sync_resource_template_context_manager_stays_open(mcp: FastMCP):
+    """Test that sync context manager dependencies work with resource templates."""
+    conn = Connection()
+
+    @contextmanager
+    def get_sync_connection():
+        conn.is_open = True
+        try:
+            yield conn
+        finally:
+            conn.is_open = False
+
+    @mcp.resource("item://{item_id}")
+    async def get_item(
+        item_id: str,
+        connection: Connection = Depends(get_sync_connection),
+    ) -> str:
+        assert connection.is_open
+        return f"open={connection.is_open},item={item_id}"
+
+    result = await mcp.read_resource("item://456")
+    assert isinstance(result.contents[0].content, str)
+    assert "open=True" in result.contents[0].content
+    assert not conn.is_open
+
+
+async def test_sync_prompt_context_manager_stays_open(mcp: FastMCP):
+    """Test that sync context manager dependencies work with prompts."""
+    conn = Connection()
+
+    @contextmanager
+    def get_sync_connection():
+        conn.is_open = True
+        try:
+            yield conn
+        finally:
+            conn.is_open = False
+
+    @mcp.prompt()
+    async def sync_prompt(
+        topic: str,
+        connection: Connection = Depends(get_sync_connection),
+    ) -> str:
+        assert connection.is_open
+        return f"open={connection.is_open},topic={topic}"
+
+    result = await mcp.render_prompt("sync_prompt", {"topic": "test"})
+    message = result.messages[0]
+    content = message.content
+    assert isinstance(content, TextContent)
+    assert "open=True" in content.text
+    assert not conn.is_open
+
+
+async def test_external_user_cannot_override_dependency(mcp: FastMCP):
+    """Test that external MCP clients cannot override dependency parameters."""
+
+    def get_admin_status() -> str:
+        return "not_admin"
+
+    @mcp.tool()
+    async def check_permission(
+        action: str, admin: str = Depends(get_admin_status)
+    ) -> str:
+        return f"action={action},admin={admin}"
+
+    # Verify dependency is NOT in the schema
+    result = await mcp._on_list_tools(make_server_request_context(), None)
+    tool = next(t for t in result.tools if t.name == "check_permission")
+    assert "admin" not in tool.input_schema["properties"]
+
+    # Normal call - dependency is resolved
+    result = await mcp.call_tool("check_permission", {"action": "read"})
+    assert result.structured_content is not None
+    assert "admin=not_admin" in result.structured_content["result"]
+
+    # Try to override dependency - rejected (not in schema). The rejection is an
+    # argument-validation error, so it surfaces as fastmcp's ValidationError
+    # (see #4128).
+    from fastmcp.exceptions import ValidationError
+
+    with pytest.raises(ValidationError):
+        await mcp.call_tool("check_permission", {"action": "read", "admin": "hacker"})
+
+
+async def test_prompt_dependency_cannot_be_overridden_externally(mcp: FastMCP):
+    """Test that external callers cannot override prompt dependencies.
+
+    This is a security test - dependencies should NEVER be overridable from
+    outside the server, even for prompts which don't validate against strict schemas.
+    """
+
+    def get_secret() -> str:
+        return "real_secret"
+
+    @mcp.prompt()
+    async def secure_prompt(topic: str, secret: str = Depends(get_secret)) -> str:
+        return f"Topic: {topic}, Secret: {secret}"
+
+    # Normal call - should use dependency
+    result = await mcp.render_prompt("secure_prompt", {"topic": "test"})
+    message = result.messages[0]
+    content = message.content
+    assert isinstance(content, TextContent)
+    assert "Secret: real_secret" in content.text
+
+    # Try to override dependency - should be ignored/rejected
+    result = await mcp.render_prompt(
+        "secure_prompt",
+        {"topic": "test", "secret": "HACKED"},  # Attempt override
+    )
+    message = result.messages[0]
+    content = message.content
+    assert isinstance(content, TextContent)
+    # Should still use real dependency, not hacked value
+    assert "Secret: real_secret" in content.text
+    assert "HACKED" not in content.text
+
+
+async def test_resource_dependency_cannot_be_overridden_externally(mcp: FastMCP):
+    """Test that external callers cannot override resource dependencies."""
+
+    def get_api_key() -> str:
+        return "real_api_key"
+
+    @mcp.resource("data://config")
+    async def get_config(api_key: str = Depends(get_api_key)) -> str:
+        return f"API Key: {api_key}"
+
+    # Normal call
+    result = await mcp.read_resource("data://config")
+    assert isinstance(result.contents[0].content, str)
+    assert "API Key: real_api_key" in result.contents[0].content
+
+    # Resources don't accept arguments from clients (static URI)
+    # so this scenario is less of a concern, but documenting it
+
+
+async def test_resource_template_dependency_cannot_be_overridden_externally(
+    mcp: FastMCP,
+):
+    """Test that external callers cannot override resource template dependencies.
+
+    Resource templates extract parameters from the URI path, so there's a risk
+    that a dependency parameter name could match a URI parameter.
+    """
+
+    def get_auth_token() -> str:
+        return "real_token"
+
+    @mcp.resource("user://{user_id}")
+    async def get_user(user_id: str, token: str = Depends(get_auth_token)) -> str:
+        return f"User: {user_id}, Token: {token}"
+
+    # Normal call
+    result = await mcp.read_resource("user://123")
+    assert isinstance(result.contents[0].content, str)
+    assert "User: 123, Token: real_token" in result.contents[0].content
+
+    # Try to inject token via URI (shouldn't be possible with this pattern)
+    # But if URI was user://{token}, it could extract it
+
+
+async def test_resource_template_uri_cannot_match_dependency_name(mcp: FastMCP):
+    """Test that URI parameters cannot have the same name as dependencies.
+
+    If a URI template tries to use a parameter name that's also a dependency,
+    the template creation should fail because the dependency is excluded from
+    the user-facing signature.
+    """
+
+    def get_token() -> str:
+        return "real_token"
+
+    # This should fail - {token} in URI but token is a dependency parameter
+    with pytest.raises(ValueError, match="URI parameters.*must be a subset"):
+
+        @mcp.resource("auth://{token}/validate")
+        async def validate(token: str = Depends(get_token)) -> str:
+            return f"Validating with: {token}"
+
+
+async def test_toolerror_propagates_from_dependency(mcp: FastMCP):
+    """ToolError raised in a dependency should propagate unchanged (issue #2633).
+
+    When a dependency raises ToolError, it should not be wrapped in RuntimeError.
+    This allows developers to use ToolError for validation in dependencies.
+    """
+    from fastmcp.exceptions import ToolError
+
+    def validate_client_id() -> str:
+        raise ToolError("Client ID is required - select a client first")
+
+    @mcp.tool()
+    async def my_tool(client_id: str = Depends(validate_client_id)) -> str:
+        return f"Working with client: {client_id}"
+
+    async with Client(mcp) as client:
+        # ToolError is converted to an error result by the server
+        result = await client.call_tool("my_tool", {}, raise_on_error=False)
+        assert result.is_error
+        # The original error message should be preserved (not wrapped in RuntimeError)
+        assert isinstance(result.content[0], TextContent)
+        assert result.content[0].text == "Client ID is required - select a client first"
+
+
+async def test_validation_error_propagates_from_dependency(mcp: FastMCP):
+    """ValidationError raised in a dependency should propagate unchanged."""
+    from fastmcp.exceptions import ValidationError
+
+    def validate_input() -> str:
+        raise ValidationError("Invalid input format")
+
+    @mcp.tool()
+    async def tool_with_validation(val: str = Depends(validate_input)) -> str:
+        return val
+
+    async with Client(mcp) as client:
+        # ValidationError is re-raised by the server and becomes an error result
+        # The original error message should be preserved (not wrapped in RuntimeError)
+        result = await client.call_tool(
+            "tool_with_validation", {}, raise_on_error=False
+        )
+        assert result.is_error
+        assert isinstance(result.content[0], TextContent)
+        assert result.content[0].text == "Invalid input format"
+
+
+class TestDependencyInjection:
+    """Tests for the uncalled-for DI engine."""
+
+    def test_is_docket_available(self):
+        """Test is_docket_available returns True when docket is installed."""
+        from fastmcp.server.dependencies import is_docket_available
+
+        assert is_docket_available() is True
+
+    def test_is_docket_available_false_when_pydocket_too_old(self, monkeypatch):
+        """``is_docket_available()`` must treat pre-0.19.0 pydocket as unavailable.
+
+        Older pydocket versions (e.g. 0.16.x, pulled in transitively by
+        packages like prefect) import cleanly but lack the APIs fastmcp
+        uses (``docket.dependencies.current_execution``, etc.). Without a
+        version floor, the check would report available and then crash at
+        runtime. Simulate by forcing ``importlib.metadata`` to report an
+        old version.
+        """
+        import importlib.metadata
+
+        from fastmcp.server import dependencies
+
+        original_version = importlib.metadata.version
+
+        def fake_version(name: str) -> str:
+            if name == "pydocket":
+                return "0.16.6"
+            return original_version(name)
+
+        monkeypatch.setattr(dependencies, "_DOCKET_AVAILABLE", None)
+        monkeypatch.setattr(importlib.metadata, "version", fake_version)
+
+        assert dependencies.is_docket_available() is False
+
+    def test_is_docket_available_false_when_pydocket_not_installed(self, monkeypatch):
+        """``is_docket_available()`` returns False when pydocket is absent."""
+        import importlib.metadata
+
+        from fastmcp.server import dependencies
+
+        original_version = importlib.metadata.version
+
+        def fake_version(name: str) -> str:
+            if name == "pydocket":
+                raise importlib.metadata.PackageNotFoundError(name)
+            return original_version(name)
+
+        monkeypatch.setattr(dependencies, "_DOCKET_AVAILABLE", None)
+        monkeypatch.setattr(importlib.metadata, "version", fake_version)
+
+        assert dependencies.is_docket_available() is False
+
+    def test_is_docket_available_false_when_import_broken(self, monkeypatch):
+        """Metadata says installed but ``import docket`` fails — treat as unavailable.
+
+        Catches the broken/partial-install case where ``importlib.metadata``
+        still reports a usable version but the package itself isn't actually
+        importable (corrupted wheel, sys.path weirdness, etc.). Without the
+        import probe, fastmcp would later crash on its first ``from docket
+        ...`` instead of falling back gracefully.
+        """
+        import builtins
+
+        from fastmcp.server import dependencies
+
+        original_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "docket" or name.startswith("docket."):
+                raise ImportError("simulated broken docket install")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(dependencies, "_DOCKET_AVAILABLE", None)
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+        assert dependencies.is_docket_available() is False
+
+    def test_require_docket_passes_when_installed(self):
+        """Test require_docket doesn't raise when docket is installed."""
+        from fastmcp_tasks.dependencies import require_docket
+
+        require_docket("test feature")
+
+    def test_require_docket_error_mentions_version_when_too_old(self, monkeypatch):
+        """``require_docket()`` distinguishes "missing" from "too old".
+
+        When pydocket is installed but pinned below the floor, the install
+        instructions in the error must point at upgrading pydocket — not at
+        installing the ``tasks`` extra (which the resolver will treat as a
+        no-op as long as the lower pin is held by another package).
+        """
+        import importlib.metadata
+
+        from fastmcp_tasks.dependencies import require_docket
+
+        from fastmcp.server import dependencies
+
+        original_version = importlib.metadata.version
+
+        def fake_version(name: str) -> str:
+            if name == "pydocket":
+                return "0.16.6"
+            return original_version(name)
+
+        monkeypatch.setattr(dependencies, "_DOCKET_AVAILABLE", None)
+        monkeypatch.setattr(importlib.metadata, "version", fake_version)
+
+        with pytest.raises(ImportError, match="pydocket 0.16.6 is installed"):
+            require_docket("CurrentDocket()")
+
+    def test_dependency_class_exists(self):
+        """Test Dependency and Depends are importable from fastmcp."""
+        from fastmcp.dependencies import Dependency, Depends
+
+        assert Dependency is not None
+        assert Depends is not None
+
+    def test_depends_works(self):
+        """Test Depends() creates proper dependency wrapper."""
+        from uncalled_for.resolution import _Depends
+
+        from fastmcp.dependencies import Depends
+
+        def get_value() -> str:
+            return "test_value"
+
+        dep = Depends(get_value)
+        assert isinstance(dep, _Depends)
+        assert dep.factory is get_value
+
+    async def test_depends_import_from_fastmcp(self):
+        """Test that Depends can be imported from fastmcp.dependencies."""
+        from fastmcp.dependencies import Depends
+
+        def get_config() -> dict:
+            return {"key": "value"}
+
+        dep = Depends(get_config)
+        assert dep is not None
+
+    def test_get_dependency_parameters(self):
+        """Test get_dependency_parameters finds dependency defaults."""
+        from uncalled_for import get_dependency_parameters
+        from uncalled_for.resolution import _Depends
+
+        from fastmcp.dependencies import Depends
+
+        def get_db() -> str:
+            return "database"
+
+        def my_func(name: str, db: str = Depends(get_db)) -> str:
+            return f"{name}: {db}"
+
+        deps = get_dependency_parameters(my_func)
+        assert "db" in deps
+        db_dep = deps["db"]
+        assert isinstance(db_dep, _Depends)
+        assert db_dep.factory is get_db
+
+
+class TestAuthDependencies:
+    """Tests for authentication dependencies (CurrentAccessToken, TokenClaim)."""
+
+    def test_current_access_token_is_importable(self):
+        """Test that CurrentAccessToken can be imported."""
+        from fastmcp.server.dependencies import CurrentAccessToken
+
+        assert CurrentAccessToken is not None
+
+    def test_token_claim_is_importable(self):
+        """Test that TokenClaim can be imported."""
+        from fastmcp.server.dependencies import TokenClaim
+
+        assert TokenClaim is not None
+
+    def test_current_access_token_is_dependency(self):
+        """Test that CurrentAccessToken is a Dependency instance."""
+        from fastmcp.dependencies import Dependency
+        from fastmcp.server.dependencies import _CurrentAccessToken
+
+        dep = _CurrentAccessToken()
+        assert isinstance(dep, Dependency)
+
+    def test_token_claim_creates_dependency(self):
+        """Test that TokenClaim creates a Dependency instance."""
+        from fastmcp.dependencies import Dependency
+        from fastmcp.server.dependencies import TokenClaim, _TokenClaim
+
+        dep = TokenClaim("oid")
+        assert isinstance(dep, _TokenClaim)
+        assert isinstance(dep, Dependency)
+        assert dep.claim_name == "oid"
+
+    async def test_current_access_token_raises_without_token(self):
+        """Test that CurrentAccessToken raises when no token is available."""
+        from fastmcp.server.dependencies import _CurrentAccessToken
+
+        dep = _CurrentAccessToken()
+        with pytest.raises(RuntimeError, match="No access token found"):
+            await dep.__aenter__()
+
+    async def test_token_claim_raises_without_token(self):
+        """Test that TokenClaim raises when no token is available."""
+        from fastmcp.server.dependencies import _TokenClaim
+
+        dep = _TokenClaim("oid")
+        with pytest.raises(RuntimeError, match="No access token available"):
+            await dep.__aenter__()
+
+    async def test_current_access_token_excluded_from_tool_schema(self, mcp: FastMCP):
+        """Test that CurrentAccessToken dependency is excluded from tool schema."""
+
+        from fastmcp.server.auth import AccessToken
+        from fastmcp.server.dependencies import CurrentAccessToken
+
+        @mcp.tool()
+        async def tool_with_token(
+            name: str,
+            token: AccessToken = CurrentAccessToken(),
+        ) -> str:
+            return name
+
+        result = await mcp._on_list_tools(make_server_request_context(), None)
+        tool = next(t for t in result.tools if t.name == "tool_with_token")
+
+        assert "name" in tool.input_schema["properties"]
+        assert "token" not in tool.input_schema["properties"]
+
+    async def test_token_claim_excluded_from_tool_schema(self, mcp: FastMCP):
+        """Test that TokenClaim dependency is excluded from tool schema."""
+
+        from fastmcp.server.dependencies import TokenClaim
+
+        @mcp.tool()
+        async def tool_with_claim(
+            name: str,
+            user_id: str = TokenClaim("oid"),
+        ) -> str:
+            return name
+
+        result = await mcp._on_list_tools(make_server_request_context(), None)
+        tool = next(t for t in result.tools if t.name == "tool_with_claim")
+
+        assert "name" in tool.input_schema["properties"]
+        assert "user_id" not in tool.input_schema["properties"]
+
+    def test_current_access_token_exported_from_all(self):
+        """Test that CurrentAccessToken is exported from __all__."""
+        from fastmcp.server import dependencies
+
+        assert "CurrentAccessToken" in dependencies.__all__
+
+    def test_token_claim_exported_from_all(self):
+        """Test that TokenClaim is exported from __all__."""
+        from fastmcp.server import dependencies
+
+        assert "TokenClaim" in dependencies.__all__
+
+
+class TestSharedDependencies:
+    """Tests for Shared() dependencies that resolve once and are reused."""
+
+    async def test_shared_sync_function(self, mcp: FastMCP):
+        """Shared dependency from a sync function resolves and is reused."""
+
+        call_count = 0
+
+        def get_config() -> dict[str, str]:
+            nonlocal call_count
+            call_count += 1
+            return {"key": "value"}
+
+        @mcp.tool()
+        async def tool_a(config: dict[str, str] = Shared(get_config)) -> str:
+            return config["key"]
+
+        @mcp.tool()
+        async def tool_b(config: dict[str, str] = Shared(get_config)) -> str:
+            return config["key"]
+
+        async with Client(mcp) as client:
+            result_a = await client.call_tool("tool_a", {})
+            result_b = await client.call_tool("tool_b", {})
+
+        assert result_a.content[0].text == "value"
+        assert result_b.content[0].text == "value"
+        assert call_count == 1
+
+    async def test_shared_async_function(self, mcp: FastMCP):
+        """Shared dependency from an async function resolves and is reused."""
+
+        call_count = 0
+
+        async def get_session() -> str:
+            nonlocal call_count
+            call_count += 1
+            return "session-abc"
+
+        @mcp.tool()
+        async def tool_a(session: str = Shared(get_session)) -> str:
+            return session
+
+        @mcp.tool()
+        async def tool_b(session: str = Shared(get_session)) -> str:
+            return session
+
+        async with Client(mcp) as client:
+            result_a = await client.call_tool("tool_a", {})
+            result_b = await client.call_tool("tool_b", {})
+
+        assert result_a.content[0].text == "session-abc"
+        assert result_b.content[0].text == "session-abc"
+        assert call_count == 1
+
+    async def test_shared_async_context_manager(self, mcp: FastMCP):
+        """Shared dependency from an async context manager stays open across calls."""
+
+        enter_count = 0
+
+        @asynccontextmanager
+        async def get_connection():
+            nonlocal enter_count
+            enter_count += 1
+            conn = Connection()
+            async with conn:
+                yield conn
+
+        @mcp.tool()
+        async def tool_a(conn: Connection = Shared(get_connection)) -> bool:
+            return conn.is_open
+
+        @mcp.tool()
+        async def tool_b(conn: Connection = Shared(get_connection)) -> bool:
+            return conn.is_open
+
+        async with Client(mcp) as client:
+            result_a = await client.call_tool("tool_a", {})
+            result_b = await client.call_tool("tool_b", {})
+
+        assert result_a.content[0].text == "true"
+        assert result_b.content[0].text == "true"
+        assert enter_count == 1
+
+    async def test_shared_with_depends(self, mcp: FastMCP):
+        """Shared and Depends can coexist in the same tool."""
+
+        shared_calls = 0
+        depends_calls = 0
+
+        def get_config() -> str:
+            nonlocal shared_calls
+            shared_calls += 1
+            return "shared-config"
+
+        def get_request_id() -> str:
+            nonlocal depends_calls
+            depends_calls += 1
+            return "request-123"
+
+        @mcp.tool()
+        async def my_tool(
+            config: str = Shared(get_config),
+            request_id: str = Depends(get_request_id),
+        ) -> str:
+            return f"{config}/{request_id}"
+
+        async with Client(mcp) as client:
+            result1 = await client.call_tool("my_tool", {})
+            result2 = await client.call_tool("my_tool", {})
+
+        assert result1.content[0].text == "shared-config/request-123"
+        assert result2.content[0].text == "shared-config/request-123"
+        assert shared_calls == 1
+        assert depends_calls == 2
+
+    async def test_shared_excluded_from_schema(self, mcp: FastMCP):
+        """Shared dependencies are not exposed in the tool schema."""
+
+        def get_db() -> str:
+            return "db"
+
+        @mcp.tool()
+        async def my_tool(name: str, db: str = Shared(get_db)) -> str:
+            return name
+
+        result = await mcp._on_list_tools(make_server_request_context(), None)
+        tool = next(t for t in result.tools if t.name == "my_tool")
+
+        assert "name" in tool.input_schema["properties"]
+        assert "db" not in tool.input_schema["properties"]
+
+    async def test_shared_in_resource(self, mcp: FastMCP):
+        """Shared dependencies work in resource functions."""
+
+        call_count = 0
+
+        def get_config() -> str:
+            nonlocal call_count
+            call_count += 1
+            return "resource-config"
+
+        @mcp.resource("test://config")
+        async def config_resource(config: str = Shared(get_config)) -> str:
+            return config
+
+        async with Client(mcp) as client:
+            result = await client.read_resource("test://config")
+            assert result[0].text == "resource-config"
+
+            result = await client.read_resource("test://config")
+            assert result[0].text == "resource-config"
+            assert call_count == 1
+
+    async def test_shared_in_prompt(self, mcp: FastMCP):
+        """Shared dependencies work in prompt functions."""
+
+        call_count = 0
+
+        def get_system_prompt() -> str:
+            nonlocal call_count
+            call_count += 1
+            return "You are a helpful assistant."
+
+        @mcp.prompt()
+        async def my_prompt(topic: str, system: str = Shared(get_system_prompt)) -> str:
+            return f"{system} Talk about {topic}."
+
+        async with Client(mcp) as client:
+            result = await client.get_prompt("my_prompt", {"topic": "dogs"})
+            assert (
+                "You are a helpful assistant. Talk about dogs."
+                in result.messages[0].content.text
+            )
+
+            result = await client.get_prompt("my_prompt", {"topic": "cats"})
+            assert (
+                "You are a helpful assistant. Talk about cats."
+                in result.messages[0].content.text
+            )
+            assert call_count == 1
+
+    async def test_shared_resolves_on_task_capable_server(self):
+        """Shared() dependencies resolve on a normal request even when the server
+        has task-enabled components.
+
+        When pydocket is installed AND a task-enabled component exists, the
+        lifespan takes the Docket/Worker branch. That branch must still capture
+        the app-scoped SharedContext snapshot so FastMCPServerMiddleware can
+        re-apply it per request; otherwise Shared() dependencies fail to resolve
+        on ordinary (non-task) calls.
+        """
+        mcp = FastMCP("task-capable-server")
+        mcp.add_extension(TasksExtension())
+
+        call_count = 0
+
+        def get_config() -> dict[str, str]:
+            nonlocal call_count
+            call_count += 1
+            return {"key": "value"}
+
+        @mcp.tool(task=True)
+        async def background_tool(x: int) -> int:
+            return x
+
+        @mcp.tool()
+        async def normal_tool(config: dict[str, str] = Shared(get_config)) -> str:
+            return config["key"]
+
+        async with Client(mcp) as client:
+            result_a = await client.call_tool("normal_tool", {})
+            result_b = await client.call_tool("normal_tool", {})
+
+        assert result_a.content[0].text == "value"
+        assert result_b.content[0].text == "value"
+        # App-scoped: resolved once and reused across requests.
+        assert call_count == 1

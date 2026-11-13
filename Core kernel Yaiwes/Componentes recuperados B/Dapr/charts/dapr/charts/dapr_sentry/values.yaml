@@ -1,0 +1,92 @@
+replicaCount: 1
+logLevel: info
+component: sentry
+
+# Override this to use a custom sentry service image.
+# If the image name contains a "/", it is assumed to be a full docker image name, including the registry url and tag.
+# Otherwise, the helm chart will use {{ .Values.global.registry }}/{{ .Values.image.name }}:{{ .Values.global.tag }}
+image:
+  name: "sentry"
+
+nameOverride: ""
+fullnameOverride: ""
+
+deploymentAnnotations: {}
+
+service:
+  type: ClusterIP
+  annotations: {}
+
+ports:
+  protocol: TCP
+  port: 443
+  targetPort: 50001
+
+tls:
+  issuer:
+    certPEM: ""
+    keyPEM: ""
+  root:
+    certPEM: ""
+  trustDomain: cluster.local
+
+jwt:
+  # Enable JWT token issuance by Sentry
+  enabled: false
+  # JWT signing key filename
+  keyFilename: ""
+  # JWKS (JSON Web Key Set) filename
+  jwksFilename: ""
+  # Issuer value for JWT tokens (no issuer if empty)
+  issuer: ""
+  # Algorithm used for JWT signing (e.g., ES256, RS256)
+  signingAlgorithm: ""
+  # Key ID (kid) used for JWT signing
+  keyID: ""
+
+
+oidc:
+  enabled: false
+  server:
+    # Port for the OIDC HTTP server
+    port: 9080
+  # Custom URI where the JWKS can be accessed externally
+  jwksURI: ""
+  # Path prefix to add to OIDC HTTP endpoints
+  pathPrefix: ""
+  # List of allowed hosts for OIDC HTTP endpoint requests
+  allowedHosts: []
+  tls:
+    # Enable TLS for the OIDC HTTP server
+    enabled: true
+    # TLS certificate file for the OIDC HTTP server (required when OIDC HTTP server is enabled)
+    certFile: ""
+    # TLS certificate file for the OIDC HTTP server (required when OIDC HTTP server is enabled)
+    keyFile: ""
+
+livenessProbe:
+  initialDelaySeconds: 180
+  periodSeconds: 10
+  failureThreshold: 5
+readinessProbe:
+  initialDelaySeconds: 1
+  periodSeconds: 1
+  failureThreshold: 3
+
+debug:
+  enabled: false
+  port: 40000
+  initialDelaySeconds: 30000
+
+runAsNonRoot: true
+resources: {}
+
+extraEnvVars: {}
+
+# Additional command-line arguments to pass to the sentry container.
+# Use this for flags that are not yet exposed as dedicated Helm values, e.g.:
+#   extraArgs:
+#     - "--jwt-ttl=48h"
+extraArgs: []
+
+mode: kubernetes

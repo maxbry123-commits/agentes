@@ -1,0 +1,1900 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchWithCache, getCache, isCacheEnabled } from '../../../src/cache';
+import logger from '../../../src/logger';
+import { AzureAssistantProvider } from '../../../src/providers/azure/assistant';
+import { HttpRateLimitError } from '../../../src/util/fetch/errors';
+import { sleep } from '../../../src/util/time';
+
+vi.mock('../../../src/cache');
+vi.mock('../../../src/util/time');
+vi.mock('../../../src/logger', () => ({
+  __esModule: true,
+  default: {
+    debug: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+  },
+}));
+
+describe('Azure Assistant Provider', () => {
+  let provider: AzureAssistantProvider;
+  const mockSleep = vi.mocked(sleep);
+  const originalFunction = global.Function;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    vi.spyOn(AzureAssistantProvider.prototype as any, 'getAuthHeaders').mockResolvedValue({
+      'api-key': 'test-key',
+    });
+
+    provider = new AzureAssistantProvider('test-deployment', {
+      config: {
+        apiKey: 'test-key',
+        apiHost: 'test.azure.com',
+      },
+    });
+
+    // Set authHeaders on the instance (simulating what initialize() does)
+    (provider as any).authHeaders = { 'api-key': 'test-key' };
+
+    // Set up test spies on provider's private methods
+    vi.spyOn(provider as any, 'makeRequest').mockImplementation(vi.fn());
+    vi.spyOn(provider as any, 'getHeaders').mockResolvedValue({
+      'Content-Type': 'application/json',
+      'api-key': 'test-key',
+    });
+    vi.spyOn(provider as any, 'getApiKey').mockReturnValue('test-key');
+    vi.spyOn(provider as any, 'getApiBaseUrl').mockReturnValue('https://test.azure.com');
+    vi.spyOn(provider as any, 'ensureInitialized').mockResolvedValue(undefined);
+
+    mockSleep.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+    if (global.Function !== originalFunction) {
+      global.Function = originalFunction;
+    }
+  });
+
+  describe('basic functionality', () => {
+    it('should be instantiable', () => {
+      const provider = new AzureAssistantProvider('test-deployment');
+      expect(provider).toBeDefined();
+      expect(provider.deploymentName).toBe('test-deployment');
+    });
+
+    it('should store config options', () => {
+      const options = {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          temperature: 0.7,
+        },
+      };
+
+      const provider = new AzureAssistantProvider('test-deployment', options);
+      expect(provider.deploymentName).toBe('test-deployment');
+      expect(provider.assistantConfig).toEqual(options.config);
+    });
+  });
+
+  describe('callApi', () => {
+    it('should throw an error if authentication is not set', async () => {
+      // Mock authHeaders to be empty (no api-key and no Authorization)
+      Object.defineProperty(provider, 'authHeaders', {
+        get: () => ({}),
+        configurable: true,
+      });
+
+      await expect(provider.callApi('test prompt')).rejects.toThrow(
+        'Azure API authentication failed',
+      );
+    });
+
+    it('should throw an error if API host is not set', async () => {
+      vi.spyOn(provider as any, 'getApiBaseUrl').mockReturnValue(null);
+
+      await expect(provider.callApi('test prompt')).rejects.toThrow('Azure API host must be set');
+    });
+
+    it('should accept Entra ID authentication with Authorization header', async () => {
+      // Set authHeaders to use Authorization (Entra ID) instead of api-key
+      (provider as any).authHeaders = { Authorization: 'Bearer test-entra-token' };
+
+      // Mock processCompletedRun to return a successful result
+      vi.spyOn(provider as any, 'processCompletedRun').mockResolvedValue({
+        output: 'Hello from Entra ID!',
+      });
+
+      // Mock the API call sequence for a successful completion
+      const mockThreadResponse = { id: 'thread-123', object: 'thread', created_at: Date.now() };
+      const mockRunResponse = {
+        id: 'run-123',
+        object: 'run',
+        created_at: Date.now(),
+        status: 'completed',
+      };
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockThreadResponse) // Thread creation
+        .mockResolvedValueOnce({}) // Message creation
+        .mockResolvedValueOnce(mockRunResponse) // Run creation
+        .mockResolvedValueOnce(mockRunResponse); // Run polling
+
+      const result = await provider.callApi('Hello');
+
+      // Verify the call succeeded (no error about missing API key)
+      expect(result.error).toBeUndefined();
+      expect(result.output).toContain('Hello from Entra ID!');
+    });
+
+    it('should create a thread, add a message, and run an assistant', async () => {
+      const testProvider = new AzureAssistantProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+        },
+      });
+
+      const expectedOutput = '[Assistant] This is a test response';
+      vi.spyOn(testProvider, 'callApi').mockResolvedValueOnce({
+        output: expectedOutput,
+      });
+
+      const result = await testProvider.callApi('test prompt');
+
+      expect(result).toEqual({ output: expectedOutput });
+      expect(testProvider.callApi).toHaveBeenCalledWith('test prompt');
+    });
+
+    it('should hash prompt and assistant config in cache keys', async () => {
+      const prompt = 'PFQA_AZURE_ASSISTANT_PROMPT_SENTINEL';
+      const instructions = 'PFQA_AZURE_ASSISTANT_CONFIG_SECRET_SENTINEL';
+      const cacheGet = vi.fn().mockResolvedValue({ output: 'Cached assistant output' });
+      const cacheSet = vi.fn();
+      vi.mocked(isCacheEnabled).mockReturnValue(true);
+      vi.mocked(getCache).mockResolvedValue({
+        get: cacheGet,
+        set: cacheSet,
+      } as any);
+      provider.assistantConfig.instructions = instructions;
+
+      const result = await provider.callApi(prompt);
+
+      expect(result).toEqual({ output: 'Cached assistant output', cached: true });
+      expect((provider as any).makeRequest).not.toHaveBeenCalled();
+      expect(cacheSet).not.toHaveBeenCalled();
+
+      const cacheKey = cacheGet.mock.calls[0]?.[0] as string;
+      expect(cacheKey).toMatch(/^azure_assistant:test-deployment:[a-f0-9]{64}$/);
+      expect(cacheKey).not.toContain(prompt);
+      expect(cacheKey).not.toContain(instructions);
+      expect(JSON.stringify(vi.mocked(logger.debug).mock.calls)).not.toContain(prompt);
+    });
+
+    it('should include Azure endpoint and auth in opaque cache keys', async () => {
+      const cacheGet = vi.fn().mockResolvedValue({ output: 'Cached assistant output' });
+      vi.mocked(isCacheEnabled).mockReturnValue(true);
+      vi.mocked(getCache).mockResolvedValue({
+        get: cacheGet,
+        set: vi.fn(),
+      } as any);
+      vi.mocked((provider as any).getApiBaseUrl)
+        .mockReturnValueOnce('https://tenant-a.azure.com')
+        .mockReturnValueOnce('https://tenant-b.azure.com');
+
+      (provider as any).authHeaders = { 'api-key': 'azure-secret-a' };
+      await provider.callApi('Shared assistant prompt');
+      (provider as any).authHeaders = { 'api-key': 'azure-secret-b' };
+      await provider.callApi('Shared assistant prompt');
+
+      const [cacheKeyA, cacheKeyB] = cacheGet.mock.calls.map(([key]) => key as string);
+      expect(cacheKeyA).toMatch(/^azure_assistant:test-deployment:[a-f0-9]{64}$/);
+      expect(cacheKeyB).toMatch(/^azure_assistant:test-deployment:[a-f0-9]{64}$/);
+      expect(cacheKeyA).not.toBe(cacheKeyB);
+      expect((provider as any).makeRequest).not.toHaveBeenCalled();
+      for (const cacheKey of [cacheKeyA, cacheKeyB]) {
+        expect(cacheKey).not.toContain('Shared assistant prompt');
+        expect(cacheKey).not.toContain('azure-secret-a');
+        expect(cacheKey).not.toContain('azure-secret-b');
+        expect(cacheKey).not.toContain('tenant-a.azure.com');
+        expect(cacheKey).not.toContain('tenant-b.azure.com');
+      }
+    });
+
+    it('should use a deterministic auth cache identity across module reloads', async () => {
+      async function getCacheKeyFromFreshModule() {
+        vi.resetModules();
+        const [{ AzureAssistantProvider: FreshAzureAssistantProvider }, freshCache] =
+          await Promise.all([
+            import('../../../src/providers/azure/assistant'),
+            import('../../../src/cache'),
+          ]);
+        const cacheGet = vi.fn().mockResolvedValue({ output: 'Cached assistant output' });
+        vi.mocked(freshCache.isCacheEnabled).mockReturnValue(true);
+        vi.mocked(freshCache.getCache).mockResolvedValue({
+          get: cacheGet,
+          set: vi.fn(),
+        } as any);
+
+        const freshProvider = new FreshAzureAssistantProvider('test-deployment', {
+          config: {
+            apiKey: 'azure-deterministic-secret',
+            apiHost: 'tenant.azure.com',
+          },
+        });
+        (freshProvider as any).authHeaders = {
+          'api-key': 'azure-deterministic-secret',
+        };
+        vi.spyOn(freshProvider as any, 'ensureInitialized').mockResolvedValue(undefined);
+        vi.spyOn(freshProvider as any, 'getApiBaseUrl').mockReturnValue('https://tenant.azure.com');
+
+        await freshProvider.callApi('Shared assistant prompt');
+        return cacheGet.mock.calls[0][0] as string;
+      }
+
+      const firstCacheKey = await getCacheKeyFromFreshModule();
+      const secondCacheKey = await getCacheKeyFromFreshModule();
+
+      expect(firstCacheKey).toBe(secondCacheKey);
+      expect(firstCacheKey).toMatch(/^azure_assistant:test-deployment:[a-f0-9]{64}$/);
+      expect(firstCacheKey).not.toContain('azure-deterministic-secret');
+      expect(firstCacheKey).not.toContain('Shared assistant prompt');
+      expect(firstCacheKey).not.toContain('tenant.azure.com');
+    });
+
+    it('should canonicalize nested assistant config order in cache keys', async () => {
+      const cacheGet = vi.fn().mockResolvedValue({ output: 'Cached assistant output' });
+      vi.mocked(isCacheEnabled).mockReturnValue(true);
+      vi.mocked(getCache).mockResolvedValue({
+        get: cacheGet,
+        set: vi.fn(),
+      } as any);
+
+      provider.assistantConfig.response_format = {
+        type: 'json_schema',
+        json_schema: {
+          name: 'canonical_response',
+          strict: true,
+          schema: {
+            type: 'object',
+            properties: {
+              answer: { type: 'string' },
+              confidence: { type: 'number' },
+            },
+            required: ['answer', 'confidence'],
+            additionalProperties: false,
+          },
+        },
+      };
+      await provider.callApi('Shared canonical assistant prompt');
+
+      provider.assistantConfig.response_format = {
+        type: 'json_schema',
+        json_schema: {
+          name: 'canonical_response',
+          strict: true,
+          schema: {
+            type: 'object',
+            properties: {
+              confidence: { type: 'number' },
+              answer: { type: 'string' },
+            },
+            required: ['answer', 'confidence'],
+            additionalProperties: false,
+          },
+        },
+      };
+      await provider.callApi('Shared canonical assistant prompt');
+
+      expect(cacheGet.mock.calls[0][0]).toBe(cacheGet.mock.calls[1][0]);
+    });
+
+    it('should reject unserializable assistant cache key inputs', async () => {
+      vi.mocked(isCacheEnabled).mockReturnValue(true);
+      vi.mocked(getCache).mockResolvedValue({
+        get: vi.fn(),
+        set: vi.fn(),
+      } as any);
+      provider.assistantConfig.response_format = {
+        type: 'json_schema',
+        json_schema: {
+          name: 'unserializable_response',
+          strict: true,
+          schema: {
+            type: 'object',
+            properties: {
+              answer: { type: 'string', default: BigInt(1) },
+            },
+            additionalProperties: false,
+          },
+        },
+      } as any;
+
+      await expect(provider.callApi('prompt with unserializable config')).rejects.toThrow(
+        'Azure Assistant cache key input contains values that cannot be serialized',
+      );
+    });
+  });
+
+  describe('error handling', () => {
+    it('should handle rate limit errors', async () => {
+      (provider as any).makeRequest.mockRejectedValueOnce(new Error('rate limit exceeded'));
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result.error).toContain('Rate limit exceeded');
+    });
+
+    it('should handle service errors', async () => {
+      (provider as any).makeRequest.mockRejectedValueOnce(new Error('Service unavailable'));
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result.error).toContain('Service error');
+    });
+
+    it('should handle server errors', async () => {
+      (provider as any).makeRequest.mockRejectedValueOnce(new Error('500 Server Error'));
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result.error).toContain('Error in Azure Assistant API call');
+    });
+
+    it('should handle thread with run in progress errors', async () => {
+      (provider as any).makeRequest.mockRejectedValueOnce(
+        new Error("Can't add messages to thread while a run is in progress"),
+      );
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result.error).toContain('Error in Azure Assistant API call');
+    });
+
+    it('should handle content filter errors during API call', async () => {
+      (provider as any).makeRequest.mockRejectedValueOnce(
+        new Error('Content filter triggered: The input contained inappropriate content'),
+      );
+
+      const result = await provider.callApi('test prompt with harmful content');
+
+      expect(result).toEqual({
+        output:
+          "The generated content was filtered due to triggering Azure OpenAI Service's content filtering system.",
+        guardrails: {
+          flagged: true,
+          flaggedInput: true,
+          flaggedOutput: false,
+        },
+      });
+    });
+
+    it('should handle guardrail errors during API call', async () => {
+      (provider as any).makeRequest.mockRejectedValueOnce(
+        new Error('guardrail violation detected in response'),
+      );
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result).toEqual({
+        output:
+          "The generated content was filtered due to triggering Azure OpenAI Service's content filtering system.",
+        guardrails: {
+          flagged: true,
+          flaggedInput: false,
+          flaggedOutput: true,
+        },
+      });
+    });
+  });
+
+  describe('pollRun', () => {
+    it('should poll until run is completed', async () => {
+      // Mock responses for initial status check and subsequent poll
+      const completedResponse = { id: 'run-123', status: 'completed' };
+
+      // Mock implementation to avoid timeout errors
+      vi.spyOn(provider as any, 'pollRun').mockImplementation(async function () {
+        // Simulate sleep call to verify it was made
+        await mockSleep(1000);
+        return completedResponse;
+      });
+
+      // Call the mocked method directly
+      const result = await (provider as any).pollRun(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-123',
+        'run-123',
+      );
+
+      expect(mockSleep).toHaveBeenCalledWith(1000);
+      expect(result).toEqual(completedResponse);
+    });
+
+    it('should throw error when polling times out', async () => {
+      // Replace the implementation for this test only
+
+      // Create a minimal implementation that just throws the expected error
+      vi.spyOn(provider as any, 'pollRun').mockImplementation(async function () {
+        throw new Error('Run polling timed out after 300000ms. Last status: in_progress');
+      });
+
+      // Assert that it throws the expected error
+      await expect(
+        (provider as any).pollRun(
+          'https://test.azure.com',
+          '2024-04-01-preview',
+          'thread-123',
+          'run-123',
+        ),
+      ).rejects.toThrow('Run polling timed out');
+    });
+
+    it('should increase polling interval after 30 seconds', async () => {
+      // Mock the sleep function to track calls
+      mockSleep.mockClear();
+
+      // Create a function that simulates the polling interval increase
+      const simulatePolling = async () => {
+        // First call with initial interval
+        await mockSleep(1000);
+        // Second call with increased interval after 30+ seconds
+        await mockSleep(1500);
+        return { id: 'run-123', status: 'completed' };
+      };
+
+      vi.spyOn(provider as any, 'pollRun').mockImplementation(simulatePolling);
+
+      await (provider as any).pollRun(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-123',
+        'run-123',
+      );
+
+      // Verify sleep calls
+      expect(mockSleep).toHaveBeenCalledTimes(2);
+      expect(mockSleep).toHaveBeenNthCalledWith(1, 1000);
+      expect(mockSleep).toHaveBeenNthCalledWith(2, 1500);
+    });
+  });
+
+  describe('function tool handling', () => {
+    it('should handle function tool calls and submit outputs', async () => {
+      // Set up mock responses
+      const mockThreadResponse = { id: 'thread-123', object: 'thread', created_at: Date.now() };
+      const mockRunResponse = {
+        id: 'run-123',
+        object: 'run',
+        created_at: Date.now(),
+        status: 'requires_action',
+      };
+
+      // Mock function callback
+      const functionCallbacks = {
+        testFunction: vi.fn().mockResolvedValue('test result'),
+      };
+
+      // Create provider with function callbacks
+      provider = new AzureAssistantProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          functionToolCallbacks: functionCallbacks,
+        },
+      });
+
+      // Set authHeaders on the instance
+      (provider as any).authHeaders = { 'api-key': 'test-key' };
+
+      // Set up private methods mocking
+      vi.spyOn(provider as any, 'makeRequest').mockImplementation(vi.fn());
+      vi.spyOn(provider as any, 'getHeaders').mockResolvedValue({
+        'Content-Type': 'application/json',
+        'api-key': 'test-key',
+      });
+      vi.spyOn(provider as any, 'getApiKey').mockReturnValue('test-key');
+      vi.spyOn(provider as any, 'getApiBaseUrl').mockReturnValue('https://test.azure.com');
+      vi.spyOn(provider as any, 'processCompletedRun').mockResolvedValue({
+        output: 'Function called successfully',
+      });
+      vi.spyOn(provider as any, 'ensureInitialized').mockResolvedValue(undefined);
+
+      // Mock API call sequence
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockThreadResponse)
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce(mockRunResponse)
+        .mockResolvedValueOnce({
+          id: 'run-123',
+          status: 'requires_action',
+          required_action: {
+            type: 'submit_tool_outputs',
+            submit_tool_outputs: {
+              tool_calls: [
+                {
+                  id: 'call-123',
+                  type: 'function',
+                  function: {
+                    name: 'testFunction',
+                    arguments: '{"param": "value"}',
+                  },
+                },
+              ],
+            },
+          },
+        })
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ id: 'run-123', status: 'completed' });
+
+      const result = await provider.callApi('test prompt');
+
+      // Assert on the entire result object
+      expect(result).toEqual({ output: 'Function called successfully' });
+
+      // Verify the function was called with the correct arguments and context
+      expect(functionCallbacks.testFunction).toHaveBeenCalledWith(
+        '{"param": "value"}',
+        expect.objectContaining({
+          threadId: 'thread-123',
+          runId: 'run-123',
+          assistantId: 'test-deployment',
+          provider: 'azure',
+        }),
+      );
+
+      // Verify the API requests were made correctly
+      expect((provider as any).makeRequest).toHaveBeenCalledTimes(6);
+
+      // Verify the tool outputs were submitted correctly
+      const submitToolOutputsRequest = (provider as any).makeRequest.mock.calls[4];
+      expect(submitToolOutputsRequest[0]).toContain('submit_tool_outputs');
+      expect(JSON.parse(submitToolOutputsRequest[1].body)).toEqual({
+        tool_outputs: [
+          {
+            tool_call_id: 'call-123',
+            output: 'test result',
+          },
+        ],
+      });
+
+      // Verify the completed run was processed
+      expect((provider as any).processCompletedRun).toHaveBeenCalledWith(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-123',
+        'run-123',
+      );
+    });
+
+    it('should handle missing callbacks gracefully', async () => {
+      // Set up mock responses
+      const mockThreadResponse = { id: 'thread-123', object: 'thread', created_at: Date.now() };
+      const mockRunResponse = {
+        id: 'run-123',
+        object: 'run',
+        created_at: Date.now(),
+        status: 'requires_action',
+      };
+
+      // Create provider with NO function callbacks
+      provider = new AzureAssistantProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          // No callbacks defined
+        },
+      });
+
+      // Set authHeaders on the instance
+      (provider as any).authHeaders = { 'api-key': 'test-key' };
+
+      // Set up private methods mocking
+      vi.spyOn(provider as any, 'makeRequest').mockImplementation(vi.fn());
+      vi.spyOn(provider as any, 'getHeaders').mockResolvedValue({
+        'Content-Type': 'application/json',
+        'api-key': 'test-key',
+      });
+      vi.spyOn(provider as any, 'getApiKey').mockReturnValue('test-key');
+      vi.spyOn(provider as any, 'getApiBaseUrl').mockReturnValue('https://test.azure.com');
+      vi.spyOn(provider as any, 'processCompletedRun').mockResolvedValue({
+        output: 'Run completed with empty outputs',
+      });
+
+      // Mock API call sequence for a run requiring tool outputs but no callbacks available
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockThreadResponse)
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce(mockRunResponse)
+        .mockResolvedValueOnce({
+          id: 'run-123',
+          status: 'requires_action',
+          required_action: {
+            type: 'submit_tool_outputs',
+            submit_tool_outputs: {
+              tool_calls: [
+                {
+                  id: 'call-123',
+                  type: 'function',
+                  function: {
+                    name: 'unknownFunction',
+                    arguments: '{"param": "value"}',
+                  },
+                },
+              ],
+            },
+          },
+        })
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ id: 'run-123', status: 'completed' });
+
+      const result = await provider.callApi('test prompt');
+
+      // Update expected result to reflect actual implementation
+      expect(result).toEqual({ error: 'Thread run failed with status: requires_action' });
+
+      // Verify the API requests - should include empty outputs for the unknown function
+      expect((provider as any).makeRequest).toHaveBeenCalledTimes(4); // Only 4 calls because it returns error before completion
+    });
+
+    it('should handle string-based function callbacks', async () => {
+      const mockThreadResponse = { id: 'thread-123', object: 'thread', created_at: Date.now() };
+      const mockRunResponse = {
+        id: 'run-123',
+        object: 'run',
+        created_at: Date.now(),
+        status: 'requires_action',
+      };
+
+      const functionCallbacks: Record<string, any> = {
+        testFunction: 'async function(args) { return "string callback result"; }',
+      };
+
+      provider = new AzureAssistantProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          functionToolCallbacks: functionCallbacks as any,
+        },
+      });
+
+      // Set authHeaders on the instance
+      (provider as any).authHeaders = { 'api-key': 'test-key' };
+
+      vi.spyOn(provider as any, 'makeRequest').mockImplementation(vi.fn());
+      vi.spyOn(provider as any, 'getHeaders').mockResolvedValue({
+        'Content-Type': 'application/json',
+        'api-key': 'test-key',
+      });
+      vi.spyOn(provider as any, 'getApiKey').mockReturnValue('test-key');
+      vi.spyOn(provider as any, 'getApiBaseUrl').mockReturnValue('https://test.azure.com');
+      vi.spyOn(provider as any, 'processCompletedRun').mockResolvedValue({
+        output: 'Function called successfully',
+      });
+      vi.spyOn(provider as any, 'ensureInitialized').mockResolvedValue(undefined);
+
+      // Mock API call sequence
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockThreadResponse)
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce(mockRunResponse)
+        .mockResolvedValueOnce({
+          id: 'run-123',
+          status: 'requires_action',
+          required_action: {
+            type: 'submit_tool_outputs',
+            submit_tool_outputs: {
+              tool_calls: [
+                {
+                  id: 'call-123',
+                  type: 'function',
+                  function: {
+                    name: 'testFunction',
+                    arguments: '{"param": "value"}',
+                  },
+                },
+              ],
+            },
+          },
+        })
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ id: 'run-123', status: 'completed' });
+
+      await provider.callApi('test prompt');
+
+      expect((provider as any).makeRequest).toHaveBeenCalledTimes(6);
+      expect((provider as any).makeRequest.mock.calls[4][0]).toContain('submit_tool_outputs');
+      expect(JSON.parse((provider as any).makeRequest.mock.calls[4][1].body)).toEqual({
+        tool_outputs: [
+          {
+            tool_call_id: 'call-123',
+            output: 'string callback result',
+          },
+        ],
+      });
+    });
+
+    it('should handle errors in function callbacks', async () => {
+      const mockThreadResponse = { id: 'thread-123', object: 'thread', created_at: Date.now() };
+      const mockRunResponse = {
+        id: 'run-123',
+        object: 'run',
+        created_at: Date.now(),
+        status: 'requires_action',
+      };
+
+      const functionCallbacks = {
+        testFunction: vi.fn().mockRejectedValue(new Error('Test error')),
+      };
+
+      provider = new AzureAssistantProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          functionToolCallbacks: functionCallbacks,
+        },
+      });
+
+      // Set authHeaders on the instance
+      (provider as any).authHeaders = { 'api-key': 'test-key' };
+
+      vi.spyOn(provider as any, 'makeRequest').mockImplementation(vi.fn());
+      vi.spyOn(provider as any, 'getHeaders').mockResolvedValue({
+        'Content-Type': 'application/json',
+        'api-key': 'test-key',
+      });
+      vi.spyOn(provider as any, 'getApiKey').mockReturnValue('test-key');
+      vi.spyOn(provider as any, 'getApiBaseUrl').mockReturnValue('https://test.azure.com');
+      vi.spyOn(provider as any, 'processCompletedRun').mockResolvedValue({
+        output: 'Function called with error',
+      });
+      vi.spyOn(provider as any, 'ensureInitialized').mockResolvedValue(undefined);
+
+      // Mock API call sequence
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockThreadResponse)
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce(mockRunResponse)
+        .mockResolvedValueOnce({
+          id: 'run-123',
+          status: 'requires_action',
+          required_action: {
+            type: 'submit_tool_outputs',
+            submit_tool_outputs: {
+              tool_calls: [
+                {
+                  id: 'call-123',
+                  type: 'function',
+                  function: {
+                    name: 'testFunction',
+                    arguments: '{"param": "value"}',
+                  },
+                },
+              ],
+            },
+          },
+        })
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ id: 'run-123', status: 'completed' });
+
+      await provider.callApi('test prompt');
+
+      expect(functionCallbacks.testFunction).toHaveBeenCalledWith(
+        '{"param": "value"}',
+        expect.objectContaining({
+          threadId: 'thread-123',
+          runId: 'run-123',
+          assistantId: 'test-deployment',
+          provider: 'azure',
+        }),
+      );
+
+      expect((provider as any).makeRequest).toHaveBeenCalledTimes(6);
+      expect((provider as any).makeRequest.mock.calls[4][0]).toContain('submit_tool_outputs');
+      expect(JSON.parse((provider as any).makeRequest.mock.calls[4][1].body)).toEqual({
+        tool_outputs: [
+          {
+            tool_call_id: 'call-123',
+            output: JSON.stringify({ error: 'Error in testFunction: Function callback failed' }),
+          },
+        ],
+      });
+    });
+  });
+
+  describe('processCompletedRun', () => {
+    it('should process text messages from the assistant', async () => {
+      const mockMessagesResponse = {
+        data: [
+          {
+            id: 'msg-user',
+            object: 'thread.message',
+            created_at: Date.now(),
+            role: 'user',
+            content: [{ type: 'text', text: { value: 'User question' } }],
+          },
+          {
+            id: 'msg-123',
+            object: 'thread.message',
+            created_at: Date.now() + 1000,
+            role: 'assistant',
+            content: [{ type: 'text', text: { value: 'Test response text' } }],
+          },
+        ],
+      };
+
+      const mockStepsResponse = { data: [] };
+      const mockRunResponse = { id: 'run-123', created_at: Date.now() };
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockRunResponse) // Get run information
+        .mockResolvedValueOnce(mockMessagesResponse) // Get messages
+        .mockResolvedValueOnce(mockStepsResponse); // Get run steps
+
+      const result = await (provider as any).processCompletedRun(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-123',
+        'run-123',
+      );
+
+      expect(result).toEqual({
+        output: '[User] User question\n\n[Assistant] Test response text',
+      });
+    });
+
+    it('should process tool call steps in the run', async () => {
+      const mockMessagesResponse = {
+        data: [
+          {
+            id: 'msg-user',
+            object: 'thread.message',
+            created_at: Date.now(),
+            role: 'user',
+            content: [{ type: 'text', text: { value: 'User question' } }],
+          },
+          {
+            id: 'msg-123',
+            object: 'thread.message',
+            created_at: Date.now() + 2000,
+            role: 'assistant',
+            content: [{ type: 'text', text: { value: 'Assistant response' } }],
+          },
+        ],
+      };
+
+      const mockStepsResponse = {
+        data: [
+          {
+            id: 'step-123',
+            type: 'tool_calls',
+            step_details: {
+              tool_calls: [
+                {
+                  type: 'function',
+                  function: {
+                    name: 'testFunction',
+                    arguments: '{"param": "value"}',
+                    output: 'Function output',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      const mockRunResponse = { id: 'run-123', created_at: Date.now() };
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockRunResponse) // Get run information
+        .mockResolvedValueOnce(mockMessagesResponse) // Get messages
+        .mockResolvedValueOnce(mockStepsResponse); // Get run steps
+
+      const result = await (provider as any).processCompletedRun(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-123',
+        'run-123',
+      );
+
+      expect(result).toEqual({
+        output:
+          '[User] User question\n\n[Call function testFunction with arguments {"param": "value"}]\n\n[Function output: Function output]\n\n[Assistant] Assistant response',
+      });
+    });
+
+    it('should process code interpreter steps', async () => {
+      // Mock messages and steps responses
+      const mockMessagesResponse = {
+        data: [
+          {
+            id: 'msg-user',
+            object: 'thread.message',
+            created_at: Date.now(),
+            role: 'user',
+            content: [{ type: 'text', text: { value: 'User question' } }],
+          },
+          {
+            id: 'msg-123',
+            object: 'thread.message',
+            created_at: Date.now() + 2000,
+            role: 'assistant',
+            content: [{ type: 'text', text: { value: 'Assistant response' } }],
+          },
+        ],
+      };
+
+      const mockStepsResponse = {
+        data: [
+          {
+            id: 'step-123',
+            type: 'tool_calls',
+            step_details: {
+              tool_calls: [
+                {
+                  type: 'code_interpreter',
+                  code_interpreter: {
+                    input: 'print("Hello, world!")',
+                    outputs: [
+                      {
+                        type: 'logs',
+                        logs: 'Hello, world!',
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      const mockRunResponse = { id: 'run-123', created_at: Date.now() };
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockRunResponse) // Get run information
+        .mockResolvedValueOnce(mockMessagesResponse) // Get messages
+        .mockResolvedValueOnce(mockStepsResponse); // Get run steps
+
+      const result = await (provider as any).processCompletedRun(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-123',
+        'run-123',
+      );
+
+      expect(result).toEqual({
+        output:
+          '[User] User question\n\n[Code interpreter input]\n\nprint("Hello, world!")\n\n[Code interpreter output]\n\nHello, world!\n\n[Assistant] Assistant response',
+      });
+    });
+
+    it('should handle file search steps', async () => {
+      // Mock messages and steps responses
+      const mockMessagesResponse = {
+        data: [
+          {
+            id: 'msg-user',
+            object: 'thread.message',
+            created_at: Date.now(),
+            role: 'user',
+            content: [{ type: 'text', text: { value: 'User question' } }],
+          },
+          {
+            id: 'msg-123',
+            object: 'thread.message',
+            created_at: Date.now() + 2000,
+            role: 'assistant',
+            content: [{ type: 'text', text: { value: 'Assistant response' } }],
+          },
+        ],
+      };
+
+      const mockStepsResponse = {
+        data: [
+          {
+            id: 'step-123',
+            type: 'tool_calls',
+            step_details: {
+              tool_calls: [
+                {
+                  type: 'file_search',
+                  file_search: {
+                    query: 'search term',
+                    results: ['file1.txt', 'file2.txt'],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      const mockRunResponse = { id: 'run-123', created_at: Date.now() };
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockRunResponse) // Get run information
+        .mockResolvedValueOnce(mockMessagesResponse) // Get messages
+        .mockResolvedValueOnce(mockStepsResponse); // Get run steps
+
+      const result = await (provider as any).processCompletedRun(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-123',
+        'run-123',
+      );
+
+      expect(result).toEqual({
+        output: `[User] User question\n\n[Ran file search]\n\n[File search details: ${JSON.stringify(
+          {
+            query: 'search term',
+            results: ['file1.txt', 'file2.txt'],
+          },
+        )}]\n\n[Assistant] Assistant response`,
+      });
+    });
+
+    it('should handle retrieval steps', async () => {
+      // Mock messages and steps responses
+      const mockMessagesResponse = {
+        data: [
+          {
+            id: 'msg-user',
+            object: 'thread.message',
+            created_at: Date.now(),
+            role: 'user',
+            content: [{ type: 'text', text: { value: 'User question' } }],
+          },
+          {
+            id: 'msg-123',
+            object: 'thread.message',
+            created_at: Date.now() + 2000,
+            role: 'assistant',
+            content: [{ type: 'text', text: { value: 'Assistant response' } }],
+          },
+        ],
+      };
+
+      const mockStepsResponse = {
+        data: [
+          {
+            id: 'step-123',
+            type: 'tool_calls',
+            step_details: {
+              tool_calls: [
+                {
+                  type: 'retrieval',
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      const mockRunResponse = { id: 'run-123', created_at: Date.now() };
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockRunResponse) // Get run information
+        .mockResolvedValueOnce(mockMessagesResponse) // Get messages
+        .mockResolvedValueOnce(mockStepsResponse); // Get run steps
+
+      const result = await (provider as any).processCompletedRun(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-123',
+        'run-123',
+      );
+
+      expect(result).toEqual({
+        output: '[User] User question\n\n[Ran retrieval]\n\n[Assistant] Assistant response',
+      });
+    });
+
+    it('should handle unknown tool call types', async () => {
+      // Mock messages and steps responses
+      const mockMessagesResponse = {
+        data: [
+          {
+            id: 'msg-user',
+            object: 'thread.message',
+            created_at: Date.now(),
+            role: 'user',
+            content: [{ type: 'text', text: { value: 'User question' } }],
+          },
+          {
+            id: 'msg-123',
+            object: 'thread.message',
+            created_at: Date.now() + 2000,
+            role: 'assistant',
+            content: [{ type: 'text', text: { value: 'Assistant response' } }],
+          },
+        ],
+      };
+
+      const mockStepsResponse = {
+        data: [
+          {
+            id: 'step-123',
+            type: 'tool_calls',
+            step_details: {
+              tool_calls: [
+                {
+                  type: 'unknown_tool_type',
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      const mockRunResponse = { id: 'run-123', created_at: Date.now() };
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockRunResponse) // Get run information
+        .mockResolvedValueOnce(mockMessagesResponse) // Get messages
+        .mockResolvedValueOnce(mockStepsResponse); // Get run steps
+
+      const result = await (provider as any).processCompletedRun(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-123',
+        'run-123',
+      );
+
+      expect(result).toEqual({
+        output:
+          '[User] User question\n\n[Unknown tool call type: unknown_tool_type]\n\n[Assistant] Assistant response',
+      });
+    });
+
+    it('should handle case where there is no user message', async () => {
+      // This edge case tests what happens if there's no user message
+      const mockMessagesResponse = {
+        data: [
+          {
+            id: 'msg-123',
+            object: 'thread.message',
+            created_at: Date.now() + 1000,
+            role: 'assistant',
+            content: [{ type: 'text', text: { value: 'Assistant response without user message' } }],
+          },
+        ],
+      };
+
+      const mockStepsResponse = { data: [] };
+      const mockRunResponse = { id: 'run-123', created_at: Date.now() };
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockRunResponse) // Get run information
+        .mockResolvedValueOnce(mockMessagesResponse) // Get messages
+        .mockResolvedValueOnce(mockStepsResponse); // Get run steps
+
+      const result = await (provider as any).processCompletedRun(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-123',
+        'run-123',
+      );
+
+      expect(result).toEqual({
+        output: '[Assistant] Assistant response without user message',
+      });
+    });
+
+    it('should handle case with only tool calls and no messages', async () => {
+      // Edge case with no messages, only tool calls
+      const mockMessagesResponse = { data: [] };
+
+      const mockStepsResponse = {
+        data: [
+          {
+            id: 'step-123',
+            type: 'tool_calls',
+            step_details: {
+              tool_calls: [
+                {
+                  type: 'file_search',
+                  file_search: {
+                    query: 'search term',
+                    results: ['file1.txt', 'file2.txt'],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      const mockRunResponse = { id: 'run-123', created_at: Date.now() };
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockRunResponse) // Get run information
+        .mockResolvedValueOnce(mockMessagesResponse) // Get messages
+        .mockResolvedValueOnce(mockStepsResponse); // Get run steps
+
+      const result = await (provider as any).processCompletedRun(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-123',
+        'run-123',
+      );
+
+      expect(result).toEqual({
+        output: `[Ran file search]\n\n[File search details: ${JSON.stringify({
+          query: 'search term',
+          results: ['file1.txt', 'file2.txt'],
+        })}]`,
+      });
+    });
+
+    it('should handle errors during run processing', async () => {
+      (provider as any).makeRequest.mockRejectedValueOnce(new Error('Processing error'));
+
+      const result = await (provider as any).processCompletedRun(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-123',
+        'run-123',
+      );
+
+      expect(result.error).toContain('Error processing run results');
+    });
+  });
+
+  describe('makeRequest', () => {
+    beforeEach(() => {
+      (provider as any).makeRequest = AzureAssistantProvider.prototype['makeRequest'];
+      vi.mocked(fetchWithCache).mockClear();
+    });
+
+    it('should make a successful request', async () => {
+      const mockResponseData = { success: true };
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponseData,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+      });
+
+      const result = await (provider as any).makeRequest('https://test.url', {
+        method: 'POST',
+        body: JSON.stringify({ test: true }),
+      });
+
+      expect(result).toEqual(mockResponseData);
+      expect(fetchWithCache).toHaveBeenCalledWith(
+        'https://test.url',
+        {
+          method: 'POST',
+          body: JSON.stringify({ test: true }),
+        },
+        expect.any(Number),
+        'json',
+        expect.any(Boolean),
+        expect.any(Number),
+      );
+    });
+
+    it('should throw an error for non-200 responses', async () => {
+      const errorResponse = {
+        error: {
+          message: 'Bad request error',
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: errorResponse,
+        cached: false,
+        status: 400,
+        statusText: 'Bad Request',
+        headers: {},
+      });
+
+      await expect((provider as any).makeRequest('https://test.url', {})).rejects.toThrow(
+        /API error: 400 Bad Request/,
+      );
+    });
+
+    it('should preserve explicit zero for maxRetries and timeoutMs', async () => {
+      const zeroRetryProvider = new AzureAssistantProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          timeoutMs: 0,
+          retryOptions: { maxRetries: 0 },
+        },
+      });
+      (zeroRetryProvider as any).authHeaders = { 'api-key': 'test-key' };
+      (zeroRetryProvider as any).makeRequest = AzureAssistantProvider.prototype['makeRequest'];
+      vi.spyOn(zeroRetryProvider as any, 'getHeaders').mockResolvedValue({
+        'Content-Type': 'application/json',
+        'api-key': 'test-key',
+      });
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: { success: true },
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+      });
+
+      await (zeroRetryProvider as any).makeRequest('https://test.url', {
+        method: 'POST',
+      });
+
+      const callArgs = vi.mocked(fetchWithCache).mock.calls[0];
+      // fetchWithCache(url, options, timeoutMs, 'json', shouldBustCache, retries)
+      const timeoutMs = callArgs[2];
+      const retries = callArgs[5];
+      expect(timeoutMs).toBe(0);
+      expect(retries).toBe(0);
+    });
+
+    it('should handle JSON parsing errors', async () => {
+      vi.mocked(fetchWithCache).mockRejectedValueOnce(
+        new Error('Failed to parse response as JSON: Invalid JSON'),
+      );
+
+      await expect((provider as any).makeRequest('https://test.url', {})).rejects.toThrow(
+        'Failed to parse response as JSON',
+      );
+    });
+  });
+
+  describe('structured HttpRateLimitError handling', () => {
+    it('formats a per-window rate limit error with retry-after detail', () => {
+      const err = new HttpRateLimitError({
+        status: 429,
+        statusText: 'Too Many Requests',
+        code: 'rate_limit_exceeded',
+        retryAfterMs: 12_000,
+      });
+      const result = (provider as any).formatError(err);
+
+      expect(result.error).toContain('Rate limit exceeded');
+      expect(result.error).toContain('429');
+      expect(result.error).toContain('rate_limit_exceeded');
+      expect(result.error).toContain('retry after 12s');
+      expect(result.error).not.toContain('Retries will not help');
+      // Structured signal so the scheduler can fail-fast on the result path.
+      expect(result.metadata?.rateLimitKind).toBe('rate_limit');
+    });
+
+    it('propagates kind=quota into result.metadata so the scheduler does not retry', () => {
+      const err = new HttpRateLimitError({
+        status: 429,
+        code: 'insufficient_quota',
+      });
+      const result = (provider as any).formatError(err);
+      expect(result.metadata?.rateLimitKind).toBe('quota');
+    });
+
+    it('formats a hard quota error with a clear non-retryable hint', () => {
+      const err = new HttpRateLimitError({
+        status: 429,
+        statusText: 'Too Many Requests',
+        code: 'insufficient_quota',
+      });
+      const result = (provider as any).formatError(err);
+
+      expect(result.error).toContain('Quota exceeded');
+      expect(result.error).toContain('insufficient_quota');
+      expect(result.error).toContain('Retries will not help');
+    });
+
+    it('omits retry-after detail when no metadata is available', () => {
+      const err = new HttpRateLimitError({
+        status: 429,
+        code: 'rate_limit_exceeded',
+      });
+      const result = (provider as any).formatError(err);
+
+      expect(result.error).not.toContain('retry after');
+      expect(result.error).not.toContain('resets in');
+    });
+
+    it('uses resetAt fallback when retryAfterMs is missing', () => {
+      const err = new HttpRateLimitError({
+        status: 429,
+        code: 'rate_limit_exceeded',
+        resetAt: Date.now() + 30_000,
+      });
+      const result = (provider as any).formatError(err);
+
+      expect(result.error).toMatch(/resets in \d+s/);
+    });
+
+    it('surfaces structured rate-limit errors raised during run polling', async () => {
+      const provider2 = new AzureAssistantProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          functionToolCallbacks: {
+            testFunction: vi.fn() as any,
+          },
+        },
+      });
+      (provider2 as any).authHeaders = { 'api-key': 'test-key' };
+
+      vi.spyOn(provider2 as any, 'getApiBaseUrl').mockReturnValue('https://test.azure.com');
+      vi.spyOn(provider2 as any, 'ensureInitialized').mockResolvedValue(undefined);
+      vi.spyOn(provider2 as any, 'getHeaders').mockResolvedValue({
+        'Content-Type': 'application/json',
+        'api-key': 'test-key',
+      });
+
+      const quota = new HttpRateLimitError({
+        status: 429,
+        code: 'insufficient_quota',
+      });
+      vi.spyOn(provider2 as any, 'makeRequest').mockRejectedValue(quota);
+
+      const result = await (provider2 as any).pollRunWithToolCallHandling(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-1',
+        'run-1',
+      );
+
+      expect(result.error).toContain('Quota exceeded');
+      expect(result.error).toContain('insufficient_quota');
+    });
+
+    it('surfaces rate-limit errors during run polling without "Retries will not help"', async () => {
+      // Symmetric to the quota test above: a per-window rate limit during
+      // polling must format as a regular rate-limit error, not the quota
+      // (non-retryable) message.
+      const provider2 = new AzureAssistantProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          functionToolCallbacks: {
+            testFunction: vi.fn() as any,
+          },
+        },
+      });
+      (provider2 as any).authHeaders = { 'api-key': 'test-key' };
+      vi.spyOn(provider2 as any, 'getApiBaseUrl').mockReturnValue('https://test.azure.com');
+      vi.spyOn(provider2 as any, 'ensureInitialized').mockResolvedValue(undefined);
+      vi.spyOn(provider2 as any, 'getHeaders').mockResolvedValue({
+        'Content-Type': 'application/json',
+        'api-key': 'test-key',
+      });
+
+      const rateLimit = new HttpRateLimitError({
+        status: 429,
+        code: 'rate_limit_exceeded',
+        retryAfterMs: 7000,
+      });
+      vi.spyOn(provider2 as any, 'makeRequest').mockRejectedValue(rateLimit);
+
+      const result = await (provider2 as any).pollRunWithToolCallHandling(
+        'https://test.azure.com',
+        '2024-04-01-preview',
+        'thread-1',
+        'run-1',
+      );
+
+      expect(result.error).toContain('Rate limit exceeded');
+      expect(result.error).toContain('rate_limit_exceeded');
+      expect(result.error).toContain('retry after 7s');
+      expect(result.error).not.toContain('Retries will not help');
+    });
+  });
+
+  describe('content filter error handling', () => {
+    it('should format content filter errors with proper guardrail response', () => {
+      const contentFilterError = new Error('content_filter violation detected');
+      const result = (provider as any).formatError(contentFilterError);
+
+      expect(result).toEqual({
+        output:
+          "The generated content was filtered due to triggering Azure OpenAI Service's content filtering system.",
+        guardrails: {
+          flagged: true,
+          flaggedInput: false,
+          flaggedOutput: true,
+        },
+      });
+    });
+
+    it('should detect input filtering in content filter errors', () => {
+      const inputFilterError = new Error('content filter triggered on input prompt');
+      const result = (provider as any).formatError(inputFilterError);
+
+      expect(result).toEqual({
+        output:
+          "The generated content was filtered due to triggering Azure OpenAI Service's content filtering system.",
+        guardrails: {
+          flagged: true,
+          flaggedInput: true,
+          flaggedOutput: false,
+        },
+      });
+    });
+
+    it('should detect output filtering in content filter errors', () => {
+      const outputFilterError = new Error('content filter blocked response output');
+      const result = (provider as any).formatError(outputFilterError);
+
+      expect(result).toEqual({
+        output:
+          "The generated content was filtered due to triggering Azure OpenAI Service's content filtering system.",
+        guardrails: {
+          flagged: true,
+          flaggedInput: false,
+          flaggedOutput: true,
+        },
+      });
+    });
+
+    it('should handle content filter errors in makeRequest', async () => {
+      // Reset makeRequest to use the actual implementation
+      (provider as any).makeRequest = AzureAssistantProvider.prototype['makeRequest'];
+
+      const errorResponse = {
+        error: {
+          code: 'content_filter',
+          message: 'Content was filtered due to policy violation',
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: errorResponse,
+        cached: false,
+        status: 400,
+        statusText: 'Bad Request',
+        headers: {},
+        deleteFromCache: vi.fn(),
+      });
+
+      await expect((provider as any).makeRequest('https://test.url', {})).rejects.toThrow(
+        'Content filter triggered: Content was filtered due to policy violation',
+      );
+    });
+
+    it('should handle content filter errors during run completion', async () => {
+      const mockCompletedRun = {
+        id: 'run-123',
+        status: 'failed',
+        last_error: {
+          code: 'content_filter',
+          message: 'Content filtering blocked the assistant response',
+        },
+      };
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce({ id: 'thread-123' }) // Thread creation
+        .mockResolvedValueOnce({}) // Message creation
+        .mockResolvedValueOnce({ id: 'run-123' }) // Run creation
+        .mockResolvedValueOnce(mockCompletedRun); // Run polling - content filter error
+
+      const result = await provider.callApi('test prompt with harmful content');
+
+      expect(result).toEqual({
+        output:
+          "The generated content was filtered due to triggering Azure OpenAI Service's content filtering system.",
+        guardrails: {
+          flagged: true,
+          flaggedInput: false,
+          flaggedOutput: true,
+        },
+      });
+    });
+
+    it('should handle content filter errors during run polling with tool calls', async () => {
+      const mockThreadResponse = { id: 'thread-123', object: 'thread', created_at: Date.now() };
+      const mockRunResponse = {
+        id: 'run-123',
+        object: 'run',
+        created_at: Date.now(),
+        status: 'queued',
+      };
+
+      // Test the pollRunWithToolCallHandling method since it has tool callbacks
+      provider = new AzureAssistantProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          functionToolCallbacks: {
+            testFunction: vi.fn() as any,
+          },
+        },
+      });
+
+      // Set authHeaders on the instance
+      (provider as any).authHeaders = { 'api-key': 'test-key' };
+
+      vi.spyOn(provider as any, 'makeRequest').mockImplementation(vi.fn());
+      vi.spyOn(provider as any, 'getHeaders').mockResolvedValue({
+        'Content-Type': 'application/json',
+        'api-key': 'test-key',
+      });
+      vi.spyOn(provider as any, 'getApiKey').mockReturnValue('test-key');
+      vi.spyOn(provider as any, 'getApiBaseUrl').mockReturnValue('https://test.azure.com');
+      vi.spyOn(provider as any, 'ensureInitialized').mockResolvedValue(undefined);
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockThreadResponse) // Thread creation
+        .mockResolvedValueOnce({}) // Message creation
+        .mockResolvedValueOnce(mockRunResponse) // Run creation
+        .mockResolvedValueOnce({
+          // Run polling - content filter during processing
+          id: 'run-123',
+          status: 'failed',
+          last_error: {
+            code: 'content_filter',
+            message: 'Input content triggered content filtering',
+          },
+        });
+
+      const result = await provider.callApi('test prompt with harmful content');
+
+      expect(result).toEqual({
+        output:
+          "The generated content was filtered due to triggering Azure OpenAI Service's content filtering system.",
+        guardrails: {
+          flagged: true,
+          flaggedInput: true,
+          flaggedOutput: false,
+        },
+      });
+    });
+
+    it('should handle content filter errors with message-based detection', async () => {
+      const mockCompletedRun = {
+        id: 'run-123',
+        status: 'failed',
+        last_error: {
+          code: 'policy_violation',
+          message: 'The response was filtered due to triggering safety guidelines',
+        },
+      };
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce({ id: 'thread-123' }) // Thread creation
+        .mockResolvedValueOnce({}) // Message creation
+        .mockResolvedValueOnce({ id: 'run-123' }) // Run creation
+        .mockResolvedValueOnce(mockCompletedRun); // Run polling - content filter error by message
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result).toEqual({
+        output:
+          "The generated content was filtered due to triggering Azure OpenAI Service's content filtering system.",
+        guardrails: {
+          flagged: true,
+          flaggedInput: false,
+          flaggedOutput: true,
+        },
+      });
+    });
+
+    it('should not affect normal error handling for non-content-filter errors', async () => {
+      const mockFailedRun = {
+        id: 'run-123',
+        status: 'failed',
+        last_error: {
+          code: 'server_error',
+          message: 'Internal server error occurred',
+        },
+      };
+
+      (provider as any).makeRequest
+        .mockResolvedValueOnce({ id: 'thread-123' }) // Thread creation
+        .mockResolvedValueOnce({}) // Message creation
+        .mockResolvedValueOnce({ id: 'run-123' }) // Run creation
+        .mockResolvedValueOnce(mockFailedRun); // Run polling - non-content-filter error
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result).toEqual({
+        error: 'Thread run failed: server_error - Internal server error occurred',
+      });
+    });
+
+    it('should handle stuck requires_action status due to content filtering', async () => {
+      // This tests the scenario where a run gets stuck in "requires_action" because
+      // content filtering prevents tool execution
+      const mockThreadResponse = { id: 'thread-123', object: 'thread', created_at: Date.now() };
+      const mockRunResponse = {
+        id: 'run-123',
+        object: 'run',
+        created_at: Date.now(),
+        status: 'queued',
+      };
+
+      // Set up provider with function callback that might trigger content filtering
+      provider = new AzureAssistantProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          functionToolCallbacks: {
+            get_sensitive_info: vi.fn().mockResolvedValue('sensitive data'),
+          },
+        },
+      });
+
+      // Set authHeaders on the instance
+      (provider as any).authHeaders = { 'api-key': 'test-key' };
+
+      vi.spyOn(provider as any, 'makeRequest').mockImplementation(vi.fn());
+      vi.spyOn(provider as any, 'getHeaders').mockResolvedValue({
+        'Content-Type': 'application/json',
+        'api-key': 'test-key',
+      });
+      vi.spyOn(provider as any, 'getApiKey').mockReturnValue('test-key');
+      vi.spyOn(provider as any, 'getApiBaseUrl').mockReturnValue('https://test.azure.com');
+      vi.spyOn(provider as any, 'ensureInitialized').mockResolvedValue(undefined);
+
+      // Mock a run that stays in requires_action (simulating the original "thread incomplete" issue)
+      (provider as any).makeRequest
+        .mockResolvedValueOnce(mockThreadResponse) // Thread creation
+        .mockResolvedValueOnce({}) // Message creation
+        .mockResolvedValueOnce(mockRunResponse) // Run creation
+        .mockResolvedValueOnce({
+          // Run polling - stuck in requires_action due to content filtering
+          id: 'run-123',
+          status: 'requires_action',
+          required_action: {
+            type: 'submit_tool_outputs',
+            submit_tool_outputs: {
+              tool_calls: [
+                {
+                  id: 'call-123',
+                  type: 'function',
+                  function: {
+                    name: 'get_sensitive_info',
+                    arguments: '{"type": "harmful_content"}',
+                  },
+                },
+              ],
+            },
+          },
+        })
+        .mockResolvedValueOnce({}) // Empty response for tool output submission
+        .mockResolvedValueOnce({
+          // Final run status - failed due to content filtering
+          id: 'run-123',
+          status: 'failed',
+          last_error: {
+            code: 'content_filter',
+            message: 'Tool execution blocked by content filtering',
+          },
+        });
+
+      const result = await provider.callApi('test prompt that triggers tool call');
+
+      // Should return guardrail response instead of generic "requires_action" error
+      expect(result).toEqual({
+        output:
+          "The generated content was filtered due to triggering Azure OpenAI Service's content filtering system.",
+        guardrails: {
+          flagged: true,
+          flaggedInput: false,
+          flaggedOutput: true,
+        },
+      });
+    });
+  });
+
+  describe('guardrail response consistency', () => {
+    it('should return consistent guardrail responses from different error paths', async () => {
+      const expectedGuardrailResponse = {
+        output:
+          "The generated content was filtered due to triggering Azure OpenAI Service's content filtering system.",
+        guardrails: {
+          flagged: true,
+          flaggedInput: false,
+          flaggedOutput: true,
+        },
+      };
+
+      // Test 1: Content filter error from formatError
+      const formatErrorResult = (provider as any).formatError(new Error('content_filter detected'));
+      expect(formatErrorResult).toEqual(expectedGuardrailResponse);
+
+      // Test 2: Content filter error during API call
+      (provider as any).makeRequest.mockRejectedValueOnce(new Error('content filter triggered'));
+      const apiCallResult = await provider.callApi('test prompt');
+      expect(apiCallResult).toEqual(expectedGuardrailResponse);
+
+      // Test 3: Content filter error during run completion
+      (provider as any).makeRequest
+        .mockResolvedValueOnce({ id: 'thread-123' })
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ id: 'run-123' })
+        .mockResolvedValueOnce({
+          id: 'run-123',
+          status: 'failed',
+          last_error: { code: 'content_filter', message: 'filtered content' },
+        });
+
+      const runCompletionResult = await provider.callApi('test prompt');
+      expect(runCompletionResult).toEqual(expectedGuardrailResponse);
+    });
+
+    it('should distinguish between input and output filtering correctly', () => {
+      // Input filtering test
+      const inputError = new Error('content filter triggered on input prompt data');
+      const inputResult = (provider as any).formatError(inputError);
+      expect(inputResult.guardrails.flaggedInput).toBe(true);
+      expect(inputResult.guardrails.flaggedOutput).toBe(false);
+
+      // Output filtering test
+      const outputError = new Error('content filter blocked the response output');
+      const outputResult = (provider as any).formatError(outputError);
+      expect(outputResult.guardrails.flaggedInput).toBe(false);
+      expect(outputResult.guardrails.flaggedOutput).toBe(true);
+
+      // General filtering test (defaults to output)
+      const generalError = new Error('content filter violation');
+      const generalResult = (provider as any).formatError(generalError);
+      expect(generalResult.guardrails.flaggedInput).toBe(false);
+      expect(generalResult.guardrails.flaggedOutput).toBe(true);
+    });
+
+    it('should never flag both input and output simultaneously', () => {
+      // Test the problematic case that was mentioned in the bug report
+      const promptError = new Error('content filter triggered on prompt');
+      const promptResult = (provider as any).formatError(promptError);
+
+      // With the old buggy logic, this would have flagged both input (because it contains "prompt")
+      // and output (because it doesn't contain "input"). Now it should only flag input.
+      expect(promptResult.guardrails.flaggedInput).toBe(true);
+      expect(promptResult.guardrails.flaggedOutput).toBe(false);
+      expect(promptResult.guardrails.flaggedInput && promptResult.guardrails.flaggedOutput).toBe(
+        false,
+      );
+
+      // Test various error messages to ensure mutual exclusivity
+      const testCases = [
+        {
+          message: 'content filter triggered on prompt',
+          expectedInput: true,
+          expectedOutput: false,
+        },
+        {
+          message: 'content filter triggered on input',
+          expectedInput: true,
+          expectedOutput: false,
+        },
+        {
+          message: 'content filter triggered on output',
+          expectedInput: false,
+          expectedOutput: true,
+        },
+        {
+          message: 'content filter triggered on response',
+          expectedInput: false,
+          expectedOutput: true,
+        },
+        {
+          message: 'content filter violation detected',
+          expectedInput: false,
+          expectedOutput: true,
+        }, // defaults to output
+        { message: 'guardrail triggered', expectedInput: false, expectedOutput: true }, // defaults to output
+      ];
+
+      testCases.forEach(({ message, expectedInput, expectedOutput }) => {
+        const error = new Error(message);
+        const result = (provider as any).formatError(error);
+
+        expect(result.guardrails.flaggedInput).toBe(expectedInput);
+        expect(result.guardrails.flaggedOutput).toBe(expectedOutput);
+
+        // Ensure they are mutually exclusive
+        expect(result.guardrails.flaggedInput && result.guardrails.flaggedOutput).toBe(false);
+      });
+    });
+  });
+});

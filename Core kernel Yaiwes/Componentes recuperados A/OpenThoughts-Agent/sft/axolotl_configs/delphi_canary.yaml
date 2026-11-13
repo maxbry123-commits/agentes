@@ -1,0 +1,85 @@
+# Delphi MASKING canary — axolotl backend, the REAL delphi path (jinja as ground truth).
+#
+# Purpose: validate that axolotl's `delphi` chat_template produces a CORRECT training-time
+# loss mask on delphi-format data — the check deferred out of Stage 6 (whose guanaco/llama3
+# loss-match gap traced to a framework turn-masking divergence on a NON-canonical dataset).
+# Here we run the ACTUAL use case: a real Delphi checkpoint (Llama-3 vocab + delphi reasoning
+# tokens) + the delphi template + a delphi reasoning dataset with <think> content.
+#
+# What "masking works" means (assert in the mask-dump gate):
+#   - assistant turns are TRAINABLE (labels != -100), INCLUDING the reasoning span the delphi
+#     template wraps in <|start_think|>...<|end_think|>;
+#   - user / system turns are MASKED (-100);
+#   - the multi-turn Llama-3 structure (<|start_header_id|>…<|eot_id|>, EOS=<|eot_id|>) is
+#     segmented correctly;
+#   - NO degenerate "Last turn is not trainable, skipping" — the failure mode seen on guanaco.
+#
+# PREREQ (same as LLaMA-Factory): prep the checkpoint's tokenizer FIRST with
+#   sft/delphi/prepare_delphi_tokenizer.py --model <delphi-ckpt> --output <prepared-dir>
+# (reserved-slot rename + mean-init so the delphi special tokens are SINGLE tokens), then
+# launch with --model_path <prepared-dir>.
+#
+# Launch (TACC Vista, aarch64, sft-axolotl env), WANDB_MODE=disabled:
+#   WANDB_MODE=disabled python -m hpc.launch --job_type sft --sft_backend axolotl \
+#     --train_config_path sft/axolotl_configs/delphi_canary.yaml \
+#     --model_path <prepared delphi dir> --conda_env sft-axolotl \
+#     --dataset laion/llama-nemotron-science-reasoning-on-le3000tok-100k-canonical-think \
+#     --messages messages --role_tag role --content_tag content \
+#     --partition gh-dev --num_nodes 1 --gpus_per_node 1 --time_limit 01:00:00
+#
+# IMPORTANT (launcher vs config datasets): the hpc.launch path does NOT honor the in-config
+# `datasets:` block below — `_build_datasets` (hpc/axolotl_config_utils.py) REBUILDS it from
+# `--dataset` + `--messages/--role_tag/--content_tag` (defaulting to sharegpt conversations/
+# from/value). So for a launcher run you MUST pass the dataset + field flags above; the
+# `datasets:` block below is honored ONLY by the direct `axolotl.cli.preprocess` (mask-dump)
+# path. Validated canary run: TACC job 802053 (this exact command). Mask verified correct.
+
+# Overridden at launch via --model_path (the tokenizer-prepped Delphi dir). Placeholder =
+# smallest Delphi checkpoint (447M @ 3e18) for a fast canary; masking is model-size-independent.
+base_model: laion/delphi-3e18-p33m67-k0p20-lr83-a003
+
+chat_template: delphi
+# footgun fix: embed chat_template into tokenizer_config.json (plugin also covers per-ckpt dirs).
+tokenizer_save_jinja_files: false
+plugins:
+  - axolotl.integrations.template_integrity.TemplateIntegrityPlugin
+
+# delphi_warmup slice = the laion nemotron science-reasoning "canonical-think" set (ShareGPT,
+# role/content, with <think> reasoning) — a laion/ HF repo pullable on TACC (the tulu3/magpie/
+# wildchat sets are Leonardo-local paths). NOTE: verify the messages field name on TACC before
+# the run (LF sharegpt default = "conversations"); fix field_messages here if the dataset differs.
+datasets:
+  - path: laion/llama-nemotron-science-reasoning-on-le3000tok-100k-canonical-think
+    type: chat_template
+    field_messages: messages          # verified on TACC: this dataset's messages column is `messages` (list of {role, content}), not the sharegpt-default `conversations`
+    message_field_role: role
+    message_field_content: content
+
+attn_implementation: sdpa        # aarch64 (TACC Vista): no flash-attn-2 wheel
+sequence_len: 4096               # Delphi pretrain/midtrain seq len (rope is load-bearing at <=4096)
+sample_packing: false            # OFF: clean per-example mask inspection + unambiguous warnings
+val_set_size: 0.0
+
+micro_batch_size: 1
+gradient_accumulation_steps: 4
+max_steps: 20                    # canary: enough to see a loss trend + any masking warnings
+num_epochs: 1
+
+optimizer: adamw_torch
+lr_scheduler: cosine
+learning_rate: 0.00002
+warmup_steps: 2
+max_grad_norm: 1.0
+
+bf16: true
+pure_bf16: true                  # match the real bf16 training strategy; keeps the 447M canary light
+tf32: false
+gradient_checkpointing: true
+
+logging_steps: 1
+save_steps: 20
+save_total_limit: 1
+
+# canary: no DB registration, no MFU noise, no hub push (offline-safe)
+supabase_register: false
+mfu: false

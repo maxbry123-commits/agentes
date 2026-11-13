@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "Camunda",
+    "path": "optimize/backend/src/main/resources/customer_onboarding_process_instances.json",
+    "chunks_dir": "Camunda/optimize/backend/src/main/resources/customer_onboarding_process_instances.json.chunks",
+    "bytes": 39321642,
+    "chunk_bytes": 8388608
+  }
+]

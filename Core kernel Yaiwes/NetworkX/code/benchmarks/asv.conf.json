@@ -1,0 +1,16 @@
+{
+    "version": 1,
+    "project": "networkx",
+    "project_url": "https://networkx.org/",
+    "repo": "..",
+    "branches": ["main"],
+    "environment_type": "rattler",
+    "conda_channels": ["conda-forge"],
+    "show_commit_url": "http://github.com/networkx/networkx/commit/",
+    "pythons": ["3.12", "3.13", "3.14"],
+    "matrix": {
+        "numpy": [],
+        "scipy": [],
+        "pandas": []
+    }
+}

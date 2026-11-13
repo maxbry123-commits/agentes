@@ -1,0 +1,1075 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+BEGIN {
+    sub set_env_from_file {
+        my ($env_name, $file_path) = @_;
+
+        open my $fh, '<', $file_path or die $!;
+        my $content = do { local $/; <$fh> };
+        close $fh;
+
+        $ENV{$env_name} = $content;
+    }
+    # set env
+    set_env_from_file('MTLS_CERT_VAR', 't/certs/mtls_client.crt');
+    set_env_from_file('MTLS_KEY_VAR', 't/certs/mtls_client.key');
+}
+
+use t::APISIX;
+
+my $nginx_binary = $ENV{'TEST_NGINX_BINARY'} || 'nginx';
+my $version = eval { `$nginx_binary -V 2>&1` };
+
+if ($version !~ m/\/apisix-nginx-module/) {
+    plan(skip_all => "apisix-nginx-module not installed");
+} else {
+    plan('no_plan');
+}
+
+repeat_each(1);
+log_level('info');
+no_root_location();
+no_shuffle();
+
+add_block_preprocessor(sub {
+    my ($block) = @_;
+});
+
+run_tests();
+
+__DATA__
+
+=== TEST 1: store cert and key in vault
+--- exec
+VAULT_TOKEN='root' VAULT_ADDR='http://0.0.0.0:8200' vault kv put kv/apisix/ssl \
+    mtls_client.crt=@t/certs/mtls_client.crt \
+    mtls_client.key=@t/certs/mtls_client.key
+--- response_body
+Success! Data written to: kv/apisix/ssl
+
+
+
+=== TEST 2: set vault connection information
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/secrets/vault/test',
+                ngx.HTTP_PUT,
+                [[{
+                    "uri": "http://0.0.0.0:8200",
+                    "prefix": "kv/apisix",
+                    "token": "root"
+                }]],
+                [[{
+                    "key": "/apisix/secrets/vault/test",
+                    "value": {
+                        "uri": "http://0.0.0.0:8200",
+                        "prefix": "kv/apisix",
+                        "token": "root"
+                    }
+                }]]
+                )
+            ngx.status = code
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 3: tls without key
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+            local ssl_cert = t.read_file("t/certs/mtls_client.crt")
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        client_cert = ssl_cert,
+                    }
+                },
+                uri = "/hello"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.print(body)
+        }
+    }
+--- request
+GET /t
+--- error_code: 400
+--- response_body
+{"error_msg":"invalid configuration: property \"upstream\" validation failed: property \"tls\" validation failed: failed to validate dependent schema for \"client_cert\": property \"client_key\" is required"}
+
+
+
+=== TEST 4: tls with bad key
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+            local ssl_cert = t.read_file("t/certs/mtls_client.crt")
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        client_cert = ssl_cert,
+                        client_key = ("AAA"):rep(128),
+                    }
+                },
+                uri = "/hello"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.print(body)
+        }
+    }
+--- request
+GET /t
+--- error_code: 400
+--- response_body
+{"error_msg":"failed to decrypt previous encrypted key"}
+--- error_log
+decrypt ssl key failed
+
+
+
+=== TEST 5: encrypt key by default
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+            local ssl_cert = t.read_file("t/certs/mtls_client.crt")
+            local ssl_key = t.read_file("t/certs/mtls_client.key")
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        client_cert = ssl_cert,
+                        client_key = ssl_key,
+                    }
+                },
+                uri = "/hello"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local code, body, res = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_GET
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            res = json.decode(res)
+            ngx.say(res.value.upstream.tls.client_key == ssl_key)
+
+            -- upstream
+            local data = {
+                scheme = "https",
+                type = "roundrobin",
+                nodes = {
+                    ["127.0.0.1:1983"] = 1,
+                },
+                tls = {
+                    client_cert = ssl_cert,
+                    client_key = ssl_key,
+                }
+            }
+            local code, body = t.test('/apisix/admin/upstreams/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local code, body, res = t.test('/apisix/admin/upstreams/1',
+                ngx.HTTP_GET
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            res = json.decode(res)
+            ngx.say(res.value.tls.client_key == ssl_key)
+
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        client_cert = ssl_cert,
+                        client_key = ssl_key,
+                    }
+                },
+            }
+            local code, body = t.test('/apisix/admin/services/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local code, body, res = t.test('/apisix/admin/services/1',
+                ngx.HTTP_GET
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            res = json.decode(res)
+            ngx.say(res.value.upstream.tls.client_key == ssl_key)
+        }
+    }
+--- request
+GET /t
+--- response_body
+false
+false
+false
+
+
+
+=== TEST 6: hit
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /hello
+--- response_body
+hello world
+
+
+
+=== TEST 7: wrong cert
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+            local ssl_cert = t.read_file("t/certs/apisix.crt")
+            local ssl_key = t.read_file("t/certs/apisix.key")
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        client_cert = ssl_cert,
+                        client_key = ssl_key,
+                    }
+                },
+                uri = "/hello"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 8: hit
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /hello
+--- error_code: 400
+--- error_log
+client SSL certificate verify error
+
+
+
+=== TEST 9: clean old data
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            assert(t.test('/apisix/admin/routes/1',
+                ngx.HTTP_DELETE
+            ))
+            assert(t.test('/apisix/admin/services/1',
+                ngx.HTTP_DELETE
+            ))
+            assert(t.test('/apisix/admin/upstreams/1',
+                ngx.HTTP_DELETE
+            ))
+        }
+    }
+--- request
+GET /t
+
+
+
+=== TEST 10: don't encrypt key
+--- yaml_config
+apisix:
+    node_listen: 1984
+    data_encryption:
+        keyring: null
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+            local ssl_cert = t.read_file("t/certs/mtls_client.crt")
+            local ssl_key = t.read_file("t/certs/mtls_client.key")
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        client_cert = ssl_cert,
+                        client_key = ssl_key,
+                    }
+                },
+                uri = "/hello"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local code, body, res = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_GET
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            res = json.decode(res)
+            ngx.say(res.value.upstream.tls.client_key == ssl_key)
+
+            -- upstream
+            local data = {
+                scheme = "https",
+                type = "roundrobin",
+                nodes = {
+                    ["127.0.0.1:1983"] = 1,
+                },
+                tls = {
+                    client_cert = ssl_cert,
+                    client_key = ssl_key,
+                }
+            }
+            local code, body = t.test('/apisix/admin/upstreams/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local code, body, res = t.test('/apisix/admin/upstreams/1',
+                ngx.HTTP_GET
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            res = json.decode(res)
+            ngx.say(res.value.tls.client_key == ssl_key)
+
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        client_cert = ssl_cert,
+                        client_key = ssl_key,
+                    }
+                },
+            }
+            local code, body = t.test('/apisix/admin/services/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local code, body, res = t.test('/apisix/admin/services/1',
+                ngx.HTTP_GET
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            res = json.decode(res)
+            ngx.say(res.value.upstream.tls.client_key == ssl_key)
+        }
+    }
+--- request
+GET /t
+--- response_body
+true
+true
+true
+
+
+
+=== TEST 11: bind upstream
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+            local data = {
+                upstream_id = 1,
+                uri = "/server_port"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+        }
+    }
+--- request
+GET /t
+
+
+
+=== TEST 12: hit
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /server_port
+--- response_body chomp
+1983
+
+
+
+=== TEST 13: bind service
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+            local data = {
+                service_id = 1,
+                uri = "/hello_chunked"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+        }
+    }
+--- request
+GET /t
+
+
+
+=== TEST 14: hit
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /hello_chunked
+--- response_body
+hello world
+
+
+
+=== TEST 15: get cert by tls.client_cert_id
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+
+            local ssl_cert = t.read_file("t/certs/mtls_client.crt")
+            local ssl_key = t.read_file("t/certs/mtls_client.key")
+            local data = {
+                type = "client",
+                cert = ssl_cert,
+                key = ssl_key
+            }
+            local code, body = t.test('/apisix/admin/ssls/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        client_cert_id = 1
+                    }
+                },
+                uri = "/hello"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+        }
+    }
+--- request
+GET /t
+
+
+
+=== TEST 16: hit
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /hello
+--- response_body
+hello world
+
+
+
+=== TEST 17: change ssl object type
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+
+            local ssl_cert = t.read_file("t/certs/mtls_client.crt")
+            local ssl_key = t.read_file("t/certs/mtls_client.key")
+            local data = {
+                type = "server",
+                sni = "test.com",
+                cert = ssl_cert,
+                key = ssl_key
+            }
+            local code, body = t.test('/apisix/admin/ssls/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+        }
+    }
+--- request
+GET /t
+
+
+
+=== TEST 18: hit, ssl object type mismatch
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /hello
+--- error_code: 502
+--- error_log
+failed to get ssl cert: ssl type should be 'client'
+
+
+
+=== TEST 19: delete ssl object
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+
+            local code, body = t.test('/apisix/admin/ssls/1', ngx.HTTP_DELETE)
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+        }
+    }
+--- request
+GET /t
+
+
+
+=== TEST 20: hit, ssl object not exits
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /hello
+--- error_code: 502
+--- error_log
+failed to get ssl cert: ssl id [1] not exits
+
+
+
+=== TEST 21: `tls.verify` only
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+            local ssl_cert = t.read_file("t/certs/mtls_client.crt")
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        verify = false
+                    }
+                },
+                uri = "/hello"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 22: hit
+When only `tls.verify` is present, the matching logic related to
+`client_cert`, `client_key` or `client_cert_id` should not be entered
+--- request
+GET /hello
+--- response_body
+hello world
+
+
+
+=== TEST 23: set `verify` with `client_cert`, `client_key`
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+            local ssl_cert = t.read_file("t/certs/mtls_client.crt")
+            local ssl_key = t.read_file("t/certs/mtls_client.key")
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        client_cert = ssl_cert,
+                        client_key = ssl_key,
+                        verify = false
+                    }
+                },
+                uri = "/hello"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 24: hit
+`tls.verify` does not affect the parsing of `client_cert`, `client_key`
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /hello
+--- response_body
+hello world
+
+
+
+=== TEST 25: invalid cert (fetch_cert failure at runtime)
+This test writes an invalid cert directly to etcd to bypass Admin API
+validation, and verifies that fetch_cert failure returns 503 at runtime.
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local t = require("lib.test_admin")
+            local ssl_key = t.read_file("t/certs/mtls_client.key")
+            local invalid_cert = string.rep("x", 200)
+            local res, err = core.etcd.set("/routes/1", {
+                    upstream = {
+                        scheme = "https",
+                        type = "roundrobin",
+                        nodes = {
+                            ["127.0.0.1:1983"] = 1,
+                        },
+                        tls = {
+                            client_cert = invalid_cert,
+                            client_key = ssl_key,
+                        }
+                    },
+                    uri = "/hello"
+                })
+
+            if not res or res.status >= 300 then
+                ngx.status = res and res.status or 500
+                ngx.say(err)
+                return
+            end
+            ngx.say("passed")
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 26: hit with invalid cert
+--- request
+GET /hello
+--- error_code: 503
+--- error_log
+PEM_read_bio_X509_AUX() failed
+--- wait_etcd_sync: 0.3
+
+
+
+=== TEST 27: invalid key (fetch_pkey failure at runtime)
+This test writes a valid cert but an invalid key directly to etcd to bypass
+Admin API validation, and verifies that fetch_pkey failure returns 503 at runtime.
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local t = require("lib.test_admin")
+            local ssl_cert = t.read_file("t/certs/mtls_client.crt")
+            local invalid_key = string.rep("!", 100)
+            local res, err = core.etcd.set("/routes/1", {
+                    upstream = {
+                        scheme = "https",
+                        type = "roundrobin",
+                        nodes = {
+                            ["127.0.0.1:1983"] = 1,
+                        },
+                        tls = {
+                            client_cert = ssl_cert,
+                            client_key = invalid_key,
+                        }
+                    },
+                    uri = "/hello"
+                })
+
+            if not res or res.status >= 300 then
+                ngx.status = res and res.status or 500
+                ngx.say(err)
+                return
+            end
+            ngx.say("passed")
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 28: hit with invalid key
+--- request
+GET /hello
+--- error_code: 503
+--- error_log
+base64 decode ssl key failed
+--- wait_etcd_sync: 0.3
+
+
+
+=== TEST 29: get cert by tls.client_cert_id with $secret:// refs
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+
+            local data = {
+                type = "client",
+                cert = "$secret://vault/test/ssl/mtls_client.crt",
+                key = "$secret://vault/test/ssl/mtls_client.key"
+            }
+            local code, body = t.test('/apisix/admin/ssls/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        client_cert_id = 1
+                    }
+                },
+                uri = "/hello"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+        }
+    }
+--- request
+GET /t
+
+
+
+=== TEST 30: hit
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /hello
+--- response_body
+hello world
+--- error_log
+fetching data from secret uri
+
+
+
+=== TEST 31: get cert by tls.client_cert_id with $env:// refs
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+
+            local data = {
+                type = "client",
+                cert = "$env://MTLS_CERT_VAR",
+                key = "$env://MTLS_KEY_VAR"
+            }
+            local code, body = t.test('/apisix/admin/ssls/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        client_cert_id = 1
+                    }
+                },
+                uri = "/hello"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+        }
+    }
+--- request
+GET /t
+
+
+
+=== TEST 32: hit
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /hello
+--- response_body
+hello world
+--- error_log
+fetching data from env uri

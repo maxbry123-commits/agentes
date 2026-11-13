@@ -1,0 +1,28 @@
+<tools>
+  <tool name="analyze_response">
+    <description>Comprehensive HTTP response analysis for vulnerability detection. Analyzes body and headers for errors, secrets, information disclosure, tech stack, and vulnerability indicators.</description>
+    <parameters>
+      <parameter name="response_body" type="string" required="true">
+        <description>HTTP response body content to analyze.</description>
+      </parameter>
+      <parameter name="response_headers" type="object" required="false">
+        <description>Response headers as key-value dict.</description>
+      </parameter>
+      <parameter name="status_code" type="integer" required="false">
+        <description>HTTP status code (default: 200).</description>
+      </parameter>
+      <parameter name="request_payload" type="string" required="false">
+        <description>Original request payload to check for reflection.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Findings list with severity, tech_stack, risk_level, and recommendations.</description>
+    </returns>
+    <examples>
+      <function=analyze_response>
+        <parameter=response_body>Error: SQL syntax error near...</parameter>
+        <parameter=status_code>500</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

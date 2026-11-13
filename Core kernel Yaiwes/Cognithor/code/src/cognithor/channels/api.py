@@ -1,0 +1,378 @@
+"""REST-API Channel: HTTP-Endpunkte fuer externe Integration.
+
+Bietet eine vollstaendige REST-API fuer programmatischen Zugriff
+auf Jarvis. Bearer-Token-Authentifizierung, JSON-basiert,
+SSE-Streaming fuer Echtzeit-Antworten.
+
+Endpunkte:
+  POST /api/v1/message     → Nachricht senden
+  GET  /api/v1/message/stream → SSE-Stream
+  GET  /api/v1/sessions    → Sessions auflisten
+  GET  /api/v1/health      → Health-Check
+  GET  /api/v1/tools       → Verfuegbare Tools
+
+Bibel-Referenz: §9.3 (API Channel), §11.1 (Authentication)
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from datetime import UTC, datetime
+from typing import Any
+from uuid import uuid4
+
+from cognithor.channels.base import Channel, MessageHandler
+from cognithor.models import IncomingMessage, OutgoingMessage, PlannedAction
+from cognithor.security.rate_limiter import RateLimiter
+from cognithor.security.token_store import get_token_store
+from cognithor.utils.logging import get_logger
+from cognithor.utils.ttl_dict import TTLDict
+
+log = get_logger(__name__)
+
+# ============================================================================
+# API-Datenmodelle (Pydantic fuer FastAPI)
+# ============================================================================
+
+
+try:
+    from pydantic import BaseModel, Field
+except ImportError:
+    BaseModel = object  # type: ignore[assignment, misc]
+
+    def Field(**kw: object) -> None:  # type: ignore[no-redef]
+        return None
+
+
+class MessageRequest(BaseModel):
+    """Eingehende Nachricht ueber die API."""
+
+    text: str = Field(..., min_length=1, max_length=100_000)
+    session_id: str | None = Field(default=None)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class MessageResponse(BaseModel):
+    """API-Antwort auf eine Nachricht."""
+
+    text: str
+    session_id: str
+    timestamp: str
+    duration_ms: int
+    tools_used: list[str] = Field(default_factory=list)
+
+
+class HealthResponse(BaseModel):
+    """Health-Check-Antwort."""
+
+    status: str = "ok"
+    version: str = "0.1.0"
+    uptime_seconds: float = 0.0
+    active_sessions: int = 0
+
+
+class SessionInfo(BaseModel):
+    """Informationen ueber eine Session."""
+
+    session_id: str
+    created_at: str
+    message_count: int = 0
+    last_activity: str = ""
+
+
+class ApprovalRequest(BaseModel):
+    """Approval-Anfrage fuer ORANGE-Aktionen."""
+
+    session_id: str
+    action_tool: str
+    reason: str
+    request_id: str
+
+
+class ApprovalResponse(BaseModel):
+    """Approval-Antwort vom Client."""
+
+    request_id: str
+    approved: bool
+
+
+# ============================================================================
+# API Channel
+# ============================================================================
+
+
+class APIChannel(Channel):
+    """REST-API Channel via FastAPI. [B§9.3]
+
+    Stellt HTTP-Endpunkte bereit fuer programmatischen Zugriff.
+    Authentifizierung via Bearer-Token.
+    """
+
+    def __init__(
+        self,
+        *,
+        host: str = "127.0.0.1",
+        port: int = 8741,
+        api_token: str | None = None,
+        cors_origins: list[str] | None = None,
+        ssl_certfile: str = "",
+        ssl_keyfile: str = "",
+    ) -> None:
+        self._host = host
+        self._port = port
+        self._token_store = get_token_store()
+        if api_token:
+            self._token_store.store("api_channel_token", api_token)
+        self._has_api_token = bool(api_token)
+        self._cors_origins = cors_origins or []
+        self._ssl_certfile = ssl_certfile
+        self._ssl_keyfile = ssl_keyfile
+        self._handler: MessageHandler | None = None
+        self._app: Any = None
+        self._server: Any = None
+        self._start_time = 0.0
+        self._sessions: TTLDict[str, SessionInfo] = TTLDict(max_size=50000, ttl_seconds=86400)
+        self._pending_approvals: dict[str, asyncio.Future[bool]] = {}
+        self._serve_task: asyncio.Task[None] | None = None
+        self._rate_limiter = RateLimiter()
+
+    @property
+    def _api_token(self) -> str | None:
+        """API-Token (entschluesselt bei Zugriff)."""
+        if self._has_api_token:
+            return self._token_store.retrieve("api_channel_token")
+        return None
+
+    @property
+    def name(self) -> str:
+        return "api"
+
+    async def start(self, handler: MessageHandler) -> None:
+        """Startet den FastAPI-Server."""
+        self._handler = handler
+        self._start_time = time.monotonic()
+        self._app = self._create_app()
+
+        # TLS-Warning fuer externe Hosts
+        if self._host not in ("127.0.0.1", "localhost", "::1") and not self._ssl_certfile:
+            log.warning(
+                "api_no_tls", host=self._host, message="WARNUNG: API auf externem Host ohne TLS!"
+            )
+
+        log.info("api_channel_starting", host=self._host, port=self._port)
+
+    async def stop(self) -> None:
+        """Stoppt den API-Server."""
+        if self._serve_task and not self._serve_task.done():
+            self._serve_task.cancel()
+        # Cancel pending approvals
+        for future in self._pending_approvals.values():
+            if not future.done():
+                future.set_result(False)
+        self._pending_approvals.clear()
+        log.info("api_channel_stopped")
+
+    async def send(self, message: OutgoingMessage) -> None:
+        """API-Channel sendet nicht aktiv -- Antworten gehen via Response."""
+        pass
+
+    async def request_approval(
+        self,
+        session_id: str,
+        action: PlannedAction,
+        reason: str,
+    ) -> bool:
+        """Stellt Approval-Anfrage in Queue, wartet auf Client-Antwort."""
+        request_id = str(uuid4())
+        future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+        self._pending_approvals[request_id] = future
+
+        log.info(
+            "approval_requested_via_api",
+            session_id=session_id,
+            tool=action.tool,
+            request_id=request_id,
+        )
+
+        try:
+            # Warte max 5 Minuten auf Approval
+            result = await asyncio.wait_for(future, timeout=300)
+            return result
+        except TimeoutError:
+            log.warning("approval_timeout", request_id=request_id)
+            return False
+        finally:
+            self._pending_approvals.pop(request_id, None)
+
+    async def send_streaming_token(self, session_id: str, token: str) -> None:
+        """Streaming-Tokens werden ueber SSE gesendet (in der Route)."""
+        pass
+
+    def _create_app(self) -> Any:
+        """Erstellt die FastAPI-Applikation mit allen Routen."""
+        try:
+            from fastapi import Depends, FastAPI, HTTPException, Request
+            from fastapi.middleware.cors import CORSMiddleware
+            from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+            # Request muss im Modul-Namespace verfuegbar sein, damit FastAPI
+            # die String-Annotation (PEP 563) via get_type_hints() aufloesen kann
+            globals()["Request"] = Request
+        except ImportError as exc:
+            log.error("fastapi_not_installed", error=str(exc))
+            raise ImportError(
+                "FastAPI ist für den API-Channel erforderlich: pip install fastapi uvicorn"
+            ) from exc
+
+        app = FastAPI(
+            title="Jarvis Agent OS API",
+            version="0.1.0",
+            description="REST-API für Jarvis Agent OS",
+        )
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=self._cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        security = HTTPBearer(auto_error=False)
+
+        async def verify_token(
+            credentials: HTTPAuthorizationCredentials | None = Depends(security),  # noqa: B008
+        ) -> None:
+            if not self._api_token:
+                raise HTTPException(status_code=503, detail="API-Token nicht konfiguriert")
+            if not credentials or credentials.credentials != self._api_token:
+                raise HTTPException(status_code=401, detail="Ungültiger Token")
+
+        @app.get("/api/v1/health", response_model=HealthResponse)
+        async def health() -> HealthResponse:
+            return HealthResponse(
+                uptime_seconds=time.monotonic() - self._start_time,
+                active_sessions=len(self._sessions),
+            )
+
+        @app.post(
+            "/api/v1/message",
+            response_model=MessageResponse,
+            dependencies=[Depends(verify_token)],
+        )
+        async def send_message(req: MessageRequest, request: Request) -> MessageResponse:
+            # Rate limiting -- per Client-IP
+            client_ip = request.client.host if request.client else "unknown"
+            rate_key = f"api_{client_ip}"
+            if not await self._rate_limiter.check(rate_key):
+                raise HTTPException(status_code=429, detail="Too Many Requests")
+            if not self._handler:
+                raise HTTPException(status_code=503, detail="Handler nicht bereit")
+
+            session_id = req.session_id or str(uuid4())
+            start = time.monotonic()
+
+            incoming = IncomingMessage(
+                text=req.text,
+                channel="api",
+                session_id=session_id,
+                user_id="api_user",
+                metadata=req.metadata,
+            )
+
+            response = await self._handler(incoming)
+            duration_ms = int((time.monotonic() - start) * 1000)
+
+            # Session tracken
+            now = datetime.now(UTC).isoformat()
+            if session_id not in self._sessions:
+                self._sessions[session_id] = SessionInfo(
+                    session_id=session_id,
+                    created_at=now,
+                    message_count=0,
+                    last_activity=now,
+                )
+            info = self._sessions[session_id]
+            info.message_count += 1
+            info.last_activity = now
+
+            return MessageResponse(
+                text=response.text,
+                session_id=session_id,
+                timestamp=now,
+                duration_ms=duration_ms,
+            )
+
+        @app.get(
+            "/api/v1/sessions",
+            response_model=list[SessionInfo],
+            dependencies=[Depends(verify_token)],
+        )
+        async def list_sessions() -> list[SessionInfo]:
+            return list(self._sessions.values())
+
+        @app.get(
+            "/api/v1/approvals/pending",
+            dependencies=[Depends(verify_token)],
+        )
+        async def pending_approvals() -> list[str]:
+            return list(self._pending_approvals.keys())
+
+        @app.post(
+            "/api/v1/approvals/respond",
+            dependencies=[Depends(verify_token)],
+        )
+        async def respond_approval(resp: ApprovalResponse) -> dict[str, str]:
+            future = self._pending_approvals.get(resp.request_id)
+            if not future:
+                raise HTTPException(status_code=404, detail="Approval-Anfrage nicht gefunden")
+            if not future.done():
+                future.set_result(resp.approved)
+            return {"status": "processed"}
+
+        # Include the backends router for LLM-backend management endpoints.
+        # PASS-3 SEC-CRIT: every route in this router needs the same
+        # ``verify_token`` dependency the in-line endpoints carry — without
+        # it, ``POST /api/backends/vllm/start`` is unauthenticated remote
+        # container execution. Apply at include-time so future routes
+        # added to ``backends_api.py`` inherit the gate automatically.
+        try:
+            from cognithor.channels.backends_api import backends_router as _backends_router
+
+            app.include_router(_backends_router, dependencies=[Depends(verify_token)])
+            app.state.config = self._config if hasattr(self, "_config") else None
+        except Exception as exc:
+            log.warning("backends_router_include_failed", error=str(exc))
+
+        # Include the media router for Flutter upload + thumbnail endpoints.
+        # PASS-3 SEC-CRIT: same auth gate as backends_router. Without it,
+        # ``POST /api/media/upload`` is an unauthenticated disk-fill
+        # vector and ``GET /api/media/thumb/{file}`` is unauthenticated
+        # file-read.
+        # Note: app.state.media_server is set by Gateway at startup (Task 15).
+        try:
+            from cognithor.channels.media_api import media_router as _media_router
+
+            app.include_router(_media_router, dependencies=[Depends(verify_token)])
+        except Exception as exc:
+            log.warning("media_router_include_failed", error=str(exc))
+
+        # Hardware-Aware-Runtime — /api/system/* routes for the Flutter
+        # onboarding wizard + drift banner. Owner-gated since `/apply` writes
+        # to ~/.cognithor/config.yaml and `/rollback` restores backups.
+        try:
+            from cognithor.api.system_api import system_router as _system_router
+
+            app.include_router(_system_router, dependencies=[Depends(verify_token)])
+        except Exception as exc:
+            log.warning("system_router_include_failed", error=str(exc))
+
+        return app
+
+    @property
+    def app(self) -> Any:
+        """FastAPI-App-Instanz (fuer Tests und Embedding in Gateway)."""
+        if self._app is None:
+            self._app = self._create_app()
+        return self._app

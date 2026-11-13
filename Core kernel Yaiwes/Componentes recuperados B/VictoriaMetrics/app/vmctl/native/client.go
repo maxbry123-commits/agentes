@@ -1,0 +1,201 @@
+package native
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/VictoriaMetrics/metrics"
+
+	"github.com/VictoriaMetrics/VictoriaMetrics/app/vmctl/auth"
+)
+
+const (
+	nativeTenantsAddr     = "admin/tenants"
+	nativeMetricNamesAddr = "api/v1/label/__name__/values"
+)
+
+// Client is an HTTP client for exporting and importing
+// time series via native protocol.
+type Client struct {
+	AuthCfg     *auth.Config
+	Addr        string
+	ExtraLabels []string
+	HTTPClient  *http.Client
+}
+
+// LabelValues represents series from api/v1/series response
+type LabelValues map[string]string
+
+// Response represents response from api/v1/label/__name__/values
+type Response struct {
+	Status      string   `json:"status"`
+	MetricNames []string `json:"data"`
+}
+
+// Explore finds metric names by provided filter from api/v1/label/__name__/values
+func (c *Client) Explore(ctx context.Context, f Filter, tenantID string, start, end time.Time) ([]string, error) {
+	startTime := time.Now()
+	exploreRequestsTotal.Inc()
+	url := fmt.Sprintf("%s/%s", c.Addr, nativeMetricNamesAddr)
+	if tenantID != "" {
+		url = fmt.Sprintf("%s/select/%s/prometheus/%s", c.Addr, tenantID, nativeMetricNamesAddr)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		exploreRequestsErrorsTotal.Inc()
+		return nil, fmt.Errorf("cannot create request to %q: %w", url, err)
+	}
+
+	params := req.URL.Query()
+	params.Set("start", start.Format(time.RFC3339))
+	params.Set("end", end.Format(time.RFC3339))
+	params.Set("match[]", f.Match)
+	req.URL.RawQuery = params.Encode()
+
+	resp, err := c.do(req, http.StatusOK)
+	if err != nil {
+		exploreRequestsErrorsTotal.Inc()
+		exploreDuration.UpdateDuration(startTime)
+		return nil, fmt.Errorf("series request failed: %w", err)
+	}
+
+	var response Response
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		exploreRequestsErrorsTotal.Inc()
+		exploreDuration.UpdateDuration(startTime)
+		return nil, fmt.Errorf("cannot decode series response: %w", err)
+	}
+	exploreDuration.UpdateDuration(startTime)
+	return response.MetricNames, resp.Body.Close()
+}
+
+// ImportPipe uses pipe reader in request to process data
+func (c *Client) ImportPipe(ctx context.Context, dstURL string, pr *io.PipeReader) error {
+	startTime := time.Now()
+	importRequestsTotal.Inc()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, dstURL, pr)
+	if err != nil {
+		importRequestsErrorsTotal.Inc()
+		return fmt.Errorf("cannot create import request to %q: %w", c.Addr, err)
+	}
+
+	importResp, err := c.do(req, http.StatusNoContent)
+	if err != nil {
+		importRequestsErrorsTotal.Inc()
+		importDuration.UpdateDuration(startTime)
+		return fmt.Errorf("import request failed: %w", err)
+	}
+	if err := importResp.Body.Close(); err != nil {
+		importRequestsErrorsTotal.Inc()
+		importDuration.UpdateDuration(startTime)
+		return fmt.Errorf("cannot close import response body: %w", err)
+	}
+	importDuration.UpdateDuration(startTime)
+	return nil
+}
+
+// ExportPipe makes request by provided filter and return io.ReadCloser which can be used to get data
+func (c *Client) ExportPipe(ctx context.Context, url string, f Filter) (io.ReadCloser, error) {
+	startTime := time.Now()
+	exportRequestsTotal.Inc()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		exportRequestsErrorsTotal.Inc()
+		return nil, fmt.Errorf("cannot create request to %q: %w", c.Addr, err)
+	}
+
+	params := req.URL.Query()
+	params.Set("match[]", f.Match)
+	if f.TimeStart != "" {
+		params.Set("start", f.TimeStart)
+	}
+	if f.TimeEnd != "" {
+		params.Set("end", f.TimeEnd)
+	}
+	req.URL.RawQuery = params.Encode()
+
+	// disable compression since it is meaningless for native format
+	req.Header.Set("Accept-Encoding", "identity")
+
+	resp, err := c.do(req, http.StatusOK)
+	if err != nil {
+		exportRequestsErrorsTotal.Inc()
+		exportDuration.UpdateDuration(startTime)
+		return nil, fmt.Errorf("export request failed: %w", err)
+	}
+	exportDuration.UpdateDuration(startTime)
+	return resp.Body, nil
+}
+
+// GetSourceTenants discovers tenants by provided filter
+func (c *Client) GetSourceTenants(ctx context.Context, f Filter) ([]string, error) {
+	u := fmt.Sprintf("%s/%s", c.Addr, nativeTenantsAddr)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create request to %q: %w", u, err)
+	}
+
+	params := req.URL.Query()
+	if f.TimeStart != "" {
+		params.Set("start", f.TimeStart)
+	}
+	if f.TimeEnd != "" {
+		params.Set("end", f.TimeEnd)
+	}
+	req.URL.RawQuery = params.Encode()
+
+	resp, err := c.do(req, http.StatusOK)
+	if err != nil {
+		return nil, fmt.Errorf("tenants request failed: %w", err)
+	}
+
+	var r struct {
+		Tenants []string `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return nil, fmt.Errorf("cannot decode tenants response: %w", err)
+	}
+
+	if err := resp.Body.Close(); err != nil {
+		return nil, fmt.Errorf("cannot close tenants response body: %w", err)
+	}
+
+	return r.Tenants, nil
+}
+
+func (c *Client) do(req *http.Request, expSC int) (*http.Response, error) {
+	if c.AuthCfg != nil {
+		c.AuthCfg.SetHeaders(req, true)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("unexpected error when performing request: %w", err)
+	}
+
+	if resp.StatusCode != expSC {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response body for status code %d: %w", resp.StatusCode, err)
+		}
+		return nil, fmt.Errorf("unexpected response code %d: %s", resp.StatusCode, string(body))
+	}
+	return resp, err
+}
+
+var (
+	importRequestsTotal        = metrics.NewCounter(`vmctl_vm_native_requests_total{type="import"}`)
+	exportRequestsTotal        = metrics.NewCounter(`vmctl_vm_native_requests_total{type="export"}`)
+	exploreRequestsTotal       = metrics.NewCounter(`vmctl_vm_native_requests_total{type="explore"}`)
+	importRequestsErrorsTotal  = metrics.NewCounter(`vmctl_vm_native_request_errors_total{type="import"}`)
+	exportRequestsErrorsTotal  = metrics.NewCounter(`vmctl_vm_native_request_errors_total{type="export"}`)
+	exploreRequestsErrorsTotal = metrics.NewCounter(`vmctl_vm_native_request_errors_total{type="explore"}`)
+
+	importDuration  = metrics.NewHistogram(`vmctl_vm_native_import_duration_seconds`)
+	exportDuration  = metrics.NewHistogram(`vmctl_vm_native_export_duration_seconds`)
+	exploreDuration = metrics.NewHistogram(`vmctl_vm_native_explore_duration_seconds`)
+)

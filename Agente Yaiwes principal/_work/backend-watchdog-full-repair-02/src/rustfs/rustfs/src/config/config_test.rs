@@ -1,0 +1,796 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#[cfg(test)]
+#[allow(unsafe_op_in_unsafe_fn)]
+mod tests {
+    use crate::config::cli::{InspectCommands, default_server_opts};
+    use crate::config::{CommandResult, Config, Opt, TlsCommands};
+    use crate::storage_api::config_test::DisksLayout;
+    use rustfs_config::{DEFAULT_CONSOLE_ADDRESS, DEFAULT_CONSOLE_ENABLE, DEFAULT_OBS_ENDPOINT, RUSTFS_REGION};
+    use rustfs_credentials::{DEFAULT_ACCESS_KEY, DEFAULT_SECRET_KEY};
+    use serial_test::serial;
+    use std::env;
+
+    /// Helper function to run test with environment variable set.
+    /// Automatically cleans up the environment variable after the test.
+    ///
+    /// # Safety
+    /// This function uses unsafe env::set_var and env::remove_var.
+    /// Tests using this helper must be marked with #[serial] to avoid race conditions.
+    // SAFETY: This helper mutates process environment only inside serial tests
+    // and restores the variable before returning or resuming a panic.
+    #[allow(unsafe_code)]
+    fn with_env_var<F>(key: &str, value: &str, test_fn: F)
+    where
+        F: FnOnce(),
+    {
+        unsafe {
+            env::set_var(key, value);
+        }
+        // Ensure cleanup happens even if test panics
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(test_fn));
+        unsafe {
+            env::remove_var(key);
+        }
+        // Re-panic if the test failed
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
+    }
+
+    /// Helper to parse volumes and verify the layout.
+    fn verify_layout<T, F>(volumes: &[T], verify_fn: F)
+    where
+        T: AsRef<str>,
+        F: FnOnce(&DisksLayout),
+    {
+        let layout = DisksLayout::from_volumes(volumes).expect("Failed to parse volumes");
+        verify_fn(&layout);
+    }
+
+    #[test]
+    #[serial]
+    fn test_server_subcommand_and_legacy_equivalence() {
+        // rustfs server <volume> and rustfs <volume> (legacy) must produce identical results
+        let legacy_args = vec!["rustfs", "/data/vol1"];
+        let server_args = vec!["rustfs", "server", "/data/vol1"];
+        let opt_legacy = Opt::parse_from(legacy_args);
+        let opt_server = Opt::parse_from(server_args);
+        assert_eq!(opt_legacy.volumes, opt_server.volumes);
+        assert_eq!(opt_legacy.address, opt_server.address);
+        assert_eq!(opt_legacy.console_address, opt_server.console_address);
+    }
+
+    #[test]
+    #[serial]
+    fn test_tls_inspect_subcommand_parses() {
+        let result =
+            Opt::parse_command(["rustfs", "tls", "inspect", "--path", "/tmp/certs"]).expect("tls inspect command should parse");
+
+        match result {
+            CommandResult::Tls(opts) => match opts.command {
+                TlsCommands::Inspect(inspect) => assert_eq!(inspect.path, "/tmp/certs"),
+            },
+            _ => panic!("expected TLS command result"),
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_tls_inspect_subcommand_parses_tls_path_alias() {
+        let result =
+            Opt::parse_command(["rustfs", "tls", "inspect", "--tls-path", "/tmp/certs"]).expect("tls inspect alias should parse");
+
+        match result {
+            CommandResult::Tls(opts) => match opts.command {
+                TlsCommands::Inspect(inspect) => assert_eq!(inspect.path, "/tmp/certs"),
+            },
+            _ => panic!("expected TLS command result"),
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_inspect_subcommand_survives_legacy_preprocessing() {
+        let result = Opt::parse_command([
+            "rustfs",
+            "inspect",
+            "bucket-meta",
+            "--path",
+            "/data/drive-1",
+            "--bucket",
+            "example-bucket",
+        ])
+        .expect("inspect command should survive legacy preprocessing");
+
+        match result {
+            CommandResult::Inspect(opts) => match opts.command {
+                InspectCommands::BucketMeta(opts) => {
+                    assert_eq!(opts.paths, ["/data/drive-1"]);
+                    assert_eq!(opts.bucket, "example-bucket");
+                }
+            },
+            _ => panic!("expected inspect command result"),
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_parse_from_non_server_commands_falls_back_without_panicking() {
+        let info_opt = Opt::parse_from(["rustfs", "info"]);
+        let tls_opt = Opt::parse_from(["rustfs", "tls", "inspect", "--path", "/tmp/certs"]);
+
+        assert!(info_opt.volumes.is_empty());
+        assert!(tls_opt.volumes.is_empty());
+        assert_eq!(info_opt.address, default_server_opts().address);
+        assert_eq!(tls_opt.address, default_server_opts().address);
+    }
+
+    #[test]
+    #[serial]
+    fn test_default_console_configuration() {
+        // Test that default console configuration is correct
+        let args = vec!["rustfs", "/test/volume"];
+        let opt = Opt::parse_from(args);
+
+        assert!(opt.console_enable);
+        assert_eq!(opt.console_address, ":9001");
+        assert_eq!(opt.address, ":9000");
+    }
+
+    #[test]
+    #[serial]
+    fn test_config_new_defaults() {
+        let volumes = vec!["/tmp/rustfs-vol1".to_string()];
+        let address = "127.0.0.1:9100".to_string();
+        let config = Config::new(&address, volumes.clone());
+
+        assert_eq!(config.volumes, volumes);
+        assert_eq!(config.address, address);
+        assert_eq!(config.server_domains, Vec::<String>::new());
+        assert_eq!(config.access_key, DEFAULT_ACCESS_KEY);
+        assert_eq!(config.secret_key, DEFAULT_SECRET_KEY);
+        assert_eq!(config.console_enable, DEFAULT_CONSOLE_ENABLE);
+        assert_eq!(config.console_address, DEFAULT_CONSOLE_ADDRESS);
+        assert_eq!(config.obs_endpoint, DEFAULT_OBS_ENDPOINT);
+        assert_eq!(config.tls_path, None);
+        assert_eq!(config.license, None);
+        assert_eq!(config.region, Some(RUSTFS_REGION.to_string()));
+        assert!(!config.kms_enable);
+        assert_eq!(config.kms_backend, "local");
+        assert_eq!(config.kms_key_dir, None);
+        assert_eq!(config.kms_local_master_key, None);
+        assert_eq!(config.kms_vault_address, None);
+        assert_eq!(config.kms_vault_token, None);
+        assert_eq!(config.kms_vault_mount_path, None);
+        assert_eq!(config.kms_default_key_id, None);
+        assert!(!config.kms_allow_insecure_dev_defaults);
+        assert!(!config.buffer_profile_disable);
+        assert_eq!(config.buffer_profile, "GeneralPurpose");
+    }
+
+    #[test]
+    #[serial]
+    fn test_custom_console_configuration() {
+        // Test custom console configuration
+        let args = vec![
+            "rustfs",
+            "/test/volume",
+            "--console-address",
+            ":8080",
+            "--address",
+            ":8000",
+            "--console-enable",
+            "false",
+        ];
+        let opt = Opt::parse_from(args);
+
+        assert!(opt.console_enable);
+        assert_eq!(opt.console_address, ":8080");
+        assert_eq!(opt.address, ":8000");
+    }
+
+    #[test]
+    #[serial]
+    fn test_console_and_endpoint_ports_different() {
+        // Ensure console and endpoint use different default ports
+        let args = vec!["rustfs", "/test/volume"];
+        let opt = Opt::parse_from(args);
+
+        // Parse port numbers from addresses
+        let endpoint_port: u16 = opt.address.trim_start_matches(':').parse().expect("Invalid endpoint port");
+        let console_port: u16 = opt
+            .console_address
+            .trim_start_matches(':')
+            .parse()
+            .expect("Invalid console port");
+
+        assert_ne!(endpoint_port, console_port, "Console and endpoint should use different ports");
+        assert_eq!(endpoint_port, 9000);
+        assert_eq!(console_port, 9001);
+    }
+
+    #[test]
+    #[serial]
+    fn test_external_prefixed_envs_are_accepted_by_parser() {
+        temp_env::with_vars(
+            [
+                ("MINIO_VOLUMES", Some("/compat/vol1")),
+                ("MINIO_ADDRESS", Some(":9100")),
+                ("RUSTFS_VOLUMES", None),
+                ("RUSTFS_ADDRESS", None),
+            ],
+            || {
+                let opt = Opt::parse_from(["rustfs"]);
+                assert_eq!(opt.volumes, vec!["/compat/vol1"]);
+                assert_eq!(opt.address, ":9100");
+                assert_eq!(std::env::var("RUSTFS_VOLUMES").as_deref(), Ok("/compat/vol1"));
+                assert_eq!(std::env::var("RUSTFS_ADDRESS").as_deref(), Ok(":9100"));
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_access_key_envs_are_used_for_bootstrap_credentials() {
+        temp_env::with_vars(
+            [
+                ("RUSTFS_VOLUMES", Some("/compat/vol1")),
+                ("RUSTFS_ACCESS_KEY", Some("canonical-access")),
+                ("RUSTFS_SECRET_KEY", Some("canonical-secret")),
+            ],
+            || {
+                let config = Config::from_opt(Opt::parse_from(["rustfs"])).expect("config should parse");
+                assert_eq!(config.access_key, "canonical-access");
+                assert_eq!(config.secret_key, "canonical-secret");
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_root_envs_fallback_for_bootstrap_credentials() {
+        temp_env::with_vars(
+            [
+                ("RUSTFS_VOLUMES", Some("/compat/vol1")),
+                ("RUSTFS_ROOT_USER", Some("root-user")),
+                ("RUSTFS_ROOT_PASSWORD", Some("root-password")),
+                ("RUSTFS_ACCESS_KEY", None),
+                ("RUSTFS_SECRET_KEY", None),
+            ],
+            || {
+                let config = Config::from_opt(Opt::parse_from(["rustfs"])).expect("config should parse");
+                assert_eq!(config.access_key, "root-user");
+                assert_eq!(config.secret_key, "root-password");
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_access_key_env_takes_precedence_over_root_aliases() {
+        temp_env::with_vars(
+            [
+                ("RUSTFS_VOLUMES", Some("/compat/vol1")),
+                ("RUSTFS_ACCESS_KEY", Some("canonical-access")),
+                ("RUSTFS_SECRET_KEY", Some("canonical-secret")),
+                ("RUSTFS_ROOT_USER", Some("root-user")),
+                ("RUSTFS_ROOT_PASSWORD", Some("root-password")),
+            ],
+            || {
+                let config = Config::from_opt(Opt::parse_from(["rustfs"])).expect("config should parse");
+                assert_eq!(config.access_key, "canonical-access");
+                assert_eq!(config.secret_key, "canonical-secret");
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_volumes_and_disk_layout_parsing() {
+        use crate::storage_api::config_test::DisksLayout;
+
+        // Test case 1: Single volume path
+        let args = vec!["rustfs", "/data/vol1"];
+        let opt = Opt::parse_from(args);
+        assert_eq!(opt.volumes.len(), 1);
+        assert_eq!(opt.volumes[0], "/data/vol1");
+
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Failed to parse single volume");
+        assert!(!layout.is_empty_layout());
+        assert!(layout.is_single_drive_layout());
+        assert_eq!(layout.get_single_drive_layout(), "/data/vol1");
+
+        // Test case 2: Multiple volume paths (space-separated via env)
+        let args = vec!["rustfs", "/data/vol1", "/data/vol2", "/data/vol3", "/data/vol4"];
+        let opt = Opt::parse_from(args);
+        assert_eq!(opt.volumes.len(), 4);
+
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Failed to parse multiple volumes");
+        assert!(!layout.is_empty_layout());
+        assert!(!layout.is_single_drive_layout());
+        assert_eq!(layout.get_set_count(0), 1);
+        assert_eq!(layout.get_drives_per_set(0), 4);
+
+        // Test case 3: Ellipses pattern - simple range
+        let args = vec!["rustfs", "/data/vol{1...4}"];
+        let opt = Opt::parse_from(args);
+        assert_eq!(opt.volumes.len(), 1);
+        assert_eq!(opt.volumes[0], "/data/vol{1...4}");
+
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Failed to parse ellipses pattern");
+        assert!(!layout.is_empty_layout());
+        assert_eq!(layout.get_set_count(0), 1);
+        assert_eq!(layout.get_drives_per_set(0), 4);
+
+        // Test case 4: Ellipses pattern - larger range that creates multiple sets
+        let args = vec!["rustfs", "/data/vol{1...16}"];
+        let opt = Opt::parse_from(args);
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Failed to parse ellipses with multiple sets");
+        assert!(!layout.is_empty_layout());
+        assert_eq!(layout.get_drives_per_set(0), 16);
+
+        // Test case 5: Distributed setup pattern
+        let args = vec!["rustfs", "http://server{1...4}/data/vol{1...4}"];
+        let opt = Opt::parse_from(args);
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Failed to parse distributed pattern");
+        assert!(!layout.is_empty_layout());
+        assert_eq!(layout.get_drives_per_set(0), 16);
+
+        // Test case 6: Multiple pools (legacy: false)
+        let args = vec!["rustfs", "http://server1/data{1...4}", "http://server2/data{1...4}"];
+        let opt = Opt::parse_from(args);
+        assert_eq!(opt.volumes.len(), 2);
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Failed to parse multiple pools");
+        assert!(!layout.legacy);
+        assert_eq!(layout.pools.len(), 2);
+
+        // Test case 7: Minimum valid drives for erasure coding (2 drives minimum)
+        let args = vec!["rustfs", "/data/vol1", "/data/vol2"];
+        let opt = Opt::parse_from(args);
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Should succeed with 2 drives");
+        assert_eq!(layout.get_drives_per_set(0), 2);
+
+        // Test case 8: Invalid - single drive not enough for erasure coding
+        let args = vec!["rustfs", "/data/vol1"];
+        let opt = Opt::parse_from(args);
+        // Single drive is special case and should succeed for single drive layout
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Single drive should work");
+        assert!(layout.is_single_drive_layout());
+
+        // Test case 9: Command line with both address and volumes
+        let args = vec![
+            "rustfs",
+            "/data/vol{1...8}",
+            "--address",
+            ":9000",
+            "--console-address",
+            ":9001",
+        ];
+        let opt = Opt::parse_from(args);
+        assert_eq!(opt.volumes.len(), 1);
+        assert_eq!(opt.address, ":9000");
+        assert_eq!(opt.console_address, ":9001");
+
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Failed to parse with address args");
+        assert!(!layout.is_empty_layout());
+        assert_eq!(layout.get_drives_per_set(0), 8);
+
+        // Test case 10: Multiple ellipses in single argument - nested pattern
+        let args = vec!["rustfs", "/data{0...3}/vol{0...4}"];
+        let opt = Opt::parse_from(args);
+        assert_eq!(opt.volumes.len(), 1);
+        assert_eq!(opt.volumes[0], "/data{0...3}/vol{0...4}");
+
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Failed to parse nested ellipses pattern");
+        assert!(!layout.is_empty_layout());
+        // 4 data dirs * 5 vols = 20 drives
+        let total_drives = layout.get_set_count(0) * layout.get_drives_per_set(0);
+        assert_eq!(total_drives, 20, "Expected 20 drives from /data{{0...3}}/vol{{0...4}}");
+
+        // Test case 11: Multiple pools with nested ellipses patterns
+        let args = vec!["rustfs", "/data{0...3}/vol{0...4}", "/data{4...7}/vol{0...4}"];
+        let opt = Opt::parse_from(args);
+        assert_eq!(opt.volumes.len(), 2);
+
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Failed to parse multiple pools with nested patterns");
+        assert!(!layout.legacy);
+        assert_eq!(layout.pools.len(), 2);
+
+        // Each pool should have 20 drives (4 * 5)
+        let pool0_drives = layout.get_set_count(0) * layout.get_drives_per_set(0);
+        let pool1_drives = layout.get_set_count(1) * layout.get_drives_per_set(1);
+        assert_eq!(pool0_drives, 20, "Pool 0 should have 20 drives");
+        assert_eq!(pool1_drives, 20, "Pool 1 should have 20 drives");
+
+        // Test case 11: Complex distributed pattern with multiple ellipses
+        let args = vec!["rustfs", "http://server{1...2}.local/disk{1...8}"];
+        let opt = Opt::parse_from(args);
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Failed to parse distributed nested pattern");
+        assert!(!layout.is_empty_layout());
+        // 2 servers * 8 disks = 16 drives
+        let total_drives = layout.get_set_count(0) * layout.get_drives_per_set(0);
+        assert_eq!(total_drives, 16, "Expected 16 drives from server{{1...2}}/disk{{1...8}}");
+
+        // Test case 12: Zero-padded patterns
+        let args = vec!["rustfs", "/data/vol{01...16}"];
+        let opt = Opt::parse_from(args);
+        let layout = DisksLayout::from_volumes(&opt.volumes).expect("Failed to parse zero-padded pattern");
+        assert!(!layout.is_empty_layout());
+        assert_eq!(layout.get_drives_per_set(0), 16);
+    }
+
+    /// Test environment variable parsing for volumes.
+    /// Uses #[serial] to avoid concurrent env var modifications.
+    #[test]
+    #[serial]
+    fn test_rustfs_volumes_env_variable() {
+        // Test case 1: Single volume via environment variable
+        with_env_var("RUSTFS_VOLUMES", "/data/vol1", || {
+            let args = vec!["rustfs"];
+            let opt = Opt::parse_from(args);
+            assert_eq!(opt.volumes.len(), 1);
+            assert_eq!(opt.volumes[0], "/data/vol1");
+
+            let layout = DisksLayout::from_volumes(&opt.volumes).expect("Failed to parse single volume from env");
+            assert!(layout.is_single_drive_layout());
+        });
+
+        // Test case 2: Multiple volumes via environment variable (space-separated)
+        with_env_var("RUSTFS_VOLUMES", "/data/vol1 /data/vol2 /data/vol3 /data/vol4", || {
+            let args = vec!["rustfs"];
+            let opt = Opt::parse_from(args);
+            assert_eq!(opt.volumes.len(), 4);
+            assert_eq!(opt.volumes[0], "/data/vol1");
+            assert_eq!(opt.volumes[1], "/data/vol2");
+            assert_eq!(opt.volumes[2], "/data/vol3");
+            assert_eq!(opt.volumes[3], "/data/vol4");
+
+            verify_layout(&opt.volumes, |layout| {
+                assert!(!layout.is_single_drive_layout());
+                assert_eq!(layout.get_drives_per_set(0), 4);
+            });
+        });
+
+        // Test case 3: Ellipses pattern via environment variable
+        with_env_var("RUSTFS_VOLUMES", "/data/vol{1...4}", || {
+            let args = vec!["rustfs"];
+            let opt = Opt::parse_from(args);
+            assert_eq!(opt.volumes.len(), 1);
+            assert_eq!(opt.volumes[0], "/data/vol{1...4}");
+
+            verify_layout(&opt.volumes, |layout| {
+                assert_eq!(layout.get_drives_per_set(0), 4);
+            });
+        });
+
+        // Test case 4: Larger range with ellipses
+        with_env_var("RUSTFS_VOLUMES", "/data/vol{1...16}", || {
+            let args = vec!["rustfs"];
+            let opt = Opt::parse_from(args);
+            verify_layout(&opt.volumes, |layout| {
+                assert_eq!(layout.get_drives_per_set(0), 16);
+            });
+        });
+
+        // Test case 5: Distributed setup pattern
+        with_env_var("RUSTFS_VOLUMES", "http://server{1...4}/data/vol{1...4}", || {
+            let args = vec!["rustfs"];
+            let opt = Opt::parse_from(args);
+            verify_layout(&opt.volumes, |layout| {
+                assert_eq!(layout.get_drives_per_set(0), 16);
+            });
+        });
+
+        // Test case 6: Multiple pools via environment variable (space-separated)
+        with_env_var("RUSTFS_VOLUMES", "http://server1/data{1...4} http://server2/data{1...4}", || {
+            let args = vec!["rustfs"];
+            let opt = Opt::parse_from(args);
+            assert_eq!(opt.volumes.len(), 2);
+            verify_layout(&opt.volumes, |layout| {
+                assert!(!layout.legacy);
+                assert_eq!(layout.pools.len(), 2);
+            });
+        });
+
+        // Test case 7: Nested ellipses pattern
+        with_env_var("RUSTFS_VOLUMES", "/data{0...3}/vol{0...4}", || {
+            let args = vec!["rustfs"];
+            let opt = Opt::parse_from(args);
+            assert_eq!(opt.volumes.len(), 1);
+            assert_eq!(opt.volumes[0], "/data{0...3}/vol{0...4}");
+
+            verify_layout(&opt.volumes, |layout| {
+                let total_drives = layout.get_set_count(0) * layout.get_drives_per_set(0);
+                assert_eq!(total_drives, 20, "Expected 20 drives from /data{{0...3}}/vol{{0...4}}");
+            });
+        });
+
+        // Test case 8: Multiple pools with nested ellipses
+        with_env_var("RUSTFS_VOLUMES", "/data{0...3}/vol{0...4} /data{4...7}/vol{0...4}", || {
+            let args = vec!["rustfs"];
+            let opt = Opt::parse_from(args);
+            assert_eq!(opt.volumes.len(), 2);
+
+            verify_layout(&opt.volumes, |layout| {
+                assert_eq!(layout.pools.len(), 2);
+                let pool0_drives = layout.get_set_count(0) * layout.get_drives_per_set(0);
+                let pool1_drives = layout.get_set_count(1) * layout.get_drives_per_set(1);
+                assert_eq!(pool0_drives, 20, "Pool 0 should have 20 drives");
+                assert_eq!(pool1_drives, 20, "Pool 1 should have 20 drives");
+            });
+        });
+
+        // Test case 9: Complex distributed pattern with multiple ellipses
+        with_env_var("RUSTFS_VOLUMES", "http://server{1...2}.local/disk{1...8}", || {
+            let args = vec!["rustfs"];
+            let opt = Opt::parse_from(args);
+            verify_layout(&opt.volumes, |layout| {
+                let total_drives = layout.get_set_count(0) * layout.get_drives_per_set(0);
+                assert_eq!(total_drives, 16, "Expected 16 drives from server{{1...2}}/disk{{1...8}}");
+            });
+        });
+
+        // Test case 10: Zero-padded patterns
+        with_env_var("RUSTFS_VOLUMES", "/data/vol{01...16}", || {
+            let args = vec!["rustfs"];
+            let opt = Opt::parse_from(args);
+            verify_layout(&opt.volumes, |layout| {
+                assert_eq!(layout.get_drives_per_set(0), 16);
+            });
+        });
+
+        // Test case 11: Environment variable with additional CLI options
+        with_env_var("RUSTFS_VOLUMES", "/data/vol{1...8}", || {
+            let args = vec!["rustfs", "--address", ":9000", "--console-address", ":9001"];
+            let opt = Opt::parse_from(args);
+            assert_eq!(opt.volumes.len(), 1);
+            assert_eq!(opt.address, ":9000");
+            assert_eq!(opt.console_address, ":9001");
+
+            verify_layout(&opt.volumes, |layout| {
+                assert_eq!(layout.get_drives_per_set(0), 8);
+            });
+        });
+
+        // Test case 12: Command line argument overrides environment variable
+        with_env_var("RUSTFS_VOLUMES", "/data/vol1", || {
+            let args = vec!["rustfs", "/override/vol1"];
+            let opt = Opt::parse_from(args);
+            assert_eq!(opt.volumes.len(), 1);
+            // CLI argument should override environment variable
+            assert_eq!(opt.volumes[0], "/override/vol1");
+        });
+    }
+
+    /// Test boundary cases for path parsing.
+    /// NOTE: Current implementation uses space as delimiter,
+    /// which means paths with spaces are NOT supported.
+    #[test]
+    #[serial]
+    fn test_volumes_boundary_cases() {
+        // Test case 1: Paths with spaces are not properly supported (known limitation)
+        // This test documents the current behavior - space-separated paths will be split
+        with_env_var("RUSTFS_VOLUMES", "/data/my disk/vol1", || {
+            let args = vec!["rustfs"];
+            let opt = Opt::try_parse_from(args).expect("Failed to parse with spaces in path");
+            // Current behavior: space causes split into 2 volumes
+            assert_eq!(opt.volumes.len(), 2, "Paths with spaces are split (known limitation)");
+            assert_eq!(opt.volumes[0], "/data/my");
+            assert_eq!(opt.volumes[1], "disk/vol1");
+        });
+
+        // Test case 2: Empty environment variable causes parsing failure
+        // because volumes is required and NonEmptyStringValueParser filters empty strings
+        with_env_var("RUSTFS_VOLUMES", "", || {
+            let args = vec!["rustfs"];
+            let result = Opt::try_parse_from(args);
+            // Should fail because no volumes provided (empty string filtered out)
+            assert!(result.is_err(), "Empty RUSTFS_VOLUMES should fail parsing (required field)");
+        });
+
+        // Test case 2b: Multiple consecutive spaces create empty strings during splitting
+        // This causes parsing to fail because volumes is required and empty strings are invalid
+        with_env_var("RUSTFS_VOLUMES", "/data/vol1  /data/vol2", || {
+            let args = vec!["rustfs"];
+            let result = Opt::try_parse_from(args);
+            // Should fail because double space creates an empty element
+            assert!(result.is_err(), "Multiple consecutive spaces should cause parsing failure");
+        });
+
+        // Test case 3: Very long path with ellipses (stress test)
+        // Note: Large drive counts may be automatically split into multiple sets
+        let long_path = format!("/very/long/path/structure/with/many/directories/vol{{1...{}}}", 100);
+        with_env_var("RUSTFS_VOLUMES", &long_path, || {
+            let args = vec!["rustfs"];
+            let opt = Opt::try_parse_from(args).expect("Failed to parse with long ellipses path");
+            verify_layout(&opt.volumes, |layout| {
+                // Total drives should be 100, but may be distributed across sets
+                let total_drives = layout.get_set_count(0) * layout.get_drives_per_set(0);
+                assert_eq!(total_drives, 100, "Total drives should be 100");
+            });
+        });
+    }
+
+    /// Test error handling for invalid ellipses patterns.
+    #[test]
+    #[serial]
+    fn test_invalid_ellipses_patterns() {
+        // Test case 1: Invalid ellipses format (letters instead of numbers)
+        let args = vec!["rustfs", "/data/vol{a...z}"];
+        let opt = Opt::parse_from(args);
+        let result = DisksLayout::from_volumes(&opt.volumes);
+        assert!(result.is_err(), "Invalid ellipses pattern with letters should fail");
+
+        // Test case 2: Reversed range (larger to smaller)
+        let args = vec!["rustfs", "/data/vol{10...1}"];
+        let opt = Opt::parse_from(args);
+        let result = DisksLayout::from_volumes(&opt.volumes);
+        // Depending on implementation, this may succeed with 0 drives or fail
+        // Document actual behavior
+        if let Ok(layout) = result {
+            assert!(
+                layout.is_empty_layout() || layout.get_drives_per_set(0) == 0,
+                "Reversed range should result in empty layout"
+            );
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_server_domains_parsing() {
+        // Test case 1: server domains without ports
+        let args = vec![
+            "rustfs",
+            "/data/vol1",
+            "--server-domains",
+            "example.com,api.example.com,cdn.example.com",
+        ];
+        let opt = Opt::parse_from(args);
+
+        assert_eq!(opt.server_domains.len(), 3);
+        assert_eq!(opt.server_domains[0], "example.com");
+        assert_eq!(opt.server_domains[1], "api.example.com");
+        assert_eq!(opt.server_domains[2], "cdn.example.com");
+
+        // Test case 2: server domains with ports
+        let args = vec![
+            "rustfs",
+            "/data/vol1",
+            "--server-domains",
+            "example.com:9000,api.example.com:8080,cdn.example.com:443",
+        ];
+        let opt = Opt::parse_from(args);
+
+        assert_eq!(opt.server_domains.len(), 3);
+        assert_eq!(opt.server_domains[0], "example.com:9000");
+        assert_eq!(opt.server_domains[1], "api.example.com:8080");
+        assert_eq!(opt.server_domains[2], "cdn.example.com:443");
+
+        // Test case 3: mixed server domains (with and without ports)
+        let args = vec![
+            "rustfs",
+            "/data/vol1",
+            "--server-domains",
+            "example.com,api.example.com:9000,cdn.example.com,storage.example.com:8443",
+        ];
+        let opt = Opt::parse_from(args);
+
+        assert_eq!(opt.server_domains.len(), 4);
+        assert_eq!(opt.server_domains[0], "example.com");
+        assert_eq!(opt.server_domains[1], "api.example.com:9000");
+        assert_eq!(opt.server_domains[2], "cdn.example.com");
+        assert_eq!(opt.server_domains[3], "storage.example.com:8443");
+
+        // Test case 4: single domain with port
+        let args = vec!["rustfs", "/data/vol1", "--server-domains", "example.com:9000"];
+        let opt = Opt::parse_from(args);
+
+        assert_eq!(opt.server_domains.len(), 1);
+        assert_eq!(opt.server_domains[0], "example.com:9000");
+
+        // Test case 5: localhost with different ports
+        let args = vec![
+            "rustfs",
+            "/data/vol1",
+            "--server-domains",
+            "localhost:9000,127.0.0.1:9000,localhost",
+        ];
+        let opt = Opt::parse_from(args);
+
+        assert_eq!(opt.server_domains.len(), 3);
+        assert_eq!(opt.server_domains[0], "localhost:9000");
+        assert_eq!(opt.server_domains[1], "127.0.0.1:9000");
+        assert_eq!(opt.server_domains[2], "localhost");
+    }
+
+    #[test]
+    #[serial]
+    fn test_access_key_arguments_mutually_exclusive_cli() {
+        // Test that CLI args configuration fails on conflict
+        let args = vec![
+            "rustfs",
+            "/test/volume",
+            "--access-key",
+            "foobar",
+            "--access-key-file",
+            "/foo/bar",
+        ];
+        let opt_res = Opt::try_parse_from(args);
+
+        // can't specify both access-key and access-key-file at once
+        assert!(opt_res.is_err());
+        let err = opt_res.err().unwrap();
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    #[serial]
+    fn test_access_key_arguments_mutually_exclusive_env_var() {
+        // Test that env var args configuration fails on conflict
+        with_env_var("RUSTFS_VOLUMES", "/data/my disk/vol1", || {
+            with_env_var("RUSTFS_ACCESS_KEY", "foo", || {
+                with_env_var("RUSTFS_ACCESS_KEY_FILE", "/foo/bar", || {
+                    let args = vec!["rustfs"];
+                    let opt_res = Opt::try_parse_from(args);
+
+                    // can't specify both RUSTFS_ACCESS_KEY and RUSTFS_ACCESS_KEY_FILE at once
+                    assert!(opt_res.is_err());
+                    let err = opt_res.err().unwrap();
+                    assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+                });
+            });
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_secret_key_arguments_mutually_exclusive_cli() {
+        // Test that CLI args configuration fails on conflict
+        let args = vec![
+            "rustfs",
+            "/test/volume",
+            "--secret-key",
+            "foobar",
+            "--secret-key-file",
+            "/foo/bar",
+        ];
+        let opt_res = Opt::try_parse_from(args);
+
+        // can't specify both secret-key and secret-key-file at once
+        assert!(opt_res.is_err());
+        let err = opt_res.err().unwrap();
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    #[serial]
+    fn test_secret_key_arguments_mutually_exclusive_env_var() {
+        // Test that env var args configuration fails on conflict
+        with_env_var("RUSTFS_VOLUMES", "/data/my disk/vol1", || {
+            with_env_var("RUSTFS_SECRET_KEY", "foo", || {
+                with_env_var("RUSTFS_SECRET_KEY_FILE", "/foo/bar", || {
+                    let args = vec!["rustfs"];
+                    let opt_res = Opt::try_parse_from(args);
+
+                    // can't specify both RUSTFS_SECRET_KEY and RUSTFS_SECRET_KEY_FILE at once
+                    assert!(opt_res.is_err());
+                    let err = opt_res.err().unwrap();
+                    assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+                });
+            });
+        });
+    }
+}

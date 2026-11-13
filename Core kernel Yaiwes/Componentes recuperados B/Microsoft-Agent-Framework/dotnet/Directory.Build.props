@@ -1,0 +1,70 @@
+﻿<Project>
+  <PropertyGroup>
+    <!-- Default properties inherited by all projects. Projects can override. -->
+    <RunAnalyzersDuringBuild>true</RunAnalyzersDuringBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>10.0-all</AnalysisLevel>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <NoWarn>$(NoWarn);NU5128;CS8002</NoWarn>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <TargetFrameworksCore>net10.0;net9.0;net8.0</TargetFrameworksCore>
+    <TargetFrameworks>$(TargetFrameworksCore);netstandard2.0;net472</TargetFrameworks>
+    <IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net7.0'))">true</IsAotCompatible>
+    <Configurations>Debug;Release;Publish</Configurations>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <IsReleaseCandidate>false</IsReleaseCandidate>
+    <IsReleased>false</IsReleased>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      Temporary workarounds for Aspire 13.5.2. Remove both once the AppHost SDK/packages no longer need them.
+
+      1. Aspire.AppHost.Sdk 13.5.2 resolves the Dashboard/DCP runtime identifier with the in-proc
+         Microsoft.NET.Build.Tasks.PickBestRid task, which is not registered while a cross-targeting
+         (TargetFrameworks) project is being evaluated, so AppHost restore fails with MSB4036. Setting this to
+         false keeps the SDK on its out-of-proc Aspire.RuntimeIdentifier.Tool fallback, which resolves the same
+         runtime identifier at the cost of one extra process launch.
+         Mirrors the workaround in https://github.com/CommunityToolkit/Aspire.
+
+      2. Aspire.Hosting.AppHost 13.5.2 raises ASPIRE010 whenever an AppHost builds without the Aspire CLI
+         bundle (the SDK default). The bundle is not available on CI agents, and the diagnostic itself offers
+         suppression as the supported way to keep building without it, so it is treated as informational here.
+    -->
+    <_AspireUseSdkPickBestRid>false</_AspireUseSdkPickBestRid>
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+  </PropertyGroup>
+  
+  <PropertyGroup>
+    <!-- Disable NuGet packaging by default. Projects can override. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Publish'">
+    <Optimize>True</Optimize>
+  </PropertyGroup>
+
+  <!-- .NET Framework/.NET Standard don't properly support nullable reference types, suppress any warnings for those TFMs -->
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' OR '$(TargetFramework)' == 'net472' ">
+    <NoWarn>$(NoWarn);nullable</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RepoRoot>$([System.IO.Path]::GetDirectoryName($([MSBuild]::GetPathOfFileAbove('CODE_OF_CONDUCT.md', '$(MSBuildThisFileDirectory)'))))</RepoRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Add CLSCompliant=false to all projects by default. Projects can override. -->
+    <AssemblyAttribute Include="System.CLSCompliantAttribute">
+      <_Parameter1>false</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!-- Common properties -->
+  <Import Project="$(MSBuildThisFileDirectory)\eng\MSBuild\LegacySupport.props" />
+  <Import Project="$(MSBuildThisFileDirectory)\eng\MSBuild\Shared.props" />
+</Project>

@@ -1,0 +1,2 @@
+# ignore jupyter notebook for line count and diff
+*.ipynb linguist-documentation

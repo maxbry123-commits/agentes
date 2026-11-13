@@ -1,0 +1,905 @@
+#!/usr/bin/make -f
+
+# Copyright 2019 The gVisor Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+default: runsc
+.PHONY: default
+
+# Header for debugging (used by other macros).
+header = echo --- $(1) >&2
+
+# Make hacks.
+EMPTY :=
+SPACE := $(EMPTY) $(EMPTY)
+SHELL = /bin/bash
+REPO_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+COMMA := ,
+
+## usage: make <target>
+##         or
+##        make <build|test|copy|run|sudo> STARTUP_OPTIONS="..." OPTIONS="..." TARGETS="..." ARGS="..."
+##
+## Basic targets.
+##
+##   This Makefile wraps basic build and test targets for ease-of-use. Bazel
+##   is run inside a canonical Docker container in order to simplify up-front
+##   requirements.
+##
+##   There are common arguments that may be passed to targets. These are:
+##     OPTIONS - Build or test options.
+##     TARGETS - The bazel targets.
+##     ARGS    - Arguments for run or sudo.
+##
+##   Additionally, the copy target expects a DESTINATION to be provided.
+##
+##   For example, to build runsc using this Makefile, you can run:
+##     make build OPTIONS="" TARGETS="//runsc"'
+##
+help: ## Shows all targets and help from the Makefile (this message).
+	@grep --no-filename -E '^([a-z.A-Z_%-]+:.*?|)##' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = "(:.*?|)## ?"}; { \
+			if (length($$1) > 0) { \
+				printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2; \
+			} else { \
+				printf "%s\n", $$2; \
+			} \
+		}'
+
+build: ## Builds the given $(TARGETS) with the given $(OPTIONS). E.g. make build TARGETS=runsc
+	@$(call build,$(OPTIONS) -- $(TARGETS))
+.PHONY: build
+
+test: ## Tests the given $(TARGETS) with the given $(OPTIONS). E.g. make test TARGETS=pkg/buffer:buffer_test
+	@$(call test,$(OPTIONS) -- $(TARGETS))
+.PHONY: test
+
+copy: ## Copies the given $(TARGETS), built with the given $(OPTIONS), to the given $(DESTINATION). E.g. make copy TARGETS=runsc DESTINATION=/tmp
+	@$(call copy,$(OPTIONS) -- $(TARGETS),$(DESTINATION))
+.PHONY: copy
+
+run: ## Runs the given $(TARGETS), built with $(OPTIONS), using $(ARGS). E.g. make run TARGETS=runsc ARGS=-version
+	@$(call run,$(TARGETS),$(ARGS))
+.PHONY: run
+
+query: ## Runs a bazel query. E.g. make query TARGETS=//test/...
+	@$(call query,$(OPTIONS) $(TARGETS))
+.PHONY: query
+
+sudo: ## Runs the given $(TARGETS) as per run, but using "sudo -E". E.g. make sudo TARGETS=test/root:root_test ARGS=-test.v
+	@$(call sudo,$(TARGETS),$(ARGS))
+.PHONY: sudo
+
+# Load image helpers.
+include tools/images.mk
+
+# Load all bazel wrappers.
+#
+# This file should define the basic "build", "test", "run" and "sudo" rules, in
+# addition to the $(BRANCH_NAME) and $(BUILD_ROOTS) variables.
+ifneq (,$(wildcard tools/google.mk))
+include tools/google.mk
+else
+include tools/bazel.mk
+endif
+
+##
+## Development helpers and tooling.
+##
+##   These targets facilitate local development by automatically
+##   installing and configuring a runtime. Several variables may
+##   be used here to tweak the installation:
+##     RUNTIME         - The name of the installed runtime (default: $BRANCH_NAME).
+##     RUNTIME_DIR     - Where the runtime will be installed (default: temporary directory with the $RUNTIME).
+##     RUNTIME_BIN     - The runtime binary (default: $RUNTIME_DIR/runsc).
+##     RUNTIME_LOG_DIR - The logs directory (default: $RUNTIME_DIR/logs).
+##     RUNTIME_LOGS    - The log pattern (default: $RUNTIME_LOG_DIR/runsc.log.%TEST%.%TIMESTAMP%.%COMMAND%).
+##     RUNTIME_ARGS    - Arguments passed to the runtime when installed.
+##     STAGED_BINARIES - A tarball of staged binaries. If this is set, then binaries
+##                       will be installed from this staged bundle instead of built.
+##     DOCKER_RELOAD_COMMAND - The command to run to reload Docker. (default: sudo systemctl reload docker).
+
+ifeq (,$(BRANCH_NAME))
+RUNTIME     ?= runsc
+else
+RUNTIME     ?= $(BRANCH_NAME)
+endif
+RUNTIME_DIR           ?= $(shell dirname $(shell mktemp -u))/$(RUNTIME)
+RUNSC_TARGET          ?= //runsc
+RUNTIME_BIN           ?= $(RUNTIME_DIR)/runsc
+EXTRA_SIDECAR_TARGETS ?= # Extra binaries to install under gvisor-bin/.
+RUNTIME_LOG_DIR       ?= $(RUNTIME_DIR)/logs
+RUNTIME_LOGS          ?= $(RUNTIME_LOG_DIR)/runsc.log.%TEST%.%TIMESTAMP%.%COMMAND%
+RUNTIME_ARGS          ?=
+DOCKER_DAEMON_CONFIG_PATH ?= /etc/docker/daemon.json
+DOCKER_RELOAD_COMMAND ?= sudo systemctl reload docker
+
+SYSFS_GROUP_PATH := /sys/fs/cgroup
+ifeq ($(shell stat -f -c "%T" "$(SYSFS_GROUP_PATH)" 2>/dev/null),cgroup2fs)
+CGROUPV2 := true
+else
+CGROUPV2 := false
+endif
+
+$(RUNTIME_BIN): # See below.
+	@mkdir -p "$(RUNTIME_DIR)"
+ifeq (,$(STAGED_BINARIES))
+	@$(call copy,//:release,$(RUNTIME_DIR))
+	@$(if $(filter-out //runsc,$(RUNSC_TARGET)),$(call copy,$(RUNSC_TARGET),$(RUNTIME_BIN)))
+	@$(if $(EXTRA_SIDECAR_TARGETS),$(call copy,$(EXTRA_SIDECAR_TARGETS),$(RUNTIME_DIR)/gvisor-bin))
+else
+	@gcloud storage cat "${STAGED_BINARIES}" | \
+	  tar -C "$(RUNTIME_DIR)" -zxvf - && \
+	  chmod -R a+rx "$(RUNTIME_DIR)"
+endif
+.PHONY: $(RUNTIME_BIN) # Real file, but force rebuild.
+
+# Configure helpers for below.
+configure_noreload = \
+  $(call header,CONFIGURE $(1) → $(RUNTIME_BIN) $(RUNTIME_ARGS) $(2)); \
+  sudo $(RUNTIME_BIN) install --config_file="$(DOCKER_DAEMON_CONFIG_PATH)" --experimental=true --runtime="$(1)" -- $(RUNTIME_ARGS) --debug-log "$(RUNTIME_LOGS)" --allow-suid $(2) && \
+  sudo rm -rf "$(RUNTIME_LOG_DIR)" && mkdir -p "$(RUNTIME_LOG_DIR)"
+
+reload_docker = \
+  $(call header,DOCKER RELOAD); \
+  ( timeout --kill-after=20s 15s bash -xc "$(DOCKER_RELOAD_COMMAND)" || timeout --kill-after=20s 15s bash -xc "$(DOCKER_RELOAD_COMMAND)" || timeout --kill-after=20s 15s bash -xc "$(DOCKER_RELOAD_COMMAND)" ) && \
+  sleep 3 && \
+  ( $(MAKE) ensure-bazel-server || echo 'Failed to reload bazel-server container' >&2 ) && \
+  if test -f /etc/docker/daemon.json; then \
+    sudo chmod 0755 /etc/docker && \
+    sudo chmod 0644 /etc/docker/daemon.json; \
+  fi
+
+wait_for_runtime = ( \
+  set -x; \
+  docker info --format '{{range $$k,$$v:=.Runtimes}}{{println $$k}}{{end}}' | grep -qF $(1) || \
+  for i in 1 2 3 4 5; do \
+    sleep 1; \
+    docker info --format '{{range $$k,$$v:=.Runtimes}}{{println $$k}}{{end}}' | grep -qF $(1) && break; \
+  done \
+)
+
+
+configure = $(call configure_noreload,$(1),$(2)) && $(reload_docker) && $(call wait_for_runtime,$(1))
+
+# Helpers for above. Requires $(RUNTIME_BIN) dependency.
+install_runtime = $(call configure,$(1),$(2) --TESTONLY-test-name-env=RUNSC_TEST_NAME)
+install_runtime_noreload = $(call configure_noreload,$(1),$(2) --TESTONLY-test-name-env=RUNSC_TEST_NAME)
+# Don't use cached results, otherwise multiple runs using different runtimes
+# may be skipped, if all other inputs are the same.
+test_runtime = $(call test,--test_env=RUNTIME=$(1) --nocache_test_results $(PARTITIONS) $(2))
+test_runtime_cached = $(call test,--test_env=RUNTIME=$(1) $(PARTITIONS) $(2))
+
+refresh: $(RUNTIME_BIN) ## Updates the runtime binary.
+.PHONY: refresh
+
+dev: $(RUNTIME_BIN) ## Installs a set of local runtimes. Requires sudo.
+	@$(call configure_noreload,$(RUNTIME),--net-raw)
+	@$(call configure_noreload,$(RUNTIME)-d,--net-raw --debug --strace --log-packets)
+	@$(call configure_noreload,$(RUNTIME)-p,--net-raw --profile)
+	@$(call configure_noreload,$(RUNTIME)-cgroup-d,--net-raw --debug --strace --log-packets --cgroupfs)
+	@$(call configure_noreload,$(RUNTIME)-systemd-d,--net-raw --debug --strace --log-packets --systemd-cgroup)
+	@$(call configure_noreload,$(RUNTIME)-gpu,--nvproxy)
+	@# Docker In Gvisor(ding) version.
+	@$(call configure_noreload,$(RUNTIME)-ding,--TESTONLY-nftables --allow-packet-socket-write=true --net-raw)
+	@$(call reload_docker)
+.PHONY: dev
+
+governance-regen: ## Regenerates the files derived from governance/maintainers.yaml and governance/areas.yaml.
+	@$(call run,//governance/tools/maintainers:maintainers_gen,-input governance/maintainers.yaml -areas governance/areas.yaml -format reviewer.json -output .github/reviewer.json)
+	@$(call run,//governance/tools/maintainers:maintainers_gen,-input governance/maintainers.yaml -areas governance/areas.yaml -format MAINTAINERS.md -output MAINTAINERS.md)
+	@$(call run,//governance/tools/maintainers:maintainers_gen,-input governance/maintainers.yaml -areas governance/areas.yaml -format CODEOWNERS -output CODEOWNERS)
+.PHONY: governance-regen
+
+governance-check: governance-regen ## Checks that the files derived from governance/*.yaml are in sync. Can't be a bazel test because it requires visibility across the whole codebase to check for subdirectories' existence.
+	@git diff --exit-code -- CODEOWNERS MAINTAINERS.md .github/reviewer.json || \
+		(echo "Generated governance files are out of sync. Please run \`make governance-regen\`." >&2; exit 1)
+.PHONY: governance-check
+
+##
+## Canonical build and test targets.
+##
+##   These targets are used by continuous integration and provide
+##   convenient entrypoints for testing changes. If you're adding a
+##   new subsystem or workflow, consider adding a new target here.
+##
+##   Some targets support a PARTITION (1-indexed) and TOTAL_PARTITIONS
+##   environment variables for high-level test sharding. Unlike most
+##   other variables, these are sourced from the environment.
+##
+PARTITION        ?= 1
+TOTAL_PARTITIONS ?= 1
+PARTITIONS       := --test_env=PARTITION=$(PARTITION) --test_env=TOTAL_PARTITIONS=$(TOTAL_PARTITIONS)
+
+runsc: ## Builds the runsc binary.
+	@$(call build,-c opt //runsc)
+.PHONY: runsc
+
+runsc-plugin-stack:
+	@$(call build,-c opt $(PLUGIN_STACK_FLAGS) //runsc:runsc-plugin-stack)
+.PHONY: runsc-plugin-stack
+
+debian: ## Builds the debian packages.
+	@$(call build,-c opt //debian:debian)
+.PHONY: debian
+
+smoke-tests: $(RUNTIME_BIN) ## Runs a simple smoke test after building runsc.
+	@$(RUNTIME_BIN) --alsologtostderr --network none --debug --TESTONLY-unsafe-nonroot=true --rootless do true
+.PHONY: smoke-tests
+
+smoke-race-tests: RUNSC_TARGET = $(RACE_FLAGS) //runsc:runsc-race
+smoke-race-tests: $(RUNTIME_BIN) ## Runs a smoke test after build building runsc in race configuration.
+	@$(RUNTIME_BIN) --alsologtostderr --network none --debug --TESTONLY-unsafe-nonroot=true --rootless do true
+.PHONY: smoke-race-tests
+
+nogo-tests:
+	@$(call test,--test_tag_filters=nogo //:all pkg/... tools/...)
+.PHONY: nogo-tests
+
+# For unit tests, we take everything in the root, pkg/... and tools/..., and
+# pull in all directories in runsc except runsc/container.
+#
+# FIXME(gvisor.dev/issue/10045): Need to fix broken tests.
+unit-tests: ## Local package unit tests in pkg/..., tools/.., etc.
+	@$(call test,--test_tag_filters=-nogo$(COMMA)-requires-kvm --build_tag_filters=-network_plugins --test_env=CGROUPV2=$(CGROUPV2) -- //:all pkg/... tools/... runsc/... vdso/... sandboxexec/... test/trace/... -//pkg/metric:metric_test -//pkg/coretag:coretag_test -//tools/tracereplay:tracereplay_test -//test/trace:trace_test)
+.PHONY: unit-tests
+
+# See unit-tests: this includes runsc/container.
+container-tests: ## Run all tests in runsc/container/...
+	@$(call test,--test_tag_filters=-nogo --test_env=CGROUPV2=$(CGROUPV2) runsc/container/...)
+.PHONY: container-tests
+
+tests: ## Runs all unit tests and syscall tests.
+tests: unit-tests nogo-tests container-tests syscall-tests
+.PHONY: tests
+
+integration-tests: ## Run all standard integration tests.
+integration-tests: docker-tests overlay-tests hostnet-tests swgso-tests
+integration-tests: do-tests kvm-tests containerd-tests-min
+integration-tests: sandbox-posture-tests
+.PHONY: integration-tests
+
+integration-test-images: load-image-test load-basic load-systemd-integ load-systemd-services load-ubi10-init
+.PHONY: integration-test-images
+
+network-tests: ## Run all networking integration tests.
+network-tests: iptables-tests packetdrill-tests packetimpact-tests
+.PHONY: network-tests
+
+# `make syscall-tests` runs all system call tests.
+# To run a single syscall test:
+#   make syscall-tests TARGETS=//test/syscalls:signalfd_test_runsc_systrap_shared
+# To run a single syscall test without caching:
+#   make syscall-tests TARGETS=//test/syscalls:signalfd_test_runsc_systrap_shared OPTIONS=--nocache_test_results
+# To run multiple specific syscall tests:
+#   make syscall-tests TARGETS="//test/syscalls:signalfd_test_runsc_systrap_shared //test/syscalls:link_test_runsc_systrap_shared"
+syscall-tests: $(RUNTIME_BIN)
+	@$(call test,$(OPTIONS) --test_env=RUNTIME=$(RUNTIME_BIN) --test_env=GVISOR_SIDECAR_BINARIES_DIR=$(RUNTIME_DIR)/gvisor-bin --cxxopt=-Werror $(PARTITIONS) $(if $(TARGETS),-- $(TARGETS),test/syscalls/... test/rtnetlink/...))
+.PHONY: syscall-tests
+
+packetimpact-tests:
+	@$(call test,--jobs=HOST_CPUS*3 --local_test_jobs=HOST_CPUS*3 //test/packetimpact/tests:all_tests)
+.PHONY: packetimpact-tests
+
+# Extra configuration options for runtime tests.
+RUNTIME_TESTS_FILTER ?=
+RUNTIME_TESTS_PER_TEST_TIMEOUT ?= 20m
+RUNTIME_TESTS_RUNS_PER_TEST ?= 1
+RUNTIME_TESTS_FLAKY_IS_ERROR ?= true
+RUNTIME_TESTS_FLAKY_SHORT_CIRCUIT ?= true
+
+%-runtime-tests: load-runtimes_% $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME),--watchdog-action=panic --platform=systrap)
+	@IMAGE_TAG=$(call tag,runtimes_$*) && \
+	$(call test_runtime_cached,$(RUNTIME),--test_timeout=1800 --test_env=RUNTIME_TESTS_FILTER=$(RUNTIME_TESTS_FILTER) --test_env=RUNTIME_TESTS_PER_TEST_TIMEOUT=$(RUNTIME_TESTS_PER_TEST_TIMEOUT) --test_env=RUNTIME_TESTS_RUNS_PER_TEST=$(RUNTIME_TESTS_RUNS_PER_TEST) --test_env=RUNTIME_TESTS_FLAKY_IS_ERROR=$(RUNTIME_TESTS_FLAKY_IS_ERROR) --test_env=RUNTIME_TESTS_FLAKY_SHORT_CIRCUIT=$(RUNTIME_TESTS_FLAKY_SHORT_CIRCUIT) --test_env=IMAGE_TAG=$${IMAGE_TAG} //test/runtimes:$*)
+
+do-tests: $(RUNTIME_BIN)
+	@$(RUNTIME_BIN) --rootless do true
+	@$(RUNTIME_BIN) --rootless -network=none do true
+	@sudo $(RUNTIME_BIN) do true
+.PHONY: do-tests
+
+arm-qemu-smoke-test: BAZEL_OPTIONS=--config=aarch64
+arm-qemu-smoke-test: $(RUNTIME_BIN) load-arm-qemu
+	export T=$$(mktemp -d --tmpdir release.XXXXXX); \
+	mkdir -p $$T/bin/arm64/ && \
+	cp $(RUNTIME_BIN) $$T/bin/arm64 && \
+	docker run --rm -v $$T/bin/arm64/runsc:/workdir/initramfs/runsc gvisor.dev/images/arm-qemu
+.PHONY: arm-qemu-smoke-test
+
+simple-tests: unit-tests # Compatibility target.
+.PHONY: simple-tests
+
+# Images needed for GPU smoke tests.
+gpu-smoke-images: load-gpu_cuda-tests load-gpu_cuda-tests-12-8
+.PHONY: gpu-smoke-images
+
+gpu-smoke-tests: gpu-smoke-images $(RUNTIME_BIN)
+	@$(call sudo,test/gpu:smoke_test,--runtime=runc -test.v $(ARGS))
+	@$(call install_runtime,$(RUNTIME),--nvproxy=true)
+	@$(call sudo,test/gpu:smoke_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+	@$(call sudo,test/gpu:sr_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+.PHONY: gpu-smoke-tests
+
+cos-gpu-smoke-tests: gpu-smoke-images $(RUNTIME_BIN)
+	@$(call sudo,test/gpu:smoke_test,--runtime=runc -test.v --cos-gpu $(ARGS))
+	@$(call install_runtime,$(RUNTIME),--nvproxy=true)
+	@$(call sudo,test/gpu:smoke_test,--runtime=$(RUNTIME) -test.v --cos-gpu $(ARGS))
+	@$(call sudo,test/gpu:sr_test,--runtime=$(RUNTIME) -test.v --cos-gpu $(ARGS))
+.PHONY: cos-gpu-smoke-tests
+
+# Images needed for GPU tests.
+# This is a superset of those needed for smoke tests.
+# It includes non-GPU images that are used as part of GPU tests,
+# e.g. busybox and python.
+gpu-images: gpu-smoke-images load-gpu_pytorch load-gpu_ollama load-gpu_ollama_client load-basic_busybox load-basic_alpine load-basic_python load-gpu_stable-diffusion-xl load-gpu_vllm load-gpu_nccl-tests load-benchmarks_ffmpeg
+.PHONY: gpu-images
+
+l4-gpu-images: load-gpu_sglang load-gpu_triton load-gpu_ollama_client
+.PHONY: l4-gpu-images
+
+l4-gpu-tests: l4-gpu-images $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME),--nvproxy=true --nvproxy-allowed-driver-capabilities=all)
+	@$(call sudo,test/gpu:sglang_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+	@$(call sudo,test/gpu:triton_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+.PHONY: l4-gpu-tests
+
+gpu-all-tests: gpu-images gpu-smoke-tests $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME),--nvproxy=true --nvproxy-allowed-driver-capabilities=all)
+	@$(call sudo,test/gpu:pytorch_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+	@$(call sudo,test/gpu:textgen_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+	@$(call sudo,test/gpu:imagegen_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+	@$(call sudo,test/gpu:sr_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+	@$(call sudo,test/gpu:nccl_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+	@$(call sudo,test/gpu:ffmpeg_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+	@$(call sudo,test/gpu/vllm:vllm_test,--runtime=$(RUNTIME) -test.bench=. -test.benchtime=1x -test.v $(ARGS))
+	@$(call sudo,test/gpu:sniffer_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+.PHONY: gpu-all-tests
+
+cos-gpu-all-tests: gpu-images cos-gpu-smoke-tests $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME),--nvproxy=true)
+	@$(call sudo,test/gpu:pytorch_test,--runtime=$(RUNTIME) -test.v --cos-gpu $(ARGS))
+	@$(call sudo,test/gpu:textgen_test,--runtime=$(RUNTIME) -test.v --cos-gpu $(ARGS))
+	@$(call sudo,test/gpu:imagegen_test,--runtime=$(RUNTIME) -test.v --cos-gpu $(ARGS))
+	@$(call sudo,test/gpu:sr_test,--runtime=$(RUNTIME) -test.v --cos-gpu $(ARGS))
+	@$(call sudo,test/gpu:nccl_test,--runtime=$(RUNTIME) -test.v --cos-gpu $(ARGS))
+# TODO(b/392679618): Re-enable ffmpeg test.
+# @$(call sudo,test/gpu:ffmpeg_test,--runtime=$(RUNTIME) -test.v --cos-gpu $(ARGS))
+	@$(call sudo,test/gpu/vllm:vllm_test,--runtime=$(RUNTIME) -test.bench=. -test.benchtime=1x -cos-gpu -test.v $(ARGS))
+	@$(call sudo,test/gpu:sniffer_test,--runtime=$(RUNTIME) -test.v --cos-gpu $(ARGS))
+.PHONY: cos-gpu-all-tests
+
+# Images needed for TPU tests.
+tpu-images: load-tpu_vllm load-gpu_ollama_client
+.PHONY: tpu-images
+
+tpu-vllm-tests: tpu-images $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME),--tpuproxy=true)
+	@$(call sudo,test/tpu:vllm_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+.PHONY: tpu-vllm-tests
+
+cuda-tests: load-basic_alpine load-gpu_cuda-tests $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME),--nvproxy=true --nvproxy-allowed-driver-capabilities=all)
+	@$(call sudo,test/gpu:cuda_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+.PHONY: cuda-tests
+
+cuda-12-8-tests: load-basic_alpine load-gpu_cuda-tests-12-8 $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME),--nvproxy=true --nvproxy-allowed-driver-capabilities=all)
+	@$(call sudo,test/gpu:cuda_12_8_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+.PHONY: cuda-tests
+
+portforward-tests: load-basic_redis load-basic_nginx $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME),--network=sandbox)
+	@$(call sudo,test/root:portforward_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+	@$(call install_runtime,$(RUNTIME),--network=host)
+	@$(call sudo,test/root:portforward_test,--runtime=$(RUNTIME) -test.v $(ARGS))
+.PHONY: portforward-test
+
+POSTURE_TEST_ARGS := -test.run=TestSandboxPosture -test.v
+sandbox-posture-tests: load-basic_alpine $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME)-posture,) # Clear flags.
+	@$(call sudo,test/root:root_test,--runtime=$(RUNTIME)-posture $(POSTURE_TEST_ARGS) $(ARGS))
+	@$(call install_runtime,$(RUNTIME)-posture-hostnet,--network=host)
+	@$(call sudo,test/root:root_test,--runtime=$(RUNTIME)-posture-hostnet --network=host $(POSTURE_TEST_ARGS) $(ARGS))
+	@$(call install_runtime,$(RUNTIME)-posture-hostnet-raw,--network=host --net-raw)
+	@$(call sudo,test/root:root_test,--runtime=$(RUNTIME)-posture-hostnet-raw --network=host --net-raw $(POSTURE_TEST_ARGS) $(ARGS))
+	@$(call install_runtime,$(RUNTIME)-posture-nodirectfs,--directfs=false)
+	@$(call sudo,test/root:root_test,--runtime=$(RUNTIME)-posture-nodirectfs --directfs=false $(POSTURE_TEST_ARGS) $(ARGS))
+	@$(call install_runtime,$(RUNTIME)-posture-nodirectfs-hostnet,--directfs=false --network=host)
+	@$(call sudo,test/root:root_test,--runtime=$(RUNTIME)-posture-nodirectfs-hostnet --directfs=false --network=host $(POSTURE_TEST_ARGS) $(ARGS))
+	@$(call install_runtime,$(RUNTIME)-posture-kvm,--platform=kvm)
+	@$(call sudo,test/root:root_test,--runtime=$(RUNTIME)-posture-kvm --platform=kvm $(POSTURE_TEST_ARGS) $(ARGS))
+.PHONY: sandbox-posture-tests
+
+# Standard integration targets.
+INTEGRATION_TARGETS := //test/image:image_test //test/e2e:integration_test
+
+docker-tests: integration-test-images $(RUNTIME_BIN)
+	@$(call install_runtime_noreload,$(RUNTIME),) # Clear flags.
+	@$(call install_runtime_noreload,$(RUNTIME)-docker,--net-raw --allow-packet-socket-write) # Used by TestDocker*.
+	@$(call install_runtime_noreload,$(RUNTIME)-fdlimit,--fdlimit=2000) # Used by TestRlimitNoFile.
+	@$(call install_runtime_noreload,$(RUNTIME)-dcache,--fdlimit=2000 --dcache=100) # Used by TestDentryCacheLimit.
+	@$(call install_runtime_noreload,$(RUNTIME)-host-uds,--host-uds=all) # Used by TestHostSocketConnect.
+	@$(call install_runtime_noreload,$(RUNTIME)-overlay,--overlay2=all:self) # Used by TestOverlay*.
+	@$(call install_runtime,$(RUNTIME)-cgroupv2,--in-sandbox-cgroup=v2) # Used by TestSystemd* and TestPIDFDSelftests.
+	@$(call test_runtime_cached,$(RUNTIME),$(INTEGRATION_TARGETS) --test_env=TEST_SAVE_RESTORE_NETSTACK=true //test/e2e:integration_runtime_test //test/e2e:runtime_in_docker_test)
+.PHONY: docker-tests
+
+plugin-network-tests: integration-test-images $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME)-dpdk,--network=plugin)
+	@$(call test_runtime_cached,$(RUNTIME)-dpdk, --test_arg=-test.run=ConnectToSelf $(INTEGRATION_TARGETS))
+
+plugin-network-tests: RUNSC_TARGET=--config plugin-tldk //runsc:runsc-plugin-stack
+plugin-network-tests: EXTRA_SIDECAR_TARGETS=--config plugin-tldk //runsc/cmd/sentry:gvisor_sentry_plugin_stack
+
+overlay-tests: integration-test-images $(RUNTIME_BIN)
+	@$(call install_runtime_noreload,$(RUNTIME)-overlay,--overlay2=all:dir=/tmp)
+	@$(call install_runtime,$(RUNTIME)-overlay-docker,--net-raw --allow-packet-socket-write --overlay2=all:dir=/tmp)
+	@$(call test_runtime_cached,$(RUNTIME)-overlay,--test_env=TEST_OVERLAY=true $(INTEGRATION_TARGETS))
+.PHONY: overlay-tests
+
+swgso-tests: integration-test-images $(RUNTIME_BIN)
+	@$(call install_runtime_noreload,$(RUNTIME)-swgso,--software-gso=true --gso=false)
+	@$(call install_runtime,$(RUNTIME)-swgso-docker,--net-raw --allow-packet-socket-write --software-gso=true --gso=false)
+	@$(call test_runtime_cached,$(RUNTIME)-swgso,$(INTEGRATION_TARGETS))
+.PHONY: swgso-tests
+
+hostnet-tests: integration-test-images $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME)-hostnet,--network=host --net-raw)
+	@$(call test_runtime_cached,$(RUNTIME)-hostnet,--test_env=TEST_CHECKPOINT=false --test_env=TEST_HOSTNET=true --test_env=TEST_NET_RAW=true $(INTEGRATION_TARGETS))
+.PHONY: hostnet-tests
+
+kvm-tests: integration-test-images $(RUNTIME_BIN)
+	@(lsmod | grep -E '^(kvm_intel|kvm_amd)') || sudo modprobe kvm
+	@if ! test -w /dev/kvm; then sudo chmod a+rw /dev/kvm; fi
+	@$(call test,//pkg/sentry/platform/kvm:kvm_test)
+	@$(call install_runtime_noreload,$(RUNTIME)-kvm,--platform=kvm)
+	@$(call install_runtime,$(RUNTIME)-kvm-docker,--net-raw --allow-packet-socket-write --platform=kvm)
+	@$(call test_runtime_cached,$(RUNTIME)-kvm,$(INTEGRATION_TARGETS))
+.PHONY: kvm-tests
+
+systrap-tests: integration-test-images $(RUNTIME_BIN)
+	@$(call install_runtime_noreload,$(RUNTIME)-systrap,--platform=systrap)
+	@$(call install_runtime,$(RUNTIME)-systrap-docker,--net-raw --allow-packet-socket-write --platform=systrap)
+	@$(call test_runtime_cached,$(RUNTIME)-systrap,$(INTEGRATION_TARGETS))
+.PHONY: systrap-tests
+
+iptables-tests: load-iptables $(RUNTIME_BIN)
+	@sudo modprobe iptable_filter
+	@sudo modprobe ip6table_filter
+	@sudo modprobe iptable_nat
+	@sudo modprobe ip6table_nat
+	@# FIXME(b/218923513): Need to fix permissions issues.
+	@#$(call test,--test_env=RUNTIME=runc -- //test/iptables:iptables_test)
+	@$(call install_runtime,$(RUNTIME),--net-raw)
+	@$(call test_runtime,$(RUNTIME),--test_env=TEST_NET_RAW=true -- //test/iptables:iptables_test)
+	@$(call install_runtime,$(RUNTIME)-nftables,--net-raw --reproduce-nftables)
+	@$(call test_runtime,$(RUNTIME)-nftables,--test_env=TEST_NET_RAW=true --test_output=all -- //test/iptables:nftables_test)
+.PHONY: iptables-tests
+
+# Run iptables tests with iptables-nft client.
+iptables-nft-tests: load-iptables $(RUNTIME_BIN)
+	@sudo modprobe nfnetlink
+	@sudo modprobe nf_tables
+	@$(call install_runtime,$(RUNTIME)-nftables,--net-raw --TESTONLY-nftables)
+	@$(call test_runtime,$(RUNTIME)-nftables,--test_env=TEST_NET_RAW=true -- //test/iptables:iptables_nft_test)
+.PHONY: iptables-nft-tests
+
+nftables-tests: load-nftables $(RUNTIME_BIN)
+	@sudo modprobe nfnetlink
+	@sudo modprobe nf_tables
+	@$(call test,--test_env=RUNTIME=runc -- //test/nftables:nftables_test) # run with runc
+	@$(call install_runtime,$(RUNTIME),--net-raw --TESTONLY-nftables)
+	@$(call test_runtime,$(RUNTIME),--test_env=TEST_NET_RAW=true -- //test/nftables:nftables_test) # run with runsc
+.PHONY: nftables-tests
+
+# Runs the socket_netlink_netfilter_test with runc as root user in a docker
+# container.
+nftables-syscall-runc-tests: load-nftables
+	@sudo modprobe nfnetlink
+	@sudo modprobe nf_tables
+	@# Overrides the default `--user` flag of DOCKER_RUN_OPTIONS to run as root.
+	@$(call build_paths,//test/syscalls/linux:socket_netlink_netfilter_test,docker run $(DOCKER_RUN_OPTIONS) --user 0:0 --runtime runc --rm gvisor.dev/images/nftables "$$0")
+.PHONY: nftables-syscall-runc-tests
+
+bwrap-tests: $(RUNTIME_BIN)
+	@$(call sudo,//runsc/cmd/alias/bwrap:bwrap_integration_test,-test.v -runsc=$(RUNTIME_BIN))
+.PHONY: bwrap-tests
+
+packetdrill-tests: load-packetdrill $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME),) # Clear flags.
+	@$(call test_runtime,$(RUNTIME),//test/packetdrill:all_tests)
+.PHONY: packetdrill-tests
+
+fsstress-test: load-basic $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME))
+	@$(call test_runtime,$(RUNTIME),//test/fsstress:fsstress_test)
+.PHONY: fsstress-test
+
+# Helper to install containerd.
+# $(1) is the containerd version.
+install_containerd = \
+	($(call header,INSTALL CONTAINERD); \
+	export T=$$(mktemp -d --tmpdir containerd.XXXXXX); \
+	cp tools/install_containerd.sh $$T && \
+	cd /tmp && \
+	sudo -H "PATH=$$PATH" $$T/install_containerd.sh $(1); \
+	rm -rf $$T)
+
+# Specific containerd version tests.
+containerd-test-%: load-basic_alpine load-basic_python load-basic_busybox load-basic_symlink-resolv load-basic_httpd load-basic_ubuntu $(RUNTIME_BIN)
+	@$(call install_runtime,$(RUNTIME),) # Clear flags.
+	@$(call install_containerd,$*)
+ifeq (,$(STAGED_BINARIES))
+	@sudo cp -fa "$(RUNTIME_DIR)"/* "$$(dirname $$(which containerd))/"
+else
+	@gcloud storage cat "$(STAGED_BINARIES)" | \
+		sudo tar -C "$$(dirname $$(which containerd))" -zxvf -
+endif
+	@$(call sudo,test/root:root_test,--runtime=$(RUNTIME) -test.v)
+containerd-tests-min: containerd-test-1.7.31
+
+containerd-performance-test-%:
+	@export RUN_SHIM_GROUPING_PERFORMANCE_TEST=true; $(MAKE) containerd-test-$*
+.PHONY: containerd-performance-test-%
+
+
+kubernetes-smoke-test: ## Runs the Kubernetes hello test in a KIND cluster.
+	@test/kubernetes/scripts/run_kind_e2e.sh //test/kubernetes/tests:hello_test
+.PHONY: kubernetes-smoke-test
+
+##
+## Benchmarks.
+##
+## Targets to run benchmarks. See //test/benchmarks for details.
+## You can list all available benchmarks using:
+##   $ bazel query 'attr("tags", ".*gvisor_benchmark.*", //test/benchmarks/...)'
+##
+## Common arguments:
+##   BENCHMARKS_PROJECT   - BigQuery project to which to send data.
+##   BENCHMARKS_DATASET   - BigQuery dataset to which to send data.
+##   BENCHMARKS_TABLE     - BigQuery table to which to send data.
+##   BENCHMARKS_SUITE     - name of the benchmark suite. See //tools/bigquery/bigquery.go.
+##   BENCHMARKS_UPLOAD    - if true, upload benchmark data from the run.
+##   BENCHMARKS_OFFICIAL  - marks the data as official.
+##   BENCHMARKS_PLATFORMS - if set, only run the benchmarks for this
+##                          space-separated list of platform names.
+##   BENCHMARKS_RUNC      - if true, also benchmark runc performance.
+##   BENCHMARKS_FILTER    - filter to be applied to the test suite.
+##   BENCHMARKS_OPTIONS   - options to be passed to the test.
+##   BENCHMARKS_PROFILE   - profile options to be passed to the test.
+##                          Set to the empty string to avoid profiling overhead.
+##
+BENCHMARKS_PROJECT   ?= gvisor-benchmarks
+BENCHMARKS_DATASET   ?= kokoro
+BENCHMARKS_TABLE     ?= benchmarks
+BENCHMARKS_SUITE     ?= ffmpeg
+BENCHMARKS_UPLOAD    ?= false
+BENCHMARKS_OFFICIAL  ?= false
+BENCHMARKS_TARGETS   ?= //test/benchmarks/media:ffmpeg_test
+BENCHMARKS_PLATFORMS ?=
+BENCHMARKS_RUNC      ?= true
+BENCHMARKS_FILTER    ?= .
+BENCHMARKS_OPTIONS   ?= -test.benchtime=30s
+BENCHMARKS_ARGS      ?= -test.v -test.bench=$(BENCHMARKS_FILTER) $(BENCHMARKS_OPTIONS)
+BENCHMARKS_PROFILE   ?=
+# Example: BENCHMARKS_PROFILE='-pprof-dir=/tmp/profile -pprof-cpu -pprof-heap -pprof-block -pprof-mutex'
+
+init-benchmark-table: ## Initializes a BigQuery table with the benchmark schema.
+	@$(call run,//tools/parsers:parser,init --project=$(BENCHMARKS_PROJECT) --dataset=$(BENCHMARKS_DATASET) --table=$(BENCHMARKS_TABLE))
+.PHONY: init-benchmark-table
+
+# $(1) is the runtime name.
+run_benchmark = \
+	($(call header,BENCHMARK $(1)); \
+	set -euo pipefail; \
+	export T=$$(mktemp --tmpdir logs.$(1).XXXXXX); \
+	export UNSANDBOXED_RUNTIME; \
+	if test "$(1)" = "runc"; then $(call sudo,$(BENCHMARKS_TARGETS),-runtime=$(1) $(BENCHMARKS_ARGS)) | tee $$T; fi; \
+	if test "$(1)" != "runc"; then $(call sudo,$(BENCHMARKS_TARGETS),-runtime=$(1) $(BENCHMARKS_ARGS) $(BENCHMARKS_PROFILE)) | tee $$T; fi; \
+	if test "$(BENCHMARKS_UPLOAD)" = "true"; then \
+	  $(call run,tools/parsers:parser,parse --debug --file=$$T --runtime=$(1) --suite_name=$(BENCHMARKS_SUITE) --project=$(BENCHMARKS_PROJECT) --dataset=$(BENCHMARKS_DATASET) --table=$(BENCHMARKS_TABLE) --official=$(BENCHMARKS_OFFICIAL)); \
+	fi; \
+	rm -rf $$T)
+
+# TODO: b/529809802 - Enable benchmarks for slimvm.
+benchmark-platforms: load-benchmarks $(RUNTIME_BIN) ## Runs benchmarks for runc and all (selected) platforms.
+	@set -xe; if test -z "$(BENCHMARKS_PLATFORMS)"; then \
+	  for PLATFORM in $$($(RUNTIME_BIN) help platforms); do \
+	    if test "$${PLATFORM}" = "slimvm"; then \
+	      continue; \
+	    fi; \
+	    export PLATFORM; \
+	    $(call install_runtime,$${PLATFORM},--platform $${PLATFORM} --profile); \
+	    $(call run_benchmark,$${PLATFORM}); \
+	  done; \
+	else \
+	  for PLATFORM in $(BENCHMARKS_PLATFORMS); do \
+	    if test "$${PLATFORM}" = "slimvm"; then \
+	      continue; \
+	    fi; \
+	    export PLATFORM; \
+	    $(call install_runtime,$${PLATFORM},--platform $${PLATFORM} --profile); \
+	    $(call run_benchmark,$${PLATFORM}); \
+	  done; \
+	fi
+	@set -xe; if test "$(BENCHMARKS_RUNC)" == true; then \
+	  $(call run_benchmark,runc); \
+	fi
+.PHONY: benchmark-platforms
+
+run-benchmark: load-benchmarks ## Runs single benchmark and optionally sends data to BigQuery.
+	@$(call run_benchmark,$(RUNTIME))
+.PHONY: run-benchmark
+
+# For benchmarking seccheck, use setup-seccheck and run-benchmark-seccheck.
+# Default seccheck benchmark config.
+SECCHECK_BENCH_CONFIG ?= $(CURDIR)/test/benchmarks/seccheck/null_bench_config.json
+
+# Installs seccheck instrumented runtime for benchmarking.
+setup-seccheck: $(RUNTIME_BIN)
+	@cp -f "$(SECCHECK_BENCH_CONFIG)" /tmp/seccheck_bench_config.json
+	@$(call configure,$(RUNTIME)-seccheck,--net-raw --pod-init-config="/tmp/seccheck_bench_config.json")
+.PHONY: setup-seccheck
+
+# Runs single benchmark using the seccheck instrumented runtime.
+run-benchmark-seccheck: load-benchmarks
+	@$(call run_benchmark,$(RUNTIME)-seccheck)
+.PHONY: run-benchmark-seccheck
+
+# The arguments passed to benchmarks when run for PGO profile collection.
+# This should *not* include the `-profile` or `-profile-cpu` arguments, as
+# those are added automatically.
+BENCHMARKS_ARGS_PGO  := -test.v -test.bench=. -test.benchtime=20s
+# The threshold below which the `benchmark-refresh-pgo` rule will update the
+# profile.
+BENCHMARKS_PGO_REFRESH_THRESHOLD ?= 0.7
+# The number of days that must have elapsed since the last time a profile
+# was updated before being considered for refresh. This limits the growth
+# of the repository size.
+BENCHMARKS_PGO_REFRESH_MIN_DAYS_SINCE_LAST_UPDATE ?= 28
+
+# TODO: b/529809802 - Enable benchmarks for slimvm.
+benchmark-refresh-pgo: load-benchmarks $(RUNTIME_BIN) ## Refresh profiles of all benchmarks for PGO purposes.
+	@set -e; if test -z "$(BENCHMARKS_PLATFORMS)"; then \
+		echo 'Must specify BENCHMARKS_PLATFORMS.' >&2; \
+		exit 1; \
+	else \
+		PGO_RUNTIME_KEY="$$( $(call run,tools/profiletool,runtime-info) )"; \
+		export PGO_RUNTIME_KEY; \
+		PGO_LAST_PKG_COMMIT_HASH="$$(git log --max-count=1 --format='%H' -- pkg)"; \
+		export PGO_LAST_PKG_COMMIT_HASH; \
+		for PLATFORM in $(BENCHMARKS_PLATFORMS); do \
+			if test "$${PLATFORM}" = "slimvm"; then \
+				continue; \
+			fi; \
+			export PLATFORM; \
+			mkdir -p "$(REPO_DIR)/runsc/profiles/data/$${PGO_RUNTIME_KEY}_$${PLATFORM}"; \
+			PLATFORM_TMPDIR="$$(mktemp --tmpdir=/tmp --directory "pgo_$${PGO_RUNTIME_KEY}_$${PLATFORM}.XXXXXXXX")"; \
+			export PLATFORM_TMPDIR; \
+			for PGO_BENCHMARK_TARGET in $$( $(call query,'attr(tags, gvisor_pgo_benchmark, //test/benchmarks/...)') | sed 's~^//~~'); do \
+				PGO_BENCHMARK_BASENAME="$$(echo "$${PGO_BENCHMARK_TARGET}" | cut -d: -f2 | sed 's/_test$$//')"; \
+				export PGO_BENCHMARK_BASENAME; \
+				PGO_PROFILE_OLD_COMMIT_HASH="$(REPO_DIR)/runsc/profiles/data/$${PGO_RUNTIME_KEY}_$${PLATFORM}/$${PGO_BENCHMARK_BASENAME}.pgo.pkg_commithash"; \
+				export PGO_PROFILE_OLD_COMMIT_HASH; \
+				PGO_PROFILE_OLD="$(REPO_DIR)/runsc/profiles/data/$${PGO_RUNTIME_KEY}_$${PLATFORM}/$${PGO_BENCHMARK_BASENAME}.pgo.pprof.pb.gz"; \
+				export PGO_PROFILE_OLD; \
+				PGO_PROFILE_NEW="$${PLATFORM_TMPDIR}/$${PGO_BENCHMARK_BASENAME}.pgo.pprof.pb.gz"; \
+				export PGO_PROFILE_NEW; \
+				if [[ -f "$${PGO_PROFILE_OLD_COMMIT_HASH}" ]] && [[ "$$(cat "$${PGO_PROFILE_OLD_COMMIT_HASH}")" == "$${PGO_LAST_PKG_COMMIT_HASH}" ]]; then \
+					echo "Skipping refresh for $${PGO_PROFILE_OLD}: profile is already up-to-date." >&2; \
+					continue; \
+				fi; \
+				if [[ -f "$${PGO_PROFILE_OLD}" ]] && [[ "$$(stat -c %Y $${PGO_PROFILE_OLD})" -gt "$$(date +%s -d '$(BENCHMARKS_PGO_REFRESH_MIN_DAYS_SINCE_LAST_UPDATE) days ago')" ]]; then \
+					echo "Skipping refresh for $${PGO_PROFILE_OLD}: profile is less than $(BENCHMARKS_PGO_REFRESH_MIN_DAYS_SINCE_LAST_UPDATE) days old." >&2; \
+					continue; \
+				fi; \
+				mkdir -p "$$(dirname "$${PGO_PROFILE_OLD}")"; \
+				mkdir -p "$${PLATFORM_TMPDIR}/$${PGO_BENCHMARK_BASENAME}"; \
+				$(call install_runtime,$${PLATFORM}_$${PGO_RUNTIME_KEY}_pgo_$${PGO_BENCHMARK_BASENAME},--platform $${PLATFORM} --profile --profile-gc-interval=3s --profile-cpu="$${PLATFORM_TMPDIR}/$${PGO_BENCHMARK_BASENAME}/$${PGO_BENCHMARK_BASENAME}.%YYYY%-%MM%-%DD%_%HH%-%II%-%SS%-%NN%.pgo.pprof.pb.gz"); \
+				$(call sudo,$${PGO_BENCHMARK_TARGET},-runtime=$${PLATFORM}_$${PGO_RUNTIME_KEY}_pgo_$${PGO_BENCHMARK_BASENAME} -pgo-benchmarks=true $(BENCHMARKS_ARGS_PGO)); \
+				$(call run,tools/profiletool,merge --out="$${PGO_PROFILE_NEW}" "$${PLATFORM_TMPDIR}/$${PGO_BENCHMARK_BASENAME}"); \
+				rm -rf --one-file-system "$${PLATFORM_TMPDIR}/$${PGO_BENCHMARK_BASENAME}"; \
+				if [[ ! -f "$${PGO_PROFILE_OLD}" ]]; then \
+					cp "$${PGO_PROFILE_NEW}" "$${PGO_PROFILE_OLD}"; \
+					echo "$${PGO_LAST_PKG_COMMIT_HASH}" > "$${PGO_PROFILE_OLD_COMMIT_HASH}"; \
+					echo "--- PGO: Added new profile for $${PGO_BENCHMARK_BASENAME} on $${PGO_RUNTIME_KEY} $${PLATFORM}" >&2; \
+				elif $(call run,tools/profiletool,check-similar --threshold=$(BENCHMARKS_PGO_REFRESH_THRESHOLD) "$${PGO_PROFILE_OLD}" "$${PGO_PROFILE_NEW}"); then \
+					echo "--- PGO: Profile for $${PGO_BENCHMARK_BASENAME} on $${PGO_RUNTIME_KEY} $${PLATFORM} is already up-to-date." >&2; \
+				else \
+					cp "$${PGO_PROFILE_NEW}" "$${PGO_PROFILE_OLD}"; \
+					echo "$${PGO_LAST_PKG_COMMIT_HASH}" > "$${PGO_PROFILE_OLD_COMMIT_HASH}"; \
+					echo "--- PGO: Updated profile for $${PGO_BENCHMARK_BASENAME} on $${PGO_RUNTIME_KEY} $${PLATFORM}" >&2; \
+				fi; \
+			done; \
+		done; \
+	fi
+.PHONY: benchmark-refresh-pgo
+
+## Seccomp targets.
+seccomp-sentry-filters:  # Dumps seccomp-bpf program for the Sentry binary.
+	@$(call run,//runsc/boot/filter/dumpfilter,$(ARGS))
+.PHONY: seccomp-sentry-filters
+
+##
+## Website & documentation helpers.
+##
+##   The website is built from repository documentation and wrappers, using
+##   using a locally-defined Docker image (see images/jekyll). The following
+##   variables may be set when using website-push:
+##     WEBSITE_IMAGE   - The name of the container image.
+##     WEBSITE_SERVICE - The backend service.
+##     WEBSITE_PROJECT - The project id to use.
+##     WEBSITE_REGION  - The region to deploy to.
+##
+WEBSITE_IMAGE   := gcr.io/gvisordev/gvisordev
+WEBSITE_SERVICE := gvisordev
+WEBSITE_PROJECT := gvisordev
+WEBSITE_REGION  := us-central1
+
+website-build: load-jekyll ## Build the site image locally.
+	@$(call run,//website:website,$(WEBSITE_IMAGE))
+.PHONY: website-build
+
+website-server: website-build ## Run a local server for development.
+	@# NOTE: When running locally we use the localhost:8080 as custom domain.
+	@docker run -i -p 8080:8080 $(WEBSITE_IMAGE) --custom-domain='*'
+.PHONY: website-server
+
+website-push: website-build ## Push a new image and update the service.
+	@docker push $(WEBSITE_IMAGE)
+.PHONY: website-push
+
+website-deploy: website-push ## Deploy a new version of the website.
+	@gcloud run deploy $(WEBSITE_SERVICE) --platform=managed --region=$(WEBSITE_REGION) --project=$(WEBSITE_PROJECT) --image=$(WEBSITE_IMAGE) --memory 1Gi
+.PHONY: website-deploy
+
+##
+## Webhook helpers.
+##
+##   The webhook is built locally.
+##     WEBHOOK_IMAGE - The name of the container image.
+##
+WEBHOOK_IMAGE := gcr.io/gvisor-presubmit/webhook
+
+webhook-build: ## Build the webhookimage locally.
+	@$(call run,//webhook:image,$(WEBHOOK_IMAGE))
+.PHONY: webhook-build
+
+webhook-push: webhook-build ## Push a new image.
+	@docker push $(WEBHOOK_IMAGE)
+.PHONY: website-push
+
+webhook-update: test/kubernetes/gvisor-injection-admission-webhook.yaml.in
+	@WEBHOOK=$(WEBHOOK_IMAGE):$$($(call run,//webhook:image,$(WEBHOOK_IMAGE)) | cut -d':' -f2) && \
+	INIT=$(call remote_image,certs):$(call tag,certs) && \
+	cat $< | sed -e "s|%WEBHOOK%|$${WEBHOOK}|g" | sed -e "s|%INIT%|$${INIT}|g" > test/kubernetes/gvisor-injection-admission-webhook.yaml
+.PHONY: webhook-update
+
+## Syzkaller smoke test.
+##
+##   This verifies that gVisor can run as a fuzzable kernel in Syzkaller.
+##   https://github.com/google/syzkaller
+##
+##   If this test is broken, chances are that you either modified gVisor
+##   in a way that makes it incompatible with Syzkaller, or that Syzkaller
+##   changed in a way that makes gVisor no longer work with it.
+##   This test runs the same test as Syzkaller does as part of its test
+##   suite:
+##   https://github.com/google/syzkaller/blob/master/tools/gvisor-smoke-test.sh
+##
+##   The following variables may be set:
+##     SYZKALLER_IMAGE     - The name of the container image.
+##     SYZKALLER_CONTAINER - The name of the running container.
+##     SYZKALLER_REPO_URL  - The git URL of the Syzkaller repository.
+##
+SYZKALLER_IMAGE     ?= gcr.io/syzkaller/syzbot:latest
+SYZKALLER_CONTAINER ?= gvisor-syz-$(HASH)-$(ARCH)
+SYZKALLER_REPO_URL  ?= https://github.com/google/syzkaller
+syzkaller-smoke-test: $(RUNTIME_BIN)
+	@docker rm -f $(SYZKALLER_CONTAINER) 2>/dev/null || true && \
+	docker run --rm \
+		--name="$(SYZKALLER_CONTAINER)" \
+		--runtime="$(UNSANDBOXED_RUNTIME)" \
+		--hostname="$(SYZKALLER_CONTAINER)" \
+		$(DOCKER_PRIVILEGED) \
+		--pid=host \
+		-v "$(RUNTIME_BIN):$(RUNTIME_BIN):ro" \
+		-e "GOPATH=/__w/syzkaller/syzkaller/gopath" \
+		-e "GVISOR_VMLINUX_PATH=$(RUNTIME_BIN)" \
+		"$(SYZKALLER_IMAGE)" \
+		/bin/bash -xeuc ' \
+			mkdir -p "$$GOPATH/src/github.com/google" && \
+			git clone --depth=1 https://github.com/google/syzkaller "$$GOPATH/src/github.com/google/syzkaller" && \
+			cd "$$GOPATH/src/github.com/google/syzkaller" && \
+			make && \
+			bash tools/gvisor-smoke-test.sh \
+		'
+.PHONY: syzkaller-smoke-test
+
+##
+## Repository builders.
+##
+##   This builds a local apt repository. The following variables may be set:
+##     RELEASE_ROOT      - The repository root (default: "repo" directory).
+##     RELEASE_KEY       - The repository GPG private key file (default: dummy key is created).
+##     RELEASE_ARTIFACTS - The release artifacts directory. May contain multiple.
+##     RELEASE_NIGHTLY   - Set to true if a nightly release (default: false).
+##     RELEASE_COMMIT    - The commit or Change-Id for the release (needed for tag).
+##     RELEASE_NAME      - The name of the release in the proper format (needed for tag).
+##     RELEASE_NOTES     - The file containing release notes (needed for tag).
+##
+RELEASE_ROOT      := repo
+RELEASE_KEY       := repo.key
+RELEASE_ARTIFACTS := artifacts
+RELEASE_NIGHTLY   := false
+RELEASE_COMMIT    :=
+RELEASE_NAME      :=
+RELEASE_NOTES     :=
+GPG_TEST_OPTIONS  := $(shell if gpg --pinentry-mode loopback --version >/dev/null 2>&1; then echo --pinentry-mode loopback; fi)
+
+$(RELEASE_KEY):
+	@echo "WARNING: Generating a key for testing ($@); don't use this."
+	@T=$$(mktemp --tmpdir keyring.XXXXXX); \
+	C=$$(mktemp --tmpdir config.XXXXXX); \
+	echo Key-Type: DSA >> $$C && \
+	echo Key-Length: 1024 >> $$C && \
+	echo Name-Real: Test >> $$C && \
+	echo Name-Email: test@example.com >> $$C && \
+	echo Expire-Date: 0 >> $$C && \
+	echo %commit >> $$C && \
+	gpg --batch $(GPG_TEST_OPTIONS) --passphrase '' --no-default-keyring --secret-keyring $$T --no-tty --gen-key $$C && \
+	gpg --batch $(GPG_TEST_OPTIONS) --export-secret-keys --no-default-keyring --secret-keyring $$T > $@; \
+	rc=$$?; rm -f $$T $$C; exit $$rc
+
+$(RELEASE_ARTIFACTS)/%:
+	@mkdir -p $@
+	@$(call copy,//debian:debian,$@)
+	@$(call copy,//debian:gvisor-release-tar,$@)
+
+release: $(RELEASE_KEY) $(RELEASE_ARTIFACTS)/$(ARCH)
+	@mkdir -p $(RELEASE_ROOT)
+	@NIGHTLY=$(RELEASE_NIGHTLY) tools/make_release.sh $(RELEASE_KEY) $(RELEASE_ROOT) $$(find $(RELEASE_ARTIFACTS) -type f)
+.PHONY: release
+
+release-tarball: DESTINATION ?= .
+release-tarball: ## Builds an optimized release tarball (gvisor.tar.bz2) and copies it to $(DESTINATION). E.g. make release-tarball DESTINATION=bin/
+	@mkdir -p "$(DESTINATION)"
+	@$(call copy,-c opt //debian:gvisor-release-tar,$(DESTINATION))
+.PHONY: release-tarball
+
+staged-binaries-check: ## Verifies STAGED_BINARIES contains all files from the //debian:gvisor-release-tar fileset.
+ifeq (,$(STAGED_BINARIES))
+	@echo "STAGED_BINARIES not set; nothing to check."
+else
+	@# T is exported so the nested `cp` inside the copy macro (a child process)
+	@# sees it; the rest of the recipe runs in this shell directly.
+	@export T=$$(mktemp -d --tmpdir staged-check.XXXXXX); \
+	$(call copy,//debian:gvisor-release-tar,$$T) && \
+	tar -tjf "$$T/gvisor.tar.bz2" | sed 's#^\./##' | grep -v '/$$' | sort >"$$T/release.txt" && \
+	gcloud storage cat "$(STAGED_BINARIES)" | tar -tzf - | sed 's#^\./##' | grep -v '/$$' | sort >"$$T/staged.txt" && \
+	comm -23 "$$T/release.txt" "$$T/staged.txt" >"$$T/missing.txt" && \
+	test ! -s "$$T/missing.txt" \
+	  || { echo "ERROR: STAGED_BINARIES missing members from //debian:gvisor-release-tar:" >&2; cat "$$T/missing.txt" >&2; rm -rf "$$T"; exit 1; }; \
+	rm -rf "$$T"
+endif
+.PHONY: staged-binaries-check
+
+tag: ## Creates and pushes a release tag.
+	@tools/tag_release.sh "$(RELEASE_COMMIT)" "$(RELEASE_NAME)" "$(RELEASE_NOTES)"
+.PHONY: tag
+
+codespell:
+	codespell
+.PHONY: codespell

@@ -1,0 +1,51 @@
+---
+site:
+  title: Cerbos Authorization Management Platform // Documentation
+  url: https://docs.cerbos.dev
+  start_page: cerbos:ROOT:index.adoc
+  robots: allow
+  keys:
+    google_analytics: "G-8G3G3MS838"
+content:
+  sources:
+    - url: ./../
+      branches: [HEAD, 'v{0..9}*', '!v0.{0..31}']
+      edit_url: "https://github.com/cerbos/cerbos/tree/main/{path}"
+      start_path: docs
+    - url: https://github.com/cerbos/cloud-docs.git
+    - url: https://github.com/cerbos/synapse-docs.git
+urls:
+  redirect_facility: netlify
+  latest_version_segment: latest
+  latest_version_segment_strategy: redirect:to
+  latest_prerelease_version_segment: prerelease
+asciidoc:
+  attributes:
+    app-version: "0.56.0@"
+    experimental: true
+    page-pagination: true
+  extensions:
+    - ./supplemental-ui/tabs-block/extension.js
+ui:
+  bundle:
+    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/master/raw/build/ui-bundle.zip?job=bundle-stable
+    snapshot: true
+  supplemental_files: ./supplemental-ui
+output:
+  destinations:
+    - provider: fs
+      path: ./build
+      clean: true
+    - provider: archive
+      path: ./build/cerbos_docs.zip
+      clean: true
+
+antora:
+  extensions:
+    - require: "@cerbos/antora-llm-generator"
+      skippaths:
+        - "cerbos/{prerelease,[0-9]*.[0-9]*.[0-9]*}/**"
+        - "cerbos/**/releases/**"
+        - "cerbos-hub/legacy/**"
+
+    - require: "@antora/collector-extension"

@@ -1,0 +1,427 @@
+/* Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.flowable.http.bpmn;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jetty.ee10.servlet.ServletContextHandler;
+import org.eclipse.jetty.ee10.servlet.ServletHolder;
+import org.eclipse.jetty.http.HttpVersion;
+import org.eclipse.jetty.server.Connector;
+import org.eclipse.jetty.server.HttpConfiguration;
+import org.eclipse.jetty.server.HttpConnectionFactory;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.server.SslConnectionFactory;
+import org.eclipse.jetty.util.ssl.SslContextFactory;
+import org.flowable.common.engine.impl.util.ReflectUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.io.ClassPathResource;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
+
+import jakarta.servlet.MultipartConfigElement;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.Part;
+
+/**
+ * Http Server and API to test HTTP Activity
+ *
+ * @author Harsha Teja Kanna
+ */
+public class HttpServiceTaskTestServer {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(HttpServiceTaskTestServer.class);
+    // These should be fixed and known as we use it in test process templates
+    protected static final int HTTP_PORT = 9798;
+    protected static final int HTTPS_PORT = 9799;
+
+    protected static Server server;
+
+    static {
+        server = new Server();
+
+        // http connector configuration
+        HttpConfiguration httpConfig = new HttpConfiguration();
+
+        ServerConnector httpConnector = new ServerConnector(server,
+                new HttpConnectionFactory(httpConfig));
+        httpConnector.setPort(HTTP_PORT);
+
+        try {
+            // https connector configuration
+            // keytool -selfcert -alias Flowable -keystore keystore -genkey -keyalg RSA -sigalg SHA256withRSA -validity 36500
+            SslContextFactory.Server sslContextFactory = new SslContextFactory.Server();
+            URL keystoreURL = ReflectUtil.getResource("flowable.keystore");
+            Path keystorePath = Paths.get(keystoreURL.toURI());
+            sslContextFactory.setKeyStorePath(keystorePath.toString());
+            sslContextFactory.setKeyStorePassword("Flowable");
+
+            HttpConfiguration httpsConfig = new HttpConfiguration();
+
+            SslConnectionFactory sslConnectionFactory = new SslConnectionFactory(sslContextFactory, HttpVersion.HTTP_1_1.asString());
+            sslConnectionFactory.setEnsureSecureRequestCustomizer(false);
+            ServerConnector httpsConnector = new ServerConnector(server,
+                    sslConnectionFactory,
+                    new HttpConnectionFactory(httpsConfig));
+            httpsConnector.setPort(HTTPS_PORT);
+
+            server.setConnectors(new Connector[]{httpConnector, httpsConnector});
+            
+            ServletContextHandler contextHandler = new ServletContextHandler(ServletContextHandler.SESSIONS);
+            contextHandler.setContextPath("/");
+            MultipartConfigElement multipartConfig = new MultipartConfigElement((String) null);
+            ObjectMapper mapper = JsonMapper.shared();
+            ServletHolder httpServiceTaskServletHolder = new ServletHolder(new HttpServiceTaskTestServlet(mapper));
+            httpServiceTaskServletHolder.getRegistration().setMultipartConfig(multipartConfig);
+            contextHandler.addServlet(httpServiceTaskServletHolder, "/api/*");
+            contextHandler.addServlet(new ServletHolder(new SimpleHttpServiceTaskTestServlet(mapper)), "/test");
+            contextHandler.addServlet(new ServletHolder(new HelloServlet(mapper)), "/hello");
+            contextHandler.addServlet(new ServletHolder(new ArrayResponseServlet()), "/array-response");
+            contextHandler.addServlet(new ServletHolder(new DeleteResponseServlet()), "/delete");
+            contextHandler.addServlet(new ServletHolder(new ClasspathResourceServlet()), "/resource");
+            contextHandler.addServlet(new ServletHolder(new BinaryEchoServlet()), "/binary");
+            contextHandler.addServlet(new ServletHolder(new RedirectServlet()), "/redirect");
+            contextHandler.addServlet(new ServletHolder(new EchoAuthorizationServlet()), "/echo-authorization");
+            server.setHandler(contextHandler);
+            server.start();
+        } catch (Exception e) {
+            LOGGER.error("Error starting server", e);
+        }
+
+        // Shutdown hook to close the http server
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+            @Override
+            public void run() {
+                if (server != null && server.isRunning()) {
+                    try {
+                        server.stop();
+                        LOGGER.info("HTTP server stopped");
+                    } catch (Exception e) {
+                        LOGGER.error("Could not close http server", e);
+                    }
+                }
+            }
+        });
+    }
+
+    public static class HttpServiceTaskTestServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        public static Map<String, String> headerMap = new HashMap<>();
+
+        private String name = "test servlet";
+        private ObjectMapper mapper;
+
+        public HttpServiceTaskTestServlet(ObjectMapper mapper) {
+            this.mapper = mapper;
+        }
+
+        public HttpServiceTaskTestServlet(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public void service(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+            if (request.getMethod() != null && "PATCH".equalsIgnoreCase(request.getMethod())) {
+                doPatch(request, response);
+            } else {
+                super.service(request, response);
+            }
+        }
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+            HttpTestData data = parseTestData(req, resp);
+            int code = data.getCode();
+            if (code >= 200 && code < 300) {
+                resp.setStatus(code);
+                resp.setContentType("application/json");
+                resp.getWriter().println(mapper.convertValue(data, JsonNode.class));
+
+            } else if (code >= 300 && code < 400) {
+                resp.sendRedirect("http://www.flowable.org");
+
+            } else if (code >= 400 && code < 500) {
+                resp.setStatus(code);
+
+            } else if (code >= 500 && code < 600) {
+                resp.sendError(code, "Server Error");
+            } else {
+                resp.sendError(code, "Custom error");
+            }
+        }
+
+        @Override
+        protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+            headerMap.clear();
+            Enumeration<String> headerNames = req.getHeaderNames();
+            while (headerNames.hasMoreElements()) {
+                String header = headerNames.nextElement();
+                headerMap.put(header, req.getHeader(header));
+            }
+
+            HttpTestData data = parseTestData(req, resp);
+            int code = data.getCode();
+            if (code >= 200 && code < 300) {
+                resp.setStatus(code);
+                resp.setContentType("application/json");
+                resp.getWriter().println(mapper.convertValue(data, JsonNode.class));
+
+            } else if (code >= 300 && code < 400) {
+                resp.sendRedirect("http://www.flowable.org");
+
+            } else if (code >= 400 && code < 500) {
+                resp.sendError(code, "Bad Request");
+
+            } else if (code >= 500 && code < 600) {
+                resp.sendError(code, "Server Error");
+            }
+        }
+
+        @Override
+        protected void doPut(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+            doPost(req, resp);
+        }
+
+        @Override
+        protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+            doPost(req, resp);
+        }
+        
+        // not in HttpServlet spec; see service()
+        protected void doPatch(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+            doPost(req, resp);
+        }
+
+        // Parse test data query parameters, headers
+        private HttpTestData parseTestData(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+
+            HttpTestData data = new HttpTestData();
+            data.setCode(200);
+            data.setOrigin(req.getRemoteAddr());
+            data.setUrl(req.getRequestURL().toString());
+
+            Enumeration<String> parameterNames = req.getParameterNames();
+            while (parameterNames.hasMoreElements()) {
+                String paramName = parameterNames.nextElement();
+                String[] paramValues = req.getParameterValues(paramName);
+                switch (paramName) {
+                    case "code": {
+                        data.setCode(Integer.parseInt(paramValues[0]));
+                        break;
+                    }
+                    case "delay": {
+                        data.setDelay(Integer.parseInt(paramValues[0]));
+                        break;
+                    }
+                }
+                data.getArgs().put(paramName, paramValues);
+            }
+            Enumeration<String> headerNames = req.getHeaderNames();
+            while (headerNames.hasMoreElements()) {
+                String headerName = headerNames.nextElement();
+                Enumeration<String> headerValues = req.getHeaders(headerName);
+                List<String> headerList = new ArrayList<>();
+                while (headerValues.hasMoreElements()) {
+                    headerList.add(headerValues.nextElement());
+                }
+                data.getHeaders().put(headerName, headerList.toArray(new String[]{}));
+            }
+
+            if (StringUtils.startsWith(req.getContentType(), "multipart/form-data")) {
+                for (Part part : req.getParts()) {
+                    data.getParts().computeIfAbsent(part.getName(), k -> new ArrayList<>()).add(HttpTestData.HttpTestPart.fromPart(part));
+                }
+
+            } else {
+
+                data.setBody(IOUtils.toString(req.getReader()));
+
+            }
+
+
+            if (data.getDelay() > 0) {
+                try {
+                    Thread.sleep(data.getDelay());
+                } catch (InterruptedException e) {
+                    //Ignore
+                }
+            }
+
+            return data;
+        }
+    }
+
+    private static class SimpleHttpServiceTaskTestServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        private final ObjectMapper objectMapper;
+
+        private SimpleHttpServiceTaskTestServlet(ObjectMapper objectMapper) {
+            this.objectMapper = objectMapper;
+        }
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+            resp.setStatus(200);
+            resp.setContentType("application/json");
+
+            ObjectNode responseNode = objectMapper.createObjectNode();
+            ObjectNode nameNode = responseNode.putObject("name");
+            nameNode.put("firstName", "John");
+            nameNode.put("lastName", "Doe");
+
+            resp.getWriter().println(responseNode);
+        }
+    }
+    
+    private static class HelloServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        private final ObjectMapper objectMapper;
+
+        private HelloServlet(ObjectMapper objectMapper) {
+            this.objectMapper = objectMapper;
+        }
+
+        @Override
+        protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+            resp.setStatus(200);
+            resp.setContentType("application/json");
+            
+            JsonNode body = objectMapper.readTree(req.getInputStream());
+            String name = body.get("name").asString();
+
+            ObjectNode responseNode = objectMapper.createObjectNode();
+            responseNode.put("result", "Hello " + name);
+            resp.getWriter().println(responseNode);
+        }
+
+    }
+    
+    private static class ArrayResponseServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+            resp.setStatus(200);
+            resp.setContentType("application/json");
+            resp.getWriter().println("{ \"total\": 3, \"data\": [ { \"name\" : \"abc\"}, { \"name\" : \"def\"}, { \"name\" : \"ghi\"} ] }");
+        }
+
+    }
+
+    private static class DeleteResponseServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+            resp.setStatus(200);
+        }
+
+    }
+
+    protected static class ClasspathResourceServlet extends HttpServlet {
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+            String resource = req.getParameter("resource");
+            if (StringUtils.isNotEmpty(resource)) {
+                resp.setStatus(200);
+                try (InputStream resourceStream = new ClassPathResource(resource).getInputStream()) {
+                    resp.getOutputStream().write(IOUtils.toByteArray(resourceStream));
+                }
+            } else {
+                resp.sendError(400, "resource not provided");
+            }
+        }
+    }
+
+    /**
+     * Echoes the raw request body back verbatim and reflects the received {@code Content-Type} back as the response
+     * content type, so a binary round-trip can assert both that the bytes were not corrupted and that the content type
+     * arrived correctly (exactly once).
+     */
+    protected static class BinaryEchoServlet extends HttpServlet {
+
+        @Override
+        protected void service(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+            byte[] body = IOUtils.toByteArray(req.getInputStream());
+            resp.setStatus(200);
+            String contentType = req.getContentType();
+            if (StringUtils.isNotEmpty(contentType)) {
+                resp.setContentType(contentType);
+            }
+            resp.getOutputStream().write(body);
+        }
+    }
+
+    /**
+     * Answers with a redirect (302 by default) to the URL given in the {@code location} query parameter. Used to test
+     * client-side redirect following without depending on an external host.
+     */
+    protected static class RedirectServlet extends HttpServlet {
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
+            String location = req.getParameter("location");
+            String statusParam = req.getParameter("status");
+            int status = StringUtils.isNotEmpty(statusParam) ? Integer.parseInt(statusParam) : HttpServletResponse.SC_FOUND;
+            resp.setStatus(status);
+            resp.setHeader("Location", location);
+        }
+    }
+
+    /**
+     * Echoes the received {@code Authorization} header back in the response body (as {@code auth=<value>}, or
+     * {@code auth=<none>} when absent). Used to verify whether credentials are forwarded across a redirect.
+     */
+    protected static class EchoAuthorizationServlet extends HttpServlet {
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+            String authorization = req.getHeader("Authorization");
+            resp.setStatus(200);
+            resp.setContentType("text/plain");
+            resp.getWriter().print("auth=" + (authorization != null ? authorization : "<none>"));
+        }
+    }
+
+    public static void setUp() {
+        // No setup required
+    }
+}

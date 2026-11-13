@@ -1,0 +1,889 @@
+import { EventEmitter } from 'events';
+import type { default as IORedis } from 'ioredis';
+import { ConnectionOptions, RedisOptions, RedisClient } from '../interfaces';
+import { IRedisClient } from '../interfaces/redis-client';
+import {
+  decreaseMaxListeners,
+  increaseMaxListeners,
+  isNotConnectionError,
+  isRedisCluster,
+  isRedisInstance,
+  isRedisVersionLowerThan,
+} from '../utils';
+import { version as packageVersion } from '../version';
+import * as scripts from '../scripts';
+import { DatabaseType } from '../types';
+import { createIORedisClient, isIRedisClient } from './ioredis-client';
+import { createNodeRedisClient } from './node-redis-client';
+import { createBunRedisClient } from './bun-redis-client';
+import {
+  ConnectionClosedError,
+  CONNECTION_CLOSED_ERROR_MSG,
+} from './errors/connection-closed-error';
+
+const overrideMessage = [
+  'BullMQ: WARNING! Your redis options maxRetriesPerRequest must be null',
+  'and will be overridden by BullMQ.',
+].join(' ');
+
+const deprecationMessage =
+  'BullMQ: Your redis options maxRetriesPerRequest must be null.';
+
+const clusterReconnectPromise = Symbol('bullmqClusterReconnectPromise');
+const clusterPatchedForBlocking = Symbol('bullmqClusterPatchedForBlocking');
+const clusterOriginalBzpopmin = Symbol('bullmqClusterOriginalBzpopmin');
+const clusterWrappedBzpopmin = Symbol('bullmqClusterWrappedBzpopmin');
+const clusterPatchRefCount = Symbol('bullmqClusterPatchRefCount');
+const clusterClosingRefCount = Symbol('bullmqClusterClosingRefCount');
+
+// Hard cap on a single cluster reconnect attempt. Without this, a hung
+// `client.connect()` (e.g. ioredis Cluster cannot recover and slot refresh
+// keeps retrying internally) leaves `clusterReconnectPromise` pinned forever
+// and every subsequent bzpopmin call awaits the same dead promise, deadlocking
+// the worker. 30s is comfortably above the default ioredis slotsRefreshTimeout
+// while bounded enough that wedged workers recover within one or two ticks.
+const DEFAULT_CLUSTER_RECONNECT_TIMEOUT_MS = 30_000;
+
+interface RedisCapabilities {
+  canDoubleTimeout: boolean;
+  canBlockFor1Ms: boolean;
+}
+
+interface BlockingClusterClient {
+  [clusterReconnectPromise]?: Promise<void> | null;
+  [clusterPatchedForBlocking]?: boolean;
+  [clusterOriginalBzpopmin]?: BlockingClusterClient['bzpopmin'];
+  [clusterWrappedBzpopmin]?: BlockingClusterClient['bzpopmin'];
+  [clusterPatchRefCount]?: number;
+  [clusterClosingRefCount]?: number;
+  bzpopmin: (...args: any[]) => Promise<unknown>;
+  connect: () => Promise<void>;
+  disconnect: (reconnect?: boolean) => void;
+  nodes?: () => unknown[];
+  status?: string;
+}
+
+export interface RawCommand {
+  content: string;
+  name: string;
+  keys: number;
+}
+
+type IORedisModule = { default: typeof IORedis };
+
+/**
+ * Lazily loads the optional `ioredis` driver. Users on another Redis driver
+ * (node-redis, Bun built-in, …) or on the PostgreSQL backend never hit this
+ * path, so they never need `ioredis` installed.
+ *
+ * Only reached when no {@link RedisConnection.clientFactory} is set and the
+ * caller did not pass an already-constructed client instance. In native ESM
+ * environments where `require` is unavailable, callers should provide a client
+ * instance or a `clientFactory` instead.
+ */
+function loadIORedis(): typeof IORedis {
+  try {
+    if (typeof require === 'function') {
+      const mod = require('ioredis') as IORedisModule | typeof IORedis;
+      // ioredis exports the constructor both as the module itself (CJS) and
+      // under `default` (ESM interop); normalise to the constructor.
+      return (mod as IORedisModule).default ?? (mod as typeof IORedis);
+    }
+  } catch {
+    // Fall through to the friendly error below.
+  }
+  throw new Error(
+    "BullMQ could not load the optional 'ioredis' package. " +
+      'Install it with `npm install ioredis`, or provide a different Redis ' +
+      'client instance (e.g. node-redis) via the connection option. In a ' +
+      'native ESM environment, pass an already-constructed client instance ' +
+      'instead of connection options.',
+  );
+}
+
+/**
+ * Wraps a raw client instance passed through the `connection` option in the
+ * matching {@link IRedisClient} adapter, auto-detecting the underlying driver.
+ *
+ * This lets consumers pass a native node-redis or Bun client directly (without
+ * manually calling `createNodeRedisClient` / `createBunRedisClient` or setting a
+ * global {@link RedisConnection.clientFactory}), so those users never need
+ * `ioredis` installed. ioredis instances keep their existing code path, so the
+ * behaviour is fully backwards compatible.
+ *
+ * Detection is purely structural (no driver package is imported), keying off
+ * markers that are unique to each client:
+ *   - ioredis exposes `defineCommand` (used to register Lua scripts);
+ *     node-redis and Bun do not.
+ *   - node-redis (`@redis/client`) exposes `sendCommand` plus `isOpen`/`isReady`.
+ *   - Bun's built-in `RedisClient` exposes `send` plus a `connected` flag.
+ */
+function wrapRedisInstance(instance: any): IRedisClient {
+  // Already an adapted IRedisClient (ioredis proxy, node-redis, Bun, or a
+  // custom implementation) — use as-is.
+  if (isIRedisClient(instance)) {
+    return instance;
+  }
+
+  const hasDefineCommand = typeof instance.defineCommand === 'function';
+
+  // node-redis (@redis/client): `sendCommand` + `isOpen`/`isReady`, and no
+  // ioredis-style `defineCommand`.
+  if (
+    !hasDefineCommand &&
+    typeof instance.sendCommand === 'function' &&
+    ('isOpen' in instance || 'isReady' in instance)
+  ) {
+    return createNodeRedisClient(instance);
+  }
+
+  // Bun's built-in RedisClient: `send` + `connected`, and no `defineCommand`.
+  if (
+    !hasDefineCommand &&
+    typeof instance.send === 'function' &&
+    'connected' in instance
+  ) {
+    return createBunRedisClient(instance);
+  }
+
+  // Default: treat as an ioredis instance (backwards compatible).
+  return createIORedisClient(instance);
+}
+
+export class RedisConnection extends EventEmitter {
+  static minimumVersion = '5.0.0';
+  static recommendedMinimumVersion = '6.2.0';
+
+  /**
+   * Optional factory that creates an {@link IRedisClient} from raw options.
+   *
+   * When set, {@link RedisConnection} will call this factory instead of
+   * creating an ioredis client internally.  This allows swapping the Redis
+   * driver (e.g. node-redis, Bun built-in) without changing consumer code.
+   *
+   * The factory receives the merged {@link RedisOptions} and must return
+   * an **already-augmented** {@link IRedisClient} (e.g. via
+   * `createNodeRedisClient`).
+   *
+   * @example
+   * ```ts
+   * import { createClient } from 'redis';
+   * import { RedisConnection, createNodeRedisClient } from 'bullmq';
+   *
+   * RedisConnection.clientFactory = (opts) => {
+   *   const raw = createClient({ url: `redis://${opts.host ?? '127.0.0.1'}:${opts.port ?? 6379}` });
+   *   return createNodeRedisClient(raw);
+   * };
+   * ```
+   */
+  static clientFactory?: (opts: RedisOptions) => IRedisClient;
+
+  closing: boolean;
+  capabilities: RedisCapabilities = {
+    canDoubleTimeout: false,
+    canBlockFor1Ms: true,
+  };
+
+  status: 'initializing' | 'ready' | 'closing' | 'closed' = 'initializing';
+  private dbType: DatabaseType = 'redis';
+
+  protected _client: RedisClient;
+
+  private readonly opts: RedisOptions;
+  private readonly initializing: Promise<RedisClient>;
+
+  private version: string;
+  protected packageVersion = packageVersion;
+  private skipVersionCheck: boolean;
+  private handleClientError: (e: Error) => void;
+  private handleClientClose: () => void;
+  private handleClientReady: () => void;
+  private patchedBlockingClusterClient?: BlockingClusterClient;
+  private disabledBlockingClusterReconnect = false;
+
+  constructor(
+    opts: ConnectionOptions,
+    private readonly extraOptions?: {
+      shared?: boolean;
+      blocking?: boolean;
+      skipVersionCheck?: boolean;
+      skipWaitingForReady?: boolean;
+      clusterReconnectTimeoutMs?: number;
+    },
+  ) {
+    super();
+
+    // Set extra options defaults
+    this.extraOptions = {
+      shared: false,
+      blocking: true,
+      skipVersionCheck: false,
+      skipWaitingForReady: false,
+      clusterReconnectTimeoutMs: DEFAULT_CLUSTER_RECONNECT_TIMEOUT_MS,
+      ...extraOptions,
+    };
+
+    if (!isRedisInstance(opts)) {
+      this.checkBlockingOptions(overrideMessage, opts);
+
+      this.opts = {
+        port: 6379,
+        host: '127.0.0.1',
+        retryStrategy: function (times: number) {
+          return Math.max(Math.min(Math.exp(times), 20000), 1000);
+        },
+        ...opts,
+      };
+
+      if (this.extraOptions.blocking) {
+        this.opts.maxRetriesPerRequest = null;
+      }
+    } else {
+      // Wrap raw client instances in the matching IRedisClient adapter,
+      // auto-detecting the driver (ioredis / node-redis / Bun) so callers can
+      // pass a native client directly without setting a clientFactory.
+      this._client = wrapRedisInstance(opts);
+
+      // Test if the redis instance is using keyPrefix
+      // and if so, throw an error.
+      if (this._client.options.keyPrefix) {
+        throw new Error(
+          'BullMQ: ioredis does not support ioredis prefixes, use the prefix option instead.',
+        );
+      }
+
+      if (this._client.isCluster) {
+        this.opts = this._client.options.redisOptions;
+      } else {
+        this.opts = this._client.options;
+      }
+
+      this.checkBlockingOptions(deprecationMessage, this.opts, true);
+    }
+
+    this.skipVersionCheck =
+      extraOptions?.skipVersionCheck ||
+      !!(this.opts && this.opts.skipVersionCheck);
+
+    this.handleClientError = (err: Error): void => {
+      this.emit('error', err);
+    };
+
+    this.handleClientClose = (): void => {
+      this.emit('close');
+    };
+
+    this.handleClientReady = (): void => {
+      this.emit('ready');
+    };
+
+    this.initializing = this.init();
+    this.initializing.catch(err => {
+      // Only emit if there is an `error` listener attached. `EventEmitter.emit`
+      // throws when emitting `error` with no listeners, which would surface as
+      // an unhandled rejection — e.g. when the connection is force-closed during
+      // shutdown while its version-check `INFO` command is still in flight and
+      // rejects with "Connection is closed". The init error is still propagated
+      // to anything awaiting `initializing` (the `client` getter and `close`).
+      if (this.listenerCount('error') > 0) {
+        this.emit('error', err);
+      }
+    });
+  }
+
+  private checkBlockingOptions(
+    msg: string,
+    options?: RedisOptions,
+    throwError = false,
+  ) {
+    if (this.extraOptions.blocking && options && options.maxRetriesPerRequest) {
+      if (throwError) {
+        throw new Error(msg);
+      } else {
+        console.error(msg);
+      }
+    }
+  }
+
+  /**
+   * Waits for a redis client to be ready.
+   * @param redis - client
+   */
+  static async waitUntilReady(client: RedisClient): Promise<void> {
+    if (client.status === 'ready') {
+      return;
+    }
+
+    // ioredis Cluster reports 'connect' as its connected status instead of
+    // 'ready' that standalone Redis uses. Treat it as already connected so we
+    // don't hang waiting for a 'ready' event that will never fire and end up
+    // throwing a spurious "Connection is closed" error during disconnect.
+    if (client.status === 'connect' && isRedisCluster(client)) {
+      return;
+    }
+
+    if (client.status === 'wait') {
+      return client.connect();
+    }
+
+    if (client.status === 'end') {
+      throw new ConnectionClosedError(CONNECTION_CLOSED_ERROR_MSG);
+    }
+
+    let handleReady: () => void;
+    let handleEnd: () => void;
+    let handleError: (e: Error) => void;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let lastError: Error;
+
+        handleError = (err: Error) => {
+          lastError = err;
+        };
+
+        handleReady = () => {
+          resolve();
+        };
+
+        handleEnd = () => {
+          if (client.status !== 'end') {
+            reject(
+              lastError ||
+                new ConnectionClosedError(CONNECTION_CLOSED_ERROR_MSG),
+            );
+          } else {
+            if (lastError) {
+              reject(lastError);
+            } else {
+              // when custom 'end' status is set we already closed
+              resolve();
+            }
+          }
+        };
+
+        increaseMaxListeners(client, 3);
+
+        client.once('ready', handleReady);
+        client.on('end', handleEnd);
+        client.once('error', handleError);
+      });
+    } finally {
+      client.removeListener('end', handleEnd);
+      client.removeListener('error', handleError);
+      client.removeListener('ready', handleReady);
+
+      decreaseMaxListeners(client, 3);
+    }
+  }
+
+  get client(): Promise<RedisClient> {
+    return this.initializing;
+  }
+
+  protected loadCommands(
+    packageVersion: string,
+    providedScripts?: Record<string, RawCommand>,
+  ): void {
+    const finalScripts =
+      providedScripts || (scripts as Record<string, RawCommand>);
+    for (const property in finalScripts as Record<string, RawCommand>) {
+      // Only define the command if not already defined
+      const commandName = `${finalScripts[property].name}:${packageVersion}`;
+      if (!(<any>this._client)[commandName]) {
+        this._client.defineCommand(commandName, {
+          numberOfKeys: finalScripts[property].keys,
+          lua: finalScripts[property].content,
+        });
+      }
+    }
+  }
+
+  private async init() {
+    if (!this._client) {
+      if (RedisConnection.clientFactory) {
+        this._client = RedisConnection.clientFactory(this.opts);
+      } else {
+        const { url, ...rest } = this.opts;
+        const IORedisCtor = loadIORedis();
+        const ioredisClient = url
+          ? new IORedisCtor(url, rest)
+          : new IORedisCtor(rest);
+        this._client = createIORedisClient(ioredisClient);
+      }
+    }
+
+    increaseMaxListeners(this._client, 3);
+
+    this._client.on('error', this.handleClientError);
+    // ioredis treats connection errors as a different event ('close')
+    this._client.on('close', this.handleClientClose);
+
+    this._client.on('ready', this.handleClientReady);
+
+    this.patchBlockingClusterClient();
+
+    if (!this.extraOptions.skipWaitingForReady) {
+      await RedisConnection.waitUntilReady(this._client);
+    }
+
+    this.loadCommands(this.packageVersion);
+
+    if (this._client['status'] !== 'end') {
+      const versionResult = await this.getRedisVersionAndType();
+      this.version = versionResult.version;
+      this.dbType = versionResult.databaseType;
+
+      if (this.skipVersionCheck !== true && !this.closing) {
+        if (
+          isRedisVersionLowerThan(
+            this.version,
+            RedisConnection.minimumVersion,
+            this.dbType,
+          )
+        ) {
+          throw new Error(
+            `Redis version needs to be greater or equal than ${RedisConnection.minimumVersion} ` +
+              `Current: ${this.version}`,
+          );
+        }
+
+        if (
+          isRedisVersionLowerThan(
+            this.version,
+            RedisConnection.recommendedMinimumVersion,
+            this.dbType,
+          )
+        ) {
+          console.warn(
+            `It is highly recommended to use a minimum Redis version of ${RedisConnection.recommendedMinimumVersion}
+             Current: ${this.version}`,
+          );
+        }
+      }
+
+      this.capabilities = {
+        canDoubleTimeout: !isRedisVersionLowerThan(
+          this.version,
+          '6.0.0',
+          this.dbType,
+        ),
+        canBlockFor1Ms: !isRedisVersionLowerThan(
+          this.version,
+          '7.0.8',
+          this.dbType,
+        ),
+      };
+
+      this.status = 'ready';
+    }
+
+    return this._client;
+  }
+
+  private patchBlockingClusterClient(): void {
+    const client = this._client;
+    const blockingClient = client as unknown as BlockingClusterClient;
+    if (
+      !this.extraOptions.blocking ||
+      !isRedisCluster(client) ||
+      typeof blockingClient.bzpopmin !== 'function'
+    ) {
+      return;
+    }
+
+    const reconnectTimeoutMs =
+      this.extraOptions.clusterReconnectTimeoutMs ??
+      DEFAULT_CLUSTER_RECONNECT_TIMEOUT_MS;
+
+    blockingClient[clusterPatchRefCount] =
+      (blockingClient[clusterPatchRefCount] || 0) + 1;
+    this.patchedBlockingClusterClient = blockingClient;
+
+    if (blockingClient[clusterPatchedForBlocking]) {
+      return;
+    }
+
+    const bzpopmin = blockingClient.bzpopmin;
+    const wrappedBzpopmin = async (...args: any[]) => {
+      await RedisConnection.reconnectClusterIfNeeded(
+        blockingClient,
+        reconnectTimeoutMs,
+      );
+
+      try {
+        return await bzpopmin.apply(blockingClient, args);
+      } catch (error) {
+        const commandError = error as Error;
+        if (
+          RedisConnection.shouldReconnectClusterAfterError(
+            blockingClient,
+            commandError,
+          )
+        ) {
+          try {
+            await RedisConnection.reconnectCluster(
+              blockingClient,
+              reconnectTimeoutMs,
+            );
+          } catch {
+            // Preserve the original command failure if best-effort recovery fails.
+          }
+        }
+        throw commandError;
+      }
+    };
+
+    blockingClient[clusterOriginalBzpopmin] = bzpopmin;
+    blockingClient[clusterWrappedBzpopmin] = wrappedBzpopmin;
+    blockingClient[clusterPatchedForBlocking] = true;
+    blockingClient.bzpopmin = wrappedBzpopmin;
+  }
+
+  private disableBlockingClusterReconnect(): void {
+    const client = this.patchedBlockingClusterClient;
+    if (!client || this.disabledBlockingClusterReconnect) {
+      return;
+    }
+
+    client[clusterClosingRefCount] = (client[clusterClosingRefCount] || 0) + 1;
+    this.disabledBlockingClusterReconnect = true;
+  }
+
+  private releaseBlockingClusterClientPatch(): void {
+    const client = this.patchedBlockingClusterClient;
+    if (!client) {
+      return;
+    }
+
+    if (this.disabledBlockingClusterReconnect) {
+      const closingRefCount = (client[clusterClosingRefCount] || 1) - 1;
+      if (closingRefCount > 0) {
+        client[clusterClosingRefCount] = closingRefCount;
+      } else {
+        delete client[clusterClosingRefCount];
+      }
+      this.disabledBlockingClusterReconnect = false;
+    }
+
+    const patchRefCount = (client[clusterPatchRefCount] || 1) - 1;
+    if (patchRefCount > 0) {
+      client[clusterPatchRefCount] = patchRefCount;
+      this.patchedBlockingClusterClient = undefined;
+      return;
+    }
+
+    if (
+      client[clusterOriginalBzpopmin] &&
+      client.bzpopmin === client[clusterWrappedBzpopmin]
+    ) {
+      client.bzpopmin = client[clusterOriginalBzpopmin];
+    }
+
+    delete client[clusterPatchRefCount];
+    delete client[clusterClosingRefCount];
+    delete client[clusterOriginalBzpopmin];
+    delete client[clusterWrappedBzpopmin];
+    delete client[clusterPatchedForBlocking];
+    this.patchedBlockingClusterClient = undefined;
+  }
+
+  private static isClusterWithEmptyNodes(
+    client: BlockingClusterClient,
+  ): boolean {
+    return typeof client.nodes === 'function' && client.nodes().length === 0;
+  }
+
+  private static isReconnectingDisabled(
+    client: BlockingClusterClient,
+  ): boolean {
+    const patchRefCount = client[clusterPatchRefCount] || 0;
+    const closingRefCount = client[clusterClosingRefCount] || 0;
+
+    return (
+      patchRefCount === 0 ||
+      closingRefCount >= patchRefCount ||
+      client.status === 'end' ||
+      client.status === 'closing'
+    );
+  }
+
+  private static async reconnectClusterIfNeeded(
+    client: BlockingClusterClient,
+    timeoutMs: number,
+  ): Promise<void> {
+    if (
+      !RedisConnection.isReconnectingDisabled(client) &&
+      RedisConnection.isClusterWithEmptyNodes(client)
+    ) {
+      await RedisConnection.reconnectCluster(client, timeoutMs);
+    }
+  }
+
+  private static shouldReconnectClusterAfterError(
+    client: BlockingClusterClient,
+    error: Error,
+  ): boolean {
+    if (RedisConnection.isReconnectingDisabled(client)) {
+      return false;
+    }
+
+    const message = [
+      error.message,
+      (error as any).cause?.message,
+      (error as any).lastNodeError?.message,
+    ].join(' ');
+
+    return (
+      RedisConnection.isClusterWithEmptyNodes(client) ||
+      /Command timed out|Failed to refresh slots cache/i.test(message)
+    );
+  }
+
+  private static async reconnectCluster(
+    client: BlockingClusterClient,
+    timeoutMs: number,
+  ): Promise<void> {
+    if (RedisConnection.isReconnectingDisabled(client)) {
+      return;
+    }
+
+    if (!client[clusterReconnectPromise]) {
+      client[clusterReconnectPromise] =
+        RedisConnection.connectClusterWithTimeout(client, timeoutMs).finally(
+          () => {
+            client[clusterReconnectPromise] = null;
+          },
+        );
+    }
+
+    await client[clusterReconnectPromise];
+  }
+
+  // Disconnects and reconnects a cluster client, racing connect() against a
+  // hard cap so a hung reconnect cannot pin `clusterReconnectPromise`
+  // indefinitely. On timeout, the underlying connect() is left running
+  // (ioredis Cluster handles its own retry/state); we simply stop awaiting it.
+  // The next bzpopmin call's `reconnectClusterIfNeeded` check will trigger a
+  // fresh reconnect if the pool is still empty.
+  private static async connectClusterWithTimeout(
+    client: BlockingClusterClient,
+    timeoutMs: number,
+  ): Promise<void> {
+    client.disconnect(false);
+
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        client.connect(),
+        new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            reject(
+              new ConnectionClosedError(
+                `BullMQ: cluster reconnect timed out after ${timeoutMs}ms`,
+              ),
+            );
+          }, timeoutMs);
+          // Don't keep the event loop alive solely for this timer.
+          timeoutHandle.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
+  }
+
+  async disconnect(wait = true): Promise<void> {
+    const client = await this.client;
+    if (client.status !== 'end') {
+      let _resolve, _reject;
+
+      if (!wait) {
+        return client.disconnect();
+      }
+
+      const disconnecting = new Promise<void>((resolve, reject) => {
+        increaseMaxListeners(client, 2);
+
+        client.once('end', resolve);
+        client.once('error', reject);
+        _resolve = resolve;
+        _reject = reject;
+      });
+
+      client.disconnect();
+
+      try {
+        await disconnecting;
+      } finally {
+        decreaseMaxListeners(client, 2);
+
+        client.removeListener('end', _resolve);
+        client.removeListener('error', _reject);
+      }
+    }
+  }
+
+  async reconnect(): Promise<void> {
+    const client = await this.client;
+    for (;;) {
+      if (
+        client.status === 'ready' ||
+        (client.status === 'connect' && isRedisCluster(client))
+      ) {
+        return;
+      }
+
+      if (client.status === 'wait' || client.status === 'end') {
+        return client.connect();
+      }
+
+      try {
+        await RedisConnection.waitUntilReady(client);
+      } catch (error) {
+        if (
+          !['end', 'connecting', 'connect', 'reconnecting'].includes(
+            client.status,
+          )
+        ) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  async close(force = false): Promise<void> {
+    if (!this.closing) {
+      const status = this.status;
+      this.status = 'closing';
+      this.closing = true;
+      this.disableBlockingClusterReconnect();
+
+      try {
+        if (status === 'ready') {
+          // Not sure if we need to wait for this
+          await this.initializing;
+        }
+        if (!this.extraOptions.shared) {
+          if (status == 'initializing' || force) {
+            // If we have not still connected to Redis, we need to disconnect.
+            this._client.disconnect();
+            // Suppress any rejection from the in-flight init() so it doesn't
+            // become an unhandled rejection after we close the connection.
+            this.initializing?.catch(() => {});
+          } else {
+            await this._client.quit();
+          }
+          // As IORedis does not update this status properly, we do it ourselves.
+          this._client['status'] = 'end';
+        }
+      } catch (error) {
+        if (isNotConnectionError(error as Error)) {
+          throw error;
+        }
+      } finally {
+        this.releaseBlockingClusterClientPatch();
+        this._client.off('error', this.handleClientError);
+        this._client.off('close', this.handleClientClose);
+        this._client.off('ready', this.handleClientReady);
+
+        decreaseMaxListeners(this._client, 3);
+
+        this.removeAllListeners();
+        this.status = 'closed';
+      }
+    }
+  }
+
+  private async getRedisVersionAndType(): Promise<{
+    version: string;
+    databaseType: DatabaseType;
+  }> {
+    if (this.skipVersionCheck) {
+      return {
+        version: RedisConnection.minimumVersion,
+        databaseType: 'redis',
+      };
+    }
+
+    const doc = await this._client.info();
+    const redisPrefix = 'redis_version:';
+    const maxMemoryPolicyPrefix = 'maxmemory_policy:';
+    const lines = doc.split(/\r?\n/);
+    let redisVersion;
+    let databaseType: DatabaseType = 'redis';
+
+    // Detect database type from server info
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Check for Dragonfly
+      if (
+        line.includes('dragonfly_version:') ||
+        line.includes('server:Dragonfly')
+      ) {
+        databaseType = 'dragonfly';
+        // For Dragonfly, extract version from dragonfly_version field
+        if (line.indexOf('dragonfly_version:') === 0) {
+          redisVersion = line.substr('dragonfly_version:'.length);
+        }
+      }
+      // Check for Valkey
+      else if (
+        line.includes('valkey_version:') ||
+        line.includes('server:Valkey')
+      ) {
+        databaseType = 'valkey';
+        // For Valkey, extract version from valkey_version field
+        if (line.indexOf('valkey_version:') === 0) {
+          redisVersion = line.substr('valkey_version:'.length);
+        }
+      }
+      // Standard Redis version detection
+      else if (line.indexOf(redisPrefix) === 0) {
+        redisVersion = line.substr(redisPrefix.length);
+        // Keep Redis as default unless we find evidence of other databases above
+        if (databaseType === 'redis') {
+          databaseType = 'redis';
+        }
+      }
+
+      if (line.indexOf(maxMemoryPolicyPrefix) === 0) {
+        const maxMemoryPolicy = line.substr(maxMemoryPolicyPrefix.length);
+        if (maxMemoryPolicy !== 'noeviction') {
+          console.warn(
+            `IMPORTANT! Eviction policy is ${maxMemoryPolicy}. It should be "noeviction"`,
+          );
+        }
+      }
+    }
+
+    // Fallback version detection if specific database version field wasn't found
+    if (!redisVersion) {
+      // Try to find any version field as fallback
+      for (const line of lines) {
+        if (line.includes('version:')) {
+          const parts = line.split(':');
+          if (parts.length >= 2) {
+            redisVersion = parts[1];
+            break;
+          }
+        }
+      }
+    }
+
+    return {
+      version: redisVersion || RedisConnection.minimumVersion,
+      databaseType,
+    };
+  }
+
+  get redisVersion(): string {
+    return this.version;
+  }
+
+  get databaseType(): DatabaseType {
+    return this.dbType;
+  }
+}

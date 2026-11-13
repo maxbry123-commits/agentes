@@ -1,0 +1,17 @@
+# C07 — L1 Interface. SALIDA 4
+id: C07
+layer: L1
+name: audit_trail
+implementado: true
+critical: false
+description: "Trazabilidad mínima"
+requires:
+  - C00
+forbids: []
+rules:
+  - "validar antes de ejecutar"
+checks:
+  - schema_present
+evidence:
+  type: l1_marker
+  required: true

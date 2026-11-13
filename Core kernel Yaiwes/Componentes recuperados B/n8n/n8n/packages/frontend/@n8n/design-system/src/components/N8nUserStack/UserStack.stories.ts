@@ -1,0 +1,212 @@
+/* eslint-disable @typescript-eslint/naming-convention */
+import type { StoryFn } from '@storybook/vue3-vite';
+
+import N8nUserStack from './UserStack.vue';
+
+export default {
+	title: 'Core/UserStack',
+	component: N8nUserStack,
+
+	parameters: {
+		docs: {
+			description: { component: 'An overlapping avatar stack for displaying multiple users.' },
+		},
+	},
+};
+
+const Template: StoryFn = (args) => ({
+	setup: () => ({ args }),
+	components: {
+		N8nUserStack,
+	},
+	template: '<N8nUserStack v-bind="args" />',
+});
+
+export const Default = Template.bind({});
+Default.args = {
+	currentUserEmail: 'sunny@n8n.io',
+	users: {
+		Owners: [
+			{
+				id: '1',
+				firstName: 'Sunny',
+				lastName: 'Side',
+				fullName: 'Sunny Side',
+				email: 'sunny@n8n.io',
+				isDefaultUser: false,
+				isPendingUser: false,
+				isOwner: true,
+				signInType: 'email',
+				disabled: false,
+			},
+			{
+				id: '2',
+				firstName: 'Kobi',
+				lastName: 'Dog',
+				fullName: 'Kobi Dog',
+				email: 'kobi@n8n.io',
+				isDefaultUser: false,
+				isPendingUser: false,
+				isOwner: false,
+				signInType: 'ldap',
+				disabled: true,
+			},
+		],
+		'Other users': [
+			{
+				id: '3',
+				firstName: 'John',
+				lastName: 'Doe',
+				fullName: 'John Doe',
+				email: 'john@n8n.io',
+				isDefaultUser: false,
+				isPendingUser: false,
+				isOwner: false,
+				signInType: 'email',
+				disabled: false,
+			},
+			{
+				id: '4',
+				firstName: 'Jane',
+				lastName: 'Doe',
+				fullName: 'Jane Doe',
+				email: 'jane@n8n.io',
+				isDefaultUser: false,
+				isPendingUser: false,
+				isOwner: false,
+				signInType: 'ldap',
+				disabled: true,
+			},
+			{
+				id: '5',
+				firstName: 'Test',
+				lastName: 'User',
+				fullName: 'Test User',
+				email: 'test@n8n.io',
+				isDefaultUser: false,
+				isPendingUser: true,
+				isOwner: false,
+				signInType: 'email',
+				disabled: false,
+			},
+		],
+		'Empty Group': [],
+	},
+};
+
+export const SingleGroup = Template.bind({});
+SingleGroup.args = {
+	currentUserEmail: 'sunny@n8n.io',
+	users: {
+		Owners: [
+			{
+				id: '1',
+				firstName: 'Sunny',
+				lastName: 'Side',
+				fullName: 'Sunny Side',
+				email: 'sunny@n8n.io',
+				isDefaultUser: false,
+				isPendingUser: false,
+				isOwner: true,
+				signInType: 'email',
+				disabled: false,
+			},
+			{
+				id: '2',
+				firstName: 'Kobi',
+				lastName: 'Dog',
+				fullName: 'Kobi Dog',
+				email: 'kobi@n8n.io',
+				isDefaultUser: false,
+				isPendingUser: false,
+				isOwner: false,
+				signInType: 'ldap',
+				disabled: true,
+			},
+			{
+				id: '4',
+				firstName: 'Jane',
+				lastName: 'Doe',
+				fullName: 'Jane Doe',
+				email: 'jane@n8n.io',
+				isDefaultUser: false,
+				isPendingUser: false,
+				isOwner: false,
+				signInType: 'ldap',
+				disabled: true,
+			},
+			{
+				id: '5',
+				firstName: 'Test',
+				lastName: 'User',
+				fullName: 'Test User',
+				email: 'test@n8n.io',
+				isDefaultUser: false,
+				isPendingUser: true,
+				isOwner: false,
+				signInType: 'email',
+				disabled: false,
+			},
+		],
+	},
+};
+
+export const NoCutoff = Template.bind({});
+NoCutoff.args = {
+	currentUserEmail: 'sunny@n8n.io',
+	users: {
+		Owners: [
+			{
+				id: '1',
+				firstName: 'Sunny',
+				lastName: 'Side',
+				fullName: 'Sunny Side',
+				email: 'sunny@n8n.io',
+				isDefaultUser: false,
+				isPendingUser: false,
+				isOwner: true,
+				signInType: 'email',
+				disabled: false,
+			},
+			{
+				id: '2',
+				firstName: 'Kobi',
+				lastName: 'Dog',
+				fullName: 'Kobi Dog',
+				email: 'kobi@n8n.io',
+				isDefaultUser: false,
+				isPendingUser: false,
+				isOwner: false,
+				signInType: 'ldap',
+				disabled: true,
+			},
+			{
+				id: '3',
+				firstName: 'John',
+				lastName: 'Doe',
+				fullName: 'John Doe',
+				email: 'john@n8n.io',
+				isDefaultUser: false,
+				isPendingUser: false,
+				isOwner: false,
+				signInType: 'email',
+				disabled: false,
+			},
+		],
+	},
+};
+
+export const Sizes: StoryFn = () => ({
+	components: { N8nUserStack },
+	setup() {
+		return {
+			sizes: ['xxsmall', 'xsmall', 'small', 'medium', 'large'],
+			args: Default.args,
+		};
+	},
+	template: `
+		<div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+			<N8nUserStack v-for="size in sizes" :key="size" v-bind="args" :size="size" />
+		</div>
+	`,
+});

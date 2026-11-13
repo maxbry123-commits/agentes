@@ -1,0 +1,925 @@
+{
+  "operations": {
+    "DELETE /push/channelSubscriptions": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "query",
+          "parameter_name": "deviceId",
+          "resource": "Device",
+          "resource_field": "deviceId"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "query",
+          "parameter_name": "clientId",
+          "resource": "Client",
+          "resource_field": "clientId"
+        }
+      ],
+      "outputs": []
+    },
+    "DELETE /push/deviceRegistrations": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "query",
+          "parameter_name": "deviceId",
+          "resource": "DeviceDetails",
+          "resource_field": "id"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "query",
+          "parameter_name": "clientId",
+          "resource": "Client",
+          "resource_field": "clientId"
+        }
+      ],
+      "outputs": []
+    },
+    "DELETE /push/deviceRegistrations/{device_id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "path",
+          "parameter_name": "device_id",
+          "resource": "DeviceDetails",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": []
+    },
+    "GET /channels": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "ChannelDetails",
+          "status_code": "2XX"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/*/status",
+          "resource": "ChannelStatus",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "GET /channels/{channel_id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "path",
+          "parameter_name": "channel_id",
+          "resource": "ChannelDetails",
+          "resource_field": "channelId"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "ChannelDetails",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/status",
+          "resource": "ChannelStatus",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /channels/{channel_id}/messages": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "path",
+          "parameter_name": "channel_id",
+          "resource": "ChannelDetails",
+          "resource_field": "channelId"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Message",
+          "status_code": "2XX"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/*/extras",
+          "resource": "Extras",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "GET /channels/{channel_id}/presence": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "path",
+          "parameter_name": "channel_id",
+          "resource": "ChannelDetails",
+          "resource_field": "channelId"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "query",
+          "parameter_name": "clientId",
+          "resource": "Client",
+          "resource_field": "clientId"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "query",
+          "parameter_name": "connectionId",
+          "resource": "Connection",
+          "resource_field": "connectionId"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "PresenceMessage",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/*/extras",
+          "resource": "Extras",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /channels/{channel_id}/presence/history": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "path",
+          "parameter_name": "channel_id",
+          "resource": "ChannelDetails",
+          "resource_field": "channelId"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "PresenceMessage",
+          "status_code": "2XX"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/*/extras",
+          "resource": "Extras",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "GET /push/channelSubscriptions": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "query",
+          "parameter_name": "deviceId",
+          "resource": "DeviceDetails",
+          "resource_field": "id"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "query",
+          "parameter_name": "clientId",
+          "resource": "Client",
+          "resource_field": "clientId"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DeviceDetails",
+          "status_code": "2XX"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/push.recipient",
+          "resource": "Recipient",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "GET /push/channels": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": true,
+          "pointer": "/",
+          "resource": "Channel",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "GET /push/deviceRegistrations": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "query",
+          "parameter_name": "deviceId",
+          "resource": "DeviceDetails",
+          "resource_field": "id"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "query",
+          "parameter_name": "clientId",
+          "resource": "Client",
+          "resource_field": "clientId"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DeviceDetails",
+          "status_code": "2XX"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/push.recipient",
+          "resource": "Recipient",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "GET /push/deviceRegistrations/{device_id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "path",
+          "parameter_name": "device_id",
+          "resource": "DeviceDetails",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DeviceDetails",
+          "status_code": "2XX"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/push.recipient",
+          "resource": "Recipient",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "GET /push/deviceRegistrations/{device_id}/resetUpdateToken": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "path",
+          "parameter_name": "device_id",
+          "resource": "DeviceDetails",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DeviceDetails",
+          "status_code": "2XX"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/push.recipient",
+          "resource": "Recipient",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "GET /stats": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Stat",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "GET /time": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": true,
+          "pointer": "/",
+          "resource": "Time",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "PATCH /push/deviceRegistrations/{device_id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "path",
+          "parameter_name": "device_id",
+          "resource": "DeviceDetails",
+          "resource_field": "id"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "clientId",
+          "resource": "DeviceDetails",
+          "resource_field": "clientId"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "id",
+          "resource": "DeviceDetails",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DeviceDetails",
+          "status_code": "2XX"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/push.recipient",
+          "resource": "Recipient",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "POST /channels/{channel_id}/messages": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "path",
+          "parameter_name": "channel_id",
+          "resource": "ChannelDetails",
+          "resource_field": "channelId"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "clientId",
+          "resource": "Message",
+          "resource_field": "clientId"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "connectionId",
+          "resource": "Message",
+          "resource_field": "connectionId"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "id",
+          "resource": "Message",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Message",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "POST /keys/{keyName}/requestToken": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "keyName",
+          "resource": "Key",
+          "resource_field": "keyName"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "TokenDetails",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "POST /push/channelSubscriptions": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "deviceId",
+          "resource": "Device",
+          "resource_field": "deviceId"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "clientId",
+          "resource": "Client",
+          "resource_field": "clientId"
+        }
+      ],
+      "outputs": []
+    },
+    "POST /push/deviceRegistrations": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "clientId",
+          "resource": "Client",
+          "resource_field": "clientId"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "id",
+          "resource": "DeviceRegistration",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DeviceDetails",
+          "status_code": "2XX"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/push.recipient",
+          "resource": "Recipient",
+          "status_code": "2XX"
+        },
+        {
+          "body_field": "id",
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "",
+          "resource": "DeviceRegistration",
+          "status_code": "2XX"
+        }
+      ]
+    },
+    "POST /push/publish": {
+      "inputs": [],
+      "outputs": []
+    },
+    "PUT /push/deviceRegistrations/{device_id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "path",
+          "parameter_name": "device_id",
+          "resource": "DeviceDetails",
+          "resource_field": "id"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "clientId",
+          "resource": "DeviceDetails",
+          "resource_field": "clientId"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "id",
+          "resource": "DeviceDetails",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DeviceDetails",
+          "status_code": "2XX"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/push.recipient",
+          "resource": "Recipient",
+          "status_code": "2XX"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Channel": {
+      "fields": [
+        "id"
+      ],
+      "types": {}
+    },
+    "ChannelDetails": {
+      "fields": [
+        "channelId",
+        "isGlobalMaster",
+        "region",
+        "status"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "channelId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Channel"
+        }
+      ],
+      "types": {
+        "channelId": [
+          "string"
+        ],
+        "isGlobalMaster": [
+          "boolean"
+        ],
+        "region": [
+          "string"
+        ],
+        "status": [
+          "object"
+        ]
+      }
+    },
+    "ChannelStatus": {
+      "fields": [
+        "isActive",
+        "occupancy"
+      ],
+      "types": {
+        "isActive": [
+          "boolean"
+        ],
+        "occupancy": [
+          "object"
+        ]
+      }
+    },
+    "Client": {
+      "fields": [
+        "clientId"
+      ],
+      "types": {}
+    },
+    "Connection": {
+      "fields": [
+        "connectionId"
+      ],
+      "types": {}
+    },
+    "Device": {
+      "fields": [
+        "deviceId"
+      ],
+      "types": {}
+    },
+    "DeviceDetails": {
+      "fields": [
+        "clientId",
+        "deviceSecret",
+        "formFactor",
+        "id",
+        "metadata",
+        "platform",
+        "push.recipient",
+        "push.state"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "clientId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Client"
+        }
+      ],
+      "nested_fk_fields": [
+        {
+          "field_name": "clientId",
+          "is_array": false,
+          "pointer": "/push.recipient/clientId",
+          "target_field": "id",
+          "target_resource": "Client"
+        },
+        {
+          "field_name": "deviceId",
+          "is_array": false,
+          "pointer": "/push.recipient/deviceId",
+          "target_field": "id",
+          "target_resource": "Device"
+        }
+      ],
+      "types": {
+        "clientId": [
+          "string"
+        ],
+        "deviceSecret": [
+          "string"
+        ],
+        "formFactor": [
+          "string"
+        ],
+        "id": [
+          "string"
+        ],
+        "metadata": [
+          "object"
+        ],
+        "platform": [
+          "string"
+        ],
+        "push.recipient": [
+          "object"
+        ],
+        "push.state": [
+          "string"
+        ]
+      }
+    },
+    "DeviceRegistration": {
+      "fields": [
+        "id"
+      ],
+      "types": {}
+    },
+    "Extras": {
+      "fields": [
+        "push"
+      ],
+      "types": {
+        "push": [
+          "object"
+        ]
+      }
+    },
+    "Key": {
+      "fields": [
+        "keyName"
+      ],
+      "types": {}
+    },
+    "Message": {
+      "fields": [
+        "clientId",
+        "connectionId",
+        "data",
+        "encoding",
+        "extras",
+        "id",
+        "name",
+        "timestamp"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "clientId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Client"
+        },
+        {
+          "field_name": "connectionId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Connection"
+        }
+      ],
+      "types": {
+        "clientId": [
+          "string"
+        ],
+        "connectionId": [
+          "string"
+        ],
+        "data": [
+          "string"
+        ],
+        "encoding": [
+          "string"
+        ],
+        "extras": [
+          "object"
+        ],
+        "id": [
+          "string"
+        ],
+        "name": [
+          "string"
+        ],
+        "timestamp": [
+          "integer"
+        ]
+      }
+    },
+    "PresenceMessage": {
+      "fields": [
+        "action",
+        "clientId",
+        "connectionId",
+        "data",
+        "encoding",
+        "extras",
+        "id",
+        "timestamp"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "clientId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Client"
+        },
+        {
+          "field_name": "connectionId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Connection"
+        }
+      ],
+      "types": {
+        "action": [
+          "string"
+        ],
+        "clientId": [
+          "string"
+        ],
+        "connectionId": [
+          "string"
+        ],
+        "data": [
+          "string"
+        ],
+        "encoding": [
+          "string"
+        ],
+        "extras": [
+          "object"
+        ],
+        "id": [
+          "string"
+        ],
+        "timestamp": [
+          "integer"
+        ]
+      }
+    },
+    "Recipient": {
+      "fields": [
+        "clientId",
+        "deviceId",
+        "deviceToken",
+        "registrationToken",
+        "transportType"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "clientId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Client"
+        },
+        {
+          "field_name": "deviceId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Device"
+        }
+      ],
+      "types": {
+        "clientId": [
+          "string"
+        ],
+        "deviceId": [
+          "string"
+        ],
+        "deviceToken": [
+          "string"
+        ],
+        "registrationToken": [
+          "string"
+        ],
+        "transportType": [
+          "string"
+        ]
+      }
+    },
+    "Stat": {
+      "fields": [],
+      "types": {}
+    },
+    "Time": {
+      "fields": [
+        "id"
+      ],
+      "types": {}
+    },
+    "TokenDetails": {
+      "fields": [
+        "capability",
+        "expires",
+        "issued",
+        "keyName",
+        "token"
+      ],
+      "types": {
+        "capability": [
+          "string"
+        ],
+        "expires": [
+          "integer"
+        ],
+        "issued": [
+          "integer"
+        ],
+        "keyName": [
+          "string"
+        ],
+        "token": [
+          "string"
+        ]
+      }
+    }
+  }
+}

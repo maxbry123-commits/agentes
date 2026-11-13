@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.hf_resource_index.v1",
+  "title": "HFResourceIndexEntry",
+  "type": "object",
+  "required": ["resource_id", "kind", "hf_id", "fetchable"],
+  "properties": {
+    "resource_id": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": ["skill", "dataset", "adapter", "model", "tool"]
+    },
+    "hf_id": { "type": "string" },
+    "revision": { "type": ["string", "null"] },
+    "fetchable": { "type": "boolean" },
+    "size_hint_mb": { "type": ["number", "null"] },
+    "contract_schema": { "type": ["string", "null"] },
+    "meta": { "type": "object" }
+  }
+}

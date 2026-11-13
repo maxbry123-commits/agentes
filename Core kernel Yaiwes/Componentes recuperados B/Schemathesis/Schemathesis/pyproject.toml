@@ -1,0 +1,220 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "schemathesis"
+version = "4.25.2"
+description = "Adaptive API testing for OpenAPI and GraphQL"
+keywords = ["pytest", "hypothesis", "openapi", "graphql", "testing", "fuzzing", "adaptive"]
+authors = [{ name = "Dmitry Dygalo", email = "dmitry@dygalo.dev" }]
+maintainers = [{ name = "Dmitry Dygalo", email = "dmitry@dygalo.dev" }]
+requires-python = ">=3.10"
+license = "MIT"
+readme = "README.md"
+include = ["src/schemathesis/py.typed"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Framework :: Pytest",
+  "Framework :: Hypothesis",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+  "Topic :: Software Development :: Testing",
+]
+dependencies = [
+  "click>=8.0,<9",
+  "harfile>=0.5.0,<1.0",
+  "hypothesis>=6.130.12,<7",
+  "hypothesis_graphql>=0.13.1,<1",
+  "jsonschema_rs>=0.51.0,<0.52.0",
+  "pyrate-limiter>=4.0,<5.0",
+  "pytest>=9,<10",
+  "PyYAML>=5.1,<7.0",
+  "requests>=2.22,<3",
+  "rich>=13.9.4",
+  "starlette-testclient>=0.4.1,<1",
+  "tomli>=2.2.1; python_version < '3.11'",
+  "typing-extensions>=4.12.2",
+  "werkzeug>=0.16.0,<4",
+]
+[project.optional-dependencies]
+tests = [
+  "coverage>=6",
+  "Django>=5.2,<6",
+  "fastapi>=0.86.0",
+  "Flask>=2.1.1,<4.0",
+  "httpx>=0.22.0,<1.0",
+  "httpx2>=2.12.0,<3.0",
+  "hypothesis-openapi>=0.3,<1",
+  "pydantic>=1.10.2",
+  "pytest-asyncio>=1.0,<2.0",
+  "pytest-httpserver>=1.0,<2.0",
+  "pytest-mock>=3.7.0,<4.0",
+  "pytest-trio>=0.8,<1.0",
+  "pytest-xdist>=3,<4.0",
+  "strawberry-graphql[fastapi]>=0.109.0",
+  "syrupy>=5.4,<5.5",
+  "tomli-w>=1.2.0",
+  "allure-python-commons>=2.13.0",
+  "trustme>=0.9.0,<2.0",
+  "uvicorn>=0.20,<1.0",
+]
+allure = ["allure-python-commons>=2.13.0"]
+cov = ["coverage-enable-subprocess", "coverage[toml]>=5.3"]
+bench = ["pytest-codspeed==5.0.3", "pytest-test-groups==1.2.1"]
+docs = ["mkdocs-material", "mkdocstrings[python]"]
+profiling = ["pyinstrument>=5.1"]
+scripts = ["tracecov>=0.21", "seaborn>=0.13"]
+dev = ["schemathesis[tests,cov,bench,docs,scripts]"]
+
+[project.urls]
+Documentation = "https://schemathesis.readthedocs.io/en/stable/"
+Changelog = "https://github.com/schemathesis/schemathesis/blob/master/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/schemathesis/schemathesis"
+Funding = "https://github.com/sponsors/Stranger6667"
+"Source Code" = "https://github.com/schemathesis/schemathesis"
+
+[project.scripts]
+schemathesis = "schemathesis.cli:schemathesis"
+st = "schemathesis.cli:schemathesis"
+
+[project.entry-points.pytest11]
+schemathesis = "schemathesis.pytest.plugin"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/corpus",
+  "/test-corpus",
+  "/scripts",
+  "/tools",
+  "/img",
+  "/benches",
+]
+
+[tool.pytest.ini_options]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+xfail_strict = true
+truncation_limit_lines = 0
+truncation_limit_chars = 0
+testpaths = "test"
+norecursedirs = ".hypothesis .idea .git src docs .pytest_cache .mypy_cache .tox"
+filterwarnings = [
+    "error::pytest.PytestUnraisableExceptionWarning",
+    # anyio streams not closed during async test teardown (flaky on Python 3.13+)
+    "ignore:Unclosed <MemoryObject.*:ResourceWarning",
+    "ignore:.*Unclosed <MemoryObject.*:pytest.PytestUnraisableExceptionWarning",
+    # urllib3/http.client response finalizer raises ValueError on Python 3.14t free-threading GC
+    "ignore:Exception ignored while finalizing file <urllib3.response.HTTPResponse.*:pytest.PytestUnraisableExceptionWarning",
+    "ignore:Exception ignored while finalizing file <http.client.HTTPResponse.*:pytest.PytestUnraisableExceptionWarning",
+    # asyncio event loop / anyio stream deallocators raise on Python 3.14t free-threading GC
+    "ignore:Exception ignored while calling deallocator <function BaseEventLoop.__del__.*:pytest.PytestUnraisableExceptionWarning",
+    "ignore:Exception ignored while calling deallocator <function MemoryObject.*.__del__.*:pytest.PytestUnraisableExceptionWarning",
+    "ignore:Exception ignored in.*<function MemoryObject.*.__del__.*:pytest.PytestUnraisableExceptionWarning",
+    # unclosed socket from test server teardown (flaky on Python 3.12+)
+    "ignore:Exception ignored in.*<socket.socket.*:pytest.PytestUnraisableExceptionWarning",
+    "ignore:Exception ignored while finalizing socket <socket.socket.*:pytest.PytestUnraisableExceptionWarning",
+    "ignore:unclosed <socket.socket.*:ResourceWarning",
+]
+
+[tool.coverage.run]
+parallel = true
+branch = true
+source_pkgs = ["schemathesis"]
+
+[tool.coverage.paths]
+source = [
+  "src",
+  ".tox/*/site-packages",
+  ".tox/*/Lib/site-packages",
+  ".tox/*/lib/*/site-packages",
+  "*/.tox/*/site-packages",
+  "*/.tox/*/Lib/site-packages",
+  "*/.tox/*/lib/*/site-packages",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+precision = 2
+exclude_lines = [
+  "pragma: no cover",
+  "raise NotImplementedError",
+  "if TYPE_CHECKING:",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+  "E",      # pycodestyle errors
+  "W",      # pycodestyle warnings
+  "F",      # pyflakes
+  "C",      # flake8-comprehensions
+  "B",      # flake8-bugbear
+  "D",      # pydocstyle
+  "T201",   # flake8-print
+  "I",      # isort
+  "FURB",   # refurb
+  "PGH003", # blanket-type-ignore
+  "UP",     # pyupgrade
+  "SIM"     # flake8-simplify
+]
+ignore = [
+  "E501",   # Line too long
+  "B008",   # Do not perform function calls in argument defaults
+  "C901",   # Too complex
+  "D100",   # Missing docstring in public module
+  "D101",   # Missing docstring in public class
+  "D102",   # Missing docstring in public method
+  "D103",   # Missing docstring in public function
+  "D104",   # Missing docstring in public package
+  "D105",   # Missing docstring in magic method
+  "D107",   # Missing docstring in `__init__`
+  "D203",   # One blank line before class
+  "D213",   # Multiline summary second line
+  "D401",   # Imperative mood
+  "COM812", # twice "," in dict/tuple/list
+  "SIM910", # delete default arguments in .get() in some cases
+  "SIM108", # ternary expressions are not always readable
+  "SIM105"  # contextlib.suppress is less performant in many cases
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test/apps/__main__.py" = ["T201"]  # CLI entrypoint
+"scripts/coverage/audit.py" = ["T201", "E402"]  # CLI entrypoint; E402: sys.path setup precedes tools.* imports
+
+[tool.ruff.lint.isort]
+known-first-party = ["schemathesis", "tools"]
+known-third-party = [
+  "_pytest",
+  "click",
+  "fastapi",
+  "flask",
+  "graphene",
+  "graphql",
+  "graphql_server",
+  "hypothesis",
+  "hypothesis_graphql",
+  "packaging",
+  "pydantic",
+  "pytest",
+  "requests",
+  "urllib3",
+  "werkzeug",
+  "yaml",
+]
+
+[tool.ruff.format]
+skip-magic-trailing-comma = false

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "huey"
+dynamic = ["version"]
+description = "a little task queue"
+readme = "README.rst"
+authors = [
+    { name = "Charles Leifer", email = "coleifer@gmail.com" }
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.scripts]
+huey_consumer = "huey.bin.huey_consumer:consumer_main"
+
+[project.urls]
+Repository = "https://github.com/coleifer/huey"
+Documentation = "https://huey.readthedocs.io/"
+Changelog = "https://github.com/coleifer/huey/blob/master/CHANGELOG.md"
+
+[project.optional-dependencies]
+backends = ["redis>=3.0.0"]  # Legacy alias for "redis".
+redis = ["redis>=3.0.0"]
+postgres = ["psycopg>=3.2"]
+cysqlite = ["cysqlite>=0.3.5"]
+stats = ["peewee>=3.17"]
+
+[tool.setuptools.dynamic]
+version = { attr = "huey.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["huey*"]
+
+[tool.setuptools.package-data]
+"huey.contrib.flask_admin" = ["templates/admin/huey/*.html"]
+"huey.contrib.djhuey.stats" = ["templates/admin/hueystats/*.html"]

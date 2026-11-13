@@ -1,0 +1,248 @@
+package io.kestra.core.topologies;
+
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import com.google.common.annotations.VisibleForTesting;
+
+import io.kestra.core.models.Label;
+import io.kestra.core.models.executions.Execution;
+import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.flows.FlowInterface;
+import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.flows.input.MultiselectInput;
+import io.kestra.core.models.flows.input.SelectInput;
+import io.kestra.core.models.hierarchies.Graph;
+import io.kestra.core.models.tasks.ExecutableTask;
+import io.kestra.core.models.topologies.FlowNode;
+import io.kestra.core.models.topologies.FlowRelation;
+import io.kestra.core.models.topologies.FlowTopology;
+import io.kestra.core.models.topologies.FlowTopologyGraph;
+import io.kestra.core.models.triggers.AbstractTrigger;
+import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.repositories.FlowTopologyRepositoryInterface;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.services.ConditionService;
+import io.kestra.core.utils.ListUtils;
+import io.kestra.core.utils.PebbleUtil;
+
+import io.micronaut.core.annotation.Nullable;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Singleton
+public class FlowTopologyService {
+    public static final Label SIMULATED_EXECUTION = new Label(Label.SIMULATED_EXECUTION, "true");
+
+    @Inject
+    protected ConditionService conditionService;
+
+    @Inject
+    private FlowRepositoryInterface flowRepository;
+
+    @Inject
+    private FlowTopologyRepositoryInterface flowTopologyRepository;
+
+    @Inject
+    private RunContextFactory runContextFactory;
+
+    public FlowTopologyGraph graph(Stream<FlowTopology> flows, Function<FlowNode, FlowNode> anonymize) {
+        Graph<FlowNode, FlowRelation> graph = new Graph<>();
+
+        flows
+            .forEach(flowTopology ->
+            {
+                FlowNode source = anonymize.apply(flowTopology.getSource());
+                FlowNode destination = anonymize.apply(flowTopology.getDestination());
+
+                if (!graph.nodes().contains(source)) {
+                    graph.addNode(source);
+                }
+
+                if (!graph.nodes().contains(destination)) {
+                    graph.addNode(destination);
+                }
+
+                if (!source.getUid().equals(destination.getUid())) {
+                    graph.addEdge(source, destination, flowTopology.getRelation());
+                }
+            });
+
+        return FlowTopologyGraph.of(graph);
+    }
+
+    public FlowTopologyGraph namespaceGraph(String tenantId, String namespace) {
+        List<FlowTopology> flowTopologies = flowTopologyRepository.findByNamespacePrefix(tenantId, namespace);
+
+        FlowTopologyGraph graph = this.graph(flowTopologies.stream(), (flowNode -> flowNode));
+
+        List<String> flowInGraph = graph.getNodes()
+            .stream()
+            .map(FlowNode::getId)
+            .distinct()
+            .toList();
+
+        Set<FlowNode> existingNodes = new HashSet<>(
+            graph
+                .getNodes()
+                .stream()
+                .collect(Collectors.toMap(node -> node.getId() + "_" + node.getNamespace(), Function.identity(), (node1, node2) -> node1))
+                .values()
+        );
+
+        Set<FlowNode> newNodes = new HashSet<>();
+
+        flowRepository.findByNamespace(tenantId, namespace).forEach(flow ->
+        {
+            if (flowInGraph.contains(flow.getId())) {
+                return;
+            }
+
+            FlowNode flowNode = FlowNode.builder()
+                .id(flow.getId())
+                .uid(flow.getNamespace() + "_" + flow.getId())
+                .namespace(flow.getNamespace())
+                .build();
+
+            newNodes.add(flowNode);
+        });
+
+        Set<FlowNode> updatedNodes = new HashSet<>(existingNodes);
+        updatedNodes.addAll(newNodes);
+
+        return FlowTopologyGraph.builder()
+            .nodes(updatedNodes)
+            .edges(graph.getEdges())
+            .build();
+    }
+
+    public Stream<FlowTopology> topology(FlowWithSource child, List<FlowWithSource> allFlows) {
+        return allFlows.stream()
+            .flatMap(
+                parent -> Stream.concat(
+                    Stream.ofNullable(this.map(parent, child)),
+                    Stream.ofNullable(this.map(child, parent))
+                )
+            )
+            .filter(Objects::nonNull);
+    }
+
+    private FlowTopology map(FlowWithSource parent, FlowWithSource child) {
+        // we don't allow self link
+        if (child.uidWithoutRevision().equals(parent.uidWithoutRevision())) {
+            return null;
+        }
+
+        FlowRelation relation = this.isChild(parent, child);
+        if (relation == null) {
+            return null;
+        }
+
+        FlowNode parentTopology = FlowNode.of(parent);
+        FlowNode childTopology = FlowNode.of(child);
+
+        return FlowTopology.builder()
+            .source(parentTopology)
+            .destination(childTopology)
+            .relation(relation)
+            .build();
+    }
+
+    @Nullable
+    @VisibleForTesting
+    public FlowRelation isChild(Flow parent, Flow child) {
+        if (this.isFlowTaskChild(parent, child)) {
+            return FlowRelation.FLOW_TASK;
+        }
+
+        if (this.isTriggerChild(parent, child)) {
+            return FlowRelation.FLOW_TRIGGER;
+        }
+
+        if (this.isInputChild(parent, child)) {
+            return FlowRelation.SUBFLOW_FUNCTION;
+        }
+
+        return null;
+    }
+
+    protected boolean isFlowTaskChild(Flow parent, Flow child) {
+        try {
+            return parent
+                .allTasksWithChilds()
+                .stream()
+                .filter(t -> t instanceof ExecutableTask)
+                .map(t -> (ExecutableTask<?>) t)
+                .anyMatch(
+                    t -> t.subflowId() != null && t.subflowId().namespace().equals(child.getNamespace()) && t.subflowId().flowId().equals(child.getId())
+                );
+        } catch (Exception e) {
+            log.warn("Failed to detect flow task on namespace:'{}', flowId:'{}'", parent.getNamespace(), parent.getId(), e);
+            return false;
+        }
+    }
+
+    protected boolean isTriggerChild(Flow parent, Flow child) {
+        List<AbstractTrigger> triggers = ListUtils.emptyOnNull(child.getTriggers());
+
+        // keep only flow trigger
+        List<io.kestra.plugin.core.trigger.Flow> flowTriggers = triggers
+            .stream()
+            .filter(t -> t instanceof io.kestra.plugin.core.trigger.Flow)
+            .map(t -> (io.kestra.plugin.core.trigger.Flow) t)
+            .toList();
+
+        if (flowTriggers.isEmpty()) {
+            return false;
+        }
+
+        // simulated execution: we add a "simulated" label so conditions can know that the evaluation is for a simulated execution
+        Execution execution = Execution.newExecution(parent, (f, e) -> null, List.of(SIMULATED_EXECUTION), Optional.empty());
+        RunContext runContext = runContextFactory.of(parent, execution);
+
+        boolean conditionMatch = flowTriggers
+            .stream()
+            .allMatch(trigger -> conditionService.isValid(trigger, parent, runContext));
+
+        boolean dependsOnMatch = flowTriggers.stream()
+            .anyMatch(flow -> ListUtils.isEmpty(flow.getDependsOn()) || validateDependsOn(flow.getDependsOn(), parent, execution, runContext));
+
+        return conditionMatch && dependsOnMatch;
+    }
+
+    /**
+     * Check that any SELECT or MULTISELECT input is using the subflow function configured with the child flow.
+     */
+    protected boolean isInputChild(Flow parent, Flow child) {
+        boolean selectMatch = ListUtils.emptyOnNull(parent.getInputs()).stream()
+            .filter(SelectInput.class::isInstance)
+            .map(SelectInput.class::cast)
+            .anyMatch(selectInput -> isSubflowFunctionFor(selectInput.getExpression(), child));
+
+        boolean multiSelectMatch = ListUtils.emptyOnNull(parent.getInputs()).stream()
+            .filter(MultiselectInput.class::isInstance)
+            .map(MultiselectInput.class::cast)
+            .anyMatch(selectInput -> isSubflowFunctionFor(selectInput.getExpression(), child));
+
+        return selectMatch || multiSelectMatch;
+    }
+
+    // best effort: we use regexes as a substitute for proper parsing of Pebble expressions
+    private boolean isSubflowFunctionFor(String expression, Flow child) {
+        return expression != null && PebbleUtil.containsOpeningBlockDelimiter(expression) &&
+            expression.matches(".*subflow\\s*\\(.*\\).*") &&
+            expression.matches(".*id\\s*=\\s*['\"]?" + child.getId() + "['\"]?\\s*[\\s,)].*") &&
+            expression.matches(".*namespace\\s*=\\s*['\"]?" + child.getNamespace() + "['\"]?\\s*[\\s,)].*");
+    }
+
+    private boolean validateDependsOn(List<io.kestra.plugin.core.trigger.Flow.Dependency> dependsOn, FlowInterface child, Execution execution, RunContext runContext) {
+        return ListUtils.emptyOnNull(dependsOn)
+            .stream()
+            .anyMatch(c -> conditionService.isValid(c.asCondition(), child, execution, runContext));
+    }
+}

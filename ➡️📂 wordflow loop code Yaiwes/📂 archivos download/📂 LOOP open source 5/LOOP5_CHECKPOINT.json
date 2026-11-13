@@ -1,0 +1,32 @@
+{
+  "expected": 5,
+  "processed": 5,
+  "results": [
+    {
+      "name": "LangGraph",
+      "status": "EXTRACTED_TREE",
+      "tree_sha256": "867541918ebe1907d7bae78e71e7b6ac82c87747fce78934b6d92ab8bf87acd9"
+    },
+    {
+      "name": "Temporal-Python-SDK",
+      "status": "EXTRACTED_TREE",
+      "tree_sha256": "1d125cc488dde70854b1a2f337edf433d8cb02f265289bfb86e50d20c90c7780"
+    },
+    {
+      "name": "Prefect",
+      "status": "EXTRACTED_TREE",
+      "tree_sha256": "eddc4ec0e0d4d6849071e90e05ff78932df0d02006584613d6a2daa01d1094be"
+    },
+    {
+      "name": "Hatchet-Python-SDK",
+      "status": "EXTRACTED_TREE",
+      "tree_sha256": "300d3154358ac5a6b8554fb645b492c3f3fdcf68cafd5e9adf9ffa20e2721873"
+    },
+    {
+      "name": "redun",
+      "status": "EXTRACTED_TREE",
+      "tree_sha256": "f18842d2d0749c580cc437e69027d69189c648da03552642465e915a122010c9"
+    }
+  ],
+  "task_id": "YAIWES-LOOP5-20260907"
+}

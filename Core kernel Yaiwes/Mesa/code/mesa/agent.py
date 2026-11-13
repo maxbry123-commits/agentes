@@ -1,0 +1,439 @@
+"""Agent related classes.
+
+Core Objects: Agent.
+"""
+
+# Postpone annotation evaluation to avoid NameError from forward references (PEP 563). Remove once Python 3.14+ is required.
+from __future__ import annotations
+
+import contextlib
+import itertools
+from random import Random
+from typing import TYPE_CHECKING, ClassVar
+
+import numpy as np
+import pandas as pd
+
+if TYPE_CHECKING:
+    from mesa.experimental.actions import Action
+    from mesa.model import Model
+    from mesa.time import Event
+
+from mesa.agentset import AgentSet, _resolve_per_agent_values
+from mesa.mesa_logging import create_module_logger
+from mesa.time import Priority
+
+_mesa_logger = create_module_logger()
+
+
+class Agent[M: Model]:
+    """Base class for a model agent in Mesa.
+
+    Attributes:
+        model (Model): A reference to the model instance.
+        unique_id (int): A unique identifier for this agent.
+
+    Notes:
+        Agents must be hashable to be used in an AgentSet.
+        In Python 3, defining `__eq__` without `__hash__` makes an object unhashable,
+        which will break AgentSet usage.
+        unique_id is unique relative to a model instance and starts from 1
+
+    """
+
+    _datasets: ClassVar = set()
+    _repr_excluded_fields: ClassVar[set[str]] = {"model", "current_action", "unique_id"}
+
+    def __init_subclass__(cls, **kwargs):
+        """Called when Agent is subclassed, giving each subclass its own dataset set."""
+        super().__init_subclass__(**kwargs)
+        # Each subclass gets its own dataset set
+        # we use strings on this to avoid memory leaks
+        # and ensure the retrieved dataset belongs to the same
+        # model instance as the agent
+        cls._datasets = set()
+
+    def __init__(self, model: M, *args, **kwargs) -> None:
+        """Create a new agent.
+
+        Args:
+            model (Model): The model instance in which the agent exists.
+            args: Passed on to super.
+            kwargs: Passed on to super.
+
+        Notes:
+            to make proper use of python's super, in each class remove the arguments and
+            keyword arguments you need and pass on the rest to super
+        """
+        super().__init__(*args, **kwargs)
+
+        self.model: M = model
+        self.unique_id = None
+        self.current_action: Action | None = None
+        self._wake_event: Event | None = None
+        self._wake_previous: Action | None = None
+        self._last_wake_time: float = float("-inf")
+        self.model.register_agent(self)
+
+        for dataset in self._datasets:
+            self.model.data_registry[dataset].add_agent(self)
+
+    def remove(self) -> None:
+        """Remove and delete the agent from the model.
+
+        If the agent is currently performing an action, the action's
+        scheduled completion event is cancelled silently. The action's
+        on_interrupt() callback is NOT fired, because the agent is being
+        destroyed — not making a behavioral decision. The action moves
+        to no defined end state; it is simply abandoned. A pending
+        on_idle wake is cancelled as well: a removed agent never wakes.
+
+        If your action holds external resources (e.g., a Resource slot,
+        a reservation, a lock), override Agent.remove() and call
+        self.cancel_action() before super().remove() to ensure
+        on_interrupt() fires and cleanup logic runs:
+
+            def remove(self):
+                self.cancel_action()  # Fires on_interrupt for cleanup
+                super().remove()
+
+        Notes:
+            This is a deliberate design choice. The default silent
+            cleanup is safe and avoids callbacks touching agent state
+            during teardown. Models that need cleanup should opt in
+            explicitly.
+        """
+        if self.current_action is not None:
+            self.current_action._cancel_event()  # Silent cleanup, no callback
+            self.current_action = None
+
+        if self._wake_event is not None:
+            self._wake_event.cancel()
+            self._wake_event = None
+            self._wake_previous = None
+
+        with contextlib.suppress(KeyError):
+            self.model.deregister_agent(self)
+
+        # ensures models are also removed from datasets
+        for dataset in self._datasets:
+            self.model.data_registry[dataset].remove_agent(self)
+
+    def step(self) -> None:
+        """A single step of the agent."""
+
+    def advance(self) -> None:  # noqa: D102
+        pass
+
+    @classmethod
+    def create_agents[T: Agent](
+        cls: type[T], model: Model, n: int, *args, **kwargs
+    ) -> AgentSet[T]:
+        """Create N agents.
+
+        Args:
+            model: the model to which the agents belong
+            args: arguments to pass onto agent instances
+                  each arg is either a single object or a sequence of length n
+            n: the number of agents to create
+            kwargs: keyword arguments to pass onto agent instances
+                   each keyword arg is either a single object or a sequence of length n
+
+        Returns:
+            AgentSet containing the agents created.
+
+        Warning:
+            A list, tuple, ndarray, or pandas Series argument is treated as one
+            value per agent and must have length n; a length mismatch raises
+            ValueError. This is especially easy to hit with coordinate tuples:
+            create_agents(model, 2, pos=(10, 20)) does NOT give both agents
+            pos=(10, 20); it gives agent 0 pos=10 and agent 1 pos=20, since the
+            tuple's length (2) matches n (2).
+
+            To assign the same sequence value to every agent, broadcast it
+            explicitly as a length-n list of that value, e.g.:
+            create_agents(model, 2, pos=[(10, 20)] * 2)
+
+        Raises:
+            ValueError: If a sequence argument's length does not match n.
+
+        """
+        agents = []
+
+        if not args and not kwargs:
+            for _ in range(n):
+                agents.append(cls(model))
+            return AgentSet(agents, random=model.random)
+
+        # Prepare positional argument iterators. A sequence must have length n
+        # (assigned per agent); a length mismatch raises. Anything else is broadcast.
+        arg_iters = [_resolve_per_agent_values(arg, n) for arg in args]
+
+        # Prepare keyword argument iterators
+        kw_keys = list(kwargs.keys())
+        kw_val_iters = [_resolve_per_agent_values(v, n) for v in kwargs.values()]
+
+        # If arg_iters is empty, zip(*[]) returns nothing, so we use repeat(())
+        pos_iter = zip(*arg_iters) if arg_iters else itertools.repeat(())
+
+        kw_iter = zip(*kw_val_iters) if kw_val_iters else itertools.repeat(())
+
+        # We rely on range(n) to drive the loop length
+        if kwargs:
+            for _, p_args, k_vals in zip(range(n), pos_iter, kw_iter):
+                agents.append(cls(model, *p_args, **dict(zip(kw_keys, k_vals))))
+        else:
+            for _, p_args in zip(range(n), pos_iter):
+                agents.append(cls(model, *p_args))
+
+        return AgentSet(agents, random=model.random)
+
+    @classmethod
+    def from_dataframe[T: Agent](
+        cls: type[T], model: Model, df: pd.DataFrame, **kwargs
+    ) -> AgentSet[T]:
+        """Create agents from a pandas DataFrame.
+
+        Each row of the DataFrame represents one agent. The DataFrame columns are
+        mapped to the agent's constructor as keyword arguments. Additional keyword
+        arguments (`**kwargs`) can be used to set constant attributes for all agents.
+
+        Args:
+            model: The model instance.
+            df: The pandas DataFrame. Each row represents an agent.
+            **kwargs: Constant values to pass to every agent's constructor.
+                Only non-sequence data is allowed in kwargs to avoid ambiguity
+                with DataFrame columns.
+
+        Returns:
+            AgentSet containing the agents created.
+
+        Note:
+            If you need to pass variable data or sequences, add them as columns
+            to the DataFrame before calling this method.
+        """
+        for key, value in kwargs.items():
+            if isinstance(value, (list, np.ndarray, tuple, pd.Series)):
+                raise TypeError(
+                    f"from_dataframe does not support sequence data in kwargs ('{key}'). "
+                    "Please add this data to the DataFrame before calling from_dataframe."
+                )
+
+        agents = [
+            cls(model, **{**record, **kwargs})
+            for record in df.to_dict(orient="records")
+        ]
+
+        return AgentSet(agents, random=model.random)
+
+    def __str__(self) -> str:
+        """Return a human-readable string representation of the agent."""
+        return f"{self.__class__.__name__}, agent_id = {self.unique_id}"
+
+    def __repr__(self) -> str:
+        """Return an unambiguous string representation including agent state."""
+        # Get excluded fields (allows subclasses to override)
+        excluded = self._repr_excluded_fields
+
+        # Get user-defined attributes (exclude private and Mesa fields)
+        user_attrs = {
+            k: v
+            for k, v in self.__dict__.items()
+            if not k.startswith("_") and k not in excluded
+        }
+
+        if user_attrs:
+            attr_str = ", ".join(f"{k}={v!r}" for k, v in user_attrs.items())
+            return f"<{self.__class__.__name__} id={self.unique_id} {attr_str}>"
+        else:
+            return f"<{self.__class__.__name__} id={self.unique_id}>"
+
+    @property
+    def random(self) -> Random:
+        """Return a seeded stdlib rng."""
+        return self.model.random
+
+    @property
+    def rng(self) -> np.random.Generator:
+        """Return a seeded np.random rng."""
+        return self.model.rng
+
+    @property
+    def scenario(self):
+        """Return the scenario associated with the model."""
+        return self.model.scenario
+
+    # Actions methods
+    def start_action(self, action: Action) -> Action:
+        """Start performing an action.
+
+        The action must be in PENDING or INTERRUPTED state and the agent
+        must not be currently performing another action.
+
+        If one of the action's start requirements does not hold, the action moves
+        to FAILED instead of starting and the agent stays idle. Check
+        action.has_failed rather than assuming the action is running.
+
+        Args:
+            action: The Action to perform. Must have been created with
+                this agent as its agent.
+
+        Returns:
+            The started Action.
+
+        Raises:
+            ValueError: If the agent is already performing an action,
+                or if the action doesn't belong to this agent.
+        """
+        if self.current_action is not None:
+            raise ValueError(
+                f"Agent {self.unique_id} is already performing an action "
+                f"({self.current_action!r}). Use interrupt_for() or "
+                f"cancel_action() first."
+            )
+
+        if action.agent is not self:
+            raise ValueError(
+                f"Action's agent (id={action.agent.unique_id}) does not match "
+                f"this agent (id={self.unique_id})."
+            )
+
+        self.current_action = action
+        action.start()
+
+        # If the action completed instantly (duration=0), start() already
+        # called _do_complete which cleared current_action via the Action.
+        return action
+
+    def should_interrupt(self, current: Action, incoming: Action) -> bool:
+        """Decide whether an incoming action may preempt the current one.
+
+        Consulted by interrupt_for() whenever the agent is busy, with both
+        priorities already resolved. Override to encode preemption policy,
+        e.g. comparing action names or agent state instead of priorities.
+
+        Args:
+            current: The action the agent is performing.
+            incoming: The action that wants to replace it.
+
+        Returns:
+            True to attempt the interruption, False to refuse it.
+
+        Notes:
+            Returning True cannot override the interruptible flag; use
+            cancel_action() to force. This hook decides policy, the flag
+            stays a hard property of the action.
+        """
+        return current.interruptible and incoming.priority >= current.priority
+
+    def interrupt_for(self, new_action: Action) -> bool:
+        """Interrupt the current action and start a new one.
+
+        If there is no current action, simply starts the new one. Otherwise
+        should_interrupt(current, incoming) decides whether to preempt.
+
+        Args:
+            new_action: The Action to perform instead.
+
+        Returns:
+            True if the new action was started. False if should_interrupt
+            refused, the current action is non-interruptible, or the new
+            action failed its start requirements.
+
+        Notes:
+            The False cases differ in what they leave behind. A refusal
+            changes nothing. A failed requirement does not roll the
+            interruption back: the old action is already INTERRUPTED and
+            the agent is left idle, since whether to resume it is the
+            model's decision.
+        """
+        if self.current_action is not None:
+            new_action._resolve_priority()
+            if not self.should_interrupt(self.current_action, new_action):
+                return False
+            if not self.current_action.interrupt():
+                return False
+                # interrupt() already cleared current_action
+
+        self.start_action(new_action)
+        return not new_action.has_failed
+
+    def cancel_action(self) -> bool:
+        """Cancel the current action, ignoring interruptible flag.
+
+        Calls on_interrupt with partial progress. Returns False only if
+        there is no current action.
+
+        Returns:
+            True if an action was cancelled, False if idle.
+        """
+        if self.current_action is None:
+            return False
+
+        self.current_action.cancel()
+        # cancel() already cleared current_action
+        return True
+
+    @property
+    def is_busy(self) -> bool:
+        """Whether the agent is currently performing an action."""
+        return self.current_action is not None
+
+    def on_idle(self, previous: Action | None) -> None:
+        """Called when the agent's action has ended and nothing replaced it.
+
+        Override it to choose what to do next, typically by starting or
+        resuming an action. The default does nothing, and nothing is
+        resumed automatically: an interrupted action stays interrupted
+        unless this hook (or other model code) restarts it.
+
+        Args:
+            previous: The action that just ended, in its final state
+                (COMPLETED, INTERRUPTED, or FAILED). None is reserved for
+                wakes not caused by an action ending; no built-in trigger
+                sends it today.
+
+        Notes:
+            At most one wake fires per agent per model time, so a
+            zero-duration action started here cannot re-trigger the hook
+            in the same instant; a wake dropped by this guard is logged
+            at DEBUG level. The wake is skipped when the agent is
+            busy again by the time the event runs -- interrupt_for()
+            refills the slot synchronously, so no idle gap ever existed.
+            If several actions end before the wake runs, they coalesce
+            into one call and ``previous`` is the latest of them.
+        """
+
+    def _schedule_wake(self, previous: Action | None) -> None:
+        """Queue the deferred on_idle event, coalescing repeats.
+
+        Called by Action._release_agent whenever this agent's slot is
+        cleared. If a wake is already pending, or one already fired at
+        the current model time, no second event is queued -- only
+        ``previous`` is brought up to date. A wake dropped by the
+        once-per-time guard is logged at DEBUG level.
+        """
+        self._wake_previous = previous
+        if self._wake_event is not None:
+            return
+        if self._last_wake_time == self.model.time:
+            _mesa_logger.debug(
+                f"suppressed repeat on_idle wake for agent {self.unique_id} "
+                f"at time {self.model.time} (ending action: {previous!r})"
+            )
+            return
+        self._wake_event = self.model.schedule_event(
+            self._fire_wake, after=0.0, priority=Priority.LOW
+        )
+
+    def _fire_wake(self) -> None:
+        """Run the pending wake: call on_idle if the agent is still free."""
+        previous = self._wake_previous
+        self._wake_event = None
+        self._wake_previous = None
+        if self.current_action is not None:
+            return
+        # Recorded only when on_idle actually runs, so a busy skip does not
+        # suppress a later release at the same model time.
+        self._last_wake_time = self.model.time
+        self.on_idle(previous)

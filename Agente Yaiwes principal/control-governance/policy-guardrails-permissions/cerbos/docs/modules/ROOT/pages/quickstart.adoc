@@ -1,0 +1,316 @@
+include::partial$attributes.adoc[]
+
+= Quickstart
+
+include::partial$version-check.adoc[]
+
+
+
+Create a directory to store the policies.
+
+[source,sh]
+----
+mkdir -p cerbos-quickstart/policies
+----
+
+Now start the Cerbos PDP server. We are using the container image in this guide but you can follow along using the binary as well. See xref:installation/binary.adoc[installation instructions] for more information.
+
+[source,shell,subs="attributes"]
+----
+docker run --rm --name cerbos -d -v $(pwd)/cerbos-quickstart/policies:/policies -p 3592:3592 -p 3593:3593  {app-docker-img}
+----
+
+Time to try out a simple request.
+
+NOTE: If you prefer to use link:https://www.postman.com[Postman], link:https://insomnia.rest[Insomnia] or any other software that supports OpenAPI, you can follow this guide along on those tools by downloading the OpenAPI definitions from http://localhost:3592{cerbos-openapi-schema}. You can also use the built-in API browser by pointing your browser to http://localhost:3592.
+
+[tabs]
+====
+cURL::
++
+--
+[source,shell,linenums]
+----
+include::example$quickstart/curl.txt[]
+----
+--
+.NET::
++
+--
+[source,csharp,linenums]
+----
+include::example$quickstart/example.cs[]
+----
+--
+Go::
++
+--
+[source,go,linenums]
+----
+include::example$quickstart/example.go[]
+----
+--
+Java::
++
+--
+[source,java,linenums]
+----
+include::example$quickstart/example.java[]
+----
+--
+JS::
++
+--
+[source,javascript,linenums]
+----
+include::example$quickstart/example.js[]
+----
+--
+PHP::
++
+--
+[source,php,linenums]
+----
+include::example$quickstart/example.php[]
+----
+--
+Python::
++
+--
+[source,python,linenums]
+----
+include::example$quickstart/example.py[]
+----
+--
+Ruby::
++
+--
+[source,ruby,linenums]
+----
+include::example$quickstart/example.rb[]
+----
+--
+Rust::
++
+--
+[source,rust,linenums]
+----
+include::example$quickstart/example.rs[]
+----
+--
+====
+
+In this example, the `bugs_bunny` principal is trying to perform two actions (`view:public` and `comment`) on two `album:object` resources. The resource instance with the ID `BUGS001` belongs to `bugs_bunny` and is private (`public` attribute is `false`). The other resource instance with the ID `DAFFY002` belongs to `daffy_duck` and is public.
+
+This is the response from the server:
+
+.Response
+[source,json]
+----
+{
+  "requestId": "quickstart",
+  "results": [
+    {
+      "resource": {
+        "id": "BUGS001",
+        "kind": "album:object"
+      },
+      "actions": {
+        "comment": "EFFECT_DENY",
+        "view:public": "EFFECT_DENY"
+      }
+    },
+    {
+      "resource": {
+        "id": "DAFFY002",
+        "kind": "album:object"
+      },
+      "actions": {
+        "comment": "EFFECT_DENY",
+        "view:public": "EFFECT_DENY"
+      }
+    }
+  ]
+}
+----
+
+
+Bugs Bunny is not allowed to view or comment on any of the album resources — even the ones that belong to him. This is because currently there are no policies defined for the `album:object` resource.
+
+Now create a xref:policies:derived_roles.adoc[derived roles] definition that assigns the `owner` dynamic role to a user if the `owner` attribute of the resource they're trying to access is equal to their ID.
+
+[source,sh]
+----
+cat > cerbos-quickstart/policies/derived_roles_common.yaml <<EOF
+---
+apiVersion: "api.cerbos.dev/v1"
+derivedRoles:
+  name: common_roles
+  definitions:
+    - name: owner
+      parentRoles: ["user"]
+      condition:
+        match:
+          expr: request.resource.attr.owner == request.principal.id
+EOF
+----
+
+NOTE: Each Cerbos policy must be in its own file. You cannot define multiple policies in a single YAML or JSON file.
+
+Also create a resource policy that gives ``owner``s full access to their own albums. 
+
+[source,sh]
+----
+cat > cerbos-quickstart/policies/resource_album.yaml <<EOF
+---
+apiVersion: api.cerbos.dev/v1
+resourcePolicy:
+  version: "default"
+  importDerivedRoles:
+    - common_roles
+  resource: "album:object"
+  rules:
+    - actions: ['*']
+      effect: EFFECT_ALLOW
+      derivedRoles:
+        - owner
+EOF
+----
+
+Try the request again. This time `bugs_bunny` should be allowed access to his own album but denied access to the album owned by `daffy_duck`. 
+
+.Request
+[%collapsible]
+====
+
+[source,shell,linenums]
+----
+include::example$quickstart/curl.txt[]
+----
+
+====
+
+.Response
+[source,json]
+----
+{
+  "requestId": "quickstart",
+  "results": [
+    {
+      "resource": {
+        "id": "BUGS001",
+        "kind": "album:object"
+      },
+      "actions": {
+        "comment": "EFFECT_ALLOW",
+        "view:public": "EFFECT_ALLOW"
+      }
+    },
+    {
+      "resource": {
+        "id": "DAFFY002",
+        "kind": "album:object"
+      },
+      "actions": {
+        "comment": "EFFECT_DENY",
+        "view:public": "EFFECT_DENY"
+      }
+    }
+  ]
+}
+----
+
+Now add a rule to the policy to allow users to view public albums.
+
+[source,sh]
+----
+cat > cerbos-quickstart/policies/resource_album.yaml <<EOF
+---
+apiVersion: api.cerbos.dev/v1
+resourcePolicy:
+  version: "default"
+  importDerivedRoles:
+    - common_roles
+  resource: "album:object"
+  rules:
+    - actions: ['*']
+      effect: EFFECT_ALLOW
+      derivedRoles:
+        - owner
+
+    - actions: ['view:public']
+      effect: EFFECT_ALLOW
+      roles:
+        - user
+      condition:
+        match:
+          expr: request.resource.attr.public == true
+EOF
+----
+
+If you try the request again, `bugs_bunny` now has `view:public` access to the album owned by `daffy_duck` but not `comment` access. Can you figure out how to update the policy to give him `comment` access as well?
+
+
+.Request and response
+[%collapsible]
+====
+
+.Request
+[source,shell,linenums]
+----
+include::example$quickstart/curl.txt[]
+----
+
+
+.Response
+[source,json]
+----
+{
+  "requestId": "quickstart",
+  "results": [
+    {
+      "resource": {
+        "id": "BUGS001",
+        "kind": "album:object"
+      },
+      "actions": {
+        "comment": "EFFECT_ALLOW",
+        "view:public": "EFFECT_ALLOW"
+      }
+    },
+    {
+      "resource": {
+        "id": "DAFFY002",
+        "kind": "album:object"
+      },
+      "actions": {
+        "comment": "EFFECT_DENY",
+        "view:public": "EFFECT_ALLOW"
+      }
+    }
+  ]
+}
+----
+
+====
+
+Once you are done experimenting, the Cerbos server can be stopped with the following command:
+
+[source,shell,subs="attributes"]
+----
+docker kill cerbos
+----
+
+
+.Next steps
+****
+
+* link:https://github.com/cerbos?q=demo&type=all&language=&sort=[Explore the demo apps built with Cerbos]
+* xref:policies:index.adoc[Read more about Cerbos policies]
+* link:https://hub.cerbos.cloud?utm_campaign=brand_cerbos&utm_source=documentation&utm_medium=text&utm_content=quickstart_hub[Distribute policies to your PDPs with Cerbos Hub]
+* link:https://www.cerbos.dev/workshop?utm_campaign=brand_cerbos&utm_source=documentation&utm_medium=text&utm_content=quickstart_engineer[Talk to an engineer about your authorization model]
+* link:http://go.cerbos.io/slack[Join the Cerbos community on Slack]
+* mailto:help@cerbos.dev[Ask us anything via help@cerbos.dev]
+* link:https://cerbos.dev[Visit the Cerbos website]
+
+****

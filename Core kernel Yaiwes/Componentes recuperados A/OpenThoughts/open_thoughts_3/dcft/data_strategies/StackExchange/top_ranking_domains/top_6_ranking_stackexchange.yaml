@@ -1,0 +1,35 @@
+operators:
+- id: load_stackexchange_codegolf
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_code_golf_reorg_cache
+- id: load_stackexchange_dsp
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_dsp
+- id: load_stackexchange_physics
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_physics
+- id: load_stackexchange_cs
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_cs
+- id: load_stackexchange_philosophy
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_philosophy
+- id: load_stackexchange_puzzling
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_puzzling
+- id: top_6_ranking_stackexchange
+  config:
+    type: mix
+  input_ids:
+  - load_stackexchange_codegolf
+  - load_stackexchange_dsp
+  - load_stackexchange_physics
+  - load_stackexchange_cs
+  - load_stackexchange_philosophy
+  - load_stackexchange_puzzling

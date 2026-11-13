@@ -1,0 +1,115 @@
+---
+id: benchmarks-bool-q
+title: BoolQ
+sidebar_label: BoolQ
+languages: [python]
+---
+
+
+**BoolQ** is a reading comprehension dataset containing 16K yes/no questions (3.3K in the validation set). BoolQ features naturally occurring questions, meaning they are generated in an unprompted setting, with each question accompanied by a passage.
+
+:::info
+To learn more about the dataset and its construction, you can [read the original paper here](https://arxiv.org/pdf/1905.10044).
+:::
+
+## Arguments
+
+There are **TWO** optional arguments when using the `BoolQ` benchmark:
+
+- [Optional] `n_problems`: the number of problems for model evaluation. By default, this is set to 3270 (all problems).
+- [Optional] `n_shots`: the number of examples for few-shot learning. This is **set to 5** by default and **cannot exceed 5**.
+
+## Usage
+
+The code below assesses a custom `mistral_7b` model ([click here to learn how to use **ANY** custom LLM](/docs/benchmarks-introduction#benchmarking-your-llm)) on 10 problems in `BoolQ` using 3-shot CoT prompting.
+
+```python
+from deepeval.benchmarks import BoolQ
+
+# Define benchmark with n_problems and shots
+benchmark = BoolQ(
+    n_problems=10,
+    n_shots=3,
+)
+
+# Replace 'mistral_7b' with your own custom model
+benchmark.evaluate(model=mistral_7b)
+print(benchmark.overall_score)
+```
+
+The `overall_score` for this benchmark ranges from 0 to 1, where 1 signifies perfect performance and 0 indicates no correct answers. The model's score, based on **exact matching**, is calculated by determining the proportion of questions for which the model produces the precise correct answer (i.e. 'Yes' or 'No') in relation to the total number of questions.
+
+:::tip
+As a result, utilizing more few-shot prompts (`n_shots`) can greatly improve the model's robustness in generating answers in the exact correct format and boost the overall score.
+:::
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "What does the `BoolQ` benchmark measure?",
+      answer: (
+        <>
+          BoolQ is a reading comprehension benchmark of 16K naturally occurring
+          yes/no questions (3.3K in the validation set), each accompanied by a
+          passage. The questions are generated in an unprompted setting. See the{" "}
+          <a href="/docs/benchmarks-introduction">benchmarks introduction</a> for
+          how scoring works across benchmarks.
+        </>
+      ),
+    },
+    {
+      question: "How is `BoolQ` scored?",
+      answer: (
+        <>
+          Scoring is based on <strong>exact matching</strong>: the{" "}
+          <code>overall_score</code> is the proportion of questions for which the
+          model produces the precise correct answer (i.e. 'Yes' or 'No') out of
+          the total. It ranges from 0 to 1, where 1 signifies perfect
+          performance.
+        </>
+      ),
+    },
+    {
+      question: "What is the default `n_shots` for `BoolQ`?",
+      answer: (
+        <>
+          It defaults to <code>5</code> and cannot exceed that. Use the{" "}
+          <code>n_shots</code> argument to lower it for few-shot prompting.
+        </>
+      ),
+    },
+    {
+      question: "How many problems does `BoolQ` evaluate by default?",
+      answer: (
+        <>
+          By default <code>n_problems</code> is set to 3270, which evaluates all
+          problems. You can pass a smaller value to <code>n_problems</code> to
+          evaluate fewer problems.
+        </>
+      ),
+    },
+    {
+      question: "Can using more few-shot prompts improve the `BoolQ` score?",
+      answer: (
+        <>
+          Yes. Utilizing more few-shot prompts via <code>n_shots</code> can
+          greatly improve the model's robustness in generating answers in the
+          exact correct format and boost the <code>overall_score</code>.
+        </>
+      ),
+    },
+    {
+      question: "How do I run `BoolQ` on a custom LLM?",
+      answer: (
+        <>
+          Define the benchmark, then call <code>evaluate()</code> with your model
+          and read <code>overall_score</code>. See{" "}
+          <a href="/docs/benchmarks-introduction#benchmarking-your-llm">benchmarking your LLM</a>{" "}
+          to learn how to use any custom LLM.
+        </>
+      ),
+    },
+  ]}
+/>

@@ -1,0 +1,14 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 24",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_status": "SOURCE_UNAVAILABLE_CLOSURE",
+  "real_internal_workflow": false,
+  "checkpoint": "CLOSURE_ONLY",
+  "handoff": "CLOSE",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  }
+}

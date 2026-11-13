@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 2223632,
+  "bundle_sha256": "659a7c8bf192e262183c8fb14bfaff3854c3a46a1de37140bb1b26657e80672b",
+  "extracted_tree": {
+    "bytes": 2633252,
+    "files": 172,
+    "sha256": "e90c35886cc7cb405fe57b66f22b2e131274535ac8e7511fe884a0b13146c3c9"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 2223632,
+      "name": "23-HackSynth.bundle.zip.part-0001",
+      "sha256": "659a7c8bf192e262183c8fb14bfaff3854c3a46a1de37140bb1b26657e80672b"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "23-HackSynth",
+  "source_bytes": 2633252,
+  "source_commit": "48a41f795dda186df66561c4fd2b58ae84e3e4f8",
+  "source_files": 172,
+  "source_ref": "HEAD",
+  "source_repo": "aielte-research/HackSynth",
+  "source_tree": {
+    "bytes": 2633252,
+    "files": 172,
+    "sha256": "e90c35886cc7cb405fe57b66f22b2e131274535ac8e7511fe884a0b13146c3c9"
+  }
+}

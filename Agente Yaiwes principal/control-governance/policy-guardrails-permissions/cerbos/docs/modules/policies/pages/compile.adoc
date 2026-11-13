@@ -1,0 +1,490 @@
+include::ROOT:partial$attributes.adoc[]
+
+= Validating and testing policies
+
+include::ROOT:partial$version-check.adoc[]
+
+
+== Validating policies
+
+You can use the Cerbos compiler to make sure that your policies are valid before pushing them to a production Cerbos instance. We recommend setting up a git hook or a CI step to run the Cerbos compiler before you push any policy changes to production.
+
+[source,sh,subs="attributes"]
+----
+docker run -i -t -v /path/to/policy/dir:/policies {app-docker-img} compile /policies
+----
+
+
+[#testing]
+== Testing policies
+
+You can write optional tests for policies and run them as part of the compilation stage to make sure that the policies do exactly what you expect.
+
+Tests are defined using the familiar YAML format as well. A test file must have `_test` suffix in the name and one of the following file extensions: `yaml`, `yml`, or `json`. For example, `album_test.yml`, `album_test.yaml` or `album_test.json`.
+
+.Test suite definition
+[source,yaml]
+----
+---
+name: AlbumObjectTestSuite <1>
+description: Tests for verifying the album:object resource policy <2>
+options:
+  now: "2022-08-02T15:00:00Z" <3>
+  defaultPolicyVersion: staging <4>
+  defaultScope: "" <5>
+  lenientScopeSearch: true <6>
+  strictEvaluation: true <7>
+  globals: <8>
+    my_global_var: foo
+
+principals: <9>
+  alicia:
+    id: aliciaID
+    roles:
+      - user
+
+  bradley:
+    id: bradleyID
+    roles:
+      - user
+
+principalGroups: <10>
+  everyone:
+    principals:
+      - alicia
+      - bradley
+
+resources: <11>
+  alicia_album:
+    id: XX125
+    kind: album:object
+    policyVersion: default
+    attr:
+      owner: aliciaID
+      public: false
+      flagged: false
+
+  bradley_album:
+    id: XX250
+    kind: album:object
+    policyVersion: staging
+    attr:
+      owner: bradleyID
+      public: false
+      flagged: false
+
+resourceGroups: <12>
+  all_albums:
+    resources:
+      - alicia_album
+      - bradley_album
+
+auxData: <13>
+  validJWT:
+    jwt:
+      iss: my.domain
+      aud: ["x", "y"]
+      myField: value
+
+tests: <14>
+  - name: Accessing an album <15>
+    options: <16>
+      now: "2022-08-03T15:00:00Z" <17>
+      defaultPolicyVersion: production <18>
+      defaultScope: "" <19>
+      lenientScopeSearch: false <20>
+      strictEvaluation: true <21>
+      globals: <22>
+        my_global_var: bar
+
+    input: <23>
+      principals: <24>
+        - alicia
+        - bradley
+      resources: <25>
+        - alicia_album
+        - bradley_album
+      actions: <26>
+        - view
+        - delete
+      auxData: validJWT <27>
+
+    expected: <28>
+      - principal: alicia <29>
+        resource: alicia_album <30>
+        actions: <31>
+          view: EFFECT_ALLOW
+          delete: EFFECT_ALLOW
+        outputs: <32>
+          - action: view <33>
+            expected: <34>
+              - src: resource.album.vdefault#view-rule
+                val:
+                  key1: value1
+                  key2: ["value2", "value3"]
+              - src: resource.album.vdefault#token-lifetime
+                val: 1h
+
+      - principal: bradley
+        resource: bradley_album
+        actions:
+          view: EFFECT_ALLOW
+          delete: EFFECT_ALLOW
+
+  - name: Using groups
+    input:
+      principalGroups: <35>
+        - everyone
+      resourceGroups: <36>
+        - all_albums
+      actions:
+        - download
+
+    expected:
+      - principalGroups: <37>
+          - everyone
+        resourceGroups: <38>
+          - all_albums
+        actions:
+          download: EFFECT_DENY
+----
+<1> Name of the test suite.
+<2> Description of the test suite.
+<3> Optional RFC3339 timestamp to be used as the return value of the `now` function. Applies to all tests in the suite unless overridden locally.
+<4> Optionally set xref:configuration:engine.adoc#default_policy_version[default policy version] for this test suite.
+<5> Optionally set xref:configuration:engine.adoc#default_scope[default scope] for this test suite.
+<6> Optionally set xref:configuration:engine.adoc#lenient_scopes[lenient scope search] for this test suite.
+<7> Optionally enable xref:configuration:engine.adoc#strict_evaluation[strict evaluation] for this test suite.
+<8> Optionally set xref:configuration:engine.adoc#globals[globals] for this test suite.
+<9> Map of principal fixtures. The key is a string that can be used to refer to the associated principal.
+<10> Map of principal groups. The key is a string that can be used to refer to the associated group of principal fixtures.
+<11> Map of resource fixtures. The key is a string that can be used to refer to the associated resource.
+<12> Map of resource groups. The key is a string that can be used to refer to the associated group of resource fixtures.
+<13> Map of (optional) auxiliary data fixtures required to evaluate some requests. The key is a string that can be used to refer to the associated auxData.
+<14> List of tests in this suite.
+<15> Name of the test.
+<16> Optionally set options that apply to just this test. Test-specific options are not merged with suite-wide options, so any unspecified values revert to the default.
+<17> Optional RFC3339 timestamp to be used as the return value of the `now` function.
+<18> Optionally set xref:configuration:engine.adoc#default_policy_version[default policy version] for this test.
+<19> Optionally set xref:configuration:engine.adoc#default_scope[default scope] for this test suite.
+<20> Optionally set xref:configuration:engine.adoc#lenient_scopes[lenient scope search] for this test.
+<21> Optionally enable xref:configuration:engine.adoc#strict_evaluation[strict evaluation] for this test.
+<22> Optionally set xref:configuration:engine.adoc#globals[globals] for this test.
+<23> Input to the policy engine.
+<24> List of keys of principal fixtures to test.
+<25> List of keys of resource fixtures to test.
+<26> List of actions to test.
+<27> Key of auxiliary data fixture to test (optional).
+<28> List of outcomes expected for each principal and resource. If a principal+resource pair specified in `input` is not listed in `expected`, then `EFFECT_DENY` is expected for all actions for that pair.
+<29> Key of the principal fixture under test. Use `principals` instead of `principal` if you want to specify identical expectations for multiple principals.
+<30> Key of the resource fixture under test. Use `resources` instead of `resource` if you want to specify identical expectations for multiple resources.
+<31> Expected outcomes for each action for each principal+resource pair. If an action specified in `input` is not listed, then `EFFECT_DENY` is expected for that action.
+<32> Optional list of xref:outputs.adoc[output values] to match.
+<33> Name of the action that would produce the output.
+<34> List of expected output values.
+<35> List of keys of principal groups to test. You can provide this instead of, or as well as, `principals`.
+<36> List of keys of resource groups to test. You can provide this instead of, or as well as, `resources`.
+<37> Key of the principal group under test. You can provide this instead of, or as well as, `principal` or `principals`.
+<38> Key of the resource group under test. You can provide this instead of, or as well as, `resource` or `resources`.
+
+[#fixtures]
+=== Sharing test fixtures
+
+It is possible to share principals, resources and auxData blocks between test suites stored in the same directory. Create a `testdata` directory in the directory containing your test suite files, then define shared resources, principals and auxData in `testdata/resources.yml`, `testdata/principals.yml`, `testdata/auxdata.yml` respectively (`yaml` and `json` extensions are also supported).
+
+----
+tests
+├── album_object_test.yaml
+├── gallery_object_test.yaml
+├── slideshow_object_test.yaml
+└── testdata
+   ├── auxdata.yaml
+   ├── principals.yaml
+   └── resources.yaml
+----
+
+.An example of `testdata/principals.yml`
+[source,yaml]
+----
+---
+principals: # required
+  john:
+    id: johnID
+    roles:
+      - user
+      - moderator
+
+principalGroups: # optional
+  moderators:
+    principals:
+      - john
+----
+
+.An example of `testdata/resources.yml`
+[source,yaml]
+----
+---
+resources: # required
+  alicia_album:
+    id: XX125
+    kind: "album:object"
+    attr:
+      owner: aliciaID
+      public: false
+      flagged: false
+
+resourceGroups: # optional
+  all_albums:
+    resources:
+      - alicia_album
+----
+
+.An example of `testdata/auxdata.yml`
+[source,yaml]
+----
+---
+auxData: # required
+  validJWT:
+    jwt:
+      iss: my.domain
+      aud: ["x", "y"]
+      myField: value
+----
+
+
+[NOTE]
+====
+
+link:https://www.educative.io/blog/advanced-yaml-syntax-cheatsheet#anchors[YAML anchors and overrides] are a great way to reduce repetition and reuse definitions in test cases.
+
+For example, the following definitions are equivalent:
+
+[options="header",cols="a,a"]
+|===
+| Without anchors and overrides
+| With anchors and overrides
+|
+[source,yaml]
+----
+resources:
+  alicias_album1:
+    id: "XX125"
+    kind: "album:object"
+    attr:
+      owner: "alicia"
+      public: false
+      flagged: false
+
+  alicias_album2:
+    id: "XX525"
+    kind: "album:object"
+    attr:
+      owner: "alicia"
+      public: false
+      flagged: false
+
+  alicias_album3:
+    id: "XX925"
+    kind: "album:object"
+    attr:
+      owner: "alicia"
+      public: false
+      flagged: false
+----
+|
+[source,yaml]
+----
+resources:
+  alicias_album1:
+    id: "XX125"
+    kind: "album:object"
+    attr: &alicia_album_attr
+      owner: "alicia"
+      public: false
+      flagged: false
+
+  alicias_album2:
+    id: "XX525"
+    kind: "album:object"
+    attr:
+      <<: *alicia_album_attr
+
+  alicias_album3:
+    id: "XX925"
+    kind: "album:object"
+    attr:
+      <<: *alicia_album_attr
+----
+|===
+
+
+====
+
+=== Running tests
+
+The `compile` command automatically discovers test files in the policy repository.
+
+[source,sh,subs="attributes"]
+----
+docker run -i -t \
+    -v /path/to/policy/dir:/policies \
+    {app-docker-img} compile /policies
+----
+
+
+The output format can be controlled using the `--output` flag, which accepts the values `tree` (default), `list` and `json`. The `--color` flag controls the coloring of the output. To produce machine readable output from the tests, pass `--output=json --color=never` to the command.
+
+
+By default, all discovered tests are run. Use the `--skip-tests` flag to skip all tests or use `--test-filter` to run only tests matching specific criteria.
+
+The `--test-filter` flag accepts a filter expression with the following dimensions:
+
+* `suite` - filter by test suite name,
+* `test` - filter by test name,
+* `principal` - filter by principal key,
+* `resource` - filter by resource key,
+* `action` - filter by action name.
+
+Each dimension accepts one or more glob patterns. Multiple dimensions are separated by semicolons, and multiple values within a dimension are separated by commas.
+
+.Example: Running tests for a specific suite and principal
+[source,sh,subs="attributes"]
+----
+docker run -i -t \
+    -v /path/to/policy/dir:/policies \
+    {app-docker-img} compile --test-filter='suite=AlbumObjectTestSuite;principal=alicia' /policies
+----
+
+.Example: Running tests matching glob patterns
+[source,sh,subs="attributes"]
+----
+docker run -i -t \
+    -v /path/to/policy/dir:/policies \
+    {app-docker-img} compile --test-filter='test=*Delete*;action=view,edit' /policies
+----
+
+Multiple `--test-filter` flags can be combined. All filter dimensions are merged together.
+
+[source,sh,subs="attributes"]
+----
+docker run -i -t \
+    -v /path/to/policy/dir:/policies \
+    {app-docker-img} compile --test-filter='principal=alice,bob' --test-filter='action=view' /policies
+----
+
+You can mark entire suites or individual tests in a suite with `skip: true` to skip them during test runs.
+
+.Example: Skipping a test
+[source,yaml]
+----
+---
+name: AlbumObjectTestSuite
+description: Tests for verifying the album:object resource policy
+tests:
+  - name: View private album
+    skip: true
+    skipReason: "Policy under review"
+    input:
+      principals: ["alicia"]
+      resources: ["alicia_private_album"]
+      actions: ["view"]
+    expected:
+      - principal: alicia
+        resource: alicia_private_album
+        actions:
+          view: EFFECT_ALLOW
+----
+
+
+[id="ci-environments"]
+== Validating and testing policies in CI environments
+
+Because Cerbos artefacts are distributed as self-contained containers and binaries, you should be able to easily integrate Cerbos into any CI environment. Simply configure your workflow to execute the commands described in the sections above using either the Cerbos container (you may need to configure mount points to suit your repo structure) or the binary.
+
+
+=== GitHub Actions
+
+- link:https://github.com/cerbos/cerbos-setup-action[cerbos-setup-action]: Install `cerbos` and `cerbosctl` binaries into your workflow tools cache
+- link:https://github.com/cerbos/cerbos-compile-action[cerbos-compile-action]: Compile and (optionally) test Cerbos policies
+
+.Example workflow
+[source,yaml]
+----
+---
+name: PR Check
+on:
+  pull_request:
+    branches:
+      - main
+jobs:
+  cerbosCheck:
+    name: Check Cerbos policies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Cerbos
+        uses: cerbos/cerbos-setup-action@v1
+        with:
+          version: latest
+
+      - name: Compile and test policies
+        uses: cerbos/cerbos-compile-action@v1
+        with:
+          policyDir: policies
+----
+
+See https://github.com/cerbos/photo-share-tutorial for an example of Cerbos GitHub Actions being used in a workflow.
+
+=== GitLab CI
+
+.Example pipeline
+[source,yaml,subs="attributes"]
+----
+---
+stages:
+  - prepare
+  - compile
+
+download-cerbos:
+  stage: prepare
+  script:
+    - curl https://github.com/cerbos/cerbos/releases/download/v{app-version}/cerbos_{app-version}_Linux_x86_64.tar.gz -L --output /tmp/cerbos.tar.gz
+    - tar -xf /tmp/cerbos.tar.gz -C ./
+    - chmod +x ./cerbos
+  artifacts:
+    paths:
+      - cerbos
+
+compile-job:
+  stage: compile
+  dependencies: ["download-cerbos"]
+  script:
+    - ./cerbos compile ./policies
+----
+
+=== Dagger
+
+The link:https://dagger.io[Dagger] Cerbos module can be installed by running `dagger install github.com/cerbos/dagger-cerbos`. This module provides a `compile` function for compiling and testing Cerbos policy repositories and a `server` service for starting a Cerbos server.
+
+[source,yaml,subs="attributes"]
+----
+# Compile and run tests on a policy repository
+dagger -m github.com/cerbos/dagger-cerbos call compile --policy-dir=./cerbos
+
+# Start a Cerbos server with the default disk driver
+dagger -m github.com/cerbos/dagger-cerbos call server --policy-dir=./cerbos up
+
+# Start a Cerbos server instance configured to use an in-memory SQLite policy repository
+dagger -m github.com/cerbos/dagger-cerbos call server --config=storage.driver=sqlite3,storage.sqlite3.dsn=:memory:,server.adminAPI.enabled=true up
+
+# View usage information
+dagger -m github.com/cerbos/dagger-cerbos call compile --help
+dagger -m github.com/cerbos/dagger-cerbos call server --help
+----
+
+[TIP]
+====
+https://docs.cerbos.dev/cerbos-hub/[Cerbos Hub] provides private, browser-based, collaborative playgrounds for authoring and testing policies with advanced features like execution traces for debugging condition logic. 
+====

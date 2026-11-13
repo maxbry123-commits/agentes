@@ -1,0 +1,28 @@
+# C84 — L8 ABI. B7 SALIDA4 + Enchufe v2
+id: C84
+layer: L8
+name: abi_loader
+implementado: true
+critical: true
+description: "Loader determinista de fichas"
+requires:
+  - C00
+  - C82
+forbids: []
+rules:
+  - "C84 obligatorio para MOUNT_EXTENSION"
+  - "abi_version + mount_mode + load_priority requeridos"
+  - "llm_control DENY por defecto en montaje"
+checks:
+  - abi_loader_check
+evidence:
+  type: abi_loader_marker
+  required: true
+links:
+  enchufe: ficha.v2.json
+  fields:
+    - abi_version
+    - extension_type
+    - kernel_min
+    - mount_mode
+    - load_priority

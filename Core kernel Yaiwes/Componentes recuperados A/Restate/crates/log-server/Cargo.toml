@@ -1,0 +1,68 @@
+[package]
+name = "restate-log-server"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+clients = []
+# Expose internal modules (loglet_worker, logstore, metadata, rocksdb_logstore) for
+# benchmarking tools that drive the log-server directly without networking.
+expose-internals = []
+test-util = ["expose-internals"]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-bifrost = { workspace = true }
+restate-clock = { workspace = true }
+restate-core = { workspace = true }
+restate-futures-util = { workspace = true }
+restate-memory = { workspace = true }
+restate-metadata-store = { workspace = true }
+restate-platform = { workspace = true }
+restate-rocksdb = { workspace = true }
+restate-util-bytecount = { workspace = true, features = ["serde"] }
+restate-util-time = { workspace = true }
+restate-types = { workspace = true }
+
+ahash = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+bitflags = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+codederror = { workspace = true }
+derive_more = { workspace = true, features = ["from", "try_from"] }
+metrics = { workspace = true }
+rocksdb = { workspace = true }
+serde_json = { workspace = true }
+smallvec = { workspace = true }
+static_assertions = { workspace = true }
+parking_lot = { workspace = true }
+prost = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true, features = ["sync"] }
+tonic = { workspace = true, features = ["transport", "codegen", "gzip"] }
+tonic-prost = { workspace = true }
+tracing = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }
+
+[dev-dependencies]
+restate-bifrost = { workspace = true, features = ["test-util"] }
+restate-core = { workspace = true, features = ["test-util"] }
+restate-types = { workspace = true, features = ["test-util"] }
+
+googletest = { workspace = true }
+test-log = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

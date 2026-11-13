@@ -1,0 +1,56 @@
+name: Meta 2026 agents download + extract
+
+on:
+  push:
+    paths:
+      - 'Motores/📂Motor descarga de componentes y extracción de zip/queue.meta-2026-agents.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: meta-2026-agents-download-extract
+  cancel-in-progress: false
+
+jobs:
+  download-extract-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run existing YAIWES queue motor
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          QUEUE_FILE: Motores/📂Motor descarga de componentes y extracción de zip/queue.meta-2026-agents.json
+          STATE_FILE: /tmp/meta-2026-agents-state.json
+          ENGINE_PATH: Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+          INDEX_PATH: /tmp/META-2026-AGENTS-DOWNLOAD-INDEX.md
+          MAX_RETRIES: '3'
+        run: |
+          python 'Motores/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py'
+
+      - name: Verify published destinations
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -f main
+          git reset --hard origin/main
+          test -f 'Core kernel Yaiwes/Meta-Muse-Code-SDK-2026/DOWNLOAD_EXTRACT_MANIFEST.json'
+          test -f 'Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026/DOWNLOAD_EXTRACT_MANIFEST.json'
+          test -f 'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/DOWNLOAD_EXTRACT_MANIFEST.json'
+          test -d 'Core kernel Yaiwes/Meta-Muse-Code-SDK-2026/code'
+          test -d 'Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026/code/agentic-fundamentals'
+          test -d 'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/04_muse_code'
+          test -d 'Core kernel Yaiwes/Meta-Agent-Cookbook-2026/code/03_use_cases/13_macos_cua'

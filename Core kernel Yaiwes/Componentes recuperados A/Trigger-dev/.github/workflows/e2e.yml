@@ -1,0 +1,62 @@
+name: "E2E"
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: The identifier of the job to run
+        default: webapp
+        required: false
+        type: string
+
+jobs:
+  cli-v3:
+    name: "🧪 CLI v3 tests (${{ matrix.os }} - ${{ matrix.package-manager }})"
+    if: inputs.package == 'cli-v3' || inputs.package == ''
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [warp-ubuntu-latest-x64-4x, warp-windows-latest-x64-8x]
+        package-manager: ["npm", "pnpm"]
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        with:
+          version: 10.33.2
+
+      - name: ⎔ Setup node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.18.0
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile --filter trigger.dev...
+
+      # Prisma clients generate concurrently and share one engine binary in the
+      # pnpm store; the generate script retries the transient Windows EPERM race.
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
+      - name: 🔧 Build v3 cli monorepo dependencies
+        run: pnpm run build --filter trigger.dev^...
+
+      - name: 🔧 Build worker template files
+        run: pnpm --filter trigger.dev run --if-present build:workers
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Run E2E Tests
+        shell: bash
+        run: |
+          LOG=debug PM=${{ matrix.package-manager }} pnpm --filter trigger.dev run test:e2e

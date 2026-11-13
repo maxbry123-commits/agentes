@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=../../../.jsonschema/ServerTestCase.schema.json
+---
+description: "Invalid condition"
+wantError: true
+wantStatus:
+  httpStatusCode: 400
+  grpcStatusCode: 3
+adminAddOrUpdatePolicy:
+  input: {
+    "policies": [
+      {
+        "apiVersion": "api.cerbos.dev/v1",
+        "derivedRoles": {
+          "name": "x_my_derived_roles",
+          "definitions": [
+            {
+              "name": "direct_manager",
+              "condition": {
+                "match": {
+                  "all": {
+                    "of": [
+                      {
+                        "expr": "request.resource.attr.geography == request.principal.attr.geography"
+                      },
+                      {
+                        "expr": "request.resource.attr.geography == request.principal.attr.managed_geographies"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }

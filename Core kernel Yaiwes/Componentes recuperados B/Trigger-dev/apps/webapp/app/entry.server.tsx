@@ -1,0 +1,371 @@
+import { createReadableStreamFromReadable, type EntryContext } from "@remix-run/node"; // or cloudflare/deno
+import { RemixServer } from "@remix-run/react";
+import * as Sentry from "@sentry/remix";
+import { wrapHandleErrorWithSentry } from "@sentry/remix";
+import { addTenantContextToEvent } from "~/utils/sentryTenantContext.server";
+import { parseAcceptLanguage } from "intl-parse-accept-language";
+import isbot from "isbot";
+import { renderToPipeableStream } from "react-dom/server";
+import { PassThrough } from "stream";
+import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
+import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
+import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
+import { initLogsSearchProjectorWorker } from "~/v3/logsSearchProjectorWorker.server";
+import { initQueueMetricsConsumer, initQueueMetricsEmitter } from "~/v3/queueMetrics.server";
+import { bootstrap } from "./bootstrap";
+import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
+import type { OperatingSystemPlatform } from "./components/primitives/OperatingSystemProvider";
+import { OperatingSystemContextProvider } from "./components/primitives/OperatingSystemProvider";
+import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
+import { env } from "./env.server";
+import { eventLoopMonitor, eventLoopUtilizationMonitor } from "./eventLoopMonitor.server";
+import { logger } from "./services/logger.server";
+import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
+import { singleton } from "./utils/singleton";
+import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
+import {
+  registerRunEngineEventBusHandlers,
+  setupBatchQueueCallbacks,
+} from "./v3/runEngineHandlers.server";
+import { registerRunChangeNotifierHandlers } from "./services/realtime/runChangeNotifierHandlers.server";
+// Touch the sessions replication singleton at entry so it boots deterministically
+// on webapp startup. The singleton's initializer wires start (gated on
+// `clickhouseFactory.isReady()`) and SIGTERM/SIGINT shutdown — mirrors
+// runsReplicationInstance.
+//
+// IMPORTANT: do NOT replace this with `void sessionsReplicationInstance;`.
+// `apps/webapp/package.json` declares `"sideEffects": false`, so esbuild
+// treats `void <identifier>;` as a pure expression statement and tree-shakes
+// the entire import — the singleton's initializer never fires and the
+// sessions→ClickHouse logical replication slot stops being consumed. Assigning
+// to globalThis is an unambiguous side effect the bundler must preserve. See
+// TRI-9864 for the incident write-up.
+import { sessionsReplicationInstance } from "./services/sessionsReplicationInstance.server";
+(globalThis as Record<string, unknown>).__sessionsReplicationInstance = sessionsReplicationInstance;
+// Touch the webhook deliveries replication singleton at entry so it boots
+// deterministically alongside the sessions replicator. Same `sideEffects: false`
+// tree-shaking constraint applies — assign to globalThis, do NOT use `void`.
+import { webhookDeliveriesReplicationInstance } from "./services/webhookDeliveriesReplicationInstance.server";
+(globalThis as Record<string, unknown>).__webhookDeliveriesReplicationInstance =
+  webhookDeliveriesReplicationInstance;
+// Touch the webhook engine singleton at entry so its redis-worker boots
+// deterministically on webapp startup (the constructor calls worker.start()).
+// Same `sideEffects: false` tree-shaking constraint applies: assign to
+// globalThis, do NOT use `void`.
+import { webhookEngine } from "./v3/webhookEngine.server";
+(globalThis as Record<string, unknown>).__webhookEngine = webhookEngine;
+import { globalFlagsRegistry } from "./v3/globalFlagsRegistry.server";
+(globalThis as Record<string, unknown>).__globalFlagsRegistry = globalFlagsRegistry;
+import { workerRegionRegistry } from "./v3/workerRegions.server";
+(globalThis as Record<string, unknown>).__workerRegionRegistry = workerRegionRegistry;
+
+const ABORT_DELAY = 30000;
+
+/**
+ * Where a document may load images from. The markdown renderer that strips images
+ * ships in the stacked UI PR, so on this branch the policy is the only thing stopping
+ * a model- or customer-authored image from reaching a remote host.
+ *
+ * The hosts we store avatar URLs for, plus whatever `CSP_IMG_SRC_ALLOWLIST` adds
+ * (e.g. a self-hosted SSO avatar host).
+ */
+const IMG_SRC_DIRECTIVE = buildImgSrcDirective(
+  singleton("CspImageOrigins", () => {
+    const { origins, rejected } = parseCspImageOrigins(env.CSP_IMG_SRC_ALLOWLIST, {
+      allowHttp: env.NODE_ENV === "development",
+    });
+
+    for (const entry of rejected) {
+      logger.warn(
+        `⚠️  CSP_IMG_SRC_ALLOWLIST entry "${entry.value}" was ignored: it ${entry.reason}.`
+      );
+    }
+
+    return origins;
+  })
+);
+
+export default function handleRequest(
+  request: Request,
+  responseStatusCode: number,
+  responseHeaders: Headers,
+  remixContext: EntryContext
+) {
+  const url = new URL(request.url);
+
+  // Stale documents reference /build asset hashes that 404 after a deploy —
+  // always revalidate HTML. Route-set headers win.
+  if (!responseHeaders.has("Cache-Control")) {
+    responseHeaders.set("Cache-Control", "no-cache");
+  }
+
+  if (url.pathname.startsWith("/login")) {
+    responseHeaders.set("X-Frame-Options", "SAMEORIGIN");
+    responseHeaders.set("Content-Security-Policy", "frame-ancestors 'self'");
+  }
+
+  responseHeaders.set(
+    "Content-Security-Policy",
+    withImgSrc(responseHeaders.get("Content-Security-Policy"), IMG_SRC_DIRECTIVE)
+  );
+
+  const acceptLanguage = request.headers.get("accept-language");
+  const locales = parseAcceptLanguage(acceptLanguage, {
+    validate: Intl.DateTimeFormat.supportedLocalesOf,
+  });
+
+  //get whether it's a mac or pc from the headers
+  const platform: OperatingSystemPlatform = request.headers.get("user-agent")?.includes("Mac")
+    ? "mac"
+    : "windows";
+
+  // If the request is from a bot, we want to wait for the full
+  // response to render before sending it to the client. This
+  // ensures that bots can see the full page content.
+  if (isbot(request.headers.get("user-agent"))) {
+    return handleBotRequest(
+      request,
+      responseStatusCode,
+      responseHeaders,
+      remixContext,
+      locales,
+      platform
+    );
+  }
+
+  return handleBrowserRequest(
+    request,
+    responseStatusCode,
+    responseHeaders,
+    remixContext,
+    locales,
+    platform
+  );
+}
+
+function handleBotRequest(
+  request: Request,
+  responseStatusCode: number,
+  responseHeaders: Headers,
+  remixContext: EntryContext,
+  locales: string[],
+  platform: OperatingSystemPlatform
+) {
+  return new Promise((resolve, reject) => {
+    let shellRendered = false;
+    // Timer handle is cleared in every terminal callback so the abort closure
+    // (which captures the full React render tree + remixContext) doesn't pin
+    // memory for 30s per successful request. See react-router PR #14200.
+    let abortTimer: NodeJS.Timeout | undefined;
+    const { pipe, abort } = renderToPipeableStream(
+      <OperatingSystemContextProvider platform={platform}>
+        <LocaleContextProvider locales={locales}>
+          <RemixServer context={remixContext} url={request.url} abortDelay={ABORT_DELAY} />,
+        </LocaleContextProvider>
+      </OperatingSystemContextProvider>,
+      {
+        onAllReady() {
+          shellRendered = true;
+          const body = new PassThrough();
+          const stream = createReadableStreamFromReadable(body);
+
+          responseHeaders.set("Content-Type", "text/html");
+
+          resolve(
+            new Response(stream, {
+              headers: responseHeaders,
+              status: responseStatusCode,
+            })
+          );
+
+          pipe(body);
+          clearTimeout(abortTimer);
+        },
+        onShellError(error: unknown) {
+          clearTimeout(abortTimer);
+          reject(error);
+        },
+        onError(error: unknown) {
+          responseStatusCode = 500;
+          // Log streaming rendering errors from inside the shell.  Don't log
+          // errors encountered during initial shell rendering since they'll
+          // reject and get logged in handleDocumentRequest.
+          if (shellRendered) {
+            console.error(error);
+          }
+        },
+      }
+    );
+
+    abortTimer = setTimeout(abort, ABORT_DELAY);
+  });
+}
+
+function handleBrowserRequest(
+  request: Request,
+  responseStatusCode: number,
+  responseHeaders: Headers,
+  remixContext: EntryContext,
+  locales: string[],
+  platform: OperatingSystemPlatform
+) {
+  return new Promise((resolve, reject) => {
+    let shellRendered = false;
+    // Timer handle is cleared in every terminal callback so the abort closure
+    // (which captures the full React render tree + remixContext) doesn't pin
+    // memory for 30s per successful request. See react-router PR #14200.
+    let abortTimer: NodeJS.Timeout | undefined;
+    const { pipe, abort } = renderToPipeableStream(
+      <OperatingSystemContextProvider platform={platform}>
+        <LocaleContextProvider locales={locales}>
+          <RemixServer context={remixContext} url={request.url} abortDelay={ABORT_DELAY} />
+        </LocaleContextProvider>
+      </OperatingSystemContextProvider>,
+      {
+        onShellReady() {
+          shellRendered = true;
+          const body = new PassThrough();
+          const stream = createReadableStreamFromReadable(body);
+
+          responseHeaders.set("Content-Type", "text/html");
+
+          resolve(
+            new Response(stream, {
+              headers: responseHeaders,
+              status: responseStatusCode,
+            })
+          );
+
+          pipe(body);
+          clearTimeout(abortTimer);
+        },
+        onShellError(error: unknown) {
+          clearTimeout(abortTimer);
+          reject(error);
+        },
+        onError(error: unknown) {
+          responseStatusCode = 500;
+          // Log streaming rendering errors from inside the shell.  Don't log
+          // errors encountered during initial shell rendering since they'll
+          // reject and get logged in handleDocumentRequest.
+          if (shellRendered) {
+            console.error(error);
+          }
+        },
+      }
+    );
+
+    abortTimer = setTimeout(abort, ABORT_DELAY);
+  });
+}
+
+export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
+  if (request instanceof Request) {
+    logger.debug("Error in handleError", {
+      error,
+      request: {
+        url: request.url,
+        method: request.method,
+      },
+    });
+  } else {
+    logger.debug("Error in handleError", {
+      error,
+    });
+  }
+});
+
+initMollifierDrainerWorker();
+initMollifierStaleSweepWorker();
+initBillingLimitWorker();
+initLogsSearchProjectorWorker();
+initQueueMetricsEmitter();
+initQueueMetricsConsumer();
+
+bootstrap().catch((error) => {
+  logError(error);
+});
+
+function logError(error: unknown, request?: Request) {
+  console.error(error);
+}
+
+process.on("uncaughtException", (error, origin) => {
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError ||
+    error instanceof Prisma.PrismaClientUnknownRequestError
+  ) {
+    // Don't exit the process if the error is a Prisma error
+    logger.error("uncaughtException prisma error", {
+      error,
+      prismaMessage: error.message,
+      code: "code" in error ? error.code : undefined,
+      meta: "meta" in error ? error.meta : undefined,
+      stack: error.stack,
+      origin,
+    });
+  } else {
+    logger.error("uncaughtException", {
+      error: { name: error.name, message: error.message, stack: error.stack },
+      origin,
+    });
+  }
+
+  process.exit(1);
+});
+
+// Boot-time run-ops split interlock. Async, so it runs as a
+// fire-and-forget at startup; a flag-on-but-sentinel-fails misconfig crashes
+// the process loudly before any run-ops routing is wired.
+singleton("AssertRunOpsSplitSentinel", () => {
+  assertRunOpsSplitSentinel().catch((error) => {
+    logger.error("Run-ops split sentinel assertion failed; refusing to start", { error });
+    process.exit(1);
+  });
+  return true;
+});
+
+singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
+singleton("SetupBatchQueueCallbacks", setupBatchQueueCallbacks);
+// Attach the realtime run-changed publish delegations to the engine event bus.
+// No-ops (registers nothing) unless REALTIME_BACKEND_NATIVE_ENABLED=1.
+singleton("RunChangeNotifierHandlers", registerRunChangeNotifierHandlers);
+
+// Wrapped in singleton() so Remix's dev-mode CJS reloads don't append
+// duplicate copies of the processor — Sentry's processor list lives in
+// node_modules and persists across module reloads. Idempotent at runtime
+// (the processor is a pure read+stamp), but the pattern matches the rest
+// of this file.
+singleton("SentryTenantContextProcessor", () => {
+  if (env.SENTRY_DSN) {
+    Sentry.addEventProcessor(addTenantContextToEvent);
+  }
+  // Return a truthy value — `singleton()` uses `??=` so a `void`
+  // callback would re-execute (and re-register) on every dev reload.
+  return true;
+});
+
+export { apiRateLimiter } from "./services/apiRateLimit.server";
+export { dashboardAgentBodyCap } from "./services/dashboardAgentBodyCap.server";
+export { deploymentRateLimiter } from "./services/deploymentRateLimit.server";
+export { engineRateLimiter } from "./services/engineRateLimit.server";
+export { otlpRateLimiter } from "./services/otlpRateLimit.server";
+export { runWithHttpContext } from "./services/httpAsyncStorage.server";
+export { tenantContextMiddleware } from "./services/tenantContextResolver.server";
+export { webhookIngressIpRateLimiter } from "./services/webhookIngressIpRateLimit.server";
+export { socketIo } from "./v3/handleSocketIo.server";
+export { wss } from "./v3/handleWebsockets.server";
+
+if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
+  eventLoopMonitor.enable();
+}
+
+if (env.EVENT_LOOP_UTILIZATION_MONITOR_ENABLED === "1") {
+  eventLoopUtilizationMonitor.enable();
+}
+
+if (remoteBuildsEnabled()) {
+  console.log("🏗️  Remote builds enabled");
+} else {
+  console.log("🏗️  Local builds enabled");
+}

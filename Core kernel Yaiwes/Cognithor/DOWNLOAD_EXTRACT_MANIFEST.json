@@ -1,0 +1,38 @@
+{
+  "bundle_bytes": 22648289,
+  "bundle_sha256": "64f388453099c01e81547eaf4e5b5d038fa428cdf208ca393823e61726e88987",
+  "extracted_tree": {
+    "bytes": 56980132,
+    "files": 3782,
+    "sha256": "e9124defadf9792742ece5f3a9c34742c6628387ca893aaa19a3d8224ac6c62d"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "Cognithor.bundle.zip.part-0001",
+      "sha256": "1f6438fd912f5e3beb303040c40adeea8ea82333defbcba40b2be34f11547084"
+    },
+    {
+      "bytes": 10065377,
+      "name": "Cognithor.bundle.zip.part-0002",
+      "sha256": "9950d53017907c998790563ec857c6f550630bc4c892fc154a5973e9c390ac4c"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Cognithor",
+  "source_bytes": 56980132,
+  "source_commit": "78212af5396fd42cb7103b9edfe9b2e57909aac5",
+  "source_files": 3782,
+  "source_ref": "HEAD",
+  "source_repo": "Alex8791-cyber/cognithor",
+  "source_tree": {
+    "bytes": 56980132,
+    "files": 3782,
+    "sha256": "e9124defadf9792742ece5f3a9c34742c6628387ca893aaa19a3d8224ac6c62d"
+  }
+}

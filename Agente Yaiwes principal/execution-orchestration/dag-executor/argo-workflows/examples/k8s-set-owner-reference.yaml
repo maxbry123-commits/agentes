@@ -1,0 +1,33 @@
+# This example creates a Kubernetes resource that will be deleted
+# when the workflow is deleted via Kubernetes GC.
+#
+# A configmap is used for this example, but the same approach would apply
+# to other more interesting resource types.
+#
+# https://kubernetes.io/docs/concepts/workloads/controllers/garbage-collection/
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  labels:
+    workflows.argoproj.io/no-test: "environment"
+  annotations:
+    workflows.argoproj.io/no-test-reasons: |
+      main: Error (exit code 64): no more retries Error from server (Forbidden):
+      error when creating "/tmp/manifest.yaml": configmaps is forbidden: User
+      "system:serviceaccount:argo:default" cannot create resource "configmaps"
+      in API group "" in the namespace "argo"
+  generateName: k8s-set-owner-reference-
+spec:
+  entrypoint: k8s-set-owner-reference
+  templates:
+  - name: k8s-set-owner-reference
+    resource:
+      action: create
+      setOwnerReference: true
+      manifest: |
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          generateName: owned-eg-
+        data:
+          some: value

@@ -1,0 +1,62 @@
+name: darkmoon-stack
+
+volumes:
+  darkmoon_opencode:
+
+services:
+
+  darkmoon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    container_name: darkmoon
+    user: "0:0"
+    network_mode: "host"
+
+    # GPU support (Compose v2 compatible)
+    gpus: all
+
+    environment:
+      - DM_MODE=default
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+    ports:
+      - "9222:9222"
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.kube:/root/.kube:ro
+
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+
+    restart: unless-stopped
+
+  opencode:
+    build:
+      context: .
+      dockerfile: Dockerfile.opencode
+      network: host
+    container_name: opencode
+    stdin_open: true     # équivalent -it
+    tty: true
+    restart: unless-stopped
+
+    env_file:
+      - ./.opencode.env
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./darkmoon-settings:/root/.config/opencode/:rw
+      - ./darkmoon-settings:/root/.local/share/opencode/:rw
+      - ./darkmoon-settings/agents:/root/.opencode/agents/:rw
+      - ./reports:/root/.local/share/opencode/reports/:rw
+      - ./sessions:/root/.local/share/opencode/sessions/:rw
+      - ./workflows:/opt/darkmoon/mcp/server/src/tools/workflows/:rw
+
+    environment:
+      - TERM=xterm-256color
+      - LANG=C.UTF-8

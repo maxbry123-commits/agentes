@@ -1,0 +1,47 @@
+{
+  "artifact_id": "yaiwes.scheduler.apscheduler",
+  "version": "1.0.0",
+  "estado": "testing",
+  "contract_hash": "",
+  "tribunal_case_id": "YAIWES-APSCHEDULER-001",
+  "contrato": {
+    "rol": "transform",
+    "consume": {"datatype": {"family": "scheduler", "type": "task_definition", "version": 1}},
+    "expone": {"datatype": {"family": "scheduler", "type": "scheduled_job", "version": 1}},
+    "input_map": {},
+    "output_map": {}
+  },
+  "ejecucion": {
+    "kind": "code",
+    "transport": "importlib",
+    "runtime_type": "compute",
+    "entry_point": "adapter.py:build_scheduler",
+    "llm_ratio": 0.0,
+    "idempotente": false,
+    "max_steps": 0,
+    "allowed_actions": []
+  },
+  "seguridad": {
+    "sandbox": "process",
+    "permisos": [],
+    "limites": {"timeout_ms": 5000, "deadline_ms": 5000}
+  },
+  "firma": {
+    "gpg_key_id": "PENDIENTE",
+    "revocation_ref": "contracts/revocation_list.json"
+  },
+  "categoria": "pipeline",
+  "etapa": "P",
+  "perfiles": {
+    "n0": {"habilitada": true, "iteraciones": 1, "simulaciones": 0, "criticas": 0, "muestras_k": 1}
+  },
+  "repeticion": {"max": 1, "condicion": "nunca", "backoff": "1000*2^n+rand(0,1000)"},
+  "repite_en": [],
+  "activacion": {"eventos": ["yaiwes.scheduler.register"], "wake_words": [], "condicion": "director_gate"},
+  "presupuesto": {"n0": {"max_tokens": 1, "max_ms": 5000, "max_costo_usd": 0.000001}},
+  "telemetria": {"metricas": ["tiempo", "errores", "reintentos"], "span_otel": true},
+  "evidencia": {"produce": ["L1_static", "L2_build", "L3_runtime"], "destino": "runtime/evidence/"},
+  "failover": {"sustituible_por": [], "compensacion": "fail_closed"},
+  "salud": {"metodo": "ping", "heartbeat_interval_s": 30},
+  "trazas": {"task_id_requerido": true, "trace_id_requerido": true}
+}

@@ -1,0 +1,132 @@
+name: YAIWES CODA Wire Chain V3
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-coda-wire-chain-v3.yml'
+      - '.github/scripts/yaiwes_coda_wire_chain_v3.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-coda-wire-chain-v3
+  cancel-in-progress: false
+
+jobs:
+  wire-chain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout CODA scope
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-coda-wire-chain-v3.yml
+            /.github/scripts/yaiwes_coda_wire_chain_v3.py
+            /📂coda workflow persistencias/
+
+      - name: Build ordered 24-link chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/yaiwes_coda_wire_chain_v3.py
+
+      - name: Re-test all 24 component adapters
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='📂coda workflow persistencias'
+          count=0
+          while IFS= read -r -d '' tf; do
+            d="$(dirname "$tf")"
+            PYTHONPATH="$d" python3 "$tf"
+            count=$((count+1))
+          done < <(find "$ROOT" -type f -path '*/code/coda_persistence/test_yaiwes_persistence_adapter.py' -print0 | sort -z)
+          echo "ADAPTER_TESTS=$count"
+          test "$count" -eq 24
+
+      - name: Run full chain end-to-end test
+        shell: bash
+        run: |
+          set -euo pipefail
+          FABLES='📂coda workflow persistencias/Fables enchufe universal'
+          PYTHONPATH="$FABLES" python3 "$FABLES/test_yaiwes_swarm_persistence_chain.py"
+
+      - name: Verify wiring contracts and READMEs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('📂coda workflow persistencias')
+          field=root/'🏈 cancha deportiva de fútbol'
+          reg=json.loads((field/'YAIWES-SWARM-NAVY-SEALS-REGISTRY.json').read_text(encoding='utf-8'))
+          assert reg['schema']=='yaiwes.swarm.registry/v3'
+          assert reg['count']==24
+          assert reg['wiring']['count']==24
+          comps=reg['components']
+          assert [x['order'] for x in comps]==list(range(1,25))
+          for i,x in enumerate(comps):
+              assert x['consume']['datatype']=='yaiwes.task-state.v2'
+              assert x['expose']['datatype']=='yaiwes.task-state.v2'
+              if i:
+                  assert x['previous']==comps[i-1]['component']
+              else:
+                  assert x['previous'] is None
+              if i<23:
+                  assert x['next']==comps[i+1]['component']
+              else:
+                  assert x['next'] is None
+              readme=(field/x['component']/'README.md').read_text(encoding='utf-8')
+              assert 'Swarm agent team Navy seals YAIWES' in readme
+              assert '## Cableado Swarm v3' in readme
+          assert (field/'YAIWES-SWARM-WIRING-MAP-V3.json').is_file()
+          assert (field/'YAIWES-SWARM-WIRING-MAP-V3.md').is_file()
+          print('WIRING_CONTRACTS=PASS_24_OF_24')
+          PY
+
+      - name: Persist v3 wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- '📂coda workflow persistencias'
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(coda): wire 24 YAIWES persistence links end-to-end'
+            ok=0
+            for attempt in 1 2 3 4; do
+              if git push origin HEAD:main; then ok=1; break; fi
+              git fetch origin main
+              git rebase origin/main || { git rebase --abort || true; }
+              sleep $((attempt*3))
+            done
+            test "$ok" -eq 1
+          fi
+
+      - name: Final readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('📂coda workflow persistencias/🏈 cancha deportiva de fútbol/YAIWES-SWARM-NAVY-SEALS-REGISTRY.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d['schema']=='yaiwes.swarm.registry/v3'
+          assert d['count']==24
+          assert d['components'][0]['previous'] is None
+          assert d['components'][-1]['next'] is None
+          assert Path('📂coda workflow persistencias/Fables enchufe universal/yaiwes_swarm_persistence_chain.py').is_file()
+          print('YAIWES_CHAIN_V3_READBACK=PASS_24_OF_24')
+          PY

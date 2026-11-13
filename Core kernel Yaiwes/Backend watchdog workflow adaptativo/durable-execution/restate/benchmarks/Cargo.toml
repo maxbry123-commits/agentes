@@ -1,0 +1,54 @@
+[package]
+name = "restate-benchmarks"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = ["no-trace-logging"]
+frame-pointer = ["pprof/frame-pointer"]
+no-trace-logging = ["tracing/max_level_trace", "tracing/release_max_level_debug"]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+mock-service-endpoint = { workspace = true }
+restate-clock = { workspace = true }
+restate-core = { workspace = true, features = ["test-util"] }
+restate-node = { workspace = true, features = ["memory-loglet"] }
+restate-rocksdb = { workspace = true }
+restate-tracing-instrumentation = { workspace = true, features = ["rt-tokio", "prometheus"] }
+restate-types = { workspace = true, features = ["clap"] }
+
+anyhow = { workspace = true }
+futures-util = { workspace = true }
+http = { workspace = true }
+pprof = { version = "0.15", features = ["criterion", "flamegraph"] }
+reqwest = { workspace = true }
+rlimit = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+criterion = { workspace = true, features = ["async_tokio"] }
+rand = { workspace = true }
+
+[build-dependencies]
+
+[[bench]]
+name = "throughput_parallel"
+harness = false
+
+[[bench]]
+name = "throughput_sequential"
+harness = false
+
+[lints]
+workspace = true

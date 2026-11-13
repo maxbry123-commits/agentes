@@ -1,0 +1,49 @@
+{
+  "schema": "yaiwes.coda.persistence-link-manifest/v1",
+  "link_id": "02-CyberStrikeAI",
+  "source_repo": "AIPentest/CyberStrikeAI",
+  "source_commit": "ac101d8476d700f7766107894727a9f8234d1867",
+  "source_tree_sha256": "bf55ae3fb9879cb1106461b870648fc216b2612f1103622e10550620e078565b",
+  "download_extract_verified": true,
+  "role": "supervise-plan-checkpoint-policy-handoff",
+  "next_link": "03-LuaN1aoAgent",
+  "preserved": [
+    "agent loop structure",
+    "orchestrator planning",
+    "supervision pattern",
+    "trace/observability",
+    "bounded iteration concept",
+    "rollback/checkpoint semantics"
+  ],
+  "neutralized_or_excluded": [
+    "impact/exfiltration role",
+    "lateral movement role",
+    "evasion role",
+    "external attack-surface enumeration",
+    "C2 runtime",
+    "offensive MCP tool execution",
+    "arbitrary offensive subprocess execution"
+  ],
+  "safe_runtime": "code/coda_persistence/link.py",
+  "surgical_edits": [
+    "code/agents/impact-exfiltration.md",
+    "code/agents/lateral-movement.md",
+    "code/agents/opsec-evasion.md",
+    "code/agents/attack-surface-enumeration.md",
+    "code/agents/orchestrator.md"
+  ],
+  "tests": {
+    "workflow_run_id": 34810553492,
+    "job_id": 103870881676,
+    "result": "PASS",
+    "passed_for_link": 4,
+    "failed_for_link": 0,
+    "checks": [
+      "safe_handoff",
+      "resume_idempotent",
+      "offensive_task_fails_closed",
+      "checkpoint_path_contained"
+    ]
+  },
+  "status": "TRANSFORMED_SAFE_LINK_PASS"
+}

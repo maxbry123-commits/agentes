@@ -1,0 +1,76 @@
+operators: 
+- id: load_math
+  config:
+    type: hf_source
+    dataset: ddrg/named_math_formulas
+    split: train
+    trust_remote_code: True
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_limited
+    function_config:
+      num_samples: 50000  # 1.25% of 10000 target from stage 1
+  input_ids:
+  - load_math
+- id: generate_instructions
+  config:
+    type: completions
+    map: chat
+    map_config:
+      system_message: "You are a helpful assistant."
+      user_message: |
+        You are to reform the following math text snippet into a question with a quantitative or verifiable answer such as one that would be 
+        included in the USAMO or the Putnam Exam. 
+
+        Text: {{formula}}
+        
+        Include only the new question or task. Do not include anything like "Here is the instruction". You can either extract a 
+        question from the text or form a new one based on the text. Make the question sound like what a human would ask a language model. 
+      output_column: instruction_seed
+    model: gpt-4o-mini
+    temperature: 1.0
+    batch: True
+  input_ids:
+    - sample_dataset
+- id: add_constant_column
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      response_seed: ""
+  input_ids:
+  - generate_instructions
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:
+      - instruction_seed
+      - response_seed
+  input_ids:
+  - add_constant_column
+- id: annotate
+  config:
+    type: completions
+    map: chat
+    map_config:
+      system_message: "You are a helpful assistant."
+      user_message_column: instruction_seed
+      output_column: response
+    model: gpt-4o-mini
+    temperature: 1.0
+    batch: True
+  input_ids:
+  - drop_columns
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: response
+      output_sharegpt_column: conversations
+  input_ids:
+    - annotate

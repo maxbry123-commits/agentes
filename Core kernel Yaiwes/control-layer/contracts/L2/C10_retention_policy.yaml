@@ -1,0 +1,18 @@
+# C10 — L2. B1 SALIDA4
+id: C10
+layer: L2
+name: retention_policy
+implementado: true
+critical: false
+description: "Política de retención y borrado"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C10 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - retention_policy_check
+evidence:
+  type: retention_policy_marker
+  required: false

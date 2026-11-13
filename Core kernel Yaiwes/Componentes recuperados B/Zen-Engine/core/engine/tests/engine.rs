@@ -1,0 +1,584 @@
+use crate::support::{create_fs_loader, load_raw_test_data, load_test_data, test_data_root};
+use serde::Deserialize;
+use serde_json::json;
+use std::fs;
+use std::io::Read;
+use std::ops::Deref;
+use std::path::Path;
+use std::sync::Arc;
+use tokio::runtime::Builder;
+use zen_engine::loader::{LoaderError, MemoryLoader};
+use zen_engine::model::{DecisionNode, DecisionNodeKind, FunctionNodeContent, GraphContent};
+use zen_engine::Variable;
+use zen_engine::{DecisionEngine, EvaluationError, EvaluationOptions};
+
+mod support;
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn engine_memory_loader() {
+    let memory_loader = Arc::new(MemoryLoader::default());
+    memory_loader.add("table", load_test_data("table.json"));
+    memory_loader.add("function", load_test_data("function.json"));
+
+    let engine = DecisionEngine::default().with_loader(memory_loader.clone());
+    let table = engine
+        .evaluate("table", json!({ "input": 12 }).into())
+        .await;
+    let function = engine
+        .evaluate("function", json!({ "input": 12 }).into())
+        .await;
+
+    memory_loader.remove("function");
+    let not_found = engine.evaluate("function", json!({}).into()).await;
+
+    assert_eq!(table.unwrap().result, json!({"output": 10}).into());
+    assert_eq!(function.unwrap().result, json!({"output": 24}).into());
+    assert_eq!(not_found.unwrap_err().to_string(), "Loader error");
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn engine_precompiles_graphs() {
+    let memory_loader = Arc::new(MemoryLoader::default());
+    memory_loader.add("table", load_test_data("table.json"));
+
+    let engine = DecisionEngine::default().with_loader(memory_loader.clone());
+    let failures = engine.compile();
+    assert!(failures.is_empty());
+
+    memory_loader.remove("table");
+    let table = engine
+        .evaluate("table", json!({ "input": 12 }).into())
+        .await;
+
+    assert_eq!(table.unwrap().result, json!({"output": 10}).into());
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn engine_filesystem_loader() {
+    let engine = DecisionEngine::default().with_loader(Arc::new(create_fs_loader()));
+    let table = engine
+        .evaluate("table.json", json!({ "input": 12 }).into())
+        .await;
+    let function = engine
+        .evaluate("function.json", json!({ "input": 12 }).into())
+        .await;
+    let not_found = engine.evaluate("invalid_file", json!({}).into()).await;
+
+    assert_eq!(table.unwrap().result, json!({"output": 10}).into());
+    assert_eq!(function.unwrap().result, json!({"output": 24}).into());
+    assert_eq!(not_found.unwrap_err().to_string(), "Loader error");
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn engine_closure_loader() {
+    let engine = DecisionEngine::default().with_closure_loader(|key| async {
+        match key.as_str() {
+            "function" => Ok(Arc::new(load_test_data("function.json").into())),
+            "table" => Ok(Arc::new(load_test_data("table.json").into())),
+            _ => Err(LoaderError::NotFound(key).into()),
+        }
+    });
+
+    let table = engine
+        .evaluate("table", json!({ "input": 12 }).into())
+        .await;
+    let function = engine
+        .evaluate("function", json!({ "input": 12 }).into())
+        .await;
+    let not_found = engine.evaluate("invalid_file", json!({}).into()).await;
+
+    assert_eq!(table.unwrap().result, json!({"output": 10}).into());
+    assert_eq!(function.unwrap().result, json!({"output": 24}).into());
+    assert_eq!(not_found.unwrap_err().to_string(), "Loader error");
+}
+
+#[test]
+fn engine_noop_loader() {
+    let rt = Builder::new_current_thread().build().unwrap();
+    // Default engine is noop
+    let engine = DecisionEngine::default();
+    let result = rt.block_on(engine.evaluate("any.json", json!({}).into()));
+
+    assert_eq!(result.unwrap_err().to_string(), "Loader error");
+}
+
+#[test]
+fn engine_get_decision() {
+    let rt = Builder::new_current_thread().build().unwrap();
+    let engine = DecisionEngine::default().with_loader(Arc::new(create_fs_loader()));
+
+    assert!(rt
+        .block_on(engine.get_decision("table.json"))
+        .is_ok_and(|inner| inner.is_ok()));
+    assert!(rt.block_on(engine.get_decision("any.json")).is_err());
+}
+
+#[test]
+fn engine_create_decision() {
+    let engine = DecisionEngine::default();
+    let _ = engine
+        .create_decision(Arc::new(load_test_data("table.json").into()))
+        .unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn engine_errors() {
+    let engine = DecisionEngine::default().with_loader(Arc::new(create_fs_loader()));
+
+    let infinite_fn = engine
+        .evaluate("infinite-function.json", json!({}).into())
+        .await;
+    match infinite_fn.unwrap_err().deref() {
+        EvaluationError::NodeError {
+            node_id, source, ..
+        } => {
+            assert_eq!(node_id.deref(), "e0fd96d0-44dc-4f0e-b825-06e56b442d78");
+            assert!(source.to_string().contains("interrupted"));
+        }
+        _ => assert!(false, "Wrong error type"),
+    }
+
+    let recursive = engine
+        .evaluate("recursive-table1.json", json!({}).into())
+        .await;
+    match recursive.unwrap_err().deref() {
+        EvaluationError::NodeError { source, .. } => {
+            println!("{:?}", source);
+            assert_eq!(source.to_string(), "Depth limit exceeded")
+        }
+        _ => assert!(false, "Depth limit not exceeded"),
+    }
+}
+
+#[test]
+fn engine_with_trace() {
+    let rt = Builder::new_current_thread().build().unwrap();
+    let engine = DecisionEngine::default().with_loader(Arc::new(create_fs_loader()));
+
+    let table_r = rt.block_on(engine.evaluate("table.json", json!({ "input": 12 }).into()));
+    let table_opt_r = rt.block_on(engine.evaluate_with_opts(
+        "table.json",
+        json!({ "input": 12 }).into(),
+        EvaluationOptions {
+            trace: true,
+            ..Default::default()
+        },
+    ));
+
+    let table = table_r.unwrap();
+    let table_opt = table_opt_r.unwrap();
+
+    assert!(table.trace.is_none());
+    assert!(table_opt.trace.is_some());
+
+    let trace = table_opt.trace.unwrap().into_graph().unwrap();
+    assert_eq!(trace.len(), 3); // trace for each node
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn engine_function_imports() {
+    let function_content = load_test_data("function.json");
+
+    let imports_js_path = Path::new("js").join("imports.js");
+    let mut replace_buffer = load_raw_test_data(imports_js_path.to_str().unwrap());
+    let mut replace_data = String::new();
+    replace_buffer.read_to_string(&mut replace_data).unwrap();
+
+    let new_nodes = function_content
+        .nodes
+        .into_iter()
+        .map(|node| match &node.kind {
+            DecisionNodeKind::FunctionNode { .. } => {
+                let new_kind = DecisionNodeKind::FunctionNode {
+                    content: FunctionNodeContent::Version1(Arc::from(replace_data.as_str())),
+                };
+
+                Arc::new(DecisionNode {
+                    id: node.id.clone(),
+                    name: node.name.clone(),
+                    kind: new_kind,
+                })
+            }
+            _ => node,
+        })
+        .collect::<Vec<_>>();
+
+    let function_content = {
+        let mut content = GraphContent::default();
+        content.edges = function_content.edges;
+        content.nodes = new_nodes;
+        content
+    };
+    let decision = DecisionEngine::default()
+        .create_decision(Arc::new(function_content.into()))
+        .unwrap();
+    let response = decision.evaluate(json!({}).into()).await.unwrap();
+
+    #[derive(Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
+    struct GraphResult {
+        bigjs_tests: Vec<bool>,
+        bigjs_valid: bool,
+        dayjs_valid: bool,
+        moment_valid: bool,
+    }
+
+    let result = serde_json::from_value::<GraphResult>(response.result.to_value()).unwrap();
+
+    assert!(result.bigjs_tests.iter().all(|v| *v));
+    assert!(result.bigjs_valid);
+    assert!(result.dayjs_valid);
+    assert!(result.moment_valid);
+}
+
+#[tokio::test]
+async fn engine_switch_node() {
+    let engine = DecisionEngine::default().with_loader(Arc::new(create_fs_loader()));
+
+    let switch_node_r = engine
+        .evaluate("switch-node.json", json!({ "color": "yellow" }).into())
+        .await;
+
+    let table = switch_node_r.unwrap();
+    println!("{table:?}");
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn engine_graph_tests() {
+    mock_datetime();
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct TestCase {
+        input: Variable,
+        output: Variable,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct TestData {
+        tests: Vec<TestCase>,
+        #[serde(flatten)]
+        decision_content: GraphContent,
+    }
+
+    let engine = DecisionEngine::default();
+
+    let graphs_path = Path::new(test_data_root().as_str()).join("graphs");
+    let file_list = fs::read_dir(graphs_path).unwrap();
+    for maybe_file in file_list {
+        let Ok(file) = maybe_file else {
+            panic!("Failed to read DirEntry {maybe_file:?}");
+        };
+
+        let file_name = file.file_name().to_str().map(|s| s.to_string()).unwrap();
+        let file_contents = fs::read_to_string(file.path()).expect("valid file data");
+        let test_data: TestData = serde_json::from_str(&file_contents).expect("Valid JSON");
+
+        let decision = engine
+            .create_decision(Arc::new(test_data.decision_content.clone().into()))
+            .unwrap();
+
+        let mut decision_compiled = engine
+            .create_decision(Arc::new(test_data.decision_content.into()))
+            .unwrap();
+        decision_compiled.compile();
+
+        for test_case in test_data.tests {
+            let input = test_case.input.clone();
+            let result = decision.evaluate(input.clone()).await.unwrap().result;
+            let result_compiled = decision_compiled
+                .evaluate(input.clone())
+                .await
+                .unwrap()
+                .result;
+
+            assert_eq!(
+                test_case.output, result,
+                "Decision file: {file_name}.\nInput:\n {input:#?}"
+            );
+
+            assert_eq!(
+                test_case.output, result_compiled,
+                "Compiled decision file: {file_name}.\nInput:\n {input:#?}"
+            );
+        }
+    }
+}
+
+fn mock_datetime() {
+    std::env::set_var("__ZEN_MOCK_UTC_TIME", "2025-08-19T16:55:02.078Z");
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn engine_snapshot_tests() {
+    mock_datetime();
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct TestCase {
+        input: Variable,
+        _output: Variable,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct TestData {
+        tests: Vec<TestCase>,
+        #[serde(flatten)]
+        decision_content: GraphContent,
+    }
+
+    let engine = DecisionEngine::default();
+
+    let graphs_path = Path::new(test_data_root().as_str()).join("graphs");
+    let file_list = fs::read_dir(graphs_path).unwrap();
+    for maybe_file in file_list {
+        let Ok(file) = maybe_file else {
+            panic!("Failed to read DirEntry {maybe_file:?}");
+        };
+
+        let file_name = file.file_name().to_str().map(|s| s.to_string()).unwrap();
+        let file_name = if let Some(pos) = file_name.rfind('.') {
+            file_name[..pos].to_string()
+        } else {
+            file_name
+        };
+        let file_contents = fs::read_to_string(file.path()).expect("valid file data");
+        let test_data: TestData = serde_json::from_str(&file_contents).expect("Valid JSON");
+
+        let decision = engine
+            .create_decision(Arc::new(test_data.decision_content.clone().into()))
+            .unwrap();
+
+        let mut decision_compiled = engine
+            .create_decision(Arc::new(test_data.decision_content.into()))
+            .unwrap();
+        decision_compiled.compile();
+
+        for (index, test_case) in test_data.tests.iter().enumerate() {
+            let input = test_case.input.clone();
+            let result = decision
+                .evaluate_with_opts(
+                    input.clone(),
+                    EvaluationOptions {
+                        trace: true,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            let result_compiled = decision_compiled
+                .evaluate_with_opts(
+                    input.clone(),
+                    EvaluationOptions {
+                        trace: true,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            let serialized_result = serde_json::to_value(&result_compiled).unwrap();
+            let serialized_result_compiled = serde_json::to_value(&result).unwrap();
+            insta::assert_yaml_snapshot!(format!("{}_{}", file_name, index), serialized_result, {
+                ".performance" => "[perf]",
+                ".trace.*.performance" => "[perf]"
+            });
+            insta::assert_yaml_snapshot!(format!("{}_{}", file_name, index), serialized_result_compiled, {
+                ".performance" => "[perf]",
+                ".trace.*.performance" => "[perf]"
+            });
+        }
+    }
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn engine_function_v2() {
+    let engine = DecisionEngine::default().with_loader(Arc::new(create_fs_loader()));
+
+    for _ in 0..1_000 {
+        let function_opt_r = engine
+            .evaluate_with_opts(
+                "function-v2.json",
+                json!({ "input": 12 }).into(),
+                EvaluationOptions {
+                    trace: true,
+                    ..Default::default()
+                },
+            )
+            .await;
+
+        assert!(function_opt_r.is_ok(), "function v2 has errored");
+
+        let function_opt = function_opt_r.unwrap();
+        let trace = function_opt.trace.unwrap().into_graph().unwrap();
+        assert_eq!(trace.len(), 3); // trace for each node
+
+        assert_eq!(
+            function_opt.result,
+            json!({ "hello": "world", "multiplied": 24 }).into()
+        )
+    }
+}
+
+#[tokio::test]
+async fn test_validation() {
+    let engine = DecisionEngine::default().with_loader(Arc::new(create_fs_loader()));
+
+    let context_valid = json!({
+        "color": "red",
+        "customer": {
+            "firstName": "John",
+            "lastName": "Doe",
+            "email": "john@doe.com",
+            "age": 20
+        }
+    });
+
+    let context_invalid = json!({
+         "color": "redd",
+        "customer": {
+            "firstName": "John",
+            "lastName": "Doe",
+            "email": "john@doe.com",
+            "age": 20
+        }
+    });
+
+    assert!(engine
+        .evaluate("customer-input-schema.json", context_valid.clone().into())
+        .await
+        .is_ok());
+    assert!(engine
+        .evaluate("customer-input-schema.json", context_invalid.clone().into())
+        .await
+        .is_err());
+
+    assert!(engine
+        .evaluate("customer-output-schema.json", context_valid.clone().into())
+        .await
+        .is_ok());
+    assert!(engine
+        .evaluate(
+            "customer-output-schema.json",
+            context_invalid.clone().into()
+        )
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn test_nodes_reference() {
+    let engine = DecisionEngine::default().with_loader(Arc::new(create_fs_loader()));
+
+    let evaluation = engine
+        .evaluate("$nodes-parent.json", json!({ "hello": "world" }).into())
+        .await;
+
+    assert!(evaluation.is_ok());
+    assert_eq!(
+        evaluation.unwrap().result.to_value(),
+        json!({
+            "expressionParentNodes": { "request": { "hello": "world" } },
+            "expressionRequest": { "hello": "world" },
+            "functionParentNodes": { "request": { "hello": "world" } },
+            "functionRequest": { "hello": "world" },
+        })
+    );
+}
+
+#[tokio::test]
+async fn decision_table_index_matches_linear_semantics() {
+    let table_node = json!({
+        "id": "dt-node",
+        "type": "decisionTableNode",
+        "name": "dt",
+        "content": {
+            "hitPolicy": "first",
+            "inputs": [
+                {"id": "c1", "name": "Tier", "field": "tier"},
+                {"id": "c2", "name": "Amount", "field": "amount"},
+                {"id": "c3", "name": "Active", "field": "active"}
+            ],
+            "outputs": [{"id": "o1", "name": "Rate", "field": "rate"}],
+            "rules": [
+                {"_id": "r1", "c1": "'gold'", "c2": "100", "c3": "true", "o1": "1"},
+                {"_id": "r2", "c1": "'gold'", "c2": "> 500", "c3": "", "o1": "2"},
+                {"_id": "r3", "c1": "'silver'", "c2": "[100..200]", "c3": "", "o1": "3"},
+                {"_id": "r4", "c1": "'silver', 'bronze'", "c2": "", "c3": "false", "o1": "4"},
+                {"_id": "r5", "c1": "", "c2": "42", "c3": "", "o1": "5"},
+                {"_id": "r6", "c1": "'gold'", "c2": "", "c3": "", "o1": "6"},
+                {"_id": "r7", "c1": "'bronze'", "c2": "7, 8, 9", "c3": "true", "o1": "7"},
+                {"_id": "r8", "c1": "", "c2": "", "c3": "", "o1": "8"},
+                {"_id": "r9", "c1": "'platinum'", "c2": "1000", "c3": "true", "o1": "9"}
+            ]
+        }
+    });
+    let graph = json!({
+        "nodes": [
+            {"id": "in", "type": "inputNode", "name": "request"},
+            table_node,
+            {"id": "out", "type": "outputNode", "name": "response"}
+        ],
+        "edges": [
+            {"id": "e1", "sourceId": "in", "targetId": "dt-node"},
+            {"id": "e2", "sourceId": "dt-node", "targetId": "out"}
+        ]
+    });
+
+    let probes = [
+        json!({"tier": "gold", "amount": 100, "active": true}),
+        json!({"tier": "gold", "amount": 600, "active": false}),
+        json!({"tier": "silver", "amount": 150, "active": true}),
+        json!({"tier": "silver", "amount": 50, "active": false}),
+        json!({"tier": "bronze", "amount": 8, "active": true}),
+        json!({"tier": "unknown", "amount": 42, "active": false}),
+        json!({"tier": "unknown", "amount": 0, "active": false}),
+        json!({"tier": "platinum", "amount": 1000, "active": true}),
+        json!({"tier": 5, "amount": "x", "active": null}),
+    ];
+
+    for hit_policy in ["first", "collect"] {
+        let mut graph = graph.clone();
+        graph["nodes"][1]["content"]["hitPolicy"] = json!(hit_policy);
+        let mut content: GraphContent = serde_json::from_value(graph).unwrap();
+        content.compile();
+        let decision = DecisionEngine::default()
+            .create_decision(Arc::new(content.into()))
+            .unwrap();
+
+        for probe in &probes {
+            let indexed = decision
+                .evaluate(Variable::from(probe))
+                .await
+                .unwrap()
+                .result;
+            let linear = decision
+                .evaluate_with_opts(
+                    Variable::from(probe),
+                    EvaluationOptions {
+                        trace: true,
+                        max_depth: 5,
+                    },
+                )
+                .await
+                .unwrap()
+                .result;
+            assert_eq!(
+                serde_json::to_value(&indexed).unwrap(),
+                serde_json::to_value(&linear).unwrap(),
+                "hit_policy={hit_policy} probe={probe}"
+            );
+        }
+    }
+}

@@ -1,0 +1,113 @@
+package users
+
+import (
+	"context"
+	"errors"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/labstack/echo/v4"
+
+	"github.com/hatchet-dev/hatchet/api/v1/server/authn"
+	"github.com/hatchet-dev/hatchet/api/v1/server/oas/apierrors"
+	"github.com/hatchet-dev/hatchet/api/v1/server/oas/gen"
+	"github.com/hatchet-dev/hatchet/api/v1/server/oas/transformers"
+	"github.com/hatchet-dev/hatchet/pkg/analytics"
+	v1 "github.com/hatchet-dev/hatchet/pkg/repository"
+)
+
+func (u *UserService) UserCreate(ctx echo.Context, request gen.UserCreateRequestObject) (gen.UserCreateResponseObject, error) {
+	// check that the server supports local registration
+	if !u.config.Auth.ConfigFile.BasicAuthEnabled {
+		return gen.UserCreate405JSONResponse(
+			apierrors.NewAPIErrors("local registration is not enabled"),
+		), nil
+	}
+
+	if !u.config.Runtime.AllowSignup {
+		return gen.UserCreate400JSONResponse(
+			apierrors.NewAPIErrors("user signups are disabled"),
+		), nil
+	}
+
+	// validate the request
+	if apiErrors, err := u.config.Validator.ValidateAPI(request.Body); err != nil {
+		return nil, err
+	} else if apiErrors != nil {
+		return gen.UserCreate400JSONResponse(*apiErrors), nil
+	}
+
+	// check restricted email group
+	if err := u.checkUserRestrictionsForEmail(u.config, string(request.Body.Email)); err != nil {
+		return nil, err
+	}
+
+	// determine if the user exists before attempting to write the user
+	_, err := u.config.V1.User().GetUserByEmail(ctx.Request().Context(), string(request.Body.Email))
+
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		u.config.Logger.Err(err).Msg("failed to get user by email")
+		return gen.UserCreate400JSONResponse(
+			apierrors.NewAPIErrors(ErrRegistrationFailed),
+		), nil
+	}
+
+	if err == nil {
+		// user already exists, return consistent error
+		return gen.UserCreate400JSONResponse(
+			apierrors.NewAPIErrors(ErrRegistrationFailed),
+		), nil
+	}
+
+	hashedPw, err := v1.HashPassword(request.Body.Password)
+
+	if err != nil {
+		u.config.Logger.Err(err).Msg("failed to hash password")
+		return gen.UserCreate400JSONResponse(
+			apierrors.NewAPIErrors(ErrRegistrationFailed),
+		), nil
+	}
+
+	if hashedPw == nil {
+		u.config.Logger.Error().Msg("hashed password is nil")
+		return gen.UserCreate400JSONResponse(
+			apierrors.NewAPIErrors(ErrRegistrationFailed),
+		), nil
+	}
+
+	createOpts := &v1.CreateUserOpts{
+		Email:         string(request.Body.Email),
+		EmailVerified: v1.BoolPtr(u.config.Auth.ConfigFile.SetEmailVerified),
+		Name:          v1.StringPtr(request.Body.Name),
+		Password:      hashedPw,
+	}
+
+	// write the user to the db
+	user, err := u.config.V1.User().CreateUser(ctx.Request().Context(), createOpts)
+	if err != nil {
+		u.config.Logger.Err(err).Msg("failed to create user")
+		return gen.UserCreate400JSONResponse(
+			apierrors.NewAPIErrors(ErrRegistrationFailed),
+		), nil
+	}
+
+	err = authn.NewSessionHelpers(u.config.SessionStore).SaveAuthenticated(ctx, user)
+
+	if err != nil {
+		u.config.Logger.Err(err).Msg("failed to save authenticated session")
+		return gen.UserCreate400JSONResponse(
+			apierrors.NewAPIErrors(ErrRegistrationFailed),
+		), nil
+	}
+
+	analyticsCtx := context.WithValue(ctx.Request().Context(), analytics.UserIDKey, user.ID)
+	u.config.Analytics.Enqueue(
+		analyticsCtx,
+		analytics.User, analytics.Create,
+		user.ID.String(),
+		map[string]interface{}{"provider": "basic"},
+	)
+
+	return gen.UserCreate200JSONResponse(
+		*transformers.ToUser(user, false, nil),
+	), nil
+}

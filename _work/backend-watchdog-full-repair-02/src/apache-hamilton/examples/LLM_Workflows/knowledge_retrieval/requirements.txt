@@ -1,0 +1,11 @@
+apache-hamilton[visualization]
+arxiv
+openai==0.28.0
+pandas
+PyPDF2
+requests
+scipy
+tenacity
+termcolor
+tiktoken==0.3.3
+tqdm

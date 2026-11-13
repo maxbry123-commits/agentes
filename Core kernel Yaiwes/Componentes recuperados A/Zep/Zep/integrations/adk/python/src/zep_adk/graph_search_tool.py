@@ -1,0 +1,377 @@
+"""
+ZepGraphSearchTool -- a model-callable ADK tool for searching Zep knowledge graphs.
+
+Unlike ``ZepContextTool`` (which injects context automatically on every turn),
+this tool is visible to the model in the tool list and called on-demand when
+the model decides it needs to search the knowledge graph.
+
+Search parameters can be *pinned* at construction time -- pinned parameters are
+removed from the schema the model sees, locking them to a fixed value.  Any
+parameter not pinned is exposed to the model with a reasonable default.
+
+The tool resolves the search target automatically:
+
+* If ``graph_id`` is set at construction → searches that shared graph for all
+  users (e.g. a documentation knowledge base).
+* If ``graph_id`` is not set → resolves ``user_id`` from ADK session state at
+  runtime and searches the current user's personal graph.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, Any
+
+from google.adk.tools.base_tool import BaseTool
+from google.adk.tools.tool_context import ToolContext
+from google.genai import types
+from typing_extensions import override
+from zep_cloud.client import AsyncZep
+
+if TYPE_CHECKING:
+    pass
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Parameter definitions
+# ---------------------------------------------------------------------------
+# Each entry describes a graph.search parameter that can be pinned or exposed
+# to the model.  Keys match the Zep SDK's ``graph.search()`` kwargs.
+
+_SEARCH_PARAMS: dict[str, dict[str, Any]] = {
+    "query": {
+        "type": "STRING",
+        "description": "Search query text (max 400 characters).",
+        "required": True,
+    },
+    "scope": {
+        "type": "STRING",
+        "description": (
+            "What to search for: 'edges' for facts and relationships, "
+            "'nodes' for entities and their summaries, "
+            "'episodes' for raw text data (unstructured text, messages, or JSON), "
+            "'observations' for derived memories, "
+            "'thread_summaries' for incremental thread summaries, "
+            "'auto' to let Zep decide the best mix of results."
+        ),
+        "enum": ["edges", "nodes", "episodes", "observations", "thread_summaries", "auto"],
+        "default": "edges",
+    },
+    "reranker": {
+        "type": "STRING",
+        "description": (
+            "Result ordering algorithm: 'rrf' (balanced), 'mmr' (diverse), "
+            "'cross_encoder' (highest accuracy), 'episode_mentions' "
+            "(frequently referenced), 'node_distance' (near a specific entity)."
+        ),
+        "enum": ["rrf", "mmr", "node_distance", "episode_mentions", "cross_encoder"],
+        "default": "rrf",
+    },
+    "limit": {
+        "type": "INTEGER",
+        "description": "Maximum number of results to return.",
+        "default": 10,
+    },
+    "mmr_lambda": {
+        "type": "NUMBER",
+        "description": (
+            "Balance between diversity (0.0) and relevance (1.0). Only used when reranker is 'mmr'."
+        ),
+    },
+    "center_node_uuid": {
+        "type": "STRING",
+        "description": (
+            "UUID of the center node for distance-based reranking. "
+            "Required when reranker is 'node_distance'."
+        ),
+    },
+}
+
+_TYPE_MAP: dict[str, types.Type] = {
+    "STRING": types.Type.STRING,
+    "INTEGER": types.Type.INTEGER,
+    "NUMBER": types.Type.NUMBER,
+    "BOOLEAN": types.Type.BOOLEAN,
+}
+
+# Parameters that are always constructor-only (complex types not suitable for
+# model schema generation).
+_CONSTRUCTOR_ONLY_PARAMS = frozenset({"search_filters", "bfs_origin_node_uuids"})
+
+# All parameters that may be pinned at construction.
+_PINNABLE_PARAMS = frozenset(_SEARCH_PARAMS.keys()) | _CONSTRUCTOR_ONLY_PARAMS
+
+
+def _name_summary_text(name: str | None, summary: str | None) -> str:
+    """Join a name and summary as "name: summary".
+
+    Falls back to whichever half is present, and "" when both are absent.
+    Mirrors the Go integration's ``nameSummaryText`` helper so nodes,
+    observations, and thread summaries render identically across languages.
+    """
+    if name and summary:
+        return f"{name}: {summary}"
+    if name:
+        return name
+    if summary:
+        return summary
+    return ""
+
+
+def scope_results_to_texts(result: Any, scope: str) -> list[str]:
+    """Flatten a ``graph.search`` result into plain-text items for one scope.
+
+    Shared by :class:`ZepGraphSearchTool` (which prefixes each item with
+    ``"- "`` for the model) and :class:`~zep_adk.memory_service.ZepMemoryService`
+    (which wraps each item in its own ``MemoryEntry``). The ``auto`` scope is
+    intentionally excluded: it returns a single pre-materialized Context Block
+    on ``result.context`` rather than a list of discrete items, so callers
+    handle it separately.
+
+    For ``nodes``, ``observations``, and ``thread_summaries``, an item with a
+    name but no summary still yields a result (just the name) rather than
+    being dropped -- the same full name/summary fallback used by the Go and
+    TypeScript integrations.
+    """
+    texts: list[str] = []
+
+    if scope == "edges":
+        for edge in result.edges or []:
+            fact = getattr(edge, "fact", None)
+            if fact:
+                texts.append(fact)
+    elif scope == "nodes":
+        for node in result.nodes or []:
+            text = _name_summary_text(getattr(node, "name", None), getattr(node, "summary", None))
+            if text:
+                texts.append(text)
+    elif scope == "episodes":
+        for episode in result.episodes or []:
+            content = getattr(episode, "content", None)
+            if content:
+                texts.append(content)
+    elif scope == "observations":
+        for observation in result.observations or []:
+            text = _name_summary_text(
+                getattr(observation, "name", None), getattr(observation, "summary", None)
+            )
+            if text:
+                texts.append(text)
+    elif scope == "thread_summaries":
+        for thread_summary in result.thread_summaries or []:
+            text = _name_summary_text(
+                getattr(thread_summary, "name", None), getattr(thread_summary, "summary", None)
+            )
+            if text:
+                texts.append(text)
+
+    return texts
+
+
+class ZepGraphSearchTool(BaseTool):
+    """Model-callable tool for searching Zep knowledge graphs.
+
+    This tool is added to the model's tool list and called on-demand when the
+    model decides it needs to search for facts, entities, or prior messages.
+
+    Any search parameter can be *pinned* at construction time by passing it as
+    a keyword argument.  Pinned parameters are hidden from the model and locked
+    to the given value.  Parameters not pinned are exposed in the model's tool
+    schema with sensible defaults.
+
+    Pinning an optional parameter to ``None`` hides it from the model schema
+    without passing it to the Zep SDK -- useful for suppressing irrelevant
+    parameters (e.g. ``mmr_lambda=None`` when the reranker is not ``mmr``).
+
+    Args:
+        zep_client: An initialised ``AsyncZep`` client.
+        graph_id: Optional fixed graph ID for shared-graph search.  When set,
+            all searches target this graph regardless of which user's session
+            is active.  When ``None``, the tool searches the current user's
+            personal graph (resolved from session state).
+        name: Tool name visible to the model.
+        description: Tool description visible to the model.
+        search_filters: Optional Zep search filters (constructor-only).
+            Supports ``node_labels``, ``edge_types``, ``exclude_node_labels``,
+            ``exclude_edge_types``, and property filters.
+        bfs_origin_node_uuids: Optional list of node UUIDs for BFS seeding
+            (constructor-only).
+        **pinned: Any graph.search parameter to fix at construction time.
+            Supported: ``scope``, ``reranker``, ``limit``, ``mmr_lambda``,
+            ``center_node_uuid``.
+    """
+
+    def __init__(
+        self,
+        *,
+        zep_client: AsyncZep,
+        graph_id: str | None = None,
+        name: str = "zep_graph_search",
+        description: str = (
+            "Search the user's knowledge graph for information from previous "
+            "conversations, known facts about the user, or general context. "
+            "Use this to look up specific details the user has shared before."
+        ),
+        search_filters: dict[str, Any] | None = None,
+        bfs_origin_node_uuids: list[str] | None = None,
+        **pinned: Any,
+    ) -> None:
+        super().__init__(name=name, description=description)
+        self._zep: AsyncZep = zep_client
+        self._graph_id: str | None = graph_id
+
+        # Validate pinned params
+        if "user_id" in pinned:
+            raise ValueError(
+                "'user_id' cannot be pinned. Per-user graph search is resolved "
+                "from session state at runtime. Use 'graph_id' for shared "
+                "graph search."
+            )
+        allowed_pinned = frozenset(_SEARCH_PARAMS.keys())
+        unknown = set(pinned.keys()) - allowed_pinned
+        if unknown:
+            raise ValueError(
+                f"Unknown pinned parameters: {unknown}. Allowed: {sorted(allowed_pinned)}"
+            )
+        # Pinning to None means "hide from model but don't send to SDK".
+        # This is only valid for optional parameters.
+        for k, v in pinned.items():
+            if v is None and _SEARCH_PARAMS.get(k, {}).get("required"):
+                raise ValueError(
+                    f"Cannot pin required parameter '{k}' to None. "
+                    "Only optional parameters can be hidden with None."
+                )
+
+        # Store pinned search params
+        self._pinned: dict[str, Any] = dict(pinned)
+        if search_filters is not None:
+            self._pinned["search_filters"] = search_filters
+        if bfs_origin_node_uuids is not None:
+            self._pinned["bfs_origin_node_uuids"] = bfs_origin_node_uuids
+
+        # Pre-build the declaration once (it's immutable after construction)
+        self._declaration = self._build_declaration()
+
+    # ------------------------------------------------------------------
+    # Schema declaration
+    # ------------------------------------------------------------------
+
+    def _build_declaration(self) -> types.FunctionDeclaration:
+        """Build the function declaration, excluding pinned parameters."""
+        properties: dict[str, types.Schema] = {}
+        required: list[str] = []
+
+        for param_name, param_def in _SEARCH_PARAMS.items():
+            if param_name in self._pinned:
+                continue  # pinned → hidden from model
+
+            schema_kwargs: dict[str, Any] = {
+                "type": _TYPE_MAP[param_def["type"]],
+                "description": param_def.get("description", ""),
+            }
+            if "enum" in param_def:
+                schema_kwargs["enum"] = param_def["enum"]
+
+            properties[param_name] = types.Schema(**schema_kwargs)
+
+            if param_def.get("required"):
+                required.append(param_name)
+
+        return types.FunctionDeclaration(
+            name=self.name,
+            description=self.description,
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties=properties,
+                required=required or None,
+            ),
+        )
+
+    @override
+    def _get_declaration(self) -> types.FunctionDeclaration | None:
+        return self._declaration
+
+    # ------------------------------------------------------------------
+    # Execution
+    # ------------------------------------------------------------------
+
+    @override
+    async def run_async(self, *, args: dict[str, Any], tool_context: ToolContext) -> Any:
+        """Execute the graph search with merged parameters."""
+        # --- Resolve search target ------------------------------------
+        search_kwargs: dict[str, Any] = {}
+
+        if self._graph_id:
+            search_kwargs["graph_id"] = self._graph_id
+        else:
+            user_id = self._resolve_user_id(tool_context)
+            if not user_id:
+                return "Error: Cannot determine user ID from session state."
+            search_kwargs["user_id"] = user_id
+
+        # --- Merge params: pinned > model-provided > default ----------
+        # A param pinned to None is hidden from the model and omitted from
+        # the SDK call (used to suppress optional params from the schema).
+        for param_name, param_def in _SEARCH_PARAMS.items():
+            if param_name in self._pinned:
+                if self._pinned[param_name] is not None:
+                    search_kwargs[param_name] = self._pinned[param_name]
+            elif param_name in args:
+                search_kwargs[param_name] = args[param_name]
+            elif "default" in param_def:
+                search_kwargs[param_name] = param_def["default"]
+            # else: optional param not set by anyone → omit
+
+        if not search_kwargs.get("query"):
+            return "Error: No search query provided."
+
+        # Constructor-only complex params
+        for key in _CONSTRUCTOR_ONLY_PARAMS:
+            if key in self._pinned:
+                search_kwargs[key] = self._pinned[key]
+
+        # --- Execute --------------------------------------------------
+        scope = search_kwargs.get("scope", "edges")
+
+        try:
+            result = await self._zep.graph.search(**search_kwargs)
+        except Exception as exc:
+            logger.warning("Zep graph search failed: %s", exc, exc_info=True)
+            return f"Graph search failed: {exc}"
+
+        return self._format_results(result, scope)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_user_id(tool_context: ToolContext) -> str | None:
+        """Resolve user_id from session state or ADK session metadata."""
+        state = tool_context.state
+        if state is not None:
+            user_id = state.get("zep_user_id")
+            if user_id:
+                return str(user_id)
+        try:
+            return tool_context.user_id
+        except AttributeError:
+            return None
+
+    @staticmethod
+    def _format_results(result: Any, scope: str) -> str:
+        """Format search results as readable text for the model."""
+        if scope == "auto":
+            # Auto scope returns a pre-formatted context string in result.context
+            # rather than populating the individual edges/nodes/episodes lists.
+            context: str | None = getattr(result, "context", None)
+            if context and context.strip():
+                return context.strip()
+            return "No results found."
+
+        texts = scope_results_to_texts(result, scope)
+        if not texts:
+            return "No results found."
+
+        return "\n".join(f"- {text}" for text in texts)

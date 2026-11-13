@@ -1,0 +1,25 @@
+{
+  "node": 27,
+  "worker": "SOL integración 1",
+  "status": "PASS",
+  "route": "UniversalPluginBus/FABLES -> pgvector adapter -> moved PostgreSQL build -> moved pgvector build/install -> CREATE EXTENSION vector -> vector query",
+  "plugin_id": "yaiwes.memory.pgvector",
+  "microtest": "create_extension_and_vector_query",
+  "result": {
+    "status": "PASS",
+    "capability": "create_extension_and_vector_query",
+    "value": "3|0",
+    "server_started": true
+  },
+  "evidence_levels": [
+    "L2_build",
+    "L3_runtime",
+    "L4_feature"
+  ],
+  "run": 34561651844,
+  "runner_commit": "bd8a65921277d32e2483df09834caa2a7382dd83",
+  "adapter_sha256": "sha256:eb5a0cc0ef2c7eb1a8b47e2ef290165172363e4456cfc0095b3d3ed99f2332ce",
+  "canonical_bus_blob": "470f9c91650bc6c59e2900f7e71090b84363da9f",
+  "canonical_ficha_code_blob": "a72508027cc2458553ef6a2255a9aa33d9a77a21",
+  "prune": "NOT_NEEDED"
+}

@@ -1,0 +1,90 @@
+operators:
+  - id: create_urls
+    config:
+      type: function
+      function: data_strategies.32b_exploit.seed_pdf_parser.utils.create_url_dataset
+      function_config:
+        urls:
+          - "https://assets.openstax.org/oscms-prodcms/media/documents/OrganicChemistry-SAMPLE_9ADraVJ.pdf"
+  - id: get_pdf_bytes
+    config:
+      type: function
+      function: data_strategies.32b_exploit.seed_pdf_parser.utils.download_pdfs
+    input_ids:
+      - create_urls
+  - id: process_pdfs
+    config:
+      type: function
+      function: data_strategies.32b_exploit.seed_pdf_parser.utils.get_all_page_counts
+    input_ids:
+      - get_pdf_bytes
+  - id: get_page_bytes
+    config:
+      type: function
+      function: data_strategies.32b_exploit.seed_pdf_parser.utils.expand_and_extract_pages
+      function_config:
+        page_count_column: page_count
+    input_ids:
+      - process_pdfs
+  - id: generate_plan_instructions
+    config:
+      type: completions
+      map: gemini_ocr
+      map_config:
+        pdf_url_column: "url"
+        output_extraction_column: "output_extraction"
+        page_number_column: "page_number"
+      model: "gemini/gemini-2.0-flash-lite-preview-02-05"
+      backend_params:
+        invalid_finish_reasons: ["content_filter"]
+        max_requests_per_minute: 4_000
+        max_tokens_per_minute: 4_000_000
+    input_ids:
+      - get_page_bytes
+  - id: drop_columns
+    config:
+      type: function
+      function: data_strategies.commons.remove_columns
+      function_config:
+        columns:
+          - pdf_bytes
+    input_ids:
+      - generate_plan_instructions
+  - id: rename_task_column
+    config:
+      type: function
+      function: data_strategies.commons.force_rename_columns
+      function_config:
+        column_maps:
+          output_extraction: text
+    input_ids:
+      - drop_columns
+
+  - id: sample_dclm_refined_web_shards
+    config:
+      type: dclm_refinedweb_source
+      num_shards: 128
+      seed: 42
+      s3_bucket: commoncrawl
+      s3_prefix: contrib/datacomp/DCLM-refinedweb/
+  - id: compare
+    config:
+      type: function
+      num_shards: 128
+      sharded: True
+      function: data_strategies.OrganicChemistry.utils.calculate_bow_dataset_similarities
+      input_dataset_map:
+        dataset1: sample_dclm_refined_web_shards
+        dataset2: rename_task_column
+    input_ids:
+      - sample_dclm_refined_web_shards
+      - rename_task_column
+  - id: select_to_be_used
+    config:
+      type: function
+      function: data_strategies.InstructionFiltering.AskLLM.utils.filter_rank
+      function_config:
+        top_percentage: 0.01
+        rating_column: average_similarity
+    input_ids:
+      - compare

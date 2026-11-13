@@ -1,0 +1,10 @@
+{
+  "plugin_id": "refactoria.g6.openclaw-adapter",
+  "version": "1.0.0",
+  "type": "adapter",
+  "entrypoint": "Refactoria/G6/new/openclaw_adapter.py",
+  "reuses": "extensions/wordflow_kernel/gateway/openclaw_http.py",
+  "contract": "IntelligenceGateway",
+  "target": "OpenClaw Gateway /v1/chat/completions",
+  "immutable_component": true
+}

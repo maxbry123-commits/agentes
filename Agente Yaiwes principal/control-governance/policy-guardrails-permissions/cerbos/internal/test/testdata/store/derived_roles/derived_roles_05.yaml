@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=../../../../../schema/jsonschema/cerbos/policy/v1/Policy.schema.json
+---
+apiVersion: api.cerbos.dev/v1
+derivedRoles:
+  name: runtime_effective_derived_roles
+  variables:
+    local:
+      tautology: runtime.effectiveDerivedRoles == [] && runtime.effective_derived_roles == []
+  definitions:
+    - name: one
+      parentRoles:
+        - employee
+      condition:
+        match:
+          expr: V.tautology
+
+    - name: two
+      parentRoles:
+        - employee
+      condition:
+        match:
+          expr: V.tautology
+
+    - name: not_referenced
+      parentRoles:
+        - employee
+
+    - name: not_activated
+      parentRoles:
+        - admin

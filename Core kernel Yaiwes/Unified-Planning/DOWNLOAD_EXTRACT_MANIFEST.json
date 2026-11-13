@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 4831731,
+  "bundle_sha256": "435fc81b2401a2d9c7040528ad62b830df50718cfb0335141fd59c2347b1935e",
+  "extracted_tree": {
+    "bytes": 9468448,
+    "files": 667,
+    "sha256": "f042d47d19db9bc14c0a2200d50b92e9b4a55c37236aedaece4c9874bbd6537f"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 4831731,
+      "name": "Unified-Planning.bundle.zip.part-0001",
+      "sha256": "435fc81b2401a2d9c7040528ad62b830df50718cfb0335141fd59c2347b1935e"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Unified-Planning",
+  "source_bytes": 9468448,
+  "source_commit": "8921852c469970213da96f445d343461f504402a",
+  "source_files": 667,
+  "source_ref": "HEAD",
+  "source_repo": "aiplan4eu/unified-planning",
+  "source_tree": {
+    "bytes": 9468448,
+    "files": 667,
+    "sha256": "f042d47d19db9bc14c0a2200d50b92e9b4a55c37236aedaece4c9874bbd6537f"
+  }
+}

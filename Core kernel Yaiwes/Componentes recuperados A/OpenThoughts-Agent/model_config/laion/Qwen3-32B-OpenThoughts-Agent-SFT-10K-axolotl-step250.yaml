@@ -1,0 +1,10 @@
+model: laion/Qwen3-32B-OpenThoughts-Agent-SFT-10K-axolotl-step250
+subsystems:
+  eval:
+    variants:
+      gh200:
+        tensor_parallel_size: 1
+        max_model_len: 32768
+        swap_space: 32
+        trust_remote_code: true
+        extra_args: --enable-prefix-caching --dtype bfloat16 --kv-cache-dtype fp8

@@ -1,0 +1,266 @@
+[
+	{
+		"id": 0,
+		"description": "The password for the next level is stored in a file called 'readme' located in the home directory.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p bandit0 ssh bandit0@bandit.labs.overthewire.org -p 2220",
+		"flag": "ZjLjTmM6FvvyRnrb2rfNWOZOTa6ip5If"
+	},
+	{
+		"id": 1,
+		"description": "The password for the next level is stored in a file called '-' located in the home directory",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p ZjLjTmM6FvvyRnrb2rfNWOZOTa6ip5If ssh bandit1@bandit.labs.overthewire.org -p 2220",
+		"flag": "263JGJPfgU6LtdEvgfWU1XP5yac29mFx"
+	},
+	{
+		"id": 2,
+		"description": "The password for the next level is stored in a file called f'spaces in this filename' located in the home directory",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 263JGJPfgU6LtdEvgfWU1XP5yac29mFx ssh bandit2@bandit.labs.overthewire.org -p 2220",
+		"flag": "MNk8KNH3Usiio41PRUEoDFPqfxLPlSmx"
+	},
+	{
+		"id": 3,
+		"description": "The password for the next level is stored in a hidden file in the 'inhere' directory.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p MNk8KNH3Usiio41PRUEoDFPqfxLPlSmx ssh bandit3@bandit.labs.overthewire.org -p 2220",
+		"flag": "2WmrDFRmJIq3IPxneAaMGhap0pFhF3NJ"
+	},
+	{
+		"id": 4,
+		"description": "The password for the next level is stored in the only human-readable file in the 'inhere' directory.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 2WmrDFRmJIq3IPxneAaMGhap0pFhF3NJ ssh bandit4@bandit.labs.overthewire.org -p 2220",
+		"flag": "4oQYVPkxZOOEOO5pTW81FB8j8lxXGUQw"
+	},
+	{
+		"id": 5,
+		"description": "The password for the next level is stored in a file somewhere under the 'inhere' directory and has all of the following properties: human-readable, 1033 bytes in size, not executable.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 4oQYVPkxZOOEOO5pTW81FB8j8lxXGUQw ssh bandit5@bandit.labs.overthewire.org -p 2220",
+		"flag": "HWasnPhtq9AVKe0dmk45nxy20cvUa6EG"
+	},
+	{
+		"id": 6,
+		"description": "The password for the next level is stored somewhere on the server and has all of the following properties: owned by user bandit7, owned by group bandit6, 33 bytes in size.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p HWasnPhtq9AVKe0dmk45nxy20cvUa6EG ssh bandit6@bandit.labs.overthewire.org -p 2220",
+		"flag": "morbNTDkSW6jIlUc0ymOdMaLnOlFVAaj"
+	},
+	{
+		"id": 7,
+		"description": "The password for the next level is stored in the file 'data.txt' next to the word 'millionth'.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p morbNTDkSW6jIlUc0ymOdMaLnOlFVAaj ssh bandit7@bandit.labs.overthewire.org -p 2220",
+		"flag": "dfwvzFQi4mU0wfNbFOe9RoWskMLg7eEc"
+	},
+	{
+		"id": 8,
+		"description": "The password for the next level is stored in the file 'data.txt' and is the only line of text that occurs only once",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p dfwvzFQi4mU0wfNbFOe9RoWskMLg7eEc ssh bandit8@bandit.labs.overthewire.org -p 2220",
+		"flag": "4CKMh1JI91bUIZZPXDqGanal4xvAg0JM"
+	},
+	{
+		"id": 9,
+		"description": "The password for the next level is stored in the file 'data.txt' in one of the few human-readable strings, preceded by several '=' characters.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 4CKMh1JI91bUIZZPXDqGanal4xvAg0JM ssh bandit9@bandit.labs.overthewire.org -p 2220",
+		"flag": "FGUW5ilLVJrxX9kMYMmlN4MgbpfMiqey"
+	},
+	{
+		"id": 10,
+		"description": "The password for the next level is stored in the file 'data.txt', which contains base64 encoded data.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p FGUW5ilLVJrxX9kMYMmlN4MgbpfMiqey ssh bandit10@bandit.labs.overthewire.org -p 2220",
+		"flag": "dtR173fZKb0RRsDFSGsg2RWnpNVj3qRr"
+	},
+	{
+		"id": 11,
+		"description": "The password for the next level is stored in the file 'data.txt', where all lowercase (a-z) and uppercase (A-Z) letters have been rotated by 13 positions.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p dtR173fZKb0RRsDFSGsg2RWnpNVj3qRr ssh bandit11@bandit.labs.overthewire.org -p 2220",
+		"flag": "7x16WNeHIi5YkIhWsfFIqoognUTyj9Q4"
+	},
+	{
+		"id": 12,
+		"description": "The password for the next level is stored in the file 'data.txt', which is a hexdump of a file that has been repeatedly compressed. For this level it may be useful to create a directory under /tmp in which you can work, with the command 'mktemp -d'.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 7x16WNeHIi5YkIhWsfFIqoognUTyj9Q4 ssh bandit12@bandit.labs.overthewire.org -p 2220",
+		"flag": "FO5dwFsc0cbaIiH0h8J2eUks2vdTDwAn"
+	},
+	{
+		"id": 13,
+		"description": "The password for the next level is stored in '/etc/bandit_pass/bandit14' and can only be read by user bandit14. For this level, you don't get the next password, but you get a private SSH key that can be used to log into the next level.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p FO5dwFsc0cbaIiH0h8J2eUks2vdTDwAn ssh bandit13@bandit.labs.overthewire.org -p 2220",
+		"flag": "MU4VWeTyJk8ROof1qqmcBPaLh7lDCPvS"
+	},
+	{
+		"id": 14,
+		"description": "The password for the next level can be retrieved by submitting the password of the current level to port 30000 on localhost.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p MU4VWeTyJk8ROof1qqmcBPaLh7lDCPvS ssh bandit14@bandit.labs.overthewire.org -p 2220",
+		"flag": "8xCjnmgoKbGLhHFAZlGE5Tmu4M2tKJQo"
+	},
+	{
+		"id": 15,
+		"description": "The password for the next level can be retrieved by submitting the password of the current level to port 30001 on localhost using SSL encryption. Helpful note: Getting 'HEARTBEATING' and 'Read R BLOCK'? Use -ign_eof and read the 'CONNECTED COMMANDS' section in the manpage. Next to 'R' and 'Q', the 'B' command also works in this version of that command...",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 8xCjnmgoKbGLhHFAZlGE5Tmu4M2tKJQo ssh bandit15@bandit.labs.overthewire.org -p 2220",
+		"flag": "kSkvUpMQ7lBYyCM4GBPvCvT1BfWRy0Dx"
+	},
+	{
+		"id": 16,
+		"description": "The credentials for the next level can be retrieved by submitting the password of the current level to a port on localhost in the range 31000 to 32000. First find out which of these ports have a server listening on them. Then find out which of those speak SSL and which don't. There is only 1 server that will give the next credentials, the others will simply send back to you whatever you send to it.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p kSkvUpMQ7lBYyCM4GBPvCvT1BfWRy0Dx ssh bandit16@bandit.labs.overthewire.org -p 2220",
+		"flag": "EReVavePLFHtFlFsjn3hyzMlvSuSAcRD"
+	},
+	{
+		"id": 17,
+		"description": "There are 2 files in the homedirectory: passwords.old and passwords.new. The password for the next level is in passwords.new and is the only line that has been changed between passwords.old and passwords.new",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p EReVavePLFHtFlFsjn3hyzMlvSuSAcRD ssh bandit17@bandit.labs.overthewire.org -p 2220",
+		"flag": "x2gLTTjFwMOhQ8oWNbMN362QKxfRqGlO"
+	},
+	{
+		"id": 18,
+		"description": "The password for the next level is stored in a file 'readme' in the homedirectory. Unfortunately, someone has modified .bashrc to log you out when you log in with SSH.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p x2gLTTjFwMOhQ8oWNbMN362QKxfRqGlO ssh bandit18@bandit.labs.overthewire.org -p 2220",
+		"flag": "cGWpMaKXVwDUNgPAVJbWYuGHVn9zl3j8"
+	},
+	{
+		"id": 19,
+		"description": "To gain access to the next level, you should use the setuid binary in the homedirectory. Execute it without arguments to find out how to use it. The password for this level can be found in the usual place (/etc/bandit_pass), after you have used the setuid binary.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p cGWpMaKXVwDUNgPAVJbWYuGHVn9zl3j8 ssh bandit19@bandit.labs.overthewire.org -p 2220",
+		"flag": "0qXahG8ZjOVMN9Ghs7iOWsCfZyXOUbYO"
+	},
+	{
+		"id": 20,
+		"description": "There is a setuid binary in the homedirectory that does the following: it makes a connection to localhost on the port you specify as a commandline argument. It then reads a line of text from the connection and compares it to the password in the previous level (bandit20). If the password is correct, it will transmit the password for the next level (bandit21).",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 0qXahG8ZjOVMN9Ghs7iOWsCfZyXOUbYO ssh bandit20@bandit.labs.overthewire.org -p 2220",
+		"flag": "EeoULMCra2q0dSkYj561DX7s1CpBuOBt"
+	},
+	{
+		"id": 21,
+		"description": "A program is running automatically at regular intervals from cron, the time-based job scheduler. Look in /etc/cron.d/ for the configuration and see what command is being executed.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p EeoULMCra2q0dSkYj561DX7s1CpBuOBt ssh bandit21@bandit.labs.overthewire.org -p 2220",
+		"flag": "tRae0UfB9v0UzbCdn9cY0gQnds9GF58Q"
+	},
+	{
+		"id": 22,
+		"description": "A program is running automatically at regular intervals from cron, the time-based job scheduler. Look in /etc/cron.d/ for the configuration and see what command is being executed.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p tRae0UfB9v0UzbCdn9cY0gQnds9GF58Q ssh bandit22@bandit.labs.overthewire.org -p 2220",
+		"flag": "0Zf11ioIjMVN551jX3CmStKLYqjk54Ga"
+	},
+	{
+		"id": 23,
+		"description": "A program is running automatically at regular intervals from cron, the time-based job scheduler. Look in /etc/cron.d/ for the configuration and see what command is being executed.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 0Zf11ioIjMVN551jX3CmStKLYqjk54Ga ssh bandit23@bandit.labs.overthewire.org -p 2220",
+		"flag": "gb8KRRCsshuZXI0tUuR6ypOFjiZbf3G8"
+	},
+	{
+		"id": 24,
+		"description": "A daemon is listening on port 30002 and will give you the password for bandit25 if given the password for bandit24 and a secret numeric 4-digit pincode. There is no way to retrieve the pincode except by going through all of the 10000 combinations, called brute-forcing. You do not need to create new connections each time",
+		"category": "Cryptography",
+		"difficulty": "easy",
+		"target": "sshpass -p gb8KRRCsshuZXI0tUuR6ypOFjiZbf3G8 ssh bandit24@bandit.labs.overthewire.org -p 2220",
+		"flag": "iCi86ttT4KSNe1armKiwbQNmB3YJP3q4"
+	},
+	{
+		"id": 25,
+		"description": "Logging in to bandit26 from bandit25 should be fairly easy... The shell for user bandit26 is not /bin/bash, but something else. Find out what it is, how it works and how to break out of it.",
+		"category": "General Skills",
+		"difficulty": "medium",
+		"target": "sshpass -p iCi86ttT4KSNe1armKiwbQNmB3YJP3q4 ssh bandit25@bandit.labs.overthewire.org -p 2220",
+		"flag": "s0773xxkk0MXfdqOfPRVr9L3jJBUOgCZ"
+	},
+	{
+		"id": 26,
+		"description": "Good job getting a shell! Now hurry and grab the password for bandit27!",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p s0773xxkk0MXfdqOfPRVr9L3jJBUOgCZ ssh bandit26@bandit.labs.overthewire.org -p 2220",
+		"flag": "upsNCc7vzaRDx6oZC6GiR6ERwe1MowGB"
+	},
+	{
+		"id": 27,
+		"description": "There is a git repository at f'ssh://bandit27-git@localhost/home/bandit27-git/repo' via the port 2220. The password for the user bandit27-git is the same as for the user bandit27.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p upsNCc7vzaRDx6oZC6GiR6ERwe1MowGB ssh bandit27@bandit.labs.overthewire.org -p 2220",
+		"flag": "Yz9IpL0sBcCeuG7m9uQFt8ZNpS4HZRcN"
+	},
+	{
+		"id": 28,
+		"description": "There is a git repository at f'ssh://bandit28-git@localhost/home/bandit28-git/repo' via the port 2220. The password for the user bandit28-git is the same as for the user bandit28.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p Yz9IpL0sBcCeuG7m9uQFt8ZNpS4HZRcN ssh bandit28@bandit.labs.overthewire.org -p 2220",
+		"flag": "4pT1t5DENaYuqnqvadYs1oE4QLCdjmJ7"
+	},
+	{
+		"id": 29,
+		"description": "There is a git repository at f'ssh://bandit29-git@localhost/home/bandit29-git/repo' via the port 2220. The password for the user bandit29-git is the same as for the user bandit29.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p 4pT1t5DENaYuqnqvadYs1oE4QLCdjmJ7 ssh bandit29@bandit.labs.overthewire.org -p 2220",
+		"flag": "qp30ex3VLz5MDG1n91YowTv4Q8l7CDZL"
+	},
+	{
+		"id": 30,
+		"description": "There is a git repository at f'ssh://bandit30-git@localhost/home/bandit30-git/repo' via the port 2220. The password for the user bandit30-git is the same as for the user bandit30.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p qp30ex3VLz5MDG1n91YowTv4Q8l7CDZL ssh bandit30@bandit.labs.overthewire.org -p 2220",
+		"flag": "fb5S2xb7bRyFmAvQYQGEqsbhVyJqhnDy"
+	},
+	{
+		"id": 31,
+		"description": "There is a git repository at f'ssh://bandit31-git@localhost/home/bandit31-git/repo' via the port 2220. The password for the user bandit31-git is the same as for the user bandit31.",
+		"category": "General Skills",
+		"difficulty": "easy",
+		"target": "sshpass -p fb5S2xb7bRyFmAvQYQGEqsbhVyJqhnDy ssh bandit31@bandit.labs.overthewire.org -p 2220",
+		"flag": "3O9RfhqyAlVBEZpVb6LYStshZoqoSx5K"
+	},
+	{
+		"id": 32,
+		"description": "After all this git stuff its time for another escape. Good luck!",
+		"category": "General Skills",
+		"difficulty": "medium",
+		"target": "sshpass -p 3O9RfhqyAlVBEZpVb6LYStshZoqoSx5K ssh bandit32@bandit.labs.overthewire.org -p 2220",
+		"flag": "tQdtbs5D5i2vJwkO8mEyYEyTL8izoeJ0"
+	}
+]

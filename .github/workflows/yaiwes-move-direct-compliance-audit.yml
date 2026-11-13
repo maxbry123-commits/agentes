@@ -1,0 +1,199 @@
+name: YAIWES Move Direct Compliance Audit
+run-name: YAIWES compliance audit • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-move-direct-compliance-audit.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-move-direct-compliance-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Core kernel Yaiwes/
+            /Agente Yaiwes principal/
+            /Claude readme/
+            /Readme arquitectura Yaiwes/FICHA-ADN-TECNICA-YAIWES.md
+            /📂 Bitácora stated JSON Craxy wall.json
+
+      - name: Audit every inventory component against current Crazy Wall and filesystem
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess, hashlib
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          root=Path('.')
+          invp=root/'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json'
+          wallp=root/'📂 Bitácora stated JSON Craxy wall.json'
+          ficha_required=root/'Claude readme/FICHA-ADN-TECNICA-YAIWES.md'
+          ficha_canonical=root/'Readme arquitectura Yaiwes/FICHA-ADN-TECNICA-YAIWES.md'
+          assert invp.is_file(), 'INVENTORY_MISSING'
+          assert wallp.is_file(), 'CRAZY_WALL_MISSING'
+          assert ficha_required.is_file(), 'DIRECTOR_REQUIRED_FICHA_PATH_MISSING'
+          assert ficha_canonical.is_file(), 'CANONICAL_FICHA_MISSING'
+          assert ficha_required.read_bytes()==ficha_canonical.read_bytes(), 'FICHA_COPY_DRIFT'
+
+          inv=json.loads(invp.read_text(encoding='utf-8'))
+          wall=json.loads(wallp.read_text(encoding='utf-8'))
+          nodes=wall.get('nodes',[])
+          closed_status={'PASS','PASS_STEP3','VERIFIED_CLOSED','COMPLETE','CLOSED'}
+
+          def git_obj(path):
+              try:
+                  return subprocess.check_output(['git','rev-parse',f'HEAD:{path}'],text=True,stderr=subprocess.DEVNULL).strip()
+              except subprocess.CalledProcessError:
+                  return None
+
+          def node_closed(n):
+              return n.get('status') in closed_status or n.get('next_action')=='COMPLETE'
+
+          rows=[]
+          for c in inv.get('components',[]):
+              name=c.get('name')
+              src=(c.get('path') or '').rstrip('/')
+              matches=[n for n in nodes if n.get('component')==name or (n.get('source') or '').rstrip('/')==src]
+              closed=[n for n in matches if node_closed(n)]
+              current=closed[-1] if closed else (matches[-1] if matches else None)
+              src_exists=Path(src).exists() if src else False
+              src_obj=git_obj(src) if src_exists else None
+              target=(current or {}).get('target')
+              target=target.rstrip('/') if isinstance(target,str) else None
+              target_exists=Path(target).exists() if target else False
+              target_obj=git_obj(target) if target_exists else None
+              prov={}
+              if target_exists:
+                  for fn in ('SOURCE_URL.txt','SOURCE_COMMIT.txt','SOURCE_SHA256.txt','YAIWES_PROVENANCE.json'):
+                      p=Path(target)/fn
+                      prov[fn]={'present':p.is_file(),'blob':git_obj(p.as_posix()) if p.is_file() else None}
+              if src_exists and not closed and not current:
+                  state='SOURCE_PRESENT_NO_NODE'
+              elif src_exists and current and not closed:
+                  state='SOURCE_PRESENT_OPEN_NODE'
+              elif src_exists and closed:
+                  state='SOURCE_PRESENT_CLOSED_NODE_STILL_STAGED'
+              elif (not src_exists) and closed:
+                  state='SOURCE_MOVED_CLOSED_NODE'
+              elif (not src_exists) and current and not closed:
+                  state='SOURCE_MISSING_OPEN_NODE'
+              else:
+                  state='SOURCE_MISSING_NO_NODE'
+              rows.append({
+                  'name':name,'source':src,'source_exists':src_exists,'source_git_object':src_obj,
+                  'inventory_wall_node_id':c.get('wall_node_id'),'inventory_wall_status':c.get('wall_status'),
+                  'current_node_id':(current or {}).get('id'),'current_status':(current or {}).get('status'),
+                  'closed':bool(closed),'target':target,'target_exists':target_exists,'target_git_object':target_obj,
+                  'provenance':prov,'state':state,'kernel_signal':bool(c.get('kernel_signal')),
+                  'kernel_policy':c.get('kernel_policy')
+              })
+
+          from collections import Counter
+          counts=Counter(r['state'] for r in rows)
+          closed=sum(1 for r in rows if r['closed'])
+          current_source_present=sum(1 for r in rows if r['source_exists'])
+          pending=[r for r in rows if r['source_exists'] and not r['closed']]
+          no_node=[r for r in pending if r['current_node_id'] is None]
+          open_nodes=[r for r in pending if r['current_node_id'] is not None]
+          closed_missing_prov=[]
+          for r in rows:
+              if r['closed'] and r['target_exists']:
+                  req=('SOURCE_URL.txt','SOURCE_COMMIT.txt','SOURCE_SHA256.txt')
+                  if any(not r['provenance'].get(x,{}).get('present') for x in req):
+                      closed_missing_prov.append(r['name'])
+
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          report={
+            'schema':'yaiwes.move-direct-compliance-audit/v1',
+            'generated_at':now,
+            'head_sha':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+            'instructions_audited':[
+              'READ Claude readme/FICHA-ADN-TECNICA-YAIWES.md',
+              'FOR EACH Core kernel component without closed node: STEP1_ANALYZE_ABC_DESTINATION',
+              'STEP2_MOVE_DIRECT_WITH_PROVENANCE SOURCE_URL+COMMIT+SHA256',
+              'STEP3_WIRE_PRUNE_IF_NEEDED_MICROTEST',
+              'REGISTER Crazy Wall',
+              'EVIDENCE path/blob/SHA before+after'
+            ],
+            'ficha':{
+              'director_required_path':ficha_required.as_posix(),
+              'canonical_path':ficha_canonical.as_posix(),
+              'identical':True,
+              'blob_required':git_obj(ficha_required.as_posix()),
+              'blob_canonical':git_obj(ficha_canonical.as_posix())
+            },
+            'inventory_declared_count':inv.get('component_count'),
+            'inventory_rows':len(rows),
+            'current_source_present_count':current_source_present,
+            'closed_component_count':closed,
+            'pending_source_present_without_closed_node_count':len(pending),
+            'pending_without_any_node_count':len(no_node),
+            'pending_with_open_node_count':len(open_nodes),
+            'closed_targets_missing_required_provenance_count':len(closed_missing_prov),
+            'closed_targets_missing_required_provenance':closed_missing_prov,
+            'state_counts':dict(counts),
+            'verdict':'PASS' if len(pending)==0 and not closed_missing_prov else 'GAP',
+            'rows':rows
+          }
+          outj=root/'Claude readme/MOVE-DIRECT-COMPLIANCE-AUDIT.json'
+          outm=root/'Claude readme/MOVE-DIRECT-COMPLIANCE-AUDIT.md'
+          outj.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          md=[
+            '# MOVE-DIRECT-TO-FINAL — auditoría de cumplimiento',
+            '',f'- Generado: `{now}`',f'- HEAD auditado: `{report["head_sha"]}`',
+            f'- Inventario declarado: **{report["inventory_declared_count"]}**',
+            f'- Fuentes que todavía existen físicamente en `Core kernel Yaiwes/`: **{current_source_present}**',
+            f'- Componentes con nodo cerrado: **{closed}**',
+            f'- Fuentes presentes sin nodo cerrado: **{len(pending)}**',
+            f'- De esas, sin ningún nodo Crazy Wall: **{len(no_node)}**',
+            f'- Con nodo abierto: **{len(open_nodes)}**',
+            f'- Cerrados cuyo destino carece de SOURCE_URL/COMMIT/SHA256: **{len(closed_missing_prov)}**',
+            f'- Veredicto global de esta instrucción: **{report["verdict"]}**','',
+            '## Regla fail-closed','',
+            'No se considera cumplida la instrucción global mientras exista una fuente física sin nodo cerrado o un cierre sin procedencia obligatoria.','',
+            '## Pendientes fuente-presente sin cierre',''
+          ]
+          for r in pending:
+              md.append(f'- `{r["name"]}` — `{r["source"]}` — estado `{r["state"]}` — nodo `{r["current_node_id"]}`')
+          if closed_missing_prov:
+              md += ['', '## Cierres sin procedencia obligatoria', ''] + [f'- `{x}`' for x in closed_missing_prov]
+          outm.write_text('\n'.join(md)+'\n',encoding='utf-8')
+          print(json.dumps({k:report[k] for k in (
+            'inventory_declared_count','current_source_present_count','closed_component_count',
+            'pending_source_present_without_closed_node_count','pending_without_any_node_count',
+            'pending_with_open_node_count','closed_targets_missing_required_provenance_count','verdict')},indent=2))
+          PY
+
+      - name: Commit audit evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- 'Claude readme/MOVE-DIRECT-COMPLIANCE-AUDIT.json' 'Claude readme/MOVE-DIRECT-COMPLIANCE-AUDIT.md'
+          git commit -m 'audit(yaiwes): verify move-direct 3-step compliance' || exit 0
+          for i in 1 2 3 4 5; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then exit 0; fi
+            git rebase --abort || true
+            sleep $((i*2))
+          done
+          exit 41

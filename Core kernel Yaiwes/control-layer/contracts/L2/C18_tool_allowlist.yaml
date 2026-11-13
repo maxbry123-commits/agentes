@@ -1,0 +1,18 @@
+# C18 — L2. B1 SALIDA4
+id: C18
+layer: L2
+name: tool_allowlist
+implementado: true
+critical: false
+description: "Allowlist de tools invocables"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C18 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - tool_allowlist_check
+evidence:
+  type: tool_allowlist_marker
+  required: false

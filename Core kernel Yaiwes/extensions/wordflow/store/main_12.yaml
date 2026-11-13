@@ -1,0 +1,43 @@
+# main_12 loop definition — A-WF-06
+version: "1.0"
+loop_id: main_12
+parallel_max: 1
+steps:
+  - id: S01
+    name: normalize_input
+    required: true
+  - id: S02
+    name: extract_goals_in
+    required: true
+  - id: S03
+    name: refute
+    required: true
+  - id: S04
+    name: repair
+    required: false
+  - id: S05
+    name: sentinel
+    required: true
+  - id: S06
+    name: council
+    required: true
+  - id: S07
+    name: build_task_list
+    required: true
+  - id: S08
+    name: plan_cursor
+    required: false
+  - id: S09
+    name: emit_goals_out
+    required: true
+  - id: S10
+    name: build_evidence_stub
+    required: false
+  - id: S11
+    name: checkpoint
+    required: true
+  - id: S12
+    name: next_or_stop
+    required: true
+on_fail: stop
+on_reject: stop

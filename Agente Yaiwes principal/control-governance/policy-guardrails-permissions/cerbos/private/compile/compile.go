@@ -1,0 +1,150 @@
+// Copyright 2021-2026 Zenauth Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
+package compile
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+
+	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/structpb"
+
+	runtimev1 "github.com/cerbos/cerbos/api/genpb/cerbos/runtime/v1"
+	internalcompile "github.com/cerbos/cerbos/internal/compile"
+	"github.com/cerbos/cerbos/internal/observability/logging"
+	"github.com/cerbos/cerbos/internal/parser"
+	"github.com/cerbos/cerbos/internal/policy"
+	"github.com/cerbos/cerbos/internal/schema"
+	"github.com/cerbos/cerbos/internal/storage/index"
+)
+
+type Index = index.Index
+
+type Artefact struct {
+	Error      error
+	PolicySet  *runtimev1.RunnablePolicySet
+	SourceFile string
+}
+
+type PanicError struct {
+	Cause   any
+	Context []byte
+}
+
+func (pe PanicError) Error() string {
+	return fmt.Sprintf("panic: %v", pe.Cause)
+}
+
+type Errors struct {
+	*runtimev1.Errors
+}
+
+func (e *Errors) Error() string {
+	switch e.Kind.(type) {
+	case *runtimev1.Errors_IndexBuildErrors:
+		return "index build failed"
+	case *runtimev1.Errors_CompileErrors:
+		return "compilation failed"
+	default:
+		return fmt.Sprintf("unhandled error kind %T", e.Kind)
+	}
+}
+
+type SourceAttribute struct {
+	Value *structpb.Value
+	Key   string
+}
+
+type SchemaLoader = schema.Loader
+
+type SchemaResolver = schema.Resolver
+
+type SchemaResolverMaker func(SchemaLoader) SchemaResolver
+
+func BuildIndex(ctx context.Context, fsys fs.FS, attrs ...SourceAttribute) (Index, error) {
+	srcAttrs := make([]policy.SourceAttribute, len(attrs))
+	for i, a := range attrs {
+		srcAttrs[i] = policy.SourceAttribute{Key: a.Key, Value: a.Value}
+	}
+
+	idx, err := index.Build(ctx, fsys, index.WithSourceAttributes(srcAttrs...))
+	if err != nil {
+		if idxErrs, ok := errors.AsType[*index.BuildError](err); ok {
+			return nil, &Errors{
+				Errors: &runtimev1.Errors{
+					Kind: &runtimev1.Errors_IndexBuildErrors{
+						IndexBuildErrors: idxErrs.IndexBuildErrors,
+					},
+				},
+			}
+		}
+
+		if panicErr, ok := errors.AsType[parser.PanicError](err); ok {
+			return nil, PanicError{Cause: panicErr.Cause, Context: panicErr.Context}
+		}
+
+		return nil, fmt.Errorf("failed to build index: %w", err)
+	}
+
+	return idx, nil
+}
+
+func Files(ctx context.Context, fsys fs.FS, schemaResolverMaker SchemaResolverMaker, attrs ...SourceAttribute) (Index, <-chan Artefact, error) {
+	idx, err := BuildIndex(ctx, fsys, attrs...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	schemaResolver := schemaResolverMaker(idx)
+	outChan := make(chan Artefact, 1)
+
+	go func() {
+		defer func() {
+			if panicReason := recover(); panicReason != nil {
+				outChan <- Artefact{Error: fmt.Errorf("panic during compilation: %+v", panicReason)}
+			}
+
+			close(outChan)
+		}()
+
+		schemaMgr := schema.NewEphemeral(schemaResolver)
+		logger := logging.FromContext(ctx).Named("compile")
+
+		inChan := idx.GetAllCompilationUnits(ctx)
+		for unit := range inChan {
+			srcFile := unit.MainSourceFile()
+			log := logger.With(zap.String("source", srcFile))
+			log.Debug("Compiling unit")
+
+			artefact := Artefact{SourceFile: srcFile}
+			artefact.PolicySet, artefact.Error = internalcompile.Compile(unit, schemaMgr)
+
+			if artefact.Error != nil {
+				log.Error("Compilation failed", zap.Error(artefact.Error))
+				if compErrs, ok := errors.AsType[*internalcompile.ErrorSet](artefact.Error); ok {
+					artefact.Error = &Errors{
+						Errors: &runtimev1.Errors{
+							Kind: &runtimev1.Errors_CompileErrors{CompileErrors: compErrs.Errors()},
+						},
+					}
+				}
+			} else {
+				log.Debug("Compilation succeeded")
+			}
+
+			log.Debug("Sending artefact")
+			select {
+			case outChan <- artefact:
+				log.Debug("Artefact sent")
+			case <-ctx.Done():
+				log.Debug("Artefact send cancelled", zap.Error(ctx.Err()))
+				return
+			}
+		}
+	}()
+
+	return idx, outChan, nil
+}

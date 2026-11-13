@@ -1,0 +1,42 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "contract": "tel.workflow/v4",
+  "node": "G-018",
+  "worker": "SOL_2",
+  "timestamp_date": "2026-09-12",
+  "status": "PASS",
+  "scope": "➡️📂 Wordflow LOOP Yaiwes/",
+  "operation": "EXACT_GIT_BLOB_RECONSTRUCTION_AND_LOCAL_PYTEST",
+  "motor_required": false,
+  "reason_motor_not_required": "No download/extract/copy/move mutation was performed; this was execution of existing code reconstructed from exact Git blobs for verification.",
+  "git_blobs": {
+    "runtime/src/core/fables_binding_gate.py": "516e639fc64d048a6bc922a4021c933985867a4b",
+    "runtime/src/core/code_generation_policy.py": "384633550b995aae1187806017fb16b9411f0eed",
+    "runtime/src/uek/ficha_contract_v2.py": "a5ec565f63dccd6d67f33ddf35458b33d88e865c",
+    "runtime/src/uek/universal_plugin_bus_v2_integrated.py": "865327d6f5d63bc735aeec7338fa2e7bfb810e23",
+    "runtime/tests/test_fables_binding_gate.py": "2729c653ba4b945b1e3ca20017bbdf1ae5669306"
+  },
+  "blob_readback": "PASS_5_OF_5_EXACT",
+  "pytest": {
+    "command": "PYTHONPATH=/tmp/g018 python -m pytest -q runtime/tests/test_fables_binding_gate.py",
+    "result": "PASS_4_OF_4",
+    "summary": "4 passed, 13 warnings in 0.08s",
+    "warnings": "datetime.utcnow deprecation only; no test failures"
+  },
+  "verified_invariants": [
+    "exact source provenance constants match",
+    "canonical Fables/Ficha binding registers and verifies",
+    "unsafe dynamic exec candidate rejected before registration",
+    "generation policy requires verified canonical binding, not string literal only",
+    "execution_authorized remains false",
+    "deployment_authorized remains false",
+    "no parallel bus created"
+  ],
+  "source_upload_sha256": {
+    "UniversalPluginBus": "5e4595a86bfd68a3c1fde70ba614ce7b9ec6ea4d6c867912e836cca33c626fc3",
+    "FichaContractV2": "759d0d7855d8df106462b966bfc4ee543f24a3e789a27048f253159b58ff8d1a"
+  },
+  "no_lfs": true,
+  "no_force": true,
+  "decision": "G018_CAN_CLOSE_VERIFIED_LOCAL"
+}

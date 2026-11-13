@@ -1,0 +1,221 @@
+{
+  "created_at": 1789369437,
+  "items": {
+    "C47-005": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/OpenSwarm\n",
+      "slug": "OpenSwarm",
+      "source_repo": "openswarm-ai/openswarm",
+      "status": "FAILED"
+    },
+    "C47-010": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 1031708,
+        "bundle_sha256": "cb8175daee35b787ba43201fdc3df26f7ea16f95d904cd6bbbdd0704e0b83060",
+        "elapsed_seconds": 36.33,
+        "extracted_tree": {
+          "bytes": 1234373,
+          "files": 39,
+          "sha256": "77326bad6026982f3deb13a0420d3fe650f96f6fd793272c6281a6060b28f7c0"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 1031708,
+            "name": "SCOPE.bundle.zip.part-0001",
+            "sha256": "cb8175daee35b787ba43201fdc3df26f7ea16f95d904cd6bbbdd0704e0b83060"
+          }
+        ],
+        "publish": {
+          "commit": "c08f57fa1447867cf62e062bbafeb60186676285",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "SCOPE",
+        "source_bytes": 1234373,
+        "source_commit": "4dc0da5e7843dce84a851bd7a53e4e45932b27d0",
+        "source_files": 39,
+        "source_ref": "HEAD",
+        "source_repo": "JarvisPei/SCOPE",
+        "source_tree": {
+          "bytes": 1234373,
+          "files": 39,
+          "sha256": "77326bad6026982f3deb13a0420d3fe650f96f6fd793272c6281a6060b28f7c0"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "SCOPE",
+      "source_repo": "JarvisPei/SCOPE",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-015": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 2333188,
+        "bundle_sha256": "eb1a2542b232ad95617568b62bd252ec8667088d7e7a65a07ef2d9cf1a2c74b5",
+        "elapsed_seconds": 37.66,
+        "extracted_tree": {
+          "bytes": 6528052,
+          "files": 558,
+          "sha256": "0d5604e830952ebc7afd70ac4fbf24503baa8ed4cdcb0242c7759565bed98969"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 2333188,
+            "name": "OpenCognit.bundle.zip.part-0001",
+            "sha256": "eb1a2542b232ad95617568b62bd252ec8667088d7e7a65a07ef2d9cf1a2c74b5"
+          }
+        ],
+        "publish": {
+          "commit": "ec7b070d8329bca12a09cacf6c683e77493c27f0",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "OpenCognit",
+        "source_bytes": 6528052,
+        "source_commit": "e6dba4255dc79992044df10e324d9e0743055008",
+        "source_files": 558,
+        "source_ref": "HEAD",
+        "source_repo": "OpenCognit/opencognit",
+        "source_tree": {
+          "bytes": 6528052,
+          "files": 558,
+          "sha256": "0d5604e830952ebc7afd70ac4fbf24503baa8ed4cdcb0242c7759565bed98969"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "OpenCognit",
+      "source_repo": "OpenCognit/opencognit",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-020": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 5745240,
+        "bundle_sha256": "faf15c3565a8bae99ae16b02ce8fea6fd0a5d134a8ad7f376257832536a141cf",
+        "elapsed_seconds": 38.34,
+        "extracted_tree": {
+          "bytes": 8866648,
+          "files": 159,
+          "sha256": "128904fa67d4ccc75ed7655054e90fda9a7c6a5b879974f5c0f07a4ab3178217"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 5745240,
+            "name": "Agent-xpu-LLM-xpu.bundle.zip.part-0001",
+            "sha256": "faf15c3565a8bae99ae16b02ce8fea6fd0a5d134a8ad7f376257832536a141cf"
+          }
+        ],
+        "publish": {
+          "commit": "1b0c3b1f2367226befd905a726b7d67a39b5d0aa",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "Agent-xpu-LLM-xpu",
+        "source_bytes": 8866648,
+        "source_commit": "689be270aa29bb88447e3867cd97d85a55f454d5",
+        "source_files": 159,
+        "source_ref": "HEAD",
+        "source_repo": "xinming-wei/LLM.xpu",
+        "source_tree": {
+          "bytes": 8866648,
+          "files": 159,
+          "sha256": "128904fa67d4ccc75ed7655054e90fda9a7c6a5b879974f5c0f07a4ab3178217"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "Agent-xpu-LLM-xpu",
+      "source_repo": "xinming-wei/LLM.xpu",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-025": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 936047,
+        "bundle_sha256": "bf4edf55f4db641698f6050687a9c47748b0e5873734f0e718dfa498d15b7932",
+        "elapsed_seconds": 24.24,
+        "extracted_tree": {
+          "bytes": 1317696,
+          "files": 69,
+          "sha256": "bf4a26b3d940c0b8f8fbf7326db6321f075d1a59078b962dca3a9c7fa38c3f88"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 936047,
+            "name": "PRISM.bundle.zip.part-0001",
+            "sha256": "bf4edf55f4db641698f6050687a9c47748b0e5873734f0e718dfa498d15b7932"
+          }
+        ],
+        "publish": {
+          "commit": "71a716295240d98c60ec7098111a5820b0ec4bca",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "PRISM",
+        "source_bytes": 1317696,
+        "source_commit": "fdc09e6bfe31f9c2852eb830ee07de1d750472f4",
+        "source_files": 69,
+        "source_ref": "HEAD",
+        "source_repo": "jingyip-cat/PRISM",
+        "source_tree": {
+          "bytes": 1317696,
+          "files": 69,
+          "sha256": "bf4a26b3d940c0b8f8fbf7326db6321f075d1a59078b962dca3a9c7fa38c3f88"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "PRISM",
+      "source_repo": "jingyip-cat/PRISM",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-030": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/MemOS\n",
+      "slug": "MemOS",
+      "source_repo": "MemTensor/MemOS",
+      "status": "FAILED"
+    },
+    "C47-035": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/SafeDB-MCP\n",
+      "slug": "SafeDB-MCP",
+      "source_repo": "narekmalk/safedb-mcp",
+      "status": "FAILED"
+    },
+    "C47-040": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/Visa-Trusted-Agent-Protocol\n",
+      "slug": "Visa-Trusted-Agent-Protocol",
+      "source_repo": "visa/trusted-agent-protocol",
+      "status": "FAILED"
+    },
+    "C47-045": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/Provability-Fabric\n",
+      "slug": "Provability-Fabric",
+      "source_repo": "SentinelOps-CI/provability-fabric",
+      "status": "FAILED"
+    }
+  },
+  "schema": "yaiwes.frontend.download-extract-queue.v1"
+}

@@ -1,0 +1,41 @@
+name: YAIWES Azure Durable Plugin Bus Verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-azure-durable-plugin-bus-verify.yml'
+      - 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/verification/test_yaiwes_azure_durable_mount.py'
+      - 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus
+            Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pytest
+        run: python -m pip install pytest
+      - name: Azure source and contract gate
+        run: |
+          python 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions/verify_integration.py'
+          python -m py_compile 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions/adapter.py' 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/verification/test_yaiwes_azure_durable_mount.py'
+      - name: Mount Azure Durable through UniversalPluginBus ten times
+        run: |
+          for i in $(seq 1 10); do
+            echo "AZURE_DURABLE_PLUGIN_BUS_PASS_${i}/10"
+            python -m pytest -q 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/verification/test_yaiwes_azure_durable_mount.py'
+          done

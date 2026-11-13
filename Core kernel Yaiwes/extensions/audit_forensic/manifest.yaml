@@ -1,0 +1,12 @@
+# audit_forensic extension manifest — A-AUD-07
+name: audit_forensic
+version: "1.0.0"
+artifact_id: wordflow.extension.audit_forensic
+extension_type: audit
+abi_version: "2.0"
+kernel_min: "0.1.0"
+mount_mode: sidecar
+load_priority: 50
+llm_control: DENY
+entrypoint: engine.entrypoint:run_audit
+description: "Forensic audit extension — EvidencePacket → P0-P3 matrices → 3-layer verdict"

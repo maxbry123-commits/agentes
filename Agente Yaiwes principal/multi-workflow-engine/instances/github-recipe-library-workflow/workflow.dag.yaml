@@ -1,0 +1,17 @@
+version: 1
+policy:
+  deterministic_percent: 95
+  llm_max_percent: 5
+  director_authorization_required: true
+  overwrite: forbidden
+stages:
+  - id: discover
+    next: select
+  - id: select
+    gates: [deduplicate, provenance, license, security]
+    next: acquire_adapt
+  - id: acquire_adapt
+    wiring: [registry, adapter, bus, schema]
+    next: verify_replicate
+  - id: verify_replicate
+    gates: [sheriff, validator, sandbox, tests, sha256, rollback]

@@ -1,0 +1,207 @@
+import { createUuid } from 'utils/createUuid';
+import { useEffect, useRef, useState } from 'react';
+import FormTemplate from 'component/common/FormTemplate/FormTemplate';
+import useUiConfig from 'hooks/api/getters/useUiConfig/useUiConfig';
+import { useRequiredPathParam } from 'hooks/useRequiredPathParam';
+import { formatUnknownError } from 'utils/formatUnknownError';
+import useToast from 'hooks/useToast';
+import type { StrategyFormState } from 'interfaces/strategy';
+import { UPDATE_FEATURE_STRATEGY } from 'component/providers/AccessProvider/permissions';
+import { useFormErrors } from 'hooks/useFormErrors';
+import { useCollaborateData } from 'hooks/useCollaborateData';
+import { useFeature } from 'hooks/api/getters/useFeature/useFeature';
+import type { IFeatureToggle } from 'interfaces/featureToggle';
+import { useChangeRequestsEnabled } from 'hooks/useChangeRequestsEnabled';
+import {
+    type IChangeSchema,
+    useChangeRequestApi,
+} from 'hooks/api/actions/useChangeRequestApi/useChangeRequestApi';
+import { comparisonModerator } from 'component/feature/FeatureStrategy/featureStrategy.utils';
+import type {
+    ChangeRequestAddStrategy,
+    ChangeRequestEditStrategy,
+    ChangeRequestUpdateMilestoneStrategy,
+    IChangeRequestAddStrategy,
+    IChangeRequestUpdateMilestoneStrategy,
+    IChangeRequestUpdateStrategy,
+} from 'component/changeRequest/changeRequest.types';
+import { SidebarModal } from 'component/common/SidebarModal/SidebarModal';
+import { FeatureStrategyForm } from '../../../../feature/FeatureStrategy/FeatureStrategyForm/FeatureStrategyForm.tsx';
+import { constraintId } from 'constants/constraintId.ts';
+import { apiPayloadConstraintReplacer } from 'utils/api-payload-constraint-replacer.ts';
+import { getChangeStrategyName } from 'utils/getChangeStrategyName.ts';
+
+interface IEditChangeProps {
+    change:
+        | IChangeRequestAddStrategy
+        | IChangeRequestUpdateStrategy
+        | IChangeRequestUpdateMilestoneStrategy;
+    changeRequestId: number;
+    featureId: string;
+    environment: string;
+    open: boolean;
+    onSubmit: () => void;
+    onClose: () => void;
+}
+
+const addIdSymbolToConstraints = (
+    strategy?:
+        | ChangeRequestAddStrategy
+        | ChangeRequestEditStrategy
+        | ChangeRequestUpdateMilestoneStrategy,
+) => {
+    if (!strategy) return;
+
+    return strategy?.constraints.map((constraint) => {
+        return { ...constraint, [constraintId]: createUuid() };
+    });
+};
+
+export const EditChange = ({
+    change,
+    changeRequestId,
+    environment,
+    open,
+    onSubmit,
+    onClose,
+    featureId,
+}: IEditChangeProps) => {
+    const projectId = useRequiredPathParam('projectId');
+    const { editChange } = useChangeRequestApi();
+
+    const constraintsWithId = addIdSymbolToConstraints(change.payload);
+
+    const [strategy, setStrategy] = useState<StrategyFormState>({
+        ...change.payload,
+        constraints: constraintsWithId,
+        name: getChangeStrategyName(change),
+    });
+
+    const { setToastData, setToastApiError } = useToast();
+    const errors = useFormErrors();
+    const { uiConfig } = useUiConfig();
+    const { unleashUrl } = uiConfig;
+    const { isChangeRequestConfigured } = useChangeRequestsEnabled(projectId);
+
+    const { feature, refetchFeature } = useFeature(projectId, featureId);
+
+    const ref = useRef<IFeatureToggle>(feature);
+
+    const { data, staleDataNotification, forceRefreshCache } =
+        useCollaborateData<IFeatureToggle>(
+            {
+                unleashGetter: useFeature,
+                params: [projectId, featureId],
+                dataKey: 'feature',
+                refetchFunctionKey: 'refetchFeature',
+                options: {},
+            },
+            feature,
+            {
+                afterSubmitAction: refetchFeature,
+            },
+            comparisonModerator,
+        );
+
+    useEffect(() => {
+        if (ref.current.name === '' && feature.name) {
+            forceRefreshCache(feature);
+            ref.current = feature;
+        }
+    }, [feature]);
+
+    const payload: IChangeSchema = {
+        action: change.action,
+        feature: featureId,
+        payload: strategy,
+    };
+    const onInternalSubmit = async () => {
+        try {
+            await editChange(projectId, changeRequestId, change.id, payload);
+            onSubmit();
+            setToastData({
+                text: 'Change updated',
+                type: 'success',
+            });
+        } catch (error: unknown) {
+            setToastApiError(formatUnknownError(error));
+        }
+    };
+
+    if (!data) return null;
+
+    return (
+        <SidebarModal
+            open={open}
+            onClose={onClose}
+            label='Edit change'
+            onClick={(e) => {
+                e.stopPropagation();
+            }}
+        >
+            <FormTemplate
+                modal
+                disablePadding
+                description={featureStrategyHelp}
+                documentationLink={featureStrategyDocsLink}
+                documentationLinkLabel={featureStrategyDocsLinkLabel}
+                formatApiCode={() =>
+                    formatUpdateStrategyApiCode(
+                        projectId,
+                        changeRequestId,
+                        change.id,
+                        payload,
+                        unleashUrl,
+                    )
+                }
+            >
+                <FeatureStrategyForm
+                    feature={data}
+                    strategy={strategy}
+                    setStrategy={setStrategy}
+                    environmentId={environment}
+                    onSubmit={onInternalSubmit}
+                    onCancel={onClose}
+                    loading={false}
+                    permission={UPDATE_FEATURE_STRATEGY}
+                    errors={errors}
+                    changeRequestsEnabled={isChangeRequestConfigured(
+                        environment,
+                    )}
+                />
+
+                {staleDataNotification}
+            </FormTemplate>
+        </SidebarModal>
+    );
+};
+
+export const formatUpdateStrategyApiCode = (
+    projectId: string,
+    changeRequestId: number,
+    changeId: number,
+    strategy: IChangeSchema,
+    unleashUrl?: string,
+): string => {
+    if (!unleashUrl) {
+        return '';
+    }
+
+    const url = `${unleashUrl}/api/admin/projects/${projectId}/change-requests/${changeRequestId}/changes/${changeId}`;
+    const payload = JSON.stringify(strategy, apiPayloadConstraintReplacer, 2);
+
+    return `curl --location --request PUT '${url}' \\
+    --header 'Authorization: INSERT_API_KEY' \\
+    --header 'Content-Type: application/json' \\
+    --data-raw '${payload}'`;
+};
+
+export const featureStrategyHelp = `
+    An activation strategy will only run when a feature flag is enabled and provides a way to control who will get access to the feature.
+    If any of a feature flag's activation strategies returns true, the user will get access.
+`;
+
+export const featureStrategyDocsLink =
+    'https://docs.getunleash.io/concepts/activation-strategies';
+
+export const featureStrategyDocsLinkLabel = 'Strategies documentation';

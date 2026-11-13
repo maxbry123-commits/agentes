@@ -1,0 +1,525 @@
+package apiv1
+
+import (
+	"compress/gzip"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/inngest/inngest/pkg/api/apiv1/apiv1auth"
+	"github.com/inngest/inngest/pkg/consts"
+	"github.com/inngest/inngest/pkg/enums"
+	"github.com/inngest/inngest/pkg/logger"
+	"github.com/inngest/inngest/pkg/tracing"
+	"github.com/inngest/inngest/pkg/tracing/meta"
+	"github.com/inngest/inngest/pkg/tracing/metadata"
+	"github.com/inngest/inngest/pkg/util"
+	"github.com/oklog/ulid/v2"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"go.opentelemetry.io/otel/trace"
+	collecttrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
+	resourcev1 "go.opentelemetry.io/proto/otlp/resource/v1"
+	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
+	statuspb "google.golang.org/genproto/googleapis/rpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+)
+
+type TraceParent struct {
+	TraceID trace.TraceID
+	SpanID  trace.SpanID
+}
+
+type TraceRoot struct{}
+
+// ExtendedTraceCapDecision describes whether a payload should be accepted or
+// parsed only for accounting before returning a 429.
+type ExtendedTraceCapDecision struct {
+	OverCap   bool
+	Response  string
+	UsedBytes int64
+	CapBytes  int64
+}
+
+// ExtendedTraceCapChecker is consulted after a valid /v1/traces/userland
+// payload is read and parsed, but before spans are written. requestBytes is the
+// summed wire size of the request's spans, which is the ingress quantity to
+// reserve against the account cap.
+type ExtendedTraceCapChecker func(ctx context.Context, accountID uuid.UUID, requestBytes int64) ExtendedTraceCapDecision
+
+// ExtendedTraceRejectedRecorder records metrics for an over-cap payload after
+// the handler has successfully parsed it but before returning 429.
+type ExtendedTraceRejectedRecorder func(ctx context.Context, auth apiv1auth.V1Auth, req *collecttrace.ExportTraceServiceRequest, decision ExtendedTraceCapDecision) error
+
+// userlandSpanBytes sums the OTLP wire size of every span in the request. This
+// is the ingress quantity the extended-trace cap reserves before attempting to
+// write spans.
+func userlandSpanBytes(req *collecttrace.ExportTraceServiceRequest) int64 {
+	if req == nil {
+		return 0
+	}
+	var total int64
+	for _, rs := range req.ResourceSpans {
+		for _, ss := range rs.ScopeSpans {
+			for _, span := range ss.Spans {
+				total += int64(proto.Size(span))
+			}
+		}
+	}
+	return total
+}
+
+func (a router) traces(w http.ResponseWriter, r *http.Request) {
+	// Auth the app
+	auth, err := a.opts.AuthFinder(r.Context())
+	if err != nil {
+		respondError(w, r, http.StatusUnauthorized, "No auth found")
+		return
+	}
+
+	ctx := context.Background()
+	enabled, err := a.opts.TraceReader.OtelTracesEnabled(ctx, auth.AccountID())
+	if err != nil {
+		respondError(w, r, http.StatusUnauthorized, "Error checking OTel traces entitlement")
+		return
+	}
+	if !enabled {
+		respondError(w, r, http.StatusUnauthorized, "OTel traces are not enabled for this account")
+		return
+	}
+
+	// Bound the body before reading: the cap gate runs after parsing, so this
+	// is what stops an over-cap/abusive account from forcing unbounded
+	// read+parse on every request before the 429.
+	r.Body = http.MaxBytesReader(w, r.Body, consts.MaxUserlandTraceBodySize)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			respondError(w, r, http.StatusRequestEntityTooLarge, "Request body too large")
+			return
+		}
+		respondError(w, r, http.StatusBadRequest, "Error reading body")
+		return
+	}
+
+	req := &collecttrace.ExportTraceServiceRequest{}
+	isJSON := strings.Contains(r.Header.Get("Content-Type"), "json")
+	if isJSON {
+		err = protojson.Unmarshal(body, req)
+	} else {
+		err = proto.Unmarshal(body, req)
+	}
+	if err != nil {
+		respondError(w, r, http.StatusBadRequest, "Invalid payload")
+		return
+	}
+
+	var capDecision ExtendedTraceCapDecision
+	if a.opts.ExtendedTraceCapCheck != nil {
+		capDecision = a.opts.ExtendedTraceCapCheck(ctx, auth.AccountID(), userlandSpanBytes(req))
+	}
+
+	if capDecision.OverCap {
+		if a.opts.ExtendedTraceRejectedRecorder != nil {
+			a.recordRejectedTrace(ctx, auth, req, capDecision)
+		}
+		msg := capDecision.Response
+		if msg == "" {
+			msg = "extended trace bytes cap exceeded for current billing period"
+		}
+		respondError(w, r, http.StatusTooManyRequests, msg)
+		return
+	}
+
+	rejectedSpans := a.convertOTLPAndSend(r.Context(), auth, req)
+
+	resp := &collecttrace.ExportTraceServiceResponse{}
+	if rejectedSpans > 0 {
+		resp.PartialSuccess = &collecttrace.ExportTracePartialSuccess{
+			RejectedSpans: rejectedSpans,
+		}
+	}
+	var respBytes []byte
+	if isJSON {
+		respBytes, _ = protojson.Marshal(resp)
+		w.Header().Set("Content-Type", "application/json")
+	} else {
+		respBytes, _ = proto.Marshal(resp)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+	}
+
+	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		w.Header().Set("Content-Encoding", "gzip")
+		gz := gzip.NewWriter(w)
+		_, _ = gz.Write(respBytes)
+		_ = gz.Close()
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(respBytes)
+}
+
+// recordRejectedTrace runs the ExtendedTraceRejectedRecorder for an over-cap
+// payload. The recorder does network I/O, so it runs off the request goroutine
+// in a bounded pool: this keeps the 429 fast and stops a flood of over-cap
+// payloads from spawning unbounded background goroutines. When the pool is
+// saturated the record is dropped (and logged) rather than blocking the
+// response — consistent with the recorder being best-effort accounting.
+func (a *API) recordRejectedTrace(ctx context.Context, auth apiv1auth.V1Auth, req *collecttrace.ExportTraceServiceRequest, decision ExtendedTraceCapDecision) {
+	if !a.rejectedTraceRecorderSem.TryAcquire(1) {
+		logger.StdlibLogger(ctx).Warn("dropping rejected extended-trace record; recorder pool saturated", "account_id", auth.AccountID())
+		return
+	}
+
+	go func() {
+		defer a.rejectedTraceRecorderSem.Release(1)
+		defer func() {
+			if r := recover(); r != nil {
+				logger.StdlibLogger(ctx).Error("panic recording rejected extended-trace payload", "panic", r, "account_id", auth.AccountID())
+			}
+		}()
+		if err := a.opts.ExtendedTraceRejectedRecorder(ctx, auth, req, decision); err != nil {
+			logger.StdlibLogger(ctx).Warn("failed to record rejected extended-trace payload", "err", err, "account_id", auth.AccountID())
+		}
+	}()
+}
+
+func respondError(w http.ResponseWriter, r *http.Request, code int, msg string) {
+	isJSON := strings.Contains(r.Header.Get("Content-Type"), "json")
+	status := &statuspb.Status{Message: msg}
+
+	var data []byte
+	if isJSON {
+		data, _ = protojson.Marshal(status)
+		w.Header().Set("Content-Type", "application/json")
+	} else {
+		data, _ = proto.Marshal(status)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+	}
+
+	w.WriteHeader(code)
+	_, _ = w.Write(data)
+}
+
+func (a router) convertOTLPAndSend(ctx context.Context, auth apiv1auth.V1Auth, req *collecttrace.ExportTraceServiceRequest) int64 {
+	var (
+		errs atomic.Int64
+		wg   sync.WaitGroup
+	)
+
+	l := logger.StdlibLogger(ctx).With(
+		"account_id", auth.AccountID(),
+		"workspace_id", auth.WorkspaceID(),
+	)
+
+	for _, rs := range req.ResourceSpans {
+		res := convertResource(rs.Resource)
+
+		for _, ss := range rs.ScopeSpans {
+			for _, s := range ss.Spans {
+
+				wg.Add(1)
+
+				go func() {
+					defer wg.Done()
+					defer func() {
+						if r := recover(); r != nil {
+							l.Error("panic committing span", "panic", r)
+							errs.Add(1)
+						}
+					}()
+
+					if err := a.commitSpan(ctx, l, auth, res, ss.Scope, s); err != nil {
+						if !strings.Contains(err.Error(), "failed to get traceref") {
+							l.Error("failed to commit span", "error", err)
+						}
+						errs.Add(1)
+						return
+					}
+				}()
+			}
+		}
+	}
+
+	wg.Wait()
+
+	return errs.Load()
+}
+
+func (a router) commitSpan(ctx context.Context, l logger.Logger, auth apiv1auth.V1Auth, res *resource.Resource, scope *commonv1.InstrumentationScope, s *tracev1.Span) error {
+	// To be valid, each span must have an "inngest.traceref" attribute
+	tr, err := getInngestTraceRef(s)
+	if err != nil {
+		// If we can't find the traceref, we can't create a span. So let's
+		// skip it.
+		return fmt.Errorf("failed to get traceref: %w", err)
+	}
+
+	attrs := convertAttributes(s.Attributes)
+
+	status := enums.StepStatusUnknown
+	if s.Status != nil {
+		switch s.Status.Code {
+		case tracev1.Status_STATUS_CODE_ERROR:
+			status = enums.StepStatusFailed
+		case tracev1.Status_STATUS_CODE_OK:
+			status = enums.StepStatusCompleted
+		}
+	}
+
+	// Legacy, but try to pull the run ID out from the attributes using the
+	// legacy key.
+	var runID ulid.ULID
+	var functionID uuid.UUID
+	for _, kv := range attrs {
+		switch kv.Key {
+		case consts.OtelAttrSDKRunID:
+			runID, err = ulid.Parse(kv.Value.AsString())
+			if err != nil {
+				return fmt.Errorf("failed to parse run ID from attributes: %w", err)
+			}
+		case consts.OtelSysFunctionID:
+			functionID, err = uuid.Parse(kv.Value.AsString())
+			if err != nil {
+				return fmt.Errorf("failed to parse function ID from attributes: %w", err)
+			}
+		}
+	}
+
+	// NOTE: We can't use the external ID/slug because that is not included in the extended trace spans so
+	// instead we fetch the function anyways and then validate that the workspace IDs match.
+	fn, err := a.opts.FunctionReader.GetFunctionByInternalUUID(ctx, functionID)
+	if err != nil {
+		return fmt.Errorf("function not found: %w", err)
+	} else if fn.EnvID != uuid.Nil && fn.EnvID != auth.WorkspaceID() {
+		return fmt.Errorf("mismatched workspace ID")
+	} else if fn.IsArchived() {
+		return fmt.Errorf("function is archived: %s", functionID)
+	}
+
+	spanID := trace.SpanID(s.SpanId).String()
+	spanKind := trace.SpanKind(s.Kind).String()
+	resourceServiceName := resourceServiceName(res)
+	isUserland := true
+
+	tenantAttrs := meta.NewAttrSet(
+		meta.Attr(meta.Attrs.RunID, &runID),
+		meta.Attr(meta.Attrs.AppID, &fn.AppID),
+		meta.Attr(meta.Attrs.FunctionID, &functionID),
+		meta.Attr(meta.Attrs.AccountID, util.ToPtr(auth.AccountID())),
+		meta.Attr(meta.Attrs.EnvID, util.ToPtr(auth.WorkspaceID())),
+	)
+
+	// By default, the parent span is the trace ref we found.
+	parent := tr
+
+	if (scope.Name != "inngest" || s.Name != "inngest.execution") && len(s.ParentSpanId) == 12 {
+		// If this is not the "root" span created by an SDK, we need to listen to
+		// the parent span ID that they have set so we can preserve whatever
+		// lineage they're passing us.
+		parent, err = tr.SetParentSpanID(trace.SpanID(s.ParentSpanId))
+		if err != nil {
+			return fmt.Errorf("failed to set parent span ID: %w", err)
+		}
+	}
+
+	// Filter out/handle special inngest-defined attributes sent from the SDK
+	var userAttrs []attribute.KeyValue
+	for _, kv := range attrs {
+		switch kv.Key {
+		case consts.OtelAttrSDKRunID:
+		case consts.OtelSysFunctionID:
+		case consts.OtelSysAppID:
+		case "inngest.traceparent":
+		case "inngest.traceref":
+		case "inngest.step.parentSpanId":
+			// If the SDK has set a deterministic step parent span ID (used during
+			// checkpointing to match the executor.step span), use it to override
+			// the parent so userland spans are correctly parented under their step.
+
+			sid, sidErr := trace.SpanIDFromHex(kv.Value.AsString())
+			if sidErr == nil {
+				parent, err = tr.SetParentSpanID(sid)
+				if err != nil {
+					return fmt.Errorf("failed to set step parent span ID: %w", err)
+				}
+			}
+		case "inngest.step.id":
+			stepID := kv.Value.AsString()
+			meta.AddAttr(tenantAttrs, meta.Attrs.StepUserlandID, &stepID)
+		case "inngest.step.index":
+			stepIndex := int(kv.Value.AsInt64())
+			meta.AddAttr(tenantAttrs, meta.Attrs.StepUserlandIndex, &stepIndex)
+		case "inngest.step.hash":
+			stepHash := kv.Value.AsString()
+			meta.AddAttr(tenantAttrs, meta.Attrs.StepID, &stepHash)
+		case "inngest.step.attempt":
+			stepAttempt := int(kv.Value.AsInt64())
+			meta.AddAttr(tenantAttrs, meta.Attrs.StepAttempt, &stepAttempt)
+		default:
+			userAttrs = append(userAttrs, kv)
+		}
+	}
+
+	// Use attrs with inngest-specific attrs filtered out that would otherwise be duplicated
+	attrs = userAttrs
+
+	ourAttrs := meta.NewAttrSet(
+		meta.Attr(meta.Attrs.IsUserland, &isUserland),
+		meta.Attr(meta.Attrs.UserlandSpanID, &spanID),
+		meta.Attr(meta.Attrs.DynamicSpanID, &spanID),
+		meta.Attr(meta.Attrs.UserlandName, &s.Name),
+		meta.Attr(meta.Attrs.DynamicStatus, &status),
+		meta.Attr(meta.Attrs.UserlandKind, &spanKind),
+		meta.Attr(meta.Attrs.UserlandServiceName, &resourceServiceName),
+		meta.Attr(meta.Attrs.UserlandScopeName, &scope.Name),
+		meta.Attr(meta.Attrs.UserlandScopeVersion, &scope.Version),
+	).Merge(tenantAttrs)
+
+	// Add some additional attributes on top
+	attrs = append(attrs, ourAttrs.Serialize()...)
+
+	span, err := a.opts.TracerProvider.CreateSpan(ctx, meta.SpanNameUserland, &tracing.CreateSpanOptions{
+		Debug:              &tracing.SpanDebugData{Location: "apiv1.traces.commitSpan"},
+		StartTime:          time.Unix(0, int64(s.StartTimeUnixNano)),
+		EndTime:            time.Unix(0, int64(s.EndTimeUnixNano)),
+		Parent:             parent,
+		RawOtelSpanOptions: []trace.SpanStartOption{trace.WithAttributes(attrs...)},
+		SpanID:             trace.SpanID(s.SpanId),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create span: %w", err)
+	}
+
+	addTenantIDs := func(cfg *tracing.MetadataSpanConfig) {
+		cfg.Attrs = cfg.Attrs.Merge(tenantAttrs)
+	}
+
+	if a.opts.MetadataOpts.Flag.Enabled(ctx, auth.AccountID()) && a.opts.MetadataOpts.SpanExtractor != nil {
+		l := l.With("step_metadata", true)
+		md, err := a.opts.MetadataOpts.SpanExtractor.ExtractSpanMetadata(ctx, s)
+		if err != nil {
+			warnings := metadata.ExtractWarnings(err)
+			if len(warnings) > 0 {
+				md = append(md, warnings)
+			}
+		}
+
+		for _, m := range md {
+			_, err := tracing.CreateMetadataSpan(
+				ctx,
+				a.opts.TracerProvider,
+				span,
+				"router.commitSpanMetadata",
+				pkgName,
+				nil,
+				m,
+				enums.MetadataScopeExtendedTrace,
+				addTenantIDs,
+			)
+			if err != nil {
+				l.Error("failed to create metadata span", "err", err)
+				continue
+			}
+		}
+	}
+
+	return nil
+}
+
+func getInngestTraceRef(s *tracev1.Span) (*meta.SpanReference, error) {
+	for _, kv := range s.Attributes {
+		if kv.Key != "inngest.traceref" {
+			continue
+		}
+
+		sr := &meta.SpanReference{}
+
+		traceRefStr, err := url.QueryUnescape(kv.GetValue().GetStringValue())
+		if err != nil {
+			return nil, fmt.Errorf("failed to unescape trace reference: %w", err)
+		}
+
+		err = json.Unmarshal([]byte(traceRefStr), sr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal span reference: %w", err)
+		}
+
+		err = sr.Validate()
+		if err != nil {
+			return nil, fmt.Errorf("invalid span reference: %w", err)
+		}
+
+		return sr, nil
+	}
+
+	return nil, fmt.Errorf("no span reference found in attributes")
+}
+
+func convertAttributes(attrs []*commonv1.KeyValue) []attribute.KeyValue {
+	out := make([]attribute.KeyValue, 0, len(attrs))
+	for _, kv := range attrs {
+		// Filter out any attributes that have our prefixes
+		if strings.HasPrefix(kv.Key, meta.AttrKeyPrefix) {
+			continue
+		}
+
+		out = append(out, attribute.KeyValue{
+			Key:   attribute.Key(kv.Key),
+			Value: convertAnyValue(kv.Value),
+		})
+	}
+	return out
+}
+
+func convertAnyValue(v *commonv1.AnyValue) attribute.Value {
+	if v == nil {
+		return attribute.StringValue("")
+	}
+	switch val := v.Value.(type) {
+	case *commonv1.AnyValue_StringValue:
+		return attribute.StringValue(val.StringValue)
+	case *commonv1.AnyValue_IntValue:
+		return attribute.Int64Value(val.IntValue)
+	case *commonv1.AnyValue_DoubleValue:
+		return attribute.Float64Value(val.DoubleValue)
+	case *commonv1.AnyValue_BoolValue:
+		return attribute.BoolValue(val.BoolValue)
+	default:
+		return attribute.StringValue("")
+	}
+}
+
+func convertResource(res *resourcev1.Resource) *resource.Resource {
+	if res == nil {
+		return resource.Empty()
+	}
+	attrs := convertAttributes(res.Attributes)
+	r, _ := resource.New(context.Background(), resource.WithAttributes(attrs...))
+	return r
+}
+
+func resourceServiceName(res *resource.Resource) string {
+	if res == nil {
+		return ""
+	}
+	for _, attr := range res.Attributes() {
+		if string(attr.Key) == "service.name" {
+			return attr.Value.AsString()
+		}
+	}
+	return ""
+}

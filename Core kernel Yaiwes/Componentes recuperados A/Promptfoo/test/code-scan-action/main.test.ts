@@ -1,0 +1,1628 @@
+/**
+ * Main Entry Point Tests
+ *
+ * Tests for the GitHub Action main entry point, specifically the CLI args construction.
+ */
+
+import * as os from 'node:os';
+import * as path from 'node:path';
+import type { PathLike, Stats } from 'node:fs';
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// The action embeds the monorepo's promptfoo version at build time and pins the
+// runtime install to it; read the same source here so assertions track releases.
+import { version as pinnedPromptfooVersion } from '../../package.json';
+import { FileChangeStatus } from '../../src/types/codeScan';
+import { mockProcessEnv } from '../util/utils';
+
+interface PullRequestPayload {
+  repository: {
+    full_name: string;
+  };
+  pull_request: {
+    number: number;
+    head: {
+      sha: string;
+      repo: {
+        full_name: string;
+      };
+    };
+    base: {
+      repo: {
+        full_name: string;
+      };
+    };
+  };
+}
+
+interface WorkflowDispatchPayload {
+  repository: {
+    full_name: string;
+  };
+  inputs: {
+    pr_number: string;
+  };
+}
+
+type MockGitHubPayload = PullRequestPayload | WorkflowDispatchPayload;
+
+const mocks = vi.hoisted(() => {
+  const core = {
+    getInput: vi.fn(),
+    getBooleanInput: vi.fn(),
+    getIDToken: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+    setOutput: vi.fn(),
+    setFailed: vi.fn(),
+  };
+
+  const exec = {
+    exec: vi.fn(),
+  };
+
+  const github = {
+    context: {
+      eventName: 'pull_request',
+      repo: {
+        owner: 'test-owner',
+        repo: 'test-repo',
+      },
+      payload: {
+        repository: {
+          full_name: 'test-owner/test-repo',
+        },
+        pull_request: {
+          number: 123,
+          head: {
+            sha: 'abc123',
+            repo: {
+              full_name: 'test-owner/test-repo',
+            },
+          },
+          base: {
+            repo: {
+              full_name: 'test-owner/test-repo',
+            },
+          },
+        },
+      } as MockGitHubPayload,
+    },
+    getOctokit: vi.fn(),
+  };
+
+  const actionGithub = {
+    getGitHubContext: vi.fn(),
+    getPRFiles: vi.fn(),
+    partitionReviewCommentsByDiff: vi.fn(),
+  };
+
+  const config = {
+    generateConfigFile: vi.fn(),
+  };
+
+  const fs = {
+    existsSync: vi.fn(),
+    readFileSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
+    mkdtempSync: vi.fn(),
+    realpathSync: vi.fn(),
+    lstatSync: vi.fn(),
+  };
+
+  return {
+    actionGithub,
+    config,
+    core,
+    exec,
+    fs,
+    github,
+  };
+});
+
+// The action package owns its @actions/* dependencies outside the root test resolver,
+// so mock both the bare specifiers and the nested ESM entrypoints used by main.ts.
+vi.mock('@actions/core', () => mocks.core);
+vi.mock('../../code-scan-action/node_modules/@actions/core/lib/core.js', () => mocks.core);
+
+vi.mock('@actions/exec', () => mocks.exec);
+vi.mock('../../code-scan-action/node_modules/@actions/exec/lib/exec.js', () => mocks.exec);
+
+vi.mock('@actions/github', () => mocks.github);
+vi.mock('../../code-scan-action/node_modules/@actions/github/lib/github.js', () => mocks.github);
+
+vi.mock('../../code-scan-action/src/github', () => mocks.actionGithub);
+vi.mock('../../code-scan-action/src/config', () => mocks.config);
+
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return {
+    ...actual,
+    existsSync: mocks.fs.existsSync,
+    readFileSync: mocks.fs.readFileSync,
+    unlinkSync: mocks.fs.unlinkSync,
+    writeFileSync: mocks.fs.writeFileSync,
+    mkdirSync: mocks.fs.mkdirSync,
+    mkdtempSync: mocks.fs.mkdtempSync,
+    realpathSync: mocks.fs.realpathSync,
+    lstatSync: mocks.fs.lstatSync,
+    // Strip O_NOFOLLOW so writeSarifFile takes the writeFileSync fallback path that the
+    // tests are written against. The O_NOFOLLOW branch is straightforward fs plumbing
+    // (open/write/close); the user-visible defenses (lstat refusal, parent-realpath
+    // refusal, traversal refusal) are exercised by dedicated tests.
+    constants: { ...actual.constants, O_NOFOLLOW: undefined },
+  };
+});
+
+const originalEnv = { ...process.env };
+
+// Matches the deterministic fs.mkdtempSync mock; the install keeps its local
+// prefix and isolated user/global npm config outside the checked-out workspace.
+const MOCK_INSTALL_DIR = path.join(os.tmpdir(), 'promptfoo-install-test');
+const MOCK_NPM_CLI_PATH = path.join(
+  path.dirname(process.execPath),
+  '..',
+  'lib',
+  'node_modules',
+  'npm',
+  'bin',
+  'npm-cli.js',
+);
+const MOCK_PROMPTFOO_PACKAGE_DIR = path.join(MOCK_INSTALL_DIR, 'node_modules', 'promptfoo');
+const MOCK_PROMPTFOO_ENTRYPOINT = path.join(
+  MOCK_PROMPTFOO_PACKAGE_DIR,
+  'dist',
+  'src',
+  'entrypoint.js',
+);
+
+function expectedInstallArgs(version: string): string[] {
+  return [
+    'install',
+    '--prefix',
+    MOCK_INSTALL_DIR,
+    `promptfoo@${version}`,
+    '--ignore-scripts',
+    '--registry=https://registry.npmjs.org/',
+    '--userconfig',
+    path.join(MOCK_INSTALL_DIR, 'user'),
+    '--globalconfig',
+    path.join(MOCK_INSTALL_DIR, 'global'),
+  ];
+}
+
+interface PromptfooExecCall {
+  command: string;
+  entrypoint: string;
+  args: string[];
+  options?: { env?: Record<string, string> };
+}
+
+interface NpmExecCall {
+  command: string;
+  npmCliPath: string;
+  args: string[];
+  options?: { env?: Record<string, string>; cwd?: string };
+}
+
+interface PromptfooAndNpmExecCalls {
+  npmInstall: NpmExecCall;
+  promptfoo: PromptfooExecCall;
+}
+
+function setupMocks() {
+  mocks.github.context.eventName = 'pull_request';
+  mocks.github.context.repo = {
+    owner: 'test-owner',
+    repo: 'test-repo',
+  };
+  mocks.github.context.payload = {
+    repository: {
+      full_name: 'test-owner/test-repo',
+    },
+    pull_request: {
+      number: 123,
+      head: {
+        sha: 'abc123',
+        repo: {
+          full_name: 'test-owner/test-repo',
+        },
+      },
+      base: {
+        repo: {
+          full_name: 'test-owner/test-repo',
+        },
+      },
+    },
+  };
+
+  mocks.core.getInput.mockImplementation((name: string) => {
+    if (name === 'github-token') {
+      return 'fake-token';
+    }
+    if (name === 'min-severity' || name === 'minimum-severity') {
+      return 'medium';
+    }
+    return '';
+  });
+  mocks.core.getBooleanInput.mockReturnValue(false);
+  mocks.core.getIDToken.mockResolvedValue('fake-oidc-token');
+
+  // Deterministic temp dir for the install's isolated prefix and npm config files,
+  // so tests can assert the exact npm args without touching disk.
+  mocks.fs.mkdtempSync.mockReturnValue(MOCK_INSTALL_DIR);
+  mocks.fs.existsSync.mockImplementation((candidate: PathLike) => {
+    return String(candidate) === MOCK_NPM_CLI_PATH;
+  });
+  mocks.fs.readFileSync.mockReturnValue(
+    JSON.stringify({ bin: { promptfoo: 'dist/src/entrypoint.js' } }),
+  );
+  mocks.fs.realpathSync.mockImplementation((p: string) => p);
+  // Default: target file does not exist yet, so writeSarifFile won't trip the symlink check.
+  mocks.fs.lstatSync.mockImplementation(() => {
+    const error = new Error('ENOENT') as NodeJS.ErrnoException;
+    error.code = 'ENOENT';
+    throw error;
+  });
+
+  mocks.exec.exec.mockImplementation(
+    async (
+      command: string,
+      args: string[] | undefined,
+      options: { listeners?: { stdout?: (data: Buffer) => void } } | undefined,
+    ) => {
+      if (isPromptfooExecCommand(command, args) && options?.listeners?.stdout) {
+        const response = JSON.stringify({
+          success: true,
+          comments: [],
+          commentsPosted: false,
+        });
+        options.listeners.stdout(Buffer.from(response));
+      }
+      return 0;
+    },
+  );
+
+  mocks.github.getOctokit.mockReturnValue({
+    rest: {
+      pulls: {
+        get: vi.fn().mockResolvedValue({
+          data: { base: { ref: 'main' } },
+        }),
+      },
+    },
+  });
+
+  mocks.actionGithub.getGitHubContext.mockResolvedValue({
+    owner: 'test-owner',
+    repo: 'test-repo',
+    number: 123,
+    sha: 'abc123',
+  });
+  mocks.actionGithub.getPRFiles.mockResolvedValue([{ path: 'src/index.ts', status: 'modified' }]);
+  mocks.actionGithub.partitionReviewCommentsByDiff.mockImplementation(
+    async (_token: string, _context: unknown, comments: unknown[]) => ({
+      lineComments: comments,
+      generalComments: [],
+      invalidLineComments: [],
+    }),
+  );
+  mocks.config.generateConfigFile.mockReturnValue('/tmp/test-config.yaml');
+}
+
+function isPromptfooExecCommand(command: unknown, args: unknown): args is string[] {
+  return (
+    command === process.execPath &&
+    Array.isArray(args) &&
+    typeof args[0] === 'string' &&
+    args[0].startsWith(`${MOCK_PROMPTFOO_PACKAGE_DIR}${path.sep}`)
+  );
+}
+
+function getActionNodeExecCalls(): unknown[][] {
+  return mocks.exec.exec.mock.calls.filter(([command]) => command === process.execPath);
+}
+
+async function importActionAndGetPromptfooCall(): Promise<PromptfooExecCall> {
+  await import('../../code-scan-action/src/main');
+
+  const call = await vi.waitFor(() => {
+    const promptfooCall = mocks.exec.exec.mock.calls.find(([command, args]) =>
+      isPromptfooExecCommand(command, args),
+    );
+
+    if (!promptfooCall || !Array.isArray(promptfooCall[1])) {
+      throw new Error('promptfoo exec call not found');
+    }
+
+    return promptfooCall;
+  });
+
+  return {
+    command: call[0],
+    entrypoint: call[1][0],
+    args: call[1].slice(1),
+    options: call[2] as PromptfooExecCall['options'],
+  };
+}
+
+function isNpmInstallCall(call: unknown[]): boolean {
+  const [command, args] = call;
+  return (
+    command === process.execPath &&
+    Array.isArray(args) &&
+    typeof args[0] === 'string' &&
+    path.basename(args[0]) === 'npm-cli.js' &&
+    args[1] === 'install' &&
+    args[2] === '--prefix' &&
+    typeof args[3] === 'string' &&
+    typeof args[4] === 'string' &&
+    args[4].startsWith('promptfoo@')
+  );
+}
+
+async function importActionAndGetNpmInstallCall(): Promise<NpmExecCall> {
+  await import('../../code-scan-action/src/main');
+
+  const call = await vi.waitFor(() => {
+    const npmCall = mocks.exec.exec.mock.calls.find(isNpmInstallCall);
+
+    if (!npmCall) {
+      throw new Error('npm install exec call not found');
+    }
+
+    return npmCall;
+  });
+
+  return {
+    command: call[0] as string,
+    npmCliPath: (call[1] as string[])[0],
+    args: (call[1] as string[]).slice(1),
+    options: call[2] as NpmExecCall['options'],
+  };
+}
+
+async function importActionAndGetPromptfooAndNpmCalls(): Promise<PromptfooAndNpmExecCalls> {
+  await import('../../code-scan-action/src/main');
+
+  const calls = await vi.waitFor(() => {
+    const promptfooCall = mocks.exec.exec.mock.calls.find(([command, args]) =>
+      isPromptfooExecCommand(command, args),
+    );
+    const npmCall = mocks.exec.exec.mock.calls.find(isNpmInstallCall);
+
+    if (!promptfooCall || !Array.isArray(promptfooCall[1]) || !npmCall) {
+      throw new Error('expected promptfoo and npm install exec calls not found');
+    }
+
+    return { npmCall, promptfooCall };
+  });
+
+  return {
+    npmInstall: {
+      command: calls.npmCall[0] as string,
+      npmCliPath: (calls.npmCall[1] as string[])[0],
+      args: (calls.npmCall[1] as string[]).slice(1),
+      options: calls.npmCall[2] as NpmExecCall['options'],
+    },
+    promptfoo: {
+      command: calls.promptfooCall[0],
+      entrypoint: calls.promptfooCall[1][0],
+      args: calls.promptfooCall[1].slice(1),
+      options: calls.promptfooCall[2] as PromptfooExecCall['options'],
+    },
+  };
+}
+
+function expectCliArg(args: string[], name: string, value: string): void {
+  const argIndex = args.indexOf(name);
+  expect(argIndex).toBeGreaterThan(-1);
+  expect(args[argIndex + 1]).toBe(value);
+}
+
+function expectSanitizedExecEnv(options: PromptfooExecCall['options'] | NpmExecCall['options']) {
+  expect(options?.env).toEqual(expect.any(Object));
+  expect(options?.env?.NPM_CONFIG_BEFORE).toBeUndefined();
+  expect(options?.env?.npm_config_before).toBeUndefined();
+}
+
+function mockInheritedActionAuthEnv() {
+  mockProcessEnv({
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'inherited-id-token-request-token',
+    ACTIONS_ID_TOKEN_REQUEST_URL: 'https://token.actions.example/request',
+    GH_TOKEN: 'inherited-gh-token',
+    GITHUB_OIDC_TOKEN: 'stale-oidc-token',
+    GITHUB_TOKEN: 'inherited-github-token',
+    'INPUT_GITHUB-TOKEN': 'input-github-token',
+    INPUT_GITHUB_TOKEN: 'input-github-token-compat',
+  });
+}
+
+function expectNoActionAuthEnv(options: PromptfooExecCall['options'] | NpmExecCall['options']) {
+  expect(options?.env?.ACTIONS_ID_TOKEN_REQUEST_TOKEN).toBeUndefined();
+  expect(options?.env?.ACTIONS_ID_TOKEN_REQUEST_URL).toBeUndefined();
+  expect(options?.env?.GH_TOKEN).toBeUndefined();
+  expect(options?.env?.GITHUB_TOKEN).toBeUndefined();
+  expect(options?.env?.['INPUT_GITHUB-TOKEN']).toBeUndefined();
+  expect(options?.env?.INPUT_GITHUB_TOKEN).toBeUndefined();
+}
+
+function setPullRequestRepos(headRepoFullName: string, baseRepoFullName = 'test-owner/test-repo') {
+  if (!('pull_request' in mocks.github.context.payload)) {
+    throw new Error('Expected a pull_request payload');
+  }
+
+  mocks.github.context.payload.pull_request.head.repo.full_name = headRepoFullName;
+  mocks.github.context.payload.pull_request.base.repo.full_name = baseRepoFullName;
+}
+
+describe('code-scan-action main', () => {
+  let restoreEnv: () => void;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.resetModules();
+    // Use path.resolve so this test works on Windows too — path.resolve converts the
+    // POSIX-style literal to a drive-prefixed Windows path that path.resolve will
+    // then re-produce identically when the action does its own resolution.
+    restoreEnv = mockProcessEnv(
+      { ...originalEnv, GITHUB_WORKSPACE: path.resolve('/test/workspace') },
+      { clear: true },
+    );
+    setupMocks();
+  });
+
+  afterEach(() => {
+    restoreEnv();
+    vi.clearAllMocks();
+  });
+
+  describe('CLI args construction', () => {
+    it('should pass --base with GITHUB_BASE_REF when set', async () => {
+      mockProcessEnv({ GITHUB_BASE_REF: 'feat/my-feature-branch' });
+
+      const { args } = await importActionAndGetPromptfooCall();
+
+      expectCliArg(args, '--base', 'feat/my-feature-branch');
+    });
+
+    it('should pass --base with "main" when GITHUB_BASE_REF is not set', async () => {
+      mockProcessEnv({ GITHUB_BASE_REF: undefined });
+
+      const { args } = await importActionAndGetPromptfooCall();
+
+      expectCliArg(args, '--base', 'main');
+    });
+
+    it('should pass --base for stacked PR base branches', async () => {
+      mockProcessEnv({ GITHUB_BASE_REF: 'feat/openai-sora-video-provider' });
+
+      const { args } = await importActionAndGetPromptfooCall();
+
+      expectCliArg(args, '--base', 'feat/openai-sora-video-provider');
+    });
+
+    it('should not pass NPM_CONFIG_BEFORE to the promptfoo scan command', async () => {
+      mockProcessEnv({ GITHUB_BASE_REF: 'main' });
+      mockProcessEnv({ NPM_CONFIG_BEFORE: '2026-03-29T00:00:00.000Z' });
+      mockProcessEnv({ npm_config_before: '2026-03-29T00:00:00.000Z' });
+
+      const { options } = await importActionAndGetPromptfooCall();
+
+      expectSanitizedExecEnv(options);
+    });
+
+    it('should not pass NPM_CONFIG_BEFORE to npm install', async () => {
+      mockProcessEnv({ GITHUB_BASE_REF: 'main' });
+      mockProcessEnv({ NPM_CONFIG_BEFORE: '2026-03-29T00:00:00.000Z' });
+      mockProcessEnv({ npm_config_before: '2026-03-29T00:00:00.000Z' });
+
+      const { options } = await importActionAndGetNpmInstallCall();
+
+      expectSanitizedExecEnv(options);
+    });
+
+    it('should pass the OIDC token only to the scan command if token minting succeeds', async () => {
+      mockProcessEnv({ GITHUB_BASE_REF: 'main' });
+      mockInheritedActionAuthEnv();
+
+      const { npmInstall, promptfoo } = await importActionAndGetPromptfooAndNpmCalls();
+
+      expect(npmInstall.options?.env?.GITHUB_OIDC_TOKEN).toBeUndefined();
+      expectNoActionAuthEnv(npmInstall.options);
+      expect(promptfoo.options?.env?.GITHUB_OIDC_TOKEN).toBe('fake-oidc-token');
+      expectNoActionAuthEnv(promptfoo.options);
+      expect(process.env.GITHUB_OIDC_TOKEN).toBe('stale-oidc-token');
+    });
+
+    it('should not pass stale OIDC credentials to subprocesses if token minting fails', async () => {
+      mockProcessEnv({ GITHUB_BASE_REF: 'main' });
+      mockInheritedActionAuthEnv();
+      mocks.core.getIDToken.mockRejectedValue(new Error('OIDC not configured'));
+
+      const { npmInstall, promptfoo } = await importActionAndGetPromptfooAndNpmCalls();
+
+      expect(npmInstall.options?.env?.GITHUB_OIDC_TOKEN).toBeUndefined();
+      expectNoActionAuthEnv(npmInstall.options);
+      expect(promptfoo.options?.env?.GITHUB_OIDC_TOKEN).toBeUndefined();
+      expectNoActionAuthEnv(promptfoo.options);
+      expect(mocks.core.info).toHaveBeenCalledWith(
+        'OIDC token not available: Failed to get GitHub OIDC token: OIDC not configured',
+      );
+    });
+  });
+
+  describe('scanner install pinning', () => {
+    function mockPromptfooVersionInput(value: string): void {
+      mocks.core.getInput.mockImplementation((name: string) => {
+        if (name === 'github-token') {
+          return 'fake-token';
+        }
+        if (name === 'min-severity' || name === 'minimum-severity') {
+          return 'medium';
+        }
+        if (name === 'promptfoo-version') {
+          return value;
+        }
+        return '';
+      });
+    }
+
+    it('runs npm and the scanner under the bundled action Node instead of the workflow Node', async () => {
+      mockProcessEnv({ PATH: path.join(os.tmpdir(), 'workflow-node20', 'bin') });
+
+      const { npmInstall, promptfoo } = await importActionAndGetPromptfooAndNpmCalls();
+
+      expect(npmInstall.command).toBe(process.execPath);
+      expect(npmInstall.npmCliPath).toBe(MOCK_NPM_CLI_PATH);
+      expect(npmInstall.args).toEqual(expectedInstallArgs(pinnedPromptfooVersion));
+      expect(promptfoo.command).toBe(process.execPath);
+      expect(promptfoo.entrypoint).toBe(MOCK_PROMPTFOO_ENTRYPOINT);
+      expect(getActionNodeExecCalls()).toHaveLength(2);
+    });
+
+    it('finds PATH-installed npm in the Windows Node layout when the action runtime has no npm', async () => {
+      const workflowNodeDir = path.join(os.tmpdir(), 'workflow-node20');
+      const workflowNpmCliPath = path.join(
+        workflowNodeDir,
+        'node_modules',
+        'npm',
+        'bin',
+        'npm-cli.js',
+      );
+      const workflowNpmExecutable = path.join(
+        workflowNodeDir,
+        process.platform === 'win32' ? 'npm.cmd' : 'npm',
+      );
+      mockProcessEnv({ PATH: workflowNodeDir });
+      mocks.fs.existsSync.mockImplementation((candidate: PathLike) => {
+        return (
+          String(candidate) === workflowNpmExecutable || String(candidate) === workflowNpmCliPath
+        );
+      });
+
+      const { npmInstall, promptfoo } = await importActionAndGetPromptfooAndNpmCalls();
+
+      expect(npmInstall.command).toBe(process.execPath);
+      expect(npmInstall.npmCliPath).toBe(workflowNpmCliPath);
+      expect(promptfoo.command).toBe(process.execPath);
+    });
+
+    it('does not resolve npm from relative PATH entries inside an untrusted checkout', async () => {
+      const workflowNodeDir = path.join(os.tmpdir(), 'workflow-node20');
+      const workflowNpmCliPath = path.join(
+        workflowNodeDir,
+        'node_modules',
+        'npm',
+        'bin',
+        'npm-cli.js',
+      );
+      const workflowNpmExecutable = path.join(
+        workflowNodeDir,
+        process.platform === 'win32' ? 'npm.cmd' : 'npm',
+      );
+      mockProcessEnv({ PATH: ['untrusted-bin', workflowNodeDir].join(path.delimiter) });
+      mocks.fs.existsSync.mockImplementation((candidate: PathLike) => {
+        return (
+          String(candidate) === workflowNpmExecutable ||
+          String(candidate) === workflowNpmCliPath ||
+          String(candidate) ===
+            path.join('untrusted-bin', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+        );
+      });
+
+      const { npmCliPath } = await importActionAndGetNpmInstallCall();
+
+      expect(npmCliPath).toBe(workflowNpmCliPath);
+      expect(mocks.fs.existsSync).not.toHaveBeenCalledWith(
+        path.join('untrusted-bin', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+      );
+    });
+
+    it('rejects checkout-derived absolute PATH bins even when they contain a fake npm install', async () => {
+      const workspace = path.resolve('/test/workspace');
+      const untrustedNodeDir = path.join(workspace, 'node_modules', '.bin');
+      const trustedNodeDir = path.join(os.tmpdir(), 'trusted-node20');
+      const executableName = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+      const untrustedNpmExecutable = path.join(untrustedNodeDir, executableName);
+      const trustedNpmExecutable = path.join(trustedNodeDir, executableName);
+      const untrustedNpmCliPath = path.join(
+        untrustedNodeDir,
+        'node_modules',
+        'npm',
+        'bin',
+        'npm-cli.js',
+      );
+      const trustedNpmCliPath = path.join(
+        trustedNodeDir,
+        'node_modules',
+        'npm',
+        'bin',
+        'npm-cli.js',
+      );
+      const existingPaths = new Set([
+        untrustedNpmExecutable,
+        untrustedNpmCliPath,
+        trustedNpmExecutable,
+        trustedNpmCliPath,
+      ]);
+      mockProcessEnv({ PATH: [untrustedNodeDir, trustedNodeDir].join(path.delimiter) });
+      mocks.fs.existsSync.mockImplementation((candidate: PathLike) => {
+        return existingPaths.has(String(candidate));
+      });
+
+      const { npmCliPath } = await importActionAndGetNpmInstallCall();
+
+      expect(npmCliPath).toBe(trustedNpmCliPath);
+      expect(mocks.fs.existsSync).not.toHaveBeenCalledWith(untrustedNpmExecutable);
+    });
+
+    it.each(['directory', 'executable', 'npm-cli'])(
+      'rejects a PATH %s symlink that resolves inside the untrusted checkout',
+      async (symlinkTarget) => {
+        const workspace = path.resolve('/test/workspace');
+        const untrustedNodeDir = path.join(os.tmpdir(), 'untrusted-node20');
+        const trustedNodeDir = path.join(os.tmpdir(), 'trusted-node20');
+        const executableName = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        const untrustedNpmExecutable = path.join(untrustedNodeDir, executableName);
+        const trustedNpmExecutable = path.join(trustedNodeDir, executableName);
+        const untrustedNpmCliPath = path.join(
+          untrustedNodeDir,
+          'node_modules',
+          'npm',
+          'bin',
+          'npm-cli.js',
+        );
+        const trustedNpmCliPath = path.join(
+          trustedNodeDir,
+          'node_modules',
+          'npm',
+          'bin',
+          'npm-cli.js',
+        );
+        const existingPaths = new Set([
+          untrustedNpmExecutable,
+          untrustedNpmCliPath,
+          trustedNpmExecutable,
+          trustedNpmCliPath,
+        ]);
+        mockProcessEnv({ PATH: [untrustedNodeDir, trustedNodeDir].join(path.delimiter) });
+        mocks.fs.existsSync.mockImplementation((candidate: PathLike) => {
+          return existingPaths.has(String(candidate));
+        });
+        mocks.fs.realpathSync.mockImplementation((candidate: string) => {
+          if (
+            (symlinkTarget === 'directory' && candidate === untrustedNodeDir) ||
+            (symlinkTarget === 'executable' && candidate === untrustedNpmExecutable) ||
+            (symlinkTarget === 'npm-cli' && candidate === untrustedNpmCliPath)
+          ) {
+            return path.join(workspace, 'attacker', 'npm-cli.js');
+          }
+          return candidate;
+        });
+
+        const { npmCliPath } = await importActionAndGetNpmInstallCall();
+
+        expect(npmCliPath).toBe(trustedNpmCliPath);
+      },
+    );
+
+    it('does not execute an npm-cli.js from a PATH directory without an npm executable', async () => {
+      const untrustedNodeDir = path.join(os.tmpdir(), 'untrusted-node20');
+      const trustedNodeDir = path.join(os.tmpdir(), 'trusted-node20');
+      const trustedNpmExecutable = path.join(
+        trustedNodeDir,
+        process.platform === 'win32' ? 'npm.cmd' : 'npm',
+      );
+      const untrustedNpmCliPath = path.join(
+        untrustedNodeDir,
+        'node_modules',
+        'npm',
+        'bin',
+        'npm-cli.js',
+      );
+      const trustedNpmCliPath = path.join(
+        trustedNodeDir,
+        'node_modules',
+        'npm',
+        'bin',
+        'npm-cli.js',
+      );
+      const existingPaths = new Set([untrustedNpmCliPath, trustedNpmExecutable, trustedNpmCliPath]);
+      mockProcessEnv({ PATH: [untrustedNodeDir, trustedNodeDir].join(path.delimiter) });
+      mocks.fs.existsSync.mockImplementation((candidate: PathLike) => {
+        return existingPaths.has(String(candidate));
+      });
+
+      const { npmCliPath } = await importActionAndGetNpmInstallCall();
+
+      expect(npmCliPath).toBe(trustedNpmCliPath);
+      expect(mocks.fs.existsSync).not.toHaveBeenCalledWith(untrustedNpmCliPath);
+    });
+
+    it('fails clearly without invoking a subprocess when npm cannot be found', async () => {
+      mockProcessEnv({ PATH: '' });
+      mocks.fs.existsSync.mockReturnValue(false);
+
+      await import('../../code-scan-action/src/main');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining('npm CLI not found'),
+        );
+      });
+      expect(getActionNodeExecCalls()).toHaveLength(0);
+    });
+
+    it('installs the release-pinned promptfoo version with lifecycle scripts disabled and isolated npm config', async () => {
+      const { args } = await importActionAndGetNpmInstallCall();
+
+      expect(args).toEqual(expectedInstallArgs(pinnedPromptfooVersion));
+    });
+
+    it('installs an exact promptfoo-version input override', async () => {
+      mockPromptfooVersionInput('0.100.5');
+
+      const { args } = await importActionAndGetNpmInstallCall();
+
+      expect(args).toEqual(expectedInstallArgs('0.100.5'));
+    });
+
+    it('uses the legacy installed bin entrypoint for older promptfoo-version overrides', async () => {
+      mockPromptfooVersionInput('0.100.5');
+      mocks.fs.readFileSync.mockReturnValue(
+        JSON.stringify({ bin: { promptfoo: 'dist/src/main.js' } }),
+      );
+
+      const { npmInstall, promptfoo } = await importActionAndGetPromptfooAndNpmCalls();
+
+      expect(npmInstall.args).toEqual(expectedInstallArgs('0.100.5'));
+      expect(promptfoo.entrypoint).toBe(
+        path.join(MOCK_PROMPTFOO_PACKAGE_DIR, 'dist', 'src', 'main.js'),
+      );
+    });
+
+    it('supports a string npm package bin declaration', async () => {
+      mocks.fs.readFileSync.mockReturnValue(JSON.stringify({ bin: './dist/src/entrypoint.js' }));
+
+      const { entrypoint } = await importActionAndGetPromptfooCall();
+
+      expect(entrypoint).toBe(MOCK_PROMPTFOO_ENTRYPOINT);
+    });
+
+    it.each([
+      ['a missing executable', {}, 'does not declare a promptfoo executable'],
+      ['an empty executable', { promptfoo: '' }, 'does not declare a promptfoo executable'],
+      [
+        'an executable outside the installed package',
+        { promptfoo: '../outside.js' },
+        'must remain within its package directory',
+      ],
+      [
+        'an absolute executable',
+        { promptfoo: path.join(os.tmpdir(), 'outside.js') },
+        'must remain within its package directory',
+      ],
+    ])('rejects %s without running the scanner', async (_label, bin, expectedError) => {
+      mocks.fs.readFileSync.mockReturnValue(JSON.stringify({ bin }));
+
+      await import('../../code-scan-action/src/main');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.setFailed).toHaveBeenCalledWith(expect.stringContaining(expectedError));
+      });
+      expect(getActionNodeExecCalls()).toHaveLength(1);
+      expect(isNpmInstallCall(getActionNodeExecCalls()[0])).toBe(true);
+    });
+
+    it('rejects an installed executable symlink that resolves outside the package', async () => {
+      mocks.fs.realpathSync.mockImplementation((candidate: string) => {
+        return candidate === MOCK_PROMPTFOO_ENTRYPOINT
+          ? path.join(os.tmpdir(), 'outside.js')
+          : candidate;
+      });
+
+      await import('../../code-scan-action/src/main');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining('must remain within its package directory'),
+        );
+      });
+      expect(getActionNodeExecCalls()).toHaveLength(1);
+    });
+
+    it('accepts an exact prerelease promptfoo-version override', async () => {
+      mockPromptfooVersionInput('1.2.3-rc.1');
+
+      const { args } = await importActionAndGetNpmInstallCall();
+
+      expect(args).toEqual(expectedInstallArgs('1.2.3-rc.1'));
+    });
+
+    it('accepts 15-digit numeric components (the cap boundary)', async () => {
+      const version = `${'9'.repeat(15)}.0.0`;
+      mockPromptfooVersionInput(version);
+
+      const { args } = await importActionAndGetNpmInstallCall();
+
+      expect(args).toEqual(expectedInstallArgs(version));
+    });
+
+    it('falls back to the release-pinned version when promptfoo-version is whitespace', async () => {
+      mockPromptfooVersionInput('   ');
+
+      const { args } = await importActionAndGetNpmInstallCall();
+
+      expect(args).toEqual(expectedInstallArgs(pinnedPromptfooVersion));
+    });
+
+    it('strips NODE_OPTIONS from both the install and scan subprocesses', async () => {
+      mockProcessEnv({ GITHUB_BASE_REF: 'main' });
+      mockProcessEnv({ NODE_OPTIONS: '--require=/tmp/payload.cjs' });
+
+      const { npmInstall, promptfoo } = await importActionAndGetPromptfooAndNpmCalls();
+
+      expect(npmInstall.options?.env?.NODE_OPTIONS).toBeUndefined();
+      expect(promptfoo.options?.env?.NODE_OPTIONS).toBeUndefined();
+    });
+
+    it('strips private npm tokens from the public install but preserves them for scanner npx', async () => {
+      mockProcessEnv({
+        NODE_AUTH_TOKEN: 'private-registry-node-token',
+        NPM_TOKEN: 'private-registry-npm-token',
+      });
+
+      const { npmInstall, promptfoo } = await importActionAndGetPromptfooAndNpmCalls();
+
+      expect(npmInstall.options?.env?.NODE_AUTH_TOKEN).toBeUndefined();
+      expect(npmInstall.options?.env?.NPM_TOKEN).toBeUndefined();
+      expect(promptfoo.options?.env?.NODE_AUTH_TOKEN).toBe('private-registry-node-token');
+      expect(promptfoo.options?.env?.NPM_TOKEN).toBe('private-registry-npm-token');
+    });
+
+    it('strips env-level npm config overrides from the install but not the scan', async () => {
+      mockProcessEnv({ GITHUB_BASE_REF: 'main' });
+      mockProcessEnv({
+        npm_config_registry: 'https://attacker.example/registry',
+        NPM_CONFIG_USERCONFIG: '/tmp/attacker-npmrc',
+      });
+
+      const { npmInstall, promptfoo } = await importActionAndGetPromptfooAndNpmCalls();
+
+      expect(npmInstall.options?.env?.npm_config_registry).toBeUndefined();
+      expect(npmInstall.options?.env?.NPM_CONFIG_USERCONFIG).toBeUndefined();
+      // The scan env is intentionally not stripped of npm config: nested npx
+      // invocations (MCP) rely on workflow-provided npm settings. Only the
+      // documented keys (tokens, --before) are removed there.
+      expect(promptfoo.options?.env?.npm_config_registry).toBe('https://attacker.example/registry');
+      expect(promptfoo.options?.env?.NPM_CONFIG_USERCONFIG).toBe('/tmp/attacker-npmrc');
+    });
+
+    it('runs the install from RUNNER_TEMP so workspace npm config is out of scope', async () => {
+      const runnerTemp = path.resolve('/runner/temp');
+      mockProcessEnv({ RUNNER_TEMP: runnerTemp });
+
+      const { options } = await importActionAndGetNpmInstallCall();
+
+      expect(options?.cwd).toBe(runnerTemp);
+    });
+
+    it('falls back to os.tmpdir() for the install cwd when RUNNER_TEMP is unset', async () => {
+      mockProcessEnv({ RUNNER_TEMP: undefined });
+
+      const { options } = await importActionAndGetNpmInstallCall();
+
+      expect(options?.cwd).toBe(os.tmpdir());
+    });
+
+    it.each([
+      ['a dist-tag', 'latest'],
+      ['a semver range', '^0.100.0'],
+      ['an npm flag smuggled after the version', '0.100.5 --before=2020-01-01'],
+      ['an alias to another package', 'npm:malicious-package@1.0.0'],
+      ['a git URL', 'github:attacker/promptfoo'],
+      // Above-MAX_SAFE_INTEGER components are invalid semver that npm reclassifies as
+      // a mutable dist-tag lookup; leading zeros are invalid strict semver that npm
+      // would loose-parse instead of resolving exactly.
+      ['a numeric component above MAX_SAFE_INTEGER', '9999999999999999999.1.1'],
+      ['a 16-digit numeric component (above the cap)', `${'9'.repeat(16)}.0.0`],
+      ['a leading-zero component', '01.2.3'],
+      ['a leading-zero numeric prerelease id', '1.2.3-01'],
+      ['an overlong version string', `1.2.3-${'a'.repeat(300)}`],
+    ])('rejects %s as promptfoo-version without running any install', async (_label, value) => {
+      mockPromptfooVersionInput(value);
+
+      await import('../../code-scan-action/src/main');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining(`Invalid promptfoo-version "${value}"`),
+        );
+      });
+
+      expect(mocks.exec.exec).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('fork PR controls', () => {
+    it('should skip fork pull_request scans by default before fetching files or starting auth', async () => {
+      setPullRequestRepos('external-contributor/test-repo');
+      mocks.core.getInput.mockImplementation((name: string) => {
+        if (name === 'github-token') {
+          return 'fake-token';
+        }
+        if (name === 'min-severity' || name === 'minimum-severity') {
+          return 'medium';
+        }
+        if (name === 'guidance-file') {
+          return '/tmp/missing-guidance.md';
+        }
+        return '';
+      });
+
+      await import('../../code-scan-action/src/main');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.info).toHaveBeenCalledWith(
+          '🔀 Fork PR detected and enable-fork-prs is false; skipping Promptfoo Code Scan',
+        );
+      });
+
+      expect(mocks.actionGithub.getPRFiles).not.toHaveBeenCalled();
+      expect(mocks.core.getIDToken).not.toHaveBeenCalled();
+      expect(mocks.config.generateConfigFile).not.toHaveBeenCalled();
+      expect(mocks.exec.exec).not.toHaveBeenCalled();
+      expect(mocks.core.setFailed).not.toHaveBeenCalled();
+    });
+
+    it('should skip fork pull_request_target scans by default', async () => {
+      mocks.github.context.eventName = 'pull_request_target';
+      setPullRequestRepos('external-contributor/test-repo');
+
+      await import('../../code-scan-action/src/main');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.info).toHaveBeenCalledWith(
+          '🔀 Fork PR detected and enable-fork-prs is false; skipping Promptfoo Code Scan',
+        );
+      });
+
+      expect(mocks.actionGithub.getPRFiles).not.toHaveBeenCalled();
+      expect(mocks.core.getIDToken).not.toHaveBeenCalled();
+      expect(mocks.exec.exec).not.toHaveBeenCalled();
+      expect(mocks.core.setFailed).not.toHaveBeenCalled();
+    });
+
+    it('should scan fork pull_request events when enable-fork-prs is true', async () => {
+      setPullRequestRepos('external-contributor/test-repo');
+      mocks.core.getBooleanInput.mockReturnValue(true);
+
+      const { args } = await importActionAndGetPromptfooCall();
+
+      expectCliArg(args, '--github-pr', 'test-owner/test-repo#123');
+      expect(mocks.actionGithub.getPRFiles).toHaveBeenCalled();
+      expect(mocks.core.getIDToken).toHaveBeenCalled();
+    });
+
+    it('should allow workflow_dispatch scans when enable-fork-prs is false', async () => {
+      mocks.github.context.eventName = 'workflow_dispatch';
+      mocks.github.context.payload = {
+        repository: {
+          full_name: 'test-owner/test-repo',
+        },
+        inputs: {
+          pr_number: '123',
+        },
+      };
+
+      const { args } = await importActionAndGetPromptfooCall();
+
+      expectCliArg(args, '--github-pr', 'test-owner/test-repo#123');
+      expect(mocks.actionGithub.getPRFiles).toHaveBeenCalled();
+      expect(mocks.core.getIDToken).toHaveBeenCalled();
+    });
+
+    it('should surface skipReason when fork PR scanning awaits maintainer approval', async () => {
+      mockProcessEnv({ GITHUB_BASE_REF: 'main' });
+      const skipMessage =
+        'Fork PR scanning requires maintainer approval. See PR comment for options.';
+      mocks.exec.exec.mockImplementation(
+        async (
+          command: string,
+          args: string[] | undefined,
+          options: { listeners?: { stdout?: (data: Buffer) => void } } | undefined,
+        ) => {
+          if (isPromptfooExecCommand(command, args) && options?.listeners?.stdout) {
+            options.listeners.stdout(
+              Buffer.from(
+                JSON.stringify({
+                  success: true,
+                  comments: [],
+                  skipReason: skipMessage,
+                }),
+              ),
+            );
+          }
+          return 0;
+        },
+      );
+
+      await import('../../code-scan-action/src/main');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.info).toHaveBeenCalledWith(`🔀 Scan skipped: ${skipMessage}`);
+      });
+
+      // The generic "Comments posted to PR by scan server" log should NOT fire for skips —
+      // that message was misleading because no scan findings were actually posted.
+      expect(mocks.core.info).not.toHaveBeenCalledWith('✅ Comments posted to PR by scan server');
+      expect(mocks.core.setFailed).not.toHaveBeenCalled();
+    });
+
+    it('should preserve legacy text fork-authorization skips during CLI rollout', async () => {
+      mockProcessEnv({ GITHUB_BASE_REF: 'main' });
+      mocks.exec.exec.mockImplementation(
+        async (
+          command: string,
+          args: string[] | undefined,
+          options:
+            | { listeners?: { stdout?: (data: Buffer) => void; stderr?: (data: Buffer) => void } }
+            | undefined,
+        ) => {
+          if (isPromptfooExecCommand(command, args) && options?.listeners?.stderr) {
+            options.listeners.stderr(Buffer.from('Fork PR scanning not authorized'));
+            return 1;
+          }
+          return 0;
+        },
+      );
+
+      await import('../../code-scan-action/src/main');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.info).toHaveBeenCalledWith(
+          '🔀 Scan skipped: Fork PR scanning requires maintainer approval. See PR comment for options.',
+        );
+      });
+      expect(mocks.core.setFailed).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('SARIF output', () => {
+    function mockFallbackPosting() {
+      const createReview = vi.fn().mockResolvedValue({});
+      const createComment = vi.fn().mockResolvedValue({});
+      mocks.github.getOctokit.mockReturnValue({
+        rest: {
+          pulls: {
+            createReview,
+            get: vi.fn().mockResolvedValue({
+              data: { base: { ref: 'main' } },
+            }),
+          },
+          issues: {
+            createComment,
+          },
+        },
+      });
+      return { createComment, createReview };
+    }
+
+    function mockPromptfooScanResponse(response: unknown) {
+      mocks.exec.exec.mockImplementation(
+        async (
+          command: string,
+          args: string[] | undefined,
+          options: { listeners?: { stdout?: (data: Buffer) => void } } | undefined,
+        ) => {
+          if (isPromptfooExecCommand(command, args) && options?.listeners?.stdout) {
+            options.listeners.stdout(Buffer.from(JSON.stringify(response)));
+          }
+          return 0;
+        },
+      );
+    }
+
+    async function triggerSarifAction(rawPath: string) {
+      mocks.core.getInput.mockImplementation((name: string) => {
+        if (name === 'github-token') {
+          return 'fake-token';
+        }
+        if (name === 'min-severity' || name === 'minimum-severity') {
+          return 'medium';
+        }
+        if (name === 'sarif-output-path') {
+          return rawPath;
+        }
+        return '';
+      });
+      await import('../../code-scan-action/src/main');
+    }
+
+    it('resolves the path against GITHUB_WORKSPACE, creates parent dirs, and exposes the resolved path', async () => {
+      await triggerSarifAction('reports/promptfoo-code-scan.sarif');
+
+      const expectedPath = path.resolve('/test/workspace', 'reports/promptfoo-code-scan.sarif');
+      const expectedDir = path.dirname(expectedPath);
+
+      await vi.waitFor(() => {
+        expect(mocks.fs.writeFileSync).toHaveBeenCalledWith(expectedPath, expect.any(String));
+      });
+
+      expect(mocks.fs.mkdirSync).toHaveBeenCalledWith(expectedDir, { recursive: true });
+      const [, sarifJson] = mocks.fs.writeFileSync.mock.calls[0];
+      expect(sarifJson).toEqual(expect.stringMatching(/\n$/));
+      expect(JSON.parse(sarifJson as string)).toMatchObject({
+        $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
+        version: '2.1.0',
+      });
+      expect(mocks.core.setOutput).toHaveBeenCalledWith('sarif-path', expectedPath);
+      expect(mocks.core.warning).not.toHaveBeenCalled();
+    });
+
+    it('does not write SARIF when a fork PR scan is skipped', async () => {
+      setPullRequestRepos('external-contributor/test-repo');
+
+      await triggerSarifAction('reports/promptfoo-code-scan.sarif');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.info).toHaveBeenCalledWith(
+          '🔀 Fork PR detected and enable-fork-prs is false; skipping Promptfoo Code Scan',
+        );
+      });
+
+      expect(mocks.fs.writeFileSync).not.toHaveBeenCalled();
+      expect(mocks.core.setOutput).not.toHaveBeenCalledWith('sarif-path', expect.anything());
+      expect(mocks.actionGithub.getPRFiles).not.toHaveBeenCalled();
+    });
+
+    it('does not write SARIF when the scanner returns a skipReason without completing a scan', async () => {
+      mocks.exec.exec.mockImplementation(
+        async (
+          command: string,
+          args: string[] | undefined,
+          options: { listeners?: { stdout?: (data: Buffer) => void } } | undefined,
+        ) => {
+          if (isPromptfooExecCommand(command, args) && options?.listeners?.stdout) {
+            options.listeners.stdout(
+              Buffer.from(
+                JSON.stringify({
+                  success: true,
+                  comments: [],
+                  skipReason: 'Fork PR scanning requires maintainer approval.',
+                }),
+              ),
+            );
+          }
+          return 0;
+        },
+      );
+
+      await triggerSarifAction('reports/promptfoo-code-scan.sarif');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.info).toHaveBeenCalledWith(
+          '🔀 Scan skipped: Fork PR scanning requires maintainer approval.',
+        );
+      });
+
+      expect(mocks.fs.writeFileSync).not.toHaveBeenCalled();
+      expect(mocks.core.setOutput).not.toHaveBeenCalledWith('sarif-path', expect.anything());
+    });
+
+    it('posts file-only findings from ordinary scan responses as general fallback comments', async () => {
+      const { createComment, createReview } = mockFallbackPosting();
+      mockPromptfooScanResponse({
+        success: true,
+        comments: [
+          {
+            file: 'src/file-only.ts',
+            line: null,
+            finding: 'This file configures an unsafe model tool.',
+            severity: 'high',
+          },
+        ],
+        commentsPosted: false,
+      });
+
+      await triggerSarifAction('reports/promptfoo-code-scan.sarif');
+
+      await vi.waitFor(() => {
+        expect(createComment).toHaveBeenCalled();
+      });
+
+      expect(createReview).not.toHaveBeenCalled();
+      expect(createComment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.stringContaining('**src/file-only.ts**'),
+        }),
+      );
+    });
+
+    it('posts line-level mixed-skip findings as fallback comments and writes SARIF', async () => {
+      const { createComment, createReview } = mockFallbackPosting();
+      mockPromptfooScanResponse({
+        success: true,
+        comments: [
+          {
+            file: 'src/handler.ts',
+            line: 12,
+            finding: 'User input reaches the model prompt without sanitization.',
+            severity: 'high',
+          },
+        ],
+        commentsPosted: false,
+        skipReason: 'Unexpected mixed response.',
+      });
+
+      await triggerSarifAction('reports/promptfoo-code-scan.sarif');
+
+      await vi.waitFor(() => {
+        expect(createReview).toHaveBeenCalled();
+      });
+
+      expect(mocks.core.warning).toHaveBeenCalledWith(
+        'Scan response included findings alongside a skipReason ("Unexpected mixed response."); processing findings.',
+      );
+      expect(createReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          comments: [
+            expect.objectContaining({
+              path: 'src/handler.ts',
+              line: 12,
+            }),
+          ],
+        }),
+      );
+      expect(createComment).not.toHaveBeenCalled();
+      const [, sarifJson] = mocks.fs.writeFileSync.mock.calls[0];
+      expect(JSON.parse(sarifJson as string).runs[0].results).toHaveLength(1);
+    });
+
+    it('routes mixed-skip findings that cannot be placed in the diff to general comments', async () => {
+      const { createComment, createReview } = mockFallbackPosting();
+      mocks.actionGithub.partitionReviewCommentsByDiff.mockImplementation(
+        async (_token: string, _context: unknown, comments: unknown[]) => ({
+          lineComments: [],
+          generalComments: [],
+          invalidLineComments: comments,
+        }),
+      );
+      mockPromptfooScanResponse({
+        success: true,
+        comments: [
+          {
+            file: 'src/outside-diff.ts',
+            line: 500,
+            finding: 'This finding cannot be placed on the visible PR diff.',
+            severity: 'high',
+          },
+        ],
+        commentsPosted: false,
+        skipReason: 'Unexpected mixed response.',
+      });
+
+      await triggerSarifAction('reports/promptfoo-code-scan.sarif');
+
+      await vi.waitFor(() => {
+        expect(createComment).toHaveBeenCalled();
+      });
+
+      expect(createReview).not.toHaveBeenCalled();
+      expect(createComment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.stringContaining('**src/outside-diff.ts:500**'),
+        }),
+      );
+    });
+
+    it('posts file-only mixed-skip findings as general fallback comments and writes SARIF', async () => {
+      const { createComment, createReview } = mockFallbackPosting();
+      mockPromptfooScanResponse({
+        success: true,
+        comments: [
+          {
+            file: 'src/file-only.ts',
+            line: null,
+            finding: 'This file configures an unsafe model tool.',
+            severity: 'high',
+          },
+        ],
+        commentsPosted: false,
+        skipReason: 'Unexpected mixed response.',
+      });
+
+      await triggerSarifAction('reports/promptfoo-code-scan.sarif');
+
+      await vi.waitFor(() => {
+        expect(createComment).toHaveBeenCalled();
+      });
+
+      expect(createReview).not.toHaveBeenCalled();
+      expect(createComment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.stringContaining('**src/file-only.ts**'),
+        }),
+      );
+      const [, sarifJson] = mocks.fs.writeFileSync.mock.calls[0];
+      expect(JSON.parse(sarifJson as string).runs[0].results).toHaveLength(1);
+    });
+
+    it('posts fileless mixed-skip findings as general fallback comments without empty SARIF', async () => {
+      const { createComment, createReview } = mockFallbackPosting();
+      mockPromptfooScanResponse({
+        success: true,
+        comments: [
+          {
+            file: null,
+            line: null,
+            finding: 'The scan found a PR-wide unsafe agent behavior.',
+            severity: 'high',
+          },
+        ],
+        commentsPosted: false,
+        skipReason: 'Unexpected mixed response.',
+      });
+
+      await triggerSarifAction('reports/promptfoo-code-scan.sarif');
+
+      await vi.waitFor(() => {
+        expect(createComment).toHaveBeenCalled();
+      });
+
+      expect(createReview).not.toHaveBeenCalled();
+      expect(createComment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.stringContaining('The scan found a PR-wide unsafe agent behavior.'),
+        }),
+      );
+      expect(mocks.fs.writeFileSync).not.toHaveBeenCalled();
+      expect(mocks.core.setOutput).not.toHaveBeenCalledWith('sarif-path', expect.anything());
+    });
+
+    it('does not process mixed skips with findings that are neither SARIF-reportable nor PR-postable', async () => {
+      mockPromptfooScanResponse({
+        success: true,
+        comments: [
+          {
+            file: 'src/handler.ts',
+            line: 12,
+            finding: 'No issue found on this line.',
+            severity: 'none',
+          },
+          {
+            file: null,
+            line: null,
+            finding: 'General advisory not pinned to a file.',
+            severity: 'none',
+          },
+        ],
+        skipReason: 'Fork PR scanning requires maintainer approval.',
+      });
+
+      await triggerSarifAction('reports/promptfoo-code-scan.sarif');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.info).toHaveBeenCalledWith(
+          '🔀 Scan skipped: Fork PR scanning requires maintainer approval.',
+        );
+      });
+
+      expect(mocks.core.warning).not.toHaveBeenCalledWith(
+        expect.stringContaining('processing findings'),
+      );
+      expect(mocks.fs.writeFileSync).not.toHaveBeenCalled();
+      expect(mocks.core.setOutput).not.toHaveBeenCalledWith('sarif-path', expect.anything());
+    });
+
+    it('does not write SARIF when a setup PR is skipped', async () => {
+      mocks.actionGithub.getPRFiles.mockResolvedValue([
+        {
+          path: '.github/workflows/promptfoo-code-scan.yml',
+          status: FileChangeStatus.ADDED,
+        },
+      ]);
+
+      await triggerSarifAction('reports/promptfoo-code-scan.sarif');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.info).toHaveBeenCalledWith(
+          '✅ Setup PR detected - workflow file will be added on merge',
+        );
+      });
+
+      expect(mocks.fs.writeFileSync).not.toHaveBeenCalled();
+      expect(mocks.core.setOutput).not.toHaveBeenCalledWith('sarif-path', expect.anything());
+      expect(mocks.exec.exec).not.toHaveBeenCalled();
+    });
+
+    it('refuses to write when sarif-output-path escapes GITHUB_WORKSPACE', async () => {
+      await triggerSarifAction('../escape.sarif');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.warning).toHaveBeenCalledWith(
+          expect.stringContaining('resolves outside GITHUB_WORKSPACE'),
+        );
+      });
+
+      expect(mocks.fs.writeFileSync).not.toHaveBeenCalled();
+      expect(mocks.fs.mkdirSync).not.toHaveBeenCalled();
+      expect(mocks.core.setOutput).not.toHaveBeenCalledWith('sarif-path', expect.anything());
+      expect(mocks.core.setFailed).not.toHaveBeenCalled();
+    });
+
+    it('walks up through ENOENT ancestors to find a real symlink when the immediate parent does not exist yet', async () => {
+      // Simulate: `reports/` is a symlink to /etc, the new sub-directory `reports/today` doesn't
+      // exist yet. realpath of the not-yet-created leaf throws ENOENT and we walk up to the
+      // existing symlink, which canonicalizes outside the workspace.
+      const escapeDir = path.resolve('/test/workspace', 'reports');
+      const newSubdir = path.resolve('/test/workspace', 'reports/today');
+      mocks.fs.realpathSync.mockImplementation((p: string) => {
+        if (p === newSubdir) {
+          const error = new Error('ENOENT') as NodeJS.ErrnoException;
+          error.code = 'ENOENT';
+          throw error;
+        }
+        if (p === escapeDir) {
+          return '/etc';
+        }
+        return p;
+      });
+
+      await triggerSarifAction('reports/today/x.sarif');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.warning).toHaveBeenCalledWith(expect.stringContaining('via symlink'));
+      });
+
+      expect(mocks.fs.writeFileSync).not.toHaveBeenCalled();
+    });
+
+    it('refuses to write when the parent directory resolves outside the workspace via symlink', async () => {
+      // Match the trailing `escape` segment regardless of platform path separator so this works on Windows.
+      mocks.fs.realpathSync.mockImplementation((p: string) =>
+        /[/\\]escape$/.test(p) ? '/etc' : p,
+      );
+
+      await triggerSarifAction('escape/result.sarif');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.warning).toHaveBeenCalledWith(expect.stringContaining('via symlink'));
+      });
+
+      expect(mocks.fs.writeFileSync).not.toHaveBeenCalled();
+      expect(mocks.core.setOutput).not.toHaveBeenCalledWith('sarif-path', expect.anything());
+    });
+
+    it('refuses to overwrite an existing symlink at the target path', async () => {
+      mocks.fs.lstatSync.mockReturnValue({ isSymbolicLink: () => true } as Stats);
+
+      await triggerSarifAction('promptfoo-code-scan.sarif');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.warning).toHaveBeenCalledWith(
+          expect.stringContaining('existing symlink'),
+        );
+      });
+
+      expect(mocks.fs.writeFileSync).not.toHaveBeenCalled();
+      expect(mocks.core.setOutput).not.toHaveBeenCalledWith('sarif-path', expect.anything());
+    });
+
+    it('warns and continues when the SARIF write fails', async () => {
+      mocks.fs.writeFileSync.mockImplementationOnce(() => {
+        throw new Error('disk full');
+      });
+
+      await triggerSarifAction('promptfoo-code-scan.sarif');
+
+      await vi.waitFor(() => {
+        expect(mocks.core.warning).toHaveBeenCalledWith(
+          expect.stringContaining('Failed to write SARIF output'),
+        );
+      });
+
+      expect(mocks.core.setOutput).not.toHaveBeenCalledWith('sarif-path', expect.anything());
+      expect(mocks.core.setFailed).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('minimum severity input resolution', () => {
+    function mockSeverityInputs(values: {
+      'min-severity'?: string;
+      'minimum-severity'?: string;
+    }): void {
+      mocks.core.getInput.mockImplementation((name: string) => {
+        if (name === 'github-token') {
+          return 'fake-token';
+        }
+        if (name === 'min-severity') {
+          return values['min-severity'] ?? '';
+        }
+        if (name === 'minimum-severity') {
+          return values['minimum-severity'] ?? '';
+        }
+        return '';
+      });
+    }
+
+    it('uses min-severity when only min-severity is set', async () => {
+      mockSeverityInputs({ 'min-severity': 'critical' });
+
+      await importActionAndGetPromptfooCall();
+
+      expect(mocks.config.generateConfigFile).toHaveBeenCalledWith('critical', undefined);
+      expect(mocks.core.warning).not.toHaveBeenCalledWith(expect.stringContaining('min-severity'));
+    });
+
+    it('uses minimum-severity when only the alias is set (regression test for #9427)', async () => {
+      mockSeverityInputs({ 'minimum-severity': 'critical' });
+
+      await importActionAndGetPromptfooCall();
+
+      expect(mocks.config.generateConfigFile).toHaveBeenCalledWith('critical', undefined);
+      expect(mocks.core.warning).not.toHaveBeenCalledWith(expect.stringContaining('min-severity'));
+    });
+
+    it('falls back to medium when neither input is set', async () => {
+      mockSeverityInputs({});
+
+      await importActionAndGetPromptfooCall();
+
+      expect(mocks.config.generateConfigFile).toHaveBeenCalledWith('medium', undefined);
+      expect(mocks.core.warning).not.toHaveBeenCalledWith(expect.stringContaining('min-severity'));
+    });
+
+    it('prefers min-severity and warns when both inputs disagree', async () => {
+      mockSeverityInputs({ 'min-severity': 'high', 'minimum-severity': 'critical' });
+
+      await importActionAndGetPromptfooCall();
+
+      expect(mocks.config.generateConfigFile).toHaveBeenCalledWith('high', undefined);
+      expect(mocks.core.warning).toHaveBeenCalledWith(
+        expect.stringContaining('Both min-severity (high) and minimum-severity (critical) are set'),
+      );
+    });
+
+    it('does not warn when both inputs are set to the same value', async () => {
+      mockSeverityInputs({ 'min-severity': 'high', 'minimum-severity': 'high' });
+
+      await importActionAndGetPromptfooCall();
+
+      expect(mocks.config.generateConfigFile).toHaveBeenCalledWith('high', undefined);
+      expect(mocks.core.warning).not.toHaveBeenCalledWith(expect.stringContaining('min-severity'));
+    });
+
+    it('trims whitespace from severity inputs', async () => {
+      mockSeverityInputs({ 'minimum-severity': '  critical  ' });
+
+      await importActionAndGetPromptfooCall();
+
+      expect(mocks.config.generateConfigFile).toHaveBeenCalledWith('critical', undefined);
+    });
+  });
+});

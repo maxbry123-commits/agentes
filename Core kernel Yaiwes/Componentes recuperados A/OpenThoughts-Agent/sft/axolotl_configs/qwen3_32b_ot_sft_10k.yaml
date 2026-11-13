@@ -1,0 +1,141 @@
+# axolotl SFT — Qwen3-32B, learning-parity port of LLaMA-Factory
+# sft/lf_configs/qwen3/32k_base_32b.yaml (bs=96). Launched via
+# `python -m hpc.launch --job_type sft --sft_backend axolotl`.
+#
+# ⚠ DESIGN RATIONALE LIVES IN THE OPS DOC, NOT HERE — see
+# .agents/projects/axolotl/axolotl.md § "Qwen3-32B LF-parity SFT config":
+# the LF→axolotl learning-parity map, the chatml-vs-qwen3 chat-template/masking
+# decision, the sdpa/liger/offload deviations, the 32B OOM diagnosis (config gap:
+# liger-off + offload-off — NOT a capacity ceiling), and the shared-$SCRATCH
+# dataset-prep sentinel fast-path. Do NOT re-embed knowledge in these comments;
+# update the ops doc instead.
+
+base_model: Qwen/Qwen3-32B
+trust_remote_code: true
+
+# ZeRO-3 WITH CPU-Adam optimizer offload — the durable step-0-OOM headroom fix. The fp32
+# optimizer state (fp32 master + momentum + variance ≈ 12 B/param for AdamW = ~384 GB for 32B,
+# sharded ~24 GB/GPU across 16 nodes) moves off HBM to CPU RAM (Vista GH200 = 188 GB/node), and
+# DeepSpeed builds the FUSED DeepSpeedCPUAdam (not a GPU FusedAdam) — see the offload deepspeed
+# json below. The old "offload pending cpu_adam toolchain fix" blocker is RESOLVED: the vista
+# hpc.py block exports CC/CXX=gcc/g++ (commit e4543faf) so DeepSpeedCPUAdam builds on aarch64
+# (axolotl.md gotcha #2; .agents/ops/tacc/ops.md aarch64 §). LF offloads on Jupiter the same way.
+# `deepspeed:` is only the ON/OFF toggle — its PATH value is IGNORED by the translator
+# (hpc/axolotl_config_utils.py: ax["deepspeed"] = deepspeed_config or hardcoded default).
+# The honored path key is `deepspeed_config:` below → offload + shard-save variant (16-bit gather OFF).
+deepspeed: true
+# SAVE SHARDED — gather_16bit_weights_on_model_save: false. The consolidated-16bit GATHER on
+# checkpoint save (save_steps=10) deadlocks the 16-node Vista GH200 IB fabric: the 16-way
+# _ALLGATHER_BASE that reconstructs the full 32B model on every rank hangs the full PG timeout
+# (CONFIRMED, stack-trace-definitive: job 823417 exp _15, step-10 save; the end-of-training
+# save_model uses the identical gather → would hang the same way). Sharded save skips the gather
+# → RESUMABLE per-rank shards + zero_to_fp32.py; consolidate at cleanup before HF upload.
+# agent_logs/2026-07-12_tacc_axolotl32b_nccl_save_gather_hang.md.
+# Offload + shard-save: offload_optimizer{device:cpu,pin_memory:true} moves fp32 optimizer state
+# off HBM AND an explicit optimizer{type:AdamW} block so DeepSpeed constructs DeepSpeedCPUAdam
+# (the fast fused CPU kernel) rather than accepting a client GPU FusedAdam. Keeps
+# gather_16bit_weights_on_model_save:false (the 16-node IB save-gather deadlock fix — do NOT use
+# the generic zero3_bf16_cpuoffload_*.json, which set gather:true and would re-hang the save).
+# Fix B (2026-07-14, operator-chosen "KEEP 16 NODES"): ADDED offload_param{device:cpu,pin_memory:
+# true} = FULL ds_z3_offload. Fix A had offload_optimizer only and STILL died the same way (exp _24
+# 831541 step 182 / 831542 step ~155, identical ZeRO-3 backward reduce_scatter_coalesced SIGABRT on
+# disjoint nodes = a fabric-wide intermittent collective straggler). Offloading the SHARDED params
+# to CPU too frees more HBM AND reshapes the ZeRO-3 backward collective schedule/timing (params are
+# now allgathered from CPU on demand) — the primary lever against a memory-pressure-induced straggle
+# in the backward. Accept the CPU<->GPU transfer throughput cost. Paired NCCL tuning (NCCL_BUFFSIZE
+# up, NCCL_ALGO=Ring dropped) is in the vista block of hpc/hpc.py.
+deepspeed_config: sft/axolotl_configs/deepspeed/zero3_bf16_offload_shardsave.json
+
+# NOTE: the launcher REBUILDS this datasets block from --dataset + --role_tag/--content_tag
+# at launch (hpc/axolotl_config_utils.py::_build_datasets); this in-config block is honored
+# ONLY by a direct `axolotl.cli.preprocess`.
+datasets:
+  - path: open-thoughts/OpenThoughts-Agent-SFT-10K
+    type: chat_template
+    field_messages: conversations
+    message_property_mappings:
+      role: role
+      content: content
+    split_thinking: false
+
+# chatml == LF qwen3 encode_multiturn training format (NOT qwen3.jinja — see ops doc).
+chat_template: chatml
+
+# Shared pre-tokenized path: pre-tokenize once via `axolotl preprocess` -> sentinel fast-path
+# for concurrent multi-node load_from_disk (rationale in ops doc). $SCRATCH expanded by translator.
+dataset_prepared_path: $SCRATCH/axolotl_prepared/qwen3_32b_ot_sft_10k
+
+# Flash-Attention-2 (~2x over SDPA on GH200; SDPA was ~338 s/it — the throughput blocker).
+# aarch64 prebuilt wheel flash_attn-2.8.3+cu128torch2.11-cp312 installed 2026-07-11
+# (mjun0812/flash-attention-prebuild-wheels v0.9.22; exact torch2.11/cu128/py312/aarch64 match).
+# `flash_attention: true` -> translator sets attn_implementation: flash_attention_2
+# (hpc/axolotl_config_utils.py L211-221). The old explicit `attn_implementation: sdpa` is
+# REMOVED because an explicit value WINS in the translator and would override flash-attn.
+flash_attention: true
+sample_packing: false
+
+# Liger fused kernels (LF parity: `enable_liger_kernel: true`). The load-bearing
+# memory lever for the 32B@32k OOM — LigerFusedLinearCrossEntropy fuses the LM head
+# + cross-entropy so the ~18 GB logit tensor (seq 32768 × vocab ~152k × bf16) never
+# materializes (the exact allocation that OOM'd in the ZeRO-3 backward). The
+# translator (hpc/axolotl_config_utils.py) turns this into the LigerPlugin +
+# liger_rope/liger_rms_norm/liger_glu_activation/liger_fused_linear_cross_entropy.
+# CPU-Adam optimizer offload is now ON (deepspeed_config above) — the durable headroom fix
+# for the intermittent step-0 CUDA OOM (~7 GiB headroom): liger kills the ~18 GB logit tensor,
+# offload moves the fp32 optimizer state off HBM. Both levers active.
+enable_liger_kernel: true
+
+sequence_len: 32768
+val_set_size: 0.0
+dataset_num_proc: 1          # aarch64/TACC AF_UNIX-path-too-long on multiproc tokenization
+
+# Effective batch 96; micro=1, gpus_per_node=1 -> grad_accum = 96 / num_nodes (translator-derived).
+global_batch_size: 96
+micro_batch_size: 1
+
+num_epochs: 7.0
+learning_rate: 4.0e-5
+lr_scheduler_type: cosine    # translator -> lr_scheduler
+warmup_ratio: 0.1
+max_grad_norm: 1.0e-4
+optim: adamw_torch_fused     # translator -> optimizer
+weight_decay: 0.0
+
+bf16: true                   # translator -> bf16: auto (mixed bf16 + fp32 master)
+tf32: false
+gradient_checkpointing: true
+
+logging_steps: 5
+# save_steps LOWERED to 50 (2026-07-13): the recurring backward `_REDUCE_SCATTER_BASE` NCCL
+# deadlock on the 16-node Vista IB fabric fires at an INTERMITTENT/variable training step
+# (observed steps 10, 14/16, and 72 across runs) — NOT at a save. With save_steps=200 the chain
+# banks NO checkpoint before the deadlock, so every afterany restart resumes from step 0 and the
+# hours before the deadlock are lost (job 827304 exp _21: FAILED at step 72, banked nothing in
+# 3h40m). Sharded save (gather_16bit_weights_on_model_save:false; zero3_bf16_offload_shardsave.json)
+# already killed the step-10 save-GATHER hang, so a mid-run save is CHEAP and does NOT hit the
+# _ALLGATHER_BASE deadlock. save_steps=50 banks a resumable shard set BEFORE the empirical deadlock
+# step → restarts resume instead of restarting from 0. save_total_limit=3 caps disk (latest 3 shard
+# sets kept — safe for auto_resume, which needs the latest intact; NOT 1, which risks losing the
+# latest mid-rotation). Learning-neutral (save cadence only).
+# agent_logs/2026-07-13_tacc_axolotl32b_827304_reduce_scatter_deadlock.md.
+save_steps: 50
+save_total_limit: 3
+# Resume from the latest output_dir checkpoint on relaunch — makes `--max_restarts` / an
+# afterany chain leg RESUME (not restart from step 0) for the axolotl backend. Needs the
+# translator passthrough (hpc/axolotl_config_utils.py). Fresh runs (empty output_dir) start
+# clean; 7-epoch/704-step runs exceed the 48h TACC wall and need this to finish.
+auto_resume_from_checkpoints: true
+
+# Collective-watchdog timeout (seconds), matched to the LF parity config (32k_base_32b.yaml).
+# Forwarded to HF TrainingArguments.ddp_timeout -> accelerate InitProcessGroupKwargs -> the c10d/NCCL
+# PG timeout. Effectively-infinite so a transient IB blip during a ZeRO-3 reduce-scatter/save self-heals
+# instead of SIGABRT'ing at the torch 600s default (env NCCL_TIMEOUT is NOT honored for this). A genuine
+# dead node is still caught by SLURM NODE_FAIL / the 48h wall, not this watchdog. Origin: job 825773
+# (exp _18) hung on a post-ckpt-290 reduce-scatter at 600s. Needs the translator passthrough.
+ddp_timeout: 180000000
+
+# no DB row, no MFU noise (learning-neutral).
+supabase_register: false
+mfu: false
+
+output_dir: ./outputs/qwen3-32b-ot-sft-10k

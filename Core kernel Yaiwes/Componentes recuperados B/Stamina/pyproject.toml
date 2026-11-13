@@ -1,0 +1,225 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs", "hatch-fancy-pypi-readme>=22.8.0"]
+build-backend = "hatchling.build"
+
+
+[project]
+dynamic = ["version", "readme"]
+name = "stamina"
+description = "Production-grade retries made easy."
+requires-python = ">=3.10"
+license = "MIT"
+keywords = ["retry", "retries", "reliability"]
+authors = [{ name = "Hynek Schlawack", email = "hs@ox.cx" }]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+  "Framework :: AsyncIO",
+  "Framework :: Trio",
+]
+dependencies = ["tenacity"]
+
+[dependency-groups]
+tests = ["pytest>=9", "anyio", "dirty-equals"]
+typing = []
+docs = [
+  "sphinx >= 7.2.2",
+  "furo",
+  "myst-parser",
+  "sphinx-notfound-page",
+  "sphinx-copybutton",
+  "structlog",
+  "prometheus-client",
+]
+dev = [
+  { include-group = "tests" },
+  { include-group = "typing" },
+  "mypy",
+  # First version with uv support.
+  "nox >= 2024.3.2",
+  "prometheus-client",
+  "structlog",
+  "tomli; python_version < '3.11'",
+  "trio",
+]
+
+[project.urls]
+Documentation = "https://stamina.hynek.me/"
+GitHub = "https://github.com/hynek/stamina"
+Changelog = "https://github.com/hynek/stamina/blob/main/CHANGELOG.md"
+Funding = "https://github.com/sponsors/hynek"
+Mastodon = "https://mastodon.social/@hynek"
+Bluesky = "https://bsky.app/profile/hynek.me"
+Twitter = "https://twitter.com/hynek"
+
+
+[tool.hatch.version]
+source = "vcs"
+raw-options = { local_scheme = "no-local-version" }
+
+
+[tool.hatch.metadata.hooks.fancy-pypi-readme]
+content-type = "text/markdown"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+text = "# *stamina*: Production-grade Retries Made Easy"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+path = "README.md"
+start-after = "---"
+end-before = "## Project Links"
+
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+text = """
+
+## Release Information
+
+"""
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+path = "CHANGELOG.md"
+start-after = "<!-- changelog follows -->"
+pattern = "\n(###.+?\n)## "
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+text = """
+---
+
+[Full Changelog →](https://github.com/hynek/stamina/blob/main/CHANGELOG.md)
+
+
+"""
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+path = "README.md"
+start-at = "## Credits"
+
+
+[tool.pytest]
+strict = true
+addopts = ["-ra", "--import-mode=importlib"]
+testpaths = ["tests"]
+filterwarnings = ["once::Warning"]
+
+
+[tool.coverage.run]
+branch = true
+parallel = true
+source = ["stamina"]
+
+[tool.coverage.paths]
+source = ["src", ".nox/tests*/**/site-packages"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+  'raise AssertionError\("unreachable"\)',
+  # Typing-related
+  "if TYPE_CHECKING:",
+  ': \.\.\.$',
+]
+
+
+[tool.interrogate]
+omit-covered-files = true
+verbose = 2
+fail-under = 100
+whitelist-regex = ["test_.*"]
+
+
+[tool.mypy]
+strict = true
+pretty = true
+
+show_error_codes = true
+enable_error_code = ["ignore-without-code"]
+
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "tenacity.*"
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = "noxfile"
+disallow_untyped_decorators = false
+
+
+[[tool.ty.overrides]]
+rules.all = "ignore"
+include = ["conftest.py", "docs", "tests"]
+
+
+[tool.pyrefly]
+project-includes = ["src", "typing_tests"]
+
+
+[tool.ruff]
+src = ["src", "tests", "noxfile.py", "docs/conf.py"]
+line-length = 79
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "A001",    # shadowing is fine
+  "A005",    # shadowing typing is fine
+  "ANN",     # Mypy is better at this
+  "ARG001",  # unused arguments are normal when implementing interfaces
+  "COM",     # Formatter takes care of our commas
+  "CPY",     # they expect a very specific shape of a copyright notice
+  "D",       # We prefer our own docstring style.
+  "E501",    # leave line-length enforcement to formatter
+  "FBT",     # we have one function that takes one bool; c'mon!
+  "FIX",     # Yes, we want XXX as a marker.
+  "INP001",  # sometimes we want Python files outside of packages
+  "ISC001",  # conflicts with formatter
+  "PLC0415", # we do lazy imports
+  "PLR0913", # yes, many arguments, but most have defaults
+  "PLR0915", # leave complexity to me
+  "PLR0917", # leave complexity to me
+  "PLR2004", # numbers are sometimes fine
+  "SLF001",  # private members are accessed by friendly functions
+  "TC",      # TYPE_CHECKING blocks break autodocs
+  "TD",      # we don't follow other people's todo style
+  "TID252",  # relative imports are always awesome
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+  "ARG005",   # we need stub lambdas
+  "ASYNC109", # we use timeout only for parametrization
+  "EM",       # no need for exception msg hygiene in tests
+  "PT011",    # broad is fine
+  "S101",     # assert
+  "SIM300",   # Yoda rocks in asserts
+  "TRY002",   # stock exceptions are fine in tests
+]
+
+"typing_tests/*" = [
+  "F841",   # unused variables are fine in type checks
+  "F842",   # unused variables are fine in type checks
+  "RUF059", # unused variables are fine in type checks
+  "SLOT",   # we don't care about slots in type checks
+]
+
+
+[tool.ruff.lint.isort]
+lines-between-types = 1
+lines-after-imports = 2
+
+
+[tool.uv]
+# Ensure Nox always gets a fresh package.
+reinstall-package = ["stamina"]

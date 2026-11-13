@@ -1,0 +1,30 @@
+on: pull_request
+
+name: insecure-commands
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  some-dangerous-job:
+    name: some-dangerous-job
+    runs-on: ubuntu-latest
+    env:
+      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+    steps:
+      - run: echo "don't do this"
+
+  env-via-matrix:
+    name: env-via-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env:
+          - ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+
+    steps:
+      - run: echo "don't do this"
+        env: ${{ matrix.env }}

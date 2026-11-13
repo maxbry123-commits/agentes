@@ -1,0 +1,183 @@
+## [6.3.4](https://github.com/taskforcesh/bullmq/compare/v6.3.3...v6.3.4) (2026-09-01)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate croner to v4 [security] ([#4666](https://github.com/taskforcesh/bullmq/issues/4666)) ([fd33926](https://github.com/taskforcesh/bullmq/commit/fd33926ce3fe35a9c896f0f37b6c167bba193dc6))
+
+## [6.3.3](https://github.com/taskforcesh/bullmq/compare/v6.3.2...v6.3.3) (2026-08-31)
+
+
+### Bug Fixes
+
+* **bun:** duplicate() and reconnect target the correct server ([#4591](https://github.com/taskforcesh/bullmq/issues/4591)) ([e9b5679](https://github.com/taskforcesh/bullmq/commit/e9b5679864e428c9791ed18901d3dc50bf401e84))
+* **worker:** keep blocking client alive when parked in reconnecting ([#4586](https://github.com/taskforcesh/bullmq/issues/4586)) ([8fd4850](https://github.com/taskforcesh/bullmq/commit/8fd48506030d83841a0cacf993ff85c7e56ab7de))
+
+## [6.3.2](https://github.com/taskforcesh/bullmq/compare/v6.3.1...v6.3.2) (2026-08-29)
+
+
+### Bug Fixes
+
+* **deps:** upgrade msgpackr to 2.1.0 and uuid to 1.26.0 (rust) ([#4621](https://github.com/taskforcesh/bullmq/issues/4621)) ([74987e9](https://github.com/taskforcesh/bullmq/commit/74987e914f22e7647662406861e2ad3101b883d4))
+* **worker:** delegate maximumBlockTimeout to the backend (python) ([#4644](https://github.com/taskforcesh/bullmq/issues/4644)) ([ea4543c](https://github.com/taskforcesh/bullmq/commit/ea4543cc78aa11935ed5e9af7d4b47fd3e23aea0))
+
+## [6.3.1](https://github.com/taskforcesh/bullmq/compare/v6.3.0...v6.3.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **postgres:** resolve priv SQL dir at runtime for Mix releases ([#4636](https://github.com/taskforcesh/bullmq/issues/4636)) ([9d737e9](https://github.com/taskforcesh/bullmq/commit/9d737e9d0e467eeacf6f6a43f3f806fa2873ee1b))
+
+# [6.3.0](https://github.com/taskforcesh/bullmq/compare/v6.2.2...v6.3.0) (2026-08-26)
+
+
+### Features
+
+* **postgres:** forward :ssl option to Postgrex connection ([#4631](https://github.com/taskforcesh/bullmq/issues/4631)) (elixir) ([bb569b8](https://github.com/taskforcesh/bullmq/commit/bb569b824154028c4d76aba86c0cfb0986928f3d))
+
+## [6.2.2](https://github.com/taskforcesh/bullmq/compare/v6.2.1...v6.2.2) (2026-08-25)
+
+
+### Performance Improvements
+
+* **queue:** do not affect rate limit when processing deferred failures (python) (elixir) (rust) (dotnet) ([#4607](https://github.com/taskforcesh/bullmq/issues/4607)) ([ec4be04](https://github.com/taskforcesh/bullmq/commit/ec4be04c04725f5e341920ddef98adf7874a41d5))
+
+## [6.2.1](https://github.com/taskforcesh/bullmq/compare/v6.2.0...v6.2.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* Nothing changed, triggered by a elixir version release
+
+# [6.2.0](https://github.com/taskforcesh/bullmq/compare/v6.1.2...v6.2.0) (2026-08-21)
+
+
+### Features
+
+* **types:** add generic ProgressType parameter to Job and Worker ([#4529](https://github.com/taskforcesh/bullmq/issues/4529)) fixes [#3721](https://github.com/taskforcesh/bullmq/issues/3721) ([c06b51c](https://github.com/taskforcesh/bullmq/commit/c06b51cd3aacd0d9ee65e2544220c89f24d2479c))
+
+## [6.1.2](https://github.com/taskforcesh/bullmq/compare/v6.1.1...v6.1.2) (2026-08-16)
+
+
+### Bug Fixes
+
+* **deps:** update security patches [security] ([#4566](https://github.com/taskforcesh/bullmq/issues/4566)) ([cb37233](https://github.com/taskforcesh/bullmq/commit/cb372332210af739efb159b6ac2ffc3fdd4d4d2d))
+
+## [6.1.1](https://github.com/taskforcesh/bullmq/compare/v6.1.0...v6.1.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* **flow:** allow parent opts from root parent ([#4548](https://github.com/taskforcesh/bullmq/issues/4548)) fixes [#4547](https://github.com/taskforcesh/bullmq/issues/4547) ([ab7009d](https://github.com/taskforcesh/bullmq/commit/ab7009da8a732d8d5e8f13228e1ef81806422128))
+
+# [6.1.0](https://github.com/taskforcesh/bullmq/compare/v6.0.11...v6.1.0) (2026-08-12)
+
+
+### Features
+
+* **postgres:** make schema migrations explicit ([#4544](https://github.com/taskforcesh/bullmq/issues/4544)) ([ee714dc](https://github.com/taskforcesh/bullmq/commit/ee714dc803a43761eba921df3af5c8da0c2258cf))
+
+## [6.0.11](https://github.com/taskforcesh/bullmq/compare/v6.0.10...v6.0.11) (2026-08-10)
+
+
+### Bug Fixes
+
+* **deps:** update security patches [security] ([#4539](https://github.com/taskforcesh/bullmq/issues/4539)) ([48c5426](https://github.com/taskforcesh/bullmq/commit/48c54268642b724b8823086db2c6d1a61c10c3cf))
+
+## [6.0.10](https://github.com/taskforcesh/bullmq/compare/v6.0.9...v6.0.10) (2026-08-10)
+
+
+### Bug Fixes
+
+* make ioredis optional ([#4513](https://github.com/taskforcesh/bullmq/issues/4513)) ([30c2c75](https://github.com/taskforcesh/bullmq/commit/30c2c7518a8a754d6f688de3373df8113f4df7b1))
+
+## [6.0.9](https://github.com/taskforcesh/bullmq/compare/v6.0.8...v6.0.9) (2026-08-07)
+
+
+### Bug Fixes
+
+* **events:** type completed event returnvalue as deserialized value ([#4441](https://github.com/taskforcesh/bullmq/issues/4441)) fixes [#4147](https://github.com/taskforcesh/bullmq/issues/4147) ([5910ccc](https://github.com/taskforcesh/bullmq/commit/5910cccfc8a773067621953087d0d055670e1e2a))
+
+## [6.0.8](https://github.com/taskforcesh/bullmq/compare/v6.0.7...v6.0.8) (2026-08-05)
+
+
+### Bug Fixes
+
+* **deps:** avoid deep ioredis import so postgres backend works without ioredis internals ([#4437](https://github.com/taskforcesh/bullmq/issues/4437)) fixes [#4435](https://github.com/taskforcesh/bullmq/issues/4435) ([550e446](https://github.com/taskforcesh/bullmq/commit/550e446db235be4bb9ee15d4d882632e139b3afb))
+* **postgres:** fail fast when SQL loader directory cannot be resolved ([#4482](https://github.com/taskforcesh/bullmq/issues/4482)) ([f3936a2](https://github.com/taskforcesh/bullmq/commit/f3936a22fe564ddf3468ee8388e7024ad9a76265))
+
+## [6.0.7](https://github.com/taskforcesh/bullmq/compare/v6.0.6...v6.0.7) (2026-08-04)
+
+
+### Bug Fixes
+
+* **worker:** recover blocking reads that never settle after a reconnect fixes [#4479](https://github.com/taskforcesh/bullmq/issues/4479) ([#4484](https://github.com/taskforcesh/bullmq/issues/4484)) ([e7e9a64](https://github.com/taskforcesh/bullmq/commit/e7e9a6478d39d43406559b03410b2c5c28639e74))
+
+## [6.0.6](https://github.com/taskforcesh/bullmq/compare/v6.0.5...v6.0.6) (2026-08-03)
+
+
+### Bug Fixes
+
+* **deps:** update cron-parser to v5.7.0 ([#4462](https://github.com/taskforcesh/bullmq/issues/4462)) ([a514f2d](https://github.com/taskforcesh/bullmq/commit/a514f2d3976848aa631de22bfa458b7e9f60b384))
+
+## [6.0.5](https://github.com/taskforcesh/bullmq/compare/v6.0.4...v6.0.5) (2026-08-01)
+
+
+### Bug Fixes
+
+* No Node.js changes.
+
+## [6.0.4](https://github.com/taskforcesh/bullmq/compare/v6.0.3...v6.0.4) (2026-08-01)
+
+
+### Bug Fixes
+
+* **deps:** update security patches [security] ([#4444](https://github.com/taskforcesh/bullmq/issues/4444)) ([c1cf328](https://github.com/taskforcesh/bullmq/commit/c1cf32881474f3f1e9b620e025abde07a359eb06))
+
+## [6.0.3](https://github.com/taskforcesh/bullmq/compare/v6.0.2...v6.0.3) (2026-07-31)
+
+
+### Bug Fixes
+
+* **postgres:** drop redundant bullmq_ prefix from schema objects ([#4436](https://github.com/taskforcesh/bullmq/issues/4436)) (elixir) (python) ([067a73f](https://github.com/taskforcesh/bullmq/commit/067a73f3666a493c36c03ec2cca8228ae149f043))
+
+## [6.0.2](https://github.com/taskforcesh/bullmq/compare/v6.0.1...v6.0.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* No Node.js changes.
+
+## [6.0.1](https://github.com/taskforcesh/bullmq/compare/v6.0.0...v6.0.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* No Node.js changes.
+
+# [6.0.0](https://github.com/taskforcesh/bullmq/compare/v5.81.3...v6.0.0) (2026-07-30)
+
+
+### Features
+
+* release BullMQ v6 with pluggable queue backends (php) (python) (elixir) ([e1f86ef](https://github.com/taskforcesh/bullmq/commit/e1f86effc5bddda5b70d890866d9a490555e41ff))
+* Introduce the IQueueBackend abstraction, Redis and PostgreSQL backends, and the accompanying v6 updates across the supported language clients.
+
+### BREAKING CHANGES
+
+* High-level classes no longer expose Redis internals. The optional Connection constructor parameter is replaced by an optional BackendFactory. Queue#client, Queue#redisVersion, Queue#databaseType, Worker#blockingClient, and FlowProducer#client are removed. Access the raw Redis client through the RedisQueueBackend returned by getBackend(). Worker#waitUntilReady() now resolves to void instead of the Redis client.
+* Legacy repeatable jobs and their APIs are removed. This includes the repeat option on Queue#add and Queue#addBulk, the Repeat class, Queue#getRepeatableJobs(), Queue#removeRepeatable(), and Queue#removeRepeatableByKey(). Migrate recurring jobs to Job Schedulers.
+* The minimum supported Node.js version is now 14.17.0.
+* Worker#resume() is now asynchronous, returns `Promise<void>`, and must be awaited.
+* Queue#clean() telemetry now reports the number of cleaned jobs instead of recording the complete array of job IDs.
+* The deprecated TelemetryAttributes JobFinishedTimestamp and TelemetryAttributes.JobStatus members are removed. Telemetry uses JobState, and workers no longer set JobFinishedTimestamp on spans.
+* Meter#createGauge() is now required for telemetry adapters.
+* The deprecated debounce option and Job#debounceId property are removed. Use deduplication and Job#deduplicationId instead.
+* The deprecated debounced event is removed. Listen for the deduplicated event instead.
+* FlowJob now distinguishes parent and leaf nodes. Deduplication is no longer allowed on parent flow nodes.
+* Job#discard() is removed from the Node.js API. Use UnrecoverableError instead.
+* The legacy nextSchedulerJobId property is removed from Job and JobJson.
+* ioredis is no longer installed as a direct dependency and is now an optional peer dependency. Redis users must install ioredis explicitly.
+* The paused job state is removed from JobType and from the default Queue#getJobCounts() result. Jobs in a paused queue are represented as waiting.
+* RepeatOptions no longer accepts the cron-parser currentDate, utc, or nthDayOfWeek options. Use tz: 'UTC' instead of utc: true.
+* The public Redis implementation exports Scripts, createScripts, JobJsonRaw, and RedisJobOptions are removed. Use the backend APIs instead.

@@ -1,0 +1,27 @@
+name: Star History
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: star-history
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: overtrue/repo-visuals-action@ee2c632f6ce617e851fb46ea935ee8af762ebb93 # v1.4.0
+        with:
+          github-token: ${{ github.token }}
+          output-branch: star-history
+          output-path: .
+          chart-style: gradient
+          animate: "true"
+          contributors: "true"

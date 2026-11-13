@@ -1,0 +1,272 @@
+package tools
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/scope"
+)
+
+// ToolRunSummary aggregates results from running multiple tools.
+type ToolRunSummary struct {
+	Results   []*ToolResult `json:"results"`
+	TotalTime time.Duration `json:"total_time"`
+	Succeeded int           `json:"succeeded"`
+	Failed    int           `json:"failed"`
+}
+
+// ToolHooks is an optional set of per-tool lifecycle callbacks the
+// coordinator fires during dispatch. All hooks are nil-safe — callers
+// supply only the ones they care about.
+//
+// Useful for streaming progress to the campaign event stream so the
+// operator (or chat client) sees each tool start, finish, or get
+// skipped as it happens, rather than just a final batch summary.
+type ToolHooks struct {
+	// OnStart fires immediately before tool.Run() is called.
+	OnStart func(name, target string)
+	// OnDone fires after tool.Run() returns. err will be non-nil for
+	// failures (binary missing returns no error here — that path goes
+	// through OnSkip).
+	OnDone func(name, target string, result *ToolResult, err error)
+	// OnSkip fires when tool.IsAvailable() returns false. Useful for
+	// surfacing missing binaries in the event stream.
+	OnSkip func(name, target, reason string)
+}
+
+func (h *ToolHooks) start(name, target string) {
+	if h != nil && h.OnStart != nil {
+		h.OnStart(name, target)
+	}
+}
+func (h *ToolHooks) done(name, target string, result *ToolResult, err error) {
+	if h != nil && h.OnDone != nil {
+		h.OnDone(name, target, result, err)
+	}
+}
+func (h *ToolHooks) skip(name, target, reason string) {
+	if h != nil && h.OnSkip != nil {
+		h.OnSkip(name, target, reason)
+	}
+}
+
+// Coordinator manages parallel tool execution.
+type Coordinator struct {
+	tools map[string]Tool
+	hooks *ToolHooks
+}
+
+// NewCoordinator creates a coordinator with all registered tools.
+func NewCoordinator() *Coordinator {
+	c := &Coordinator{
+		tools: make(map[string]Tool),
+	}
+
+	// Register all built-in tools. Tools that rely on external binaries
+	// (nmap) are advertised here but filtered at dispatch time via
+	// IsAvailable() — `pentestswarm doctor` flags missing binaries so
+	// users aren't surprised at scan time.
+	allTools := []Tool{
+		NewSubfinderTool(),
+		NewHttpxTool(),
+		NewNucleiTool(),
+		NewNaabuTool(),
+		NewKatanaTool(),
+		NewDnsxTool(),
+		NewGauTool(),
+		NewNmapTool(),
+		NewSqlmapTool(),
+		NewFfufTool(),
+		NewGobusterTool(),
+		NewTrufflehogTool(),
+		NewGitleaksTool(),
+		NewSemgrepTool(),
+		NewAmassTool(),
+		NewDalfoxTool(),
+		NewJWTTool(),
+		NewArjunTool(),
+		NewYsoserialTool(),
+		NewInteractshTool(),
+		NewTestSSLTool(),
+		NewCRLFuzzTool(),
+		NewWPScanTool(),
+		NewCheckovTool(),
+		NewGXSSTool(),
+		NewProwlerTool(),
+		NewPacuTool(),
+		NewScoutSuiteTool(),
+		NewCloudsplainingTool(),
+		NewKubeHunterTool(),
+		NewDroopescanTool(),
+		NewNiktoTool(),
+		NewDotDotPwnTool(),
+		NewCrackMapExecTool(),
+		NewBloodHoundTool(),
+	}
+
+	for _, t := range allTools {
+		c.tools[t.Name()] = t
+	}
+
+	return c
+}
+
+// SetHooks installs lifecycle callbacks. Call this immediately after
+// NewCoordinator(); not safe to mutate concurrently with RunAll/RunSelected.
+func (c *Coordinator) SetHooks(h *ToolHooks) {
+	c.hooks = h
+}
+
+// RunAll executes all tools concurrently against the target.
+// Results are streamed to the results channel as each tool completes.
+func (c *Coordinator) RunAll(ctx context.Context, target string, scopeDef *scope.ScopeDefinition, opts Options) (*ToolRunSummary, <-chan *ToolResult) {
+	resultCh := make(chan *ToolResult, len(c.tools))
+	summary := &ToolRunSummary{}
+
+	// Attach scope to context for tool validation
+	toolCtx := WithScope(ctx, scopeDef)
+	start := time.Now()
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for _, tool := range c.tools {
+		if !tool.IsAvailable() {
+			c.hooks.skip(tool.Name(), target, "binary not found in PATH")
+			continue
+		}
+
+		wg.Add(1)
+		go func(t Tool) {
+			defer wg.Done()
+
+			c.hooks.start(t.Name(), target)
+			result, err := t.Run(toolCtx, target, opts)
+			if err != nil {
+				result = &ToolResult{
+					ToolName: t.Name(),
+					Target:   target,
+					Error:    err,
+				}
+				mu.Lock()
+				summary.Failed++
+				mu.Unlock()
+			} else {
+				mu.Lock()
+				summary.Succeeded++
+				mu.Unlock()
+			}
+
+			mu.Lock()
+			summary.Results = append(summary.Results, result)
+			mu.Unlock()
+
+			c.hooks.done(t.Name(), target, result, err)
+
+			// Stream result as it completes
+			select {
+			case resultCh <- result:
+			case <-ctx.Done():
+			}
+		}(tool)
+	}
+
+	// Close channel when all tools complete
+	go func() {
+		wg.Wait()
+		summary.TotalTime = time.Since(start)
+		close(resultCh)
+	}()
+
+	return summary, resultCh
+}
+
+// RunSelected executes only the specified tools.
+func (c *Coordinator) RunSelected(ctx context.Context, toolNames []string, target string, scopeDef *scope.ScopeDefinition, opts Options) (*ToolRunSummary, <-chan *ToolResult) {
+	resultCh := make(chan *ToolResult, len(toolNames))
+	summary := &ToolRunSummary{}
+
+	toolCtx := WithScope(ctx, scopeDef)
+	start := time.Now()
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for _, name := range toolNames {
+		t, ok := c.tools[name]
+		if !ok {
+			c.hooks.skip(name, target, "tool not registered")
+			continue
+		}
+		if !t.IsAvailable() {
+			c.hooks.skip(name, target, "binary not found in PATH")
+			continue
+		}
+
+		wg.Add(1)
+		go func(tool Tool) {
+			defer wg.Done()
+
+			c.hooks.start(tool.Name(), target)
+			result, err := tool.Run(toolCtx, target, opts)
+			if err != nil {
+				result = &ToolResult{
+					ToolName: tool.Name(),
+					Target:   target,
+					Error:    err,
+				}
+				mu.Lock()
+				summary.Failed++
+				mu.Unlock()
+			} else {
+				mu.Lock()
+				summary.Succeeded++
+				mu.Unlock()
+			}
+
+			mu.Lock()
+			summary.Results = append(summary.Results, result)
+			mu.Unlock()
+
+			c.hooks.done(tool.Name(), target, result, err)
+
+			select {
+			case resultCh <- result:
+			case <-ctx.Done():
+			}
+		}(t)
+	}
+
+	go func() {
+		wg.Wait()
+		summary.TotalTime = time.Since(start)
+		close(resultCh)
+	}()
+
+	return summary, resultCh
+}
+
+// AvailableTools returns names of all registered and available tools.
+func (c *Coordinator) AvailableTools() []string {
+	var names []string
+	for name, t := range c.tools {
+		if t.IsAvailable() {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// RegisteredToolNames returns the names of all registered tools,
+// regardless of whether their binary is currently installed. The exploit
+// executor uses this to derive its executable allowlist (#43): if a tool
+// is on this list, the LLM is allowed to ask the executor to invoke it.
+// Availability gating still happens separately at dispatch time.
+func (c *Coordinator) RegisteredToolNames() []string {
+	names := make([]string, 0, len(c.tools))
+	for name := range c.tools {
+		names = append(names, name)
+	}
+	return names
+}

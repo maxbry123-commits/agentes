@@ -1,0 +1,79 @@
+# Goals catalog — A-WF-02
+# 12 IN (from InputBlock) + 12 OUT (produced by pipeline)
+version: "1.0"
+
+goals_in:
+  - id: GIN-01
+    name: extract_objective
+    description: "Meta principal del bloque de entrada"
+  - id: GIN-02
+    name: extract_constraints
+    description: "Restricciones explícitas (LOC, fase, llm_control)"
+  - id: GIN-03
+    name: extract_quality_bar
+    description: "never_MVP | standard | draft"
+  - id: GIN-04
+    name: extract_doc_refs
+    description: "Anclas a documentos de verdad"
+  - id: GIN-05
+    name: extract_priority
+    description: "P0..P3"
+  - id: GIN-06
+    name: detect_repair
+    description: "source_type=repair + parent_block_id"
+  - id: GIN-07
+    name: list_capabilities_needed
+    description: "Capacidades requeridas declaradas o inferidas por hint"
+  - id: GIN-08
+    name: list_files_hint
+    description: "Paths mencionados en raw_text"
+  - id: GIN-09
+    name: detect_phase
+    description: "Fase o bloque activo (control-layer, audit, source-evo)"
+  - id: GIN-10
+    name: extract_success_criteria
+    description: "Criterios de éxito/fallo si constan"
+  - id: GIN-11
+    name: extract_tokens_budget
+    description: "Límites de tokens/LOC si constan"
+  - id: GIN-12
+    name: extract_agent_hint
+    description: "Agente o modelo preferido si se declara"
+
+goals_out:
+  - id: GOUT-01
+    name: normalized_block
+    description: "InputBlock normalizado + hash"
+  - id: GOUT-02
+    name: goals_in_resolved
+    description: "Lista GIN cubiertos"
+  - id: GOUT-03
+    name: task_list
+    description: "Tareas atómicas ordenadas"
+  - id: GOUT-04
+    name: plan_cursor
+    description: "Plan mínimo tokens estilo Cursor"
+  - id: GOUT-05
+    name: refute_report
+    description: "L1-L3 reason_codes"
+  - id: GOUT-06
+    name: repair_actions
+    description: "R1-R6 aplicados o propuestos"
+  - id: GOUT-07
+    name: sentinel_verdict
+    description: "PASS|FAIL schema/quality"
+  - id: GOUT-08
+    name: council_vote
+    description: "12 roles vote summary"
+  - id: GOUT-09
+    name: artifact_paths
+    description: "Archivos generados/modificados"
+  - id: GOUT-10
+    name: evidence_packet
+    description: "EvidencePacket listo para audit"
+  - id: GOUT-11
+    name: deploy_plan
+    description: "Plan C10 si aplica"
+  - id: GOUT-12
+    name: next_block_hint
+    description: "Siguiente block_id o stop"

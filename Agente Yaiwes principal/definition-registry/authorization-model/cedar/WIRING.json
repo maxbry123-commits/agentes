@@ -1,0 +1,11 @@
+{
+  "component": "Cedar",
+  "artifact_id": "yaiwes.authorization.cedar",
+  "classification": "C",
+  "adapter": "yaiwes_adapter.py",
+  "manifest": "ficha.cedar.v2.json",
+  "plugin_bus": "Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py",
+  "contract_validator": "Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py",
+  "activation_state": "wired_no_test",
+  "fail_closed": true
+}

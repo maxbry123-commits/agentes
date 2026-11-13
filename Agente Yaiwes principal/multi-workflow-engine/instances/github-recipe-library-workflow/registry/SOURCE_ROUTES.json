@@ -1,0 +1,32 @@
+{
+  "policy":{"catalogs_first":true,"github_code_search_secondary":true,"immutable_source_required":true},
+  "routes":[
+    {"priority":10,"id":"github-agentic-workflows","url":"https://github.com/github/gh-aw","kind":"workflow-recipes"},
+    {"priority":20,"id":"github-agentics","url":"https://github.com/githubnext/agentics","kind":"agent-recipes"},
+    {"priority":30,"id":"github-starter-workflows","url":"https://github.com/actions/starter-workflows","kind":"workflow-templates"},
+    {"priority":40,"id":"awesome-copilot","url":"https://github.com/github/awesome-copilot","kind":"agents-prompts-skills"},
+    {"priority":50,"id":"cookiecutter","url":"https://github.com/cookiecutter/cookiecutter","kind":"project-templates"},
+    {"priority":60,"id":"copier","url":"https://github.com/copier-org/copier","kind":"project-templates"},
+    {"priority":70,"id":"backstage-templates","url":"https://github.com/backstage/software-templates","kind":"software-templates"},
+    {"priority":80,"id":"openapi-generator","url":"https://github.com/OpenAPITools/openapi-generator","kind":"code-generators"},
+    {"priority":90,"id":"cue","url":"https://github.com/cue-lang/cue","kind":"schemas-validation"},
+    {"priority":100,"id":"opa","url":"https://github.com/open-policy-agent/opa","kind":"policy-sheriff"},
+    {"priority":110,"id":"actionlint","url":"https://github.com/rhysd/actionlint","kind":"workflow-validator"},
+    {"priority":120,"id":"zizmor","url":"https://github.com/zizmorcore/zizmor","kind":"workflow-security"},
+    {"priority":130,"id":"ast-grep","url":"https://github.com/ast-grep/ast-grep","kind":"surgical-code-transform"},
+    {"priority":140,"id":"jscodeshift","url":"https://github.com/facebook/jscodeshift","kind":"javascript-codemods"},
+    {"priority":150,"id":"openrewrite","url":"https://github.com/openrewrite/rewrite","kind":"code-recipes"},
+    {"priority":160,"id":"comby","url":"https://github.com/comby-tools/comby","kind":"structural-rewrite"},
+    {"priority":170,"id":"daisyui","url":"https://github.com/saadeghi/daisyui","kind":"ui-components"},
+    {"priority":180,"id":"hyperui","url":"https://github.com/markmead/hyperui","kind":"html-ui-blocks"},
+    {"priority":200,"id":"npm","url":"https://registry.npmjs.org/","kind":"package-registry"},
+    {"priority":210,"id":"pypi","url":"https://pypi.org/pypi/","kind":"package-registry"},
+    {"priority":220,"id":"crates","url":"https://crates.io/api/v1/","kind":"package-registry"},
+    {"priority":230,"id":"maven-central","url":"https://central.sonatype.com/","kind":"package-registry"},
+    {"priority":240,"id":"go-packages","url":"https://pkg.go.dev/","kind":"package-registry"},
+    {"priority":250,"id":"schema-store","url":"https://www.schemastore.org/json/","kind":"schema-registry"},
+    {"priority":260,"id":"deps-dev","url":"https://deps.dev/","kind":"provenance-security"},
+    {"priority":270,"id":"openssf-scorecard","url":"https://github.com/ossf/scorecard","kind":"security-score"},
+    {"priority":900,"id":"github-code-search","url":"https://github.com/search?type=code","kind":"secondary-search"}
+  ]
+}

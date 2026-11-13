@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: prometheus-kata-qemu
+  name: prometheus-kata-qemu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: prometheus-kata-qemu
+  template:
+    metadata:
+      labels:
+        run: prometheus-kata-qemu
+    spec:
+      runtimeClassName: kata-qemu
+      containers:
+      - image: quay.io/prometheus/prometheus
+        imagePullPolicy: Always
+        name: prometheus
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 200m
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-kata-qemu
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    run: prometheus-kata-qemu
+  sessionAffinity: None
+  type: ClusterIP

@@ -1,0 +1,58 @@
+# repair-01 for evidenced GAP: producer run 34085609300 stalled in full destination checkout.
+# Distinct StrategyDelta: sparse destination checkout; original workflow remains immutable history.
+name: YAIWES LOOP5 Repair 01 Sparse Extract
+run-name: YAIWES LOOP5 Repair01 • ${{ github.event_name }} • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-loop5-repair-01.yml'
+
+permissions:
+  contents: write
+
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_LFS_SKIP_PUSH: "1"
+  GIT_LFS_SKIP_DOWNLOAD: "1"
+  GIT_TERMINAL_PROMPT: "0"
+
+concurrency:
+  group: yaiwes-loop5-repair01-sparse-writer
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Sparse checkout destination snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+          lfs: false
+          sparse-checkout: |
+            scripts/yaiwes_loop5_download_extract.py
+            ➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5
+            .github/workflows/yaiwes-loop5-repair-01.yml
+          sparse-checkout-cone-mode: false
+      - name: Execute fixed skill-derived downloader
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local filter.lfs.process ''
+          git config --local filter.lfs.required false
+          python3 scripts/yaiwes_loop5_download_extract.py
+      - name: Repair evidence
+        if: always()
+        shell: bash
+        run: |
+          echo 'FAILED_STRATEGY=full destination checkout in run 34085609300'
+          echo 'DO_NOT_REPEAT=full checkout producer'
+          echo 'NEW_STRATEGY=sparse checkout + same fixed skill-derived payload'
+          echo 'skill_source=c789e5fe635e220230ffc759d86dc3bbb8e261d4'
+          echo 'destination=➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5'

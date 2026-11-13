@@ -1,0 +1,332 @@
+"""Unit tests for :mod:`app.services.snapshot_service`."""
+
+from __future__ import annotations
+
+import shutil
+from pathlib import Path
+
+import pytest
+
+from app.services import snapshot_service
+
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("git") is None, reason="git binary not available"
+)
+
+
+@pytest.fixture
+def state_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Redirect ``OPENAGENTD_STATE_DIR`` so the snapshot repo lives in tmp."""
+    from app.core.config import settings
+
+    state = tmp_path / "state"
+    state.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", str(state))
+    return state
+
+
+@pytest.fixture
+def workspace(tmp_path: Path) -> Path:
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    return ws
+
+
+def test_delete_extras_prunes_only_deleted_file_ancestors_and_contains_paths(
+    workspace: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Restore cleanup must not scan the workspace or follow escaped paths."""
+    deleted = workspace / "nested" / "child" / "gone.txt"
+    deleted.parent.mkdir(parents=True)
+    deleted.write_text("gone")
+    retained = workspace / "unrelated" / "keep.txt"
+    retained.parent.mkdir()
+    retained.write_text("keep")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("protected")
+
+    def unexpected_walk(*args, **kwargs):
+        raise AssertionError("cleanup must only visit deleted-file ancestors")
+
+    monkeypatch.setattr(snapshot_service.os, "walk", unexpected_walk)
+
+    snapshot_service._delete_extras(
+        workspace, {"nested/child/gone.txt", "../outside.txt"}
+    )
+
+    assert not deleted.exists()
+    assert not (workspace / "nested").exists()
+    assert retained.read_text() == "keep"
+    assert outside.read_text() == "protected"
+
+
+def test_delete_extras_unlinks_workspace_symlink_without_touching_target(
+    workspace: Path, tmp_path: Path
+) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("protected")
+    link = workspace / "external-link"
+    link.symlink_to(outside)
+
+    snapshot_service._delete_extras(workspace, {"external-link"})
+
+    assert not link.exists()
+    assert not link.is_symlink()
+    assert outside.read_text() == "protected"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_maintenance_prunes_unreachable_objects(
+    state_dir: Path, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    async def fake_git(*args: str, **kwargs: object) -> tuple[int, bytes, bytes]:
+        calls.append(args)
+        return 0, b"", b""
+
+    monkeypatch.setattr(snapshot_service, "_git", fake_git)
+    await snapshot_service._maintain_repo(state_dir / "git", workspace)
+
+    assert calls == [
+        ("--git-dir", str(state_dir / "git"), "gc", "--auto", "--prune=now")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_track_returns_tree_hash(state_dir: Path, workspace: Path) -> None:
+    (workspace / "a.txt").write_text("hello")
+
+    snapshot = await snapshot_service.track("sess-1", workspace)
+
+    assert snapshot is not None
+    assert len(snapshot) == 40
+    assert snapshot_service.snapshot_dir("sess-1").exists()
+
+
+@pytest.mark.asyncio
+async def test_track_reuses_successful_hash_without_staging_or_writing_tree(
+    state_dir: Path, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unchanged workspace must avoid both index writes and tree creation."""
+    tracked = workspace / "tracked.txt"
+    tracked.write_text("v1")
+    first = await snapshot_service.track("sess-cache", workspace)
+    assert first is not None
+
+    calls: list[tuple[str, ...]] = []
+    original_git = snapshot_service._git
+
+    async def record_git(*args: str, **kwargs: object) -> tuple[int, bytes, bytes]:
+        calls.append(args)
+        return await original_git(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(snapshot_service, "_git", record_git)
+
+    assert await snapshot_service.track("sess-cache", workspace) == first
+    assert not any("add" in args for args in calls)
+    assert not any("write-tree" in args for args in calls)
+
+    tracked.write_text("v2")
+    changed = await snapshot_service.track("sess-cache", workspace)
+    assert changed is not None
+    assert changed != first
+    assert any("add" in args for args in calls)
+    assert any("write-tree" in args for args in calls)
+
+
+@pytest.mark.asyncio
+async def test_track_empty_workspace_returns_hash(
+    state_dir: Path, workspace: Path
+) -> None:
+    snapshot = await snapshot_service.track("sess-empty", workspace)
+    assert snapshot is not None
+    assert len(snapshot) == 40
+
+
+@pytest.mark.asyncio
+async def test_track_missing_workspace_returns_none(
+    state_dir: Path, tmp_path: Path
+) -> None:
+    missing = tmp_path / "does-not-exist"
+    snapshot = await snapshot_service.track("sess-miss", missing)
+    assert snapshot is None
+
+
+@pytest.mark.asyncio
+async def test_restore_reports_modified_added_removed_and_round_trips(
+    state_dir: Path, workspace: Path
+) -> None:
+    """One real-git scenario covers restore partitions and redo-style replay."""
+    modified = workspace / "config.txt"
+    deleted = workspace / "deleted_by_agent.txt"
+    new_file = workspace / "new_artifact.md"
+    modified.write_text("v1")
+    deleted.write_text("important")
+
+    baseline = await snapshot_service.track("sess-restore", workspace)
+    assert baseline is not None
+
+    modified.write_text("v2-changed-by-tool")
+    deleted.unlink()
+    new_file.write_text("agent produced this")
+    live_snapshot = await snapshot_service.track("sess-restore", workspace)
+    assert live_snapshot is not None
+
+    result = await snapshot_service.restore("sess-restore", workspace, baseline)
+    assert result.ok is True
+    assert modified.read_text() == "v1"
+    assert deleted.read_text() == "important"
+    assert not new_file.exists(), (
+        "Newly-added file must be removed when restoring to a snapshot that predates it"
+    )
+    assert result.modified == ["config.txt"]
+    assert result.added == ["deleted_by_agent.txt"]
+    assert result.removed == ["new_artifact.md"]
+
+    result = await snapshot_service.restore("sess-restore", workspace, live_snapshot)
+    assert result.ok is True
+    assert modified.read_text() == "v2-changed-by-tool"
+    assert not deleted.exists()
+    assert new_file.read_text() == "agent produced this"
+    assert result.modified == ["config.txt"]
+    assert result.added == ["new_artifact.md"]
+    assert result.removed == ["deleted_by_agent.txt"]
+
+
+@pytest.mark.asyncio
+async def test_restore_no_repo_returns_false(state_dir: Path, workspace: Path) -> None:
+    result = await snapshot_service.restore("sess-unknown", workspace, "0" * 40)
+    assert result.ok is False
+    assert result.added == []
+    assert result.modified == []
+    assert result.removed == []
+
+
+async def test_snapshot_round_trip_with_relative_state_dir(tmp_path, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", "state")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    file = workspace / "file.txt"
+    file.write_text("before")
+    snapshot = await snapshot_service.track("relative-state", workspace)
+    assert snapshot is not None
+    file.write_text("after")
+    result = await snapshot_service.restore("relative-state", workspace, snapshot)
+    assert result.ok is True
+    assert file.read_text() == "before"
+
+
+@pytest.mark.asyncio
+async def test_restore_unknown_hash_returns_false(
+    state_dir: Path, workspace: Path
+) -> None:
+    (workspace / "a.txt").write_text("x")
+    await snapshot_service.track("sess-bad-hash", workspace)
+    result = await snapshot_service.restore("sess-bad-hash", workspace, "0" * 40)
+    assert result.ok is False
+
+
+@pytest.mark.asyncio
+async def test_restore_preserves_main_index_stat_cache(
+    state_dir: Path, workspace: Path
+) -> None:
+    """After ``restore``, the next ``track`` must remain O(changed paths)."""
+    for i in range(10):
+        (workspace / f"f{i}.txt").write_text(f"v1-{i}")
+    snap_a = await snapshot_service.track("stat-cache", workspace)
+    assert snap_a is not None
+
+    (workspace / "f0.txt").write_text("v2-0")
+    snap_b = await snapshot_service.track("stat-cache", workspace)
+    assert snap_b is not None
+    assert snap_b != snap_a
+
+    result = await snapshot_service.restore("stat-cache", workspace, snap_a)
+    assert result.ok is True
+    assert (workspace / "f0.txt").read_text() == "v1-0"
+    assert result.modified == ["f0.txt"]
+    assert result.added == []
+    assert result.removed == []
+
+    gitdir = snapshot_service.snapshot_dir("stat-cache")
+    candidates = await snapshot_service._list_candidate_paths(gitdir, workspace)
+    assert candidates == ["f0.txt"], (
+        f"next track would re-stage {len(candidates)} files; expected exactly "
+        "['f0.txt']. If the count blew up to ~10, the main index stat-cache "
+        "was wiped — check the temp-index (GIT_INDEX_FILE) wiring around "
+        "read-tree + checkout-index in snapshot_service.restore."
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_candidate_paths_stats_untracked_files_off_the_event_loop(
+    state_dir: Path, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Size-filtering untracked files must not stat them on the loop thread.
+
+    A workspace with thousands of untracked files would otherwise freeze every
+    SSE stream for the duration of the stat walk.
+    """
+    import threading
+
+    for i in range(5):
+        (workspace / f"u{i}.txt").write_text("x")
+    (workspace / "big.bin").write_bytes(b"0" * (snapshot_service._MAX_FILE_SIZE + 1))
+    await snapshot_service.track("offloop", workspace)  # init repo; files untracked
+    gitdir = snapshot_service.snapshot_dir("offloop")
+
+    loop_thread = threading.get_ident()
+    stat_threads: set[int] = set()
+    real_stat = snapshot_service.Path.stat
+
+    def spying_stat(self, *args, **kwargs):
+        if self.parent == workspace:
+            stat_threads.add(threading.get_ident())
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(snapshot_service.Path, "stat", spying_stat)
+    # Make a change so `track` did not already stage everything.
+    (workspace / "u0.txt").write_text("changed")
+
+    candidates = await snapshot_service._list_candidate_paths(gitdir, workspace)
+
+    assert "big.bin" not in candidates
+    assert "u0.txt" in candidates
+    assert stat_threads, "expected untracked files to be size-checked"
+    assert loop_thread not in stat_threads
+
+
+@pytest.mark.asyncio
+async def test_remove_drops_repo(state_dir: Path, workspace: Path) -> None:
+    (workspace / "a").write_text("x")
+    await snapshot_service.track("doomed", workspace)
+    repo = snapshot_service.snapshot_dir("doomed")
+    assert repo.exists()
+
+    await snapshot_service.remove("doomed")
+    assert not repo.exists()
+
+
+@pytest.mark.asyncio
+async def test_track_skips_oversized_untracked_files(
+    state_dir: Path, workspace: Path
+) -> None:
+    big = workspace / "huge.bin"
+    big.write_bytes(b"x" * (2 * 1024 * 1024 + 1))
+    small = workspace / "small.txt"
+    small.write_text("ok")
+
+    snapshot = await snapshot_service.track("sess-big", workspace)
+    assert snapshot is not None
+
+    small.write_text("changed")
+    big.write_bytes(b"y" * (2 * 1024 * 1024 + 1))
+
+    await snapshot_service.restore("sess-big", workspace, snapshot)
+    assert small.read_text() == "ok"
+    assert big.exists()

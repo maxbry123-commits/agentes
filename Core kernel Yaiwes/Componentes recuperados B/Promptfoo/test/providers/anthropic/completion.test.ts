@@ -1,0 +1,537 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  clearCache,
+  disableCache,
+  enableCache,
+  getCache,
+  withCacheNamespace,
+} from '../../../src/cache';
+import logger from '../../../src/logger';
+import { AnthropicCompletionProvider } from '../../../src/providers/anthropic/completion';
+import { mockProcessEnv } from '../../util/utils';
+
+vi.mock('proxy-agent', async (importOriginal) => {
+  return {
+    ...(await importOriginal()),
+
+    ProxyAgent: vi.fn().mockImplementation(function () {
+      return {};
+    }),
+  };
+});
+
+const originalEnv = { ...process.env };
+const TEST_API_KEY = 'test-api-key';
+
+describe('AnthropicCompletionProvider', () => {
+  beforeEach(() => {
+    mockProcessEnv({ ...originalEnv, ANTHROPIC_API_KEY: TEST_API_KEY }, { clear: true });
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    await clearCache();
+    enableCache();
+    mockProcessEnv(originalEnv, { clear: true });
+  });
+
+  describe('callApi', () => {
+    it('should return output for default behavior', async () => {
+      const provider = new AnthropicCompletionProvider('claude-1');
+      vi.spyOn(provider.anthropic.completions, 'create').mockResolvedValue({
+        id: 'test-id',
+        model: 'claude-1',
+        stop_reason: 'stop_sequence',
+        type: 'completion',
+        completion: 'Test output',
+      });
+      const result = await provider.callApi('Test prompt');
+
+      expect(provider.anthropic.completions.create).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        output: 'Test output',
+        tokenUsage: { numRequests: 1 },
+      });
+    });
+
+    it('should return cached output with caching enabled', async () => {
+      const provider = new AnthropicCompletionProvider('claude-1');
+      vi.spyOn(provider.anthropic.completions, 'create').mockResolvedValue({
+        id: 'test-id',
+        model: 'claude-1',
+        stop_reason: 'stop_sequence',
+        type: 'completion',
+        completion: 'Test output',
+      });
+      const result = await provider.callApi('Test prompt');
+
+      expect(provider.anthropic.completions.create).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        output: 'Test output',
+        tokenUsage: { numRequests: 1 },
+      });
+
+      vi.mocked(provider.anthropic.completions.create).mockClear();
+      const cachedResult = await provider.callApi('Test prompt');
+
+      expect(provider.anthropic.completions.create).toHaveBeenCalledTimes(0);
+      expect(cachedResult.cached).toBe(true);
+      expect(cachedResult).toMatchObject({
+        output: 'Test output',
+        tokenUsage: { numRequests: 0 },
+      });
+    });
+
+    it('should hash request params in cache keys', async () => {
+      const provider = new AnthropicCompletionProvider('claude-1', { label: 'completion-test' });
+      const cache = await getCache();
+      const getSpy = vi.spyOn(cache, 'get');
+      const setSpy = vi.spyOn(cache, 'set');
+      vi.spyOn(provider.anthropic.completions, 'create').mockResolvedValue({
+        id: 'test-id',
+        model: 'claude-1',
+        stop_reason: 'stop_sequence',
+        type: 'completion',
+        completion: 'Test output',
+      });
+
+      await provider.callApi('Sensitive prompt sk-ant-secret');
+
+      const cacheKey = getSpy.mock.calls[0]?.[0] as string;
+      expect(cacheKey).toMatch(
+        /^anthropic:completion:claude-1:[a-f0-9]{64}:[a-f0-9]{64}:[a-f0-9]{64}$/,
+      );
+      expect(cacheKey).not.toContain('Sensitive prompt');
+      expect(cacheKey).not.toContain('sk-ant-secret');
+      expect(setSpy).toHaveBeenCalledWith(cacheKey, JSON.stringify('Test output'));
+    });
+
+    it('should isolate hashed cache keys by non-secret provider label', async () => {
+      const providerA = new AnthropicCompletionProvider('claude-1', {
+        label: 'tenant-a',
+        config: { apiKey: 'sk-ant-tenant-a' },
+      });
+      const providerB = new AnthropicCompletionProvider('claude-1', {
+        label: 'tenant-b',
+        config: { apiKey: 'sk-ant-tenant-b' },
+      });
+      const cache = await getCache();
+      const getSpy = vi.spyOn(cache, 'get').mockResolvedValue(undefined);
+      vi.spyOn(cache, 'set').mockResolvedValue(undefined);
+      vi.spyOn(providerA.anthropic.completions, 'create').mockResolvedValue({
+        id: 'test-id-a',
+        model: 'claude-1',
+        stop_reason: 'stop_sequence',
+        type: 'completion',
+        completion: 'Tenant A output',
+      });
+      vi.spyOn(providerB.anthropic.completions, 'create').mockResolvedValue({
+        id: 'test-id-b',
+        model: 'claude-1',
+        stop_reason: 'stop_sequence',
+        type: 'completion',
+        completion: 'Tenant B output',
+      });
+
+      await providerA.callApi('Shared sensitive prompt');
+      await providerB.callApi('Shared sensitive prompt');
+
+      const [cacheKeyA, cacheKeyB] = getSpy.mock.calls.map(([key]) => key as string);
+      expect(cacheKeyA).toMatch(
+        /^anthropic:completion:claude-1:[a-f0-9]{64}:[a-f0-9]{64}:[a-f0-9]{64}$/,
+      );
+      expect(cacheKeyB).toMatch(
+        /^anthropic:completion:claude-1:[a-f0-9]{64}:[a-f0-9]{64}:[a-f0-9]{64}$/,
+      );
+      expect(cacheKeyA).not.toBe(cacheKeyB);
+      for (const cacheKey of [cacheKeyA, cacheKeyB]) {
+        expect(cacheKey).not.toContain('Shared sensitive prompt');
+        expect(cacheKey).not.toContain('sk-ant-tenant-a');
+        expect(cacheKey).not.toContain('sk-ant-tenant-b');
+      }
+    });
+
+    it('keeps unlabeled credentials isolated without persisting unreachable cache entries', async () => {
+      const providerA = new AnthropicCompletionProvider('claude-1', {
+        config: { apiKey: 'sk-ant-tenant-a' },
+      });
+      const providerB = new AnthropicCompletionProvider('claude-1', {
+        config: { apiKey: 'sk-ant-tenant-b' },
+      });
+      const persistentCache = await getCache();
+      const getSpy = vi.spyOn(persistentCache, 'get');
+      const setSpy = vi.spyOn(persistentCache, 'set');
+      vi.spyOn(providerA.anthropic.completions, 'create').mockResolvedValue({
+        id: 'msg-a',
+        model: 'claude-1',
+        stop_reason: 'stop_sequence',
+        type: 'completion',
+        completion: 'Tenant A response',
+      });
+      vi.spyOn(providerB.anthropic.completions, 'create').mockResolvedValue({
+        id: 'msg-b',
+        model: 'claude-1',
+        stop_reason: 'stop_sequence',
+        type: 'completion',
+        completion: 'Tenant B response',
+      });
+
+      const resultA = await providerA.callApi('Shared sensitive prompt');
+      const resultB = await providerB.callApi('Shared sensitive prompt');
+      const cachedResultA = await providerA.callApi('Shared sensitive prompt');
+      const cachedResultB = await providerB.callApi('Shared sensitive prompt');
+
+      expect(resultA.output).toBe('Tenant A response');
+      expect(resultB.output).toBe('Tenant B response');
+      expect(cachedResultA).toMatchObject({ output: 'Tenant A response', cached: true });
+      expect(cachedResultB).toMatchObject({ output: 'Tenant B response', cached: true });
+      expect(providerA.anthropic.completions.create).toHaveBeenCalledTimes(1);
+      expect(providerB.anthropic.completions.create).toHaveBeenCalledTimes(1);
+      expect(getSpy).not.toHaveBeenCalled();
+      expect(setSpy).not.toHaveBeenCalled();
+    });
+
+    it('isolates unlabeled completion cache entries by repeat namespace and honors clearCache', async () => {
+      const provider = new AnthropicCompletionProvider('claude-1', {
+        config: { apiKey: 'sk-ant-tenant-a' },
+      });
+      const create = vi
+        .spyOn(provider.anthropic.completions, 'create')
+        .mockResolvedValueOnce({ completion: 'fresh-1' } as any)
+        .mockResolvedValueOnce({ completion: 'fresh-2' } as any)
+        .mockResolvedValueOnce({ completion: 'fresh-3' } as any);
+
+      const repeat0 = await withCacheNamespace('repeat:0', () => provider.callApi('Same prompt'));
+      const repeat1 = await withCacheNamespace('repeat:1', () => provider.callApi('Same prompt'));
+      await clearCache();
+      const afterClear = await withCacheNamespace('repeat:0', () =>
+        provider.callApi('Same prompt'),
+      );
+
+      expect(repeat0).toMatchObject({ output: 'fresh-1' });
+      expect(repeat1).toMatchObject({ output: 'fresh-2' });
+      expect(afterClear).toMatchObject({ output: 'fresh-3' });
+      expect(create).toHaveBeenCalledTimes(3);
+    });
+
+    it('expires unlabeled completion cache entries using PROMPTFOO_CACHE_TTL', async () => {
+      const restoreEnv = mockProcessEnv({ PROMPTFOO_CACHE_TTL: '1' });
+      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+      const provider = new AnthropicCompletionProvider('claude-1', {
+        config: { apiKey: 'sk-ant-tenant-a' },
+      });
+      const create = vi
+        .spyOn(provider.anthropic.completions, 'create')
+        .mockResolvedValueOnce({ completion: 'fresh-1' } as any)
+        .mockResolvedValueOnce({ completion: 'fresh-2' } as any);
+
+      try {
+        const first = await provider.callApi('Same prompt');
+        now.mockReturnValue(2_001);
+        const second = await provider.callApi('Same prompt');
+
+        expect(first).toMatchObject({ output: 'fresh-1' });
+        expect(second).toMatchObject({ output: 'fresh-2' });
+        expect(create).toHaveBeenCalledTimes(2);
+      } finally {
+        restoreEnv();
+        now.mockRestore();
+      }
+    });
+
+    it('invalidates unlabeled completion cache entries when the cache is cleared directly', async () => {
+      const provider = new AnthropicCompletionProvider('claude-1', {
+        config: { apiKey: 'sk-ant-tenant-a' },
+      });
+      const create = vi
+        .spyOn(provider.anthropic.completions, 'create')
+        .mockResolvedValueOnce({ completion: 'fresh-1' } as any)
+        .mockResolvedValueOnce({ completion: 'fresh-2' } as any);
+
+      await provider.callApi('Same prompt');
+      await getCache().clear();
+      const afterClear = await provider.callApi('Same prompt');
+
+      expect(afterClear).toMatchObject({ output: 'fresh-2' });
+      expect(create).toHaveBeenCalledTimes(2);
+    });
+
+    it('invalidates unlabeled completion cache entries when a namespaced cache is cleared', async () => {
+      const provider = new AnthropicCompletionProvider('claude-1', {
+        config: { apiKey: 'sk-ant-tenant-a' },
+      });
+      const create = vi
+        .spyOn(provider.anthropic.completions, 'create')
+        .mockResolvedValueOnce({ completion: 'fresh-1' } as any)
+        .mockResolvedValueOnce({ completion: 'fresh-2' } as any);
+
+      await withCacheNamespace('repeat:0', () => provider.callApi('Same prompt'));
+      await withCacheNamespace('repeat:0', async () => getCache().clear());
+      const afterClear = await withCacheNamespace('repeat:0', () =>
+        provider.callApi('Same prompt'),
+      );
+
+      expect(afterClear).toMatchObject({ output: 'fresh-2' });
+      expect(create).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps unlabeled completion cache entries when PROMPTFOO_CACHE_TTL is zero', async () => {
+      const restoreEnv = mockProcessEnv({ PROMPTFOO_CACHE_TTL: '0' });
+      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+      const provider = new AnthropicCompletionProvider('claude-1', {
+        config: { apiKey: 'sk-ant-tenant-a' },
+      });
+      const create = vi
+        .spyOn(provider.anthropic.completions, 'create')
+        .mockResolvedValue({ completion: 'fresh-1' } as any);
+
+      try {
+        await provider.callApi('Same prompt');
+        now.mockReturnValue(10_000_000);
+        const cached = await provider.callApi('Same prompt');
+
+        expect(cached).toMatchObject({ output: 'fresh-1', cached: true });
+        expect(create).toHaveBeenCalledTimes(1);
+      } finally {
+        restoreEnv();
+        now.mockRestore();
+      }
+    });
+
+    it('should bypass the response cache for scoped Anthropic custom headers', async () => {
+      const providerA = new AnthropicCompletionProvider('claude-1', {
+        config: { apiKey: 'shared-api-key' },
+        env: { ANTHROPIC_CUSTOM_HEADERS: 'X-Tenant: tenant-a-secret' },
+      });
+      const providerB = new AnthropicCompletionProvider('claude-1', {
+        config: { apiKey: 'shared-api-key' },
+        env: { ANTHROPIC_CUSTOM_HEADERS: 'X-Tenant: tenant-b-secret' },
+      });
+      const cache = await getCache();
+      const getSpy = vi.spyOn(cache, 'get');
+      const setSpy = vi.spyOn(cache, 'set');
+      vi.spyOn(providerA.anthropic.completions, 'create').mockResolvedValue({
+        id: 'test-id-a',
+        model: 'claude-1',
+        stop_reason: 'stop_sequence',
+        type: 'completion',
+        completion: 'Tenant A output',
+      });
+      vi.spyOn(providerB.anthropic.completions, 'create').mockResolvedValue({
+        id: 'test-id-b',
+        model: 'claude-1',
+        stop_reason: 'stop_sequence',
+        type: 'completion',
+        completion: 'Tenant B output',
+      });
+
+      await providerA.callApi('Shared prompt');
+      await providerB.callApi('Shared prompt');
+
+      expect(getSpy).not.toHaveBeenCalled();
+      expect(setSpy).not.toHaveBeenCalled();
+      expect(providerA.anthropic.completions.create).toHaveBeenCalledTimes(1);
+      expect(providerB.anthropic.completions.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('should keep bypassing the response cache after captured ambient custom headers are cleared', async () => {
+      mockProcessEnv({ ANTHROPIC_CUSTOM_HEADERS: 'X-Tenant: captured-secret' });
+      const provider = new AnthropicCompletionProvider('claude-1', {
+        config: { apiKey: 'shared-api-key' },
+      });
+      mockProcessEnv({ ANTHROPIC_CUSTOM_HEADERS: undefined });
+      const cache = await getCache();
+      const getSpy = vi.spyOn(cache, 'get');
+      const setSpy = vi.spyOn(cache, 'set');
+      vi.spyOn(provider.anthropic.completions, 'create').mockResolvedValue({
+        id: 'test-id',
+        model: 'claude-1',
+        stop_reason: 'stop_sequence',
+        type: 'completion',
+        completion: 'Tenant output',
+      });
+
+      await provider.callApi('Shared prompt');
+      await provider.callApi('Shared prompt');
+
+      expect(getSpy).not.toHaveBeenCalled();
+      expect(setSpy).not.toHaveBeenCalled();
+      expect(provider.anthropic.completions.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('should keep the non-secret cache namespace stable across module reloads', async () => {
+      async function getNamespaceFromFreshModule() {
+        vi.resetModules();
+        const anthropicGeneric = await import('../../../src/providers/anthropic/generic');
+        return {
+          hashAnthropicCacheValue: anthropicGeneric.hashAnthropicCacheValue,
+          namespace: anthropicGeneric.hashAnthropicCacheValue({
+            providerId: 'anthropic:claude-1',
+            providerLabel: 'tenant-a',
+          }),
+        };
+      }
+
+      const firstLoad = await getNamespaceFromFreshModule();
+      const secondLoad = await getNamespaceFromFreshModule();
+
+      expect(firstLoad.hashAnthropicCacheValue).not.toBe(secondLoad.hashAnthropicCacheValue);
+      expect(firstLoad.namespace).toBe(secondLoad.namespace);
+      expect(firstLoad.namespace).toMatch(/^[a-f0-9]{64}$/);
+      expect(secondLoad.namespace).toMatch(/^[a-f0-9]{64}$/);
+      expect(firstLoad.namespace).not.toContain('sk-ant-reload-secret');
+    });
+
+    // Pinning fixed digests here is the cross-process stability check: if a
+    // future change accidentally introduces non-determinism (e.g. randomness or
+    // env-derived state baked in at module load), these literal values will
+    // diverge in every process that runs the suite.
+    it('should produce known hex digests for fixed inputs', async () => {
+      const { hashAnthropicCacheValue } = await import('../../../src/providers/anthropic/generic');
+
+      expect(hashAnthropicCacheValue({ prompt: 'same prompt' })).toBe(
+        '986a0c23b9bf151804afb7cd7ff27307d4450f268f18bdd7d5cea95d52de9114',
+      );
+      expect(hashAnthropicCacheValue(undefined)).toBe(
+        '766c13d249e6c1a4c7ab9b490e2b854b2764a4d88677be73fb242f2238bd3d9d',
+      );
+    });
+
+    it('should hash semantically identical objects to the same value regardless of key order', async () => {
+      const { hashAnthropicCacheValue } = await import('../../../src/providers/anthropic/generic');
+
+      expect(hashAnthropicCacheValue({ a: 1, b: 2, c: 3 })).toBe(
+        hashAnthropicCacheValue({ c: 3, a: 1, b: 2 }),
+      );
+      expect(
+        hashAnthropicCacheValue({ messages: [{ role: 'user', content: 'hi' }], model: 'claude' }),
+      ).toBe(
+        hashAnthropicCacheValue({ model: 'claude', messages: [{ content: 'hi', role: 'user' }] }),
+      );
+      // Arrays preserve order — element ordering is semantically meaningful.
+      expect(hashAnthropicCacheValue([1, 2, 3])).not.toBe(hashAnthropicCacheValue([3, 2, 1]));
+    });
+
+    it('should preserve non-plain-object semantics so distinct values do not collide', async () => {
+      const { hashAnthropicCacheValue } = await import('../../../src/providers/anthropic/generic');
+
+      // Date and Buffer expose state via toJSON / default serialization rather
+      // than enumerable own keys. Naïve canonicalization would rebuild them as
+      // empty/index-only objects and collapse distinct values to the same hash.
+      expect(hashAnthropicCacheValue(new Date('2026-01-01T00:00:00.000Z'))).not.toBe(
+        hashAnthropicCacheValue(new Date('2027-06-15T12:00:00.000Z')),
+      );
+      expect(hashAnthropicCacheValue({ ts: new Date('2026-01-01T00:00:00.000Z') })).not.toBe(
+        hashAnthropicCacheValue({ ts: new Date('2027-06-15T12:00:00.000Z') }),
+      );
+      expect(hashAnthropicCacheValue(Buffer.from('alpha'))).not.toBe(
+        hashAnthropicCacheValue(Buffer.from('beta')),
+      );
+    });
+
+    it('should avoid logging prompts and generated outputs in debug metadata', async () => {
+      const provider = new AnthropicCompletionProvider('claude-1');
+      const debugSpy = vi.spyOn(logger, 'debug').mockImplementation(() => {});
+      vi.spyOn(provider.anthropic.completions, 'create').mockResolvedValue({
+        id: 'test-id',
+        model: 'claude-1',
+        stop_reason: 'stop_sequence',
+        type: 'completion',
+        completion: 'Generated secret output',
+      });
+
+      await provider.callApi('Sensitive prompt with sk-ant-secret');
+
+      const debugLogs = JSON.stringify(debugSpy.mock.calls);
+      expect(debugLogs).not.toContain('Sensitive prompt');
+      expect(debugLogs).not.toContain('sk-ant-secret');
+      expect(debugLogs).not.toContain('Generated secret output');
+      debugSpy.mockRestore();
+    });
+
+    it('should return fresh output with caching disabled', async () => {
+      const provider = new AnthropicCompletionProvider('claude-1');
+      vi.spyOn(provider.anthropic.completions, 'create').mockResolvedValue({
+        id: 'test-id',
+        model: 'claude-1',
+        stop_reason: 'stop_sequence',
+        type: 'completion',
+        completion: 'Test output',
+      });
+      const result = await provider.callApi('Test prompt');
+
+      expect(provider.anthropic.completions.create).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        output: 'Test output',
+        tokenUsage: {},
+      });
+
+      vi.mocked(provider.anthropic.completions.create).mockClear();
+
+      disableCache();
+
+      const freshResult = await provider.callApi('Test prompt');
+
+      expect(provider.anthropic.completions.create).toHaveBeenCalledTimes(1);
+      expect(freshResult).toMatchObject({
+        output: 'Test output',
+        tokenUsage: {},
+      });
+    });
+
+    it('should handle API call error', async () => {
+      const provider = new AnthropicCompletionProvider('claude-1');
+      vi.spyOn(provider.anthropic.completions, 'create').mockRejectedValue(
+        new Error('API call failed'),
+      );
+
+      const result = await provider.callApi('Test prompt');
+      expect(result).toMatchObject({
+        error: 'API call error: Error: API call failed',
+      });
+    });
+
+    it('should preserve an explicit max_tokens_to_sample value of 0', async () => {
+      const restoreEnv = mockProcessEnv({ ANTHROPIC_MAX_TOKENS: '1024' });
+
+      try {
+        const provider = new AnthropicCompletionProvider('claude-2.1', {
+          config: { max_tokens_to_sample: 0 },
+        });
+        vi.spyOn(provider.anthropic.completions, 'create').mockResolvedValue({
+          id: 'test-id',
+          model: 'claude-2.1',
+          stop_reason: 'stop_sequence',
+          type: 'completion',
+          completion: 'Test output',
+        });
+
+        await provider.callApi('Test prompt');
+
+        expect(provider.anthropic.completions.create).toHaveBeenCalledWith(
+          expect.objectContaining({ max_tokens_to_sample: 0 }),
+        );
+      } finally {
+        restoreEnv();
+      }
+    });
+  });
+
+  describe('requiresApiKey', () => {
+    it('requires an API key for the Completion API even when apiKeyRequired: false is set', () => {
+      // Claude Code OAuth tokens only work on the Messages API; forwarding
+      // them to the legacy completions endpoint would fail at request time,
+      // so the completion subclass must not honor `apiKeyRequired: false`.
+      // Surface the missing key at preflight instead. The cast bypasses the
+      // `AnthropicCompletionOptions` type which deliberately does not expose
+      // the field — this test documents the runtime guard for anyone who
+      // bypasses the type system.
+      mockProcessEnv({ ANTHROPIC_API_KEY: undefined });
+      const provider = new AnthropicCompletionProvider('claude-2.1', {
+        config: { apiKeyRequired: false } as never,
+      });
+      expect(provider.requiresApiKey()).toBe(true);
+    });
+  });
+});

@@ -1,0 +1,24 @@
+{
+  "github_run_id": "34971003157",
+  "legacy_nodes_without_completion_contract_unchanged": true,
+  "result": "PASS_TESTED",
+  "schema": "yaiwes.wordflow.evidence/v1",
+  "scope": "MUSE_GLIMMER_STRUCTURED_ACTION_PLUS_FRONTEND_BACKEND_COMPLETION_GATES",
+  "source_sha": "27819c5e7ecf203925d3ffb0123630b20c9ebba4",
+  "tests": {
+    "expected_total": 8,
+    "failed": 0,
+    "file": "runtime/tests/test_muse_frontend_completion_gates.py",
+    "passed": 8
+  },
+  "verified_capabilities": {
+    "backend_completion_profile": true,
+    "frontend_runtime_browser_interaction_mobile_touch_required": true,
+    "frontend_source_build_only_rejected": true,
+    "kernel_done_requires_opt_in_completion_contract": true,
+    "llm_side_effect_blocked": true,
+    "sheriff_required_for_deterministic_side_effect": true,
+    "stable_command_identity": true,
+    "structured_action_required": true
+  }
+}

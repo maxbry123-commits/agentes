@@ -1,0 +1,85 @@
+---
+source: crates/zizmor/tests/integration/e2e/crater.rs
+expression: "zizmor().offline(NetworkMode::AssertOnline).output(OutputMode::Both).args([\"--persona=pedantic\"]).input(\"curl/curl@6c8956c1cbf5cffcd2fd4571cf277e2eec280578\").run()?"
+---
+ INFO zizmor: 🌈 zizmor v@@VERSION@@
+ INFO collect_inputs: zizmor::registry::input: collected 17 inputs from curl/curl
+ INFO audit: zizmor: 🌈 completed .github/dependabot.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/appveyor-status.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/checkdocs.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/checksrc.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/checkurls.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/codeql.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/configure-vs-cmake.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/curl-for-win.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/distcheck.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/fuzz.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/http3-linux.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/label.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/linux-old.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/linux.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/macos.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/non-native.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/windows.yml
+error[unpinned-images]: unpinned image references
+  --> .github/workflows/linux-old.yml:58:5
+   |
+58 |     container: 'debian:stretch'
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ container image is not pinned to a SHA256 hash
+   |
+   = note: audit confidence → High
+
+error[unpinned-images]: unpinned image references
+   --> .github/workflows/linux.yml:64:5
+    |
+ 64 |     container: ${{ matrix.build.container }}
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ container image is not pinned to a SHA256 hash
+...
+ 73 |       matrix:
+    |       ------ this matrix
+...
+390 |             container: 'andy5995/slackware-build-essential:15.0'
+    |             ---------------------------------------------------- this expansion of matrix.build.container
+    |
+    = note: audit confidence → High
+
+error[unpinned-images]: unpinned image references
+   --> .github/workflows/linux.yml:64:5
+    |
+ 64 |     container: ${{ matrix.build.container }}
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ container image is not pinned to a SHA256 hash
+...
+ 73 |       matrix:
+    |       ------ this matrix
+...
+394 |             container: 'alpine:3.20'
+    |             ------------------------ this expansion of matrix.build.container
+    |
+    = note: audit confidence → High
+
+error[unpinned-images]: unpinned image references
+   --> .github/workflows/linux.yml:64:5
+    |
+ 64 |     container: ${{ matrix.build.container }}
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ container image is not pinned to a SHA256 hash
+...
+ 73 |       matrix:
+    |       ------ this matrix
+...
+398 |             container: 'alpine:3.20'
+    |             ------------------------ this expansion of matrix.build.container
+    |
+    = note: audit confidence → High
+
+warning[ref-version-mismatch]: action's hash pin has mismatched or missing version comment
+  --> .github/workflows/windows.yml:57:87
+   |
+57 |       - uses: cygwin/cygwin-install-action@f2009323764960f80959895c7bc3bb30210afe4d # v6
+   |               ---------------------------------------------------------------------   ^^ tag points to commit 3f0a3f9f988f
+   |               |
+   |               is pointed to by tag v6.0.0
+   |
+   = note: audit confidence → High
+   = note: this finding has an auto-fix
+
+50 findings (1 ignored, 44 suppressed): 0 informational, 0 low, 1 medium, 4 high

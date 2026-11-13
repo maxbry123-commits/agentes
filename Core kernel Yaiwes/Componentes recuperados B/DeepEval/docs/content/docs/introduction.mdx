@@ -1,0 +1,268 @@
+---
+id: introduction
+title: Introduction to DeepEval
+sidebar_label: Introduction
+languages: [python, typescript]
+---
+
+import {
+  Bot,
+  Cloud,
+  Database,
+  FileSearch,
+  FlaskConical,
+  Gauge,
+  GitMerge,
+  MessagesSquare,
+  Plug,
+  Rocket,
+  Route,
+  ShieldCheck,
+  Sparkles,
+  Workflow,
+} from "lucide-react";
+import VibeCodingLoop from "@site/src/sections/home/VibeCodingLoop";
+
+**DeepEval** is an open-source LLM evaluation framework for LLM applications. DeepEval makes it extremely easy to build and iterate on LLM (applications) and was built with the following principles in mind:
+
+- Unit test LLM outputs with Pytest-style assertions.
+- Use 50+ ready-to-use metrics, including LLM-as-a-judge, agent, tool-use,
+  conversational, safety, RAG, and multimodal metrics.
+- Evaluate AI agents, conversational agents (chatbots), RAG pipelines, MCP systems, and
+  other custom workflows.
+- Run end-to-end, trajectory-based, and component-level evals.
+- Generate synthetic datasets for edge cases that are hard to collect manually.
+- Customize metrics, prompts, models, and evaluation templates when built-in
+  behavior is not enough.
+
+DeepEval is local-first: your evaluations run in your own environment. When your
+team needs shared dashboards, regression tracking, observability, or production
+monitoring, DeepEval integrates natively with [Confident AI](https://www.confident-ai.com).
+
+:::tip[Vibe coding? Have your coding agent set DeepEval up for you.]
+Install the DeepEval Skill in **Cursor, Claude Code, Codex, Windsurf**, or any other AI coding tool, paste a starter prompt, and your coding agent will do the rest of the work. [Click here](/docs/vibe-coder-quickstart) to get started.
+:::
+
+## Who is DeepEval For?
+
+DeepEval was designed for a technical audience and here are the main personas we serve well:
+
+- **AI engineers** who need to evaluate agents, RAG pipelines, tool calls, and
+  production LLM workflows, write unit tests for AI behavior, and use evals in
+  agentic coding tools like Claude Code and Codex.
+- **Data scientists** who want repeatable experiments for comparing prompts,
+  models, datasets, and metric scores.
+- **QAs** who need reliable regression tests for AI behavior before changes
+  reach users.
+- **Tech-savvy PMs** who want to define quality criteria, inspect failures, and
+  track whether product changes improve AI outputs.
+
+## Using DeepEval for Coding Agents
+
+Apart from building evaluation suites and pipelines with DeepEval, DeepEval's CLI evaluation capabilities make it one of the best eval harnesses for vibe coding agents such as Claude Code, Codex, and Cursor.
+
+The diagram below explains how DeepEval can take part in your iteration cycles, not just as a final validation check.
+
+<VibeCodingLoop />
+
+:::info
+To learn more about using DeepEval as an evaluation harness, click [here.](/docs/vibe-coding)
+:::
+
+## Choose Your Path
+
+We highly recommend starting with either of these two quickstarts:
+
+<Cards>
+  <Card
+    icon={<Rocket />}
+    title="5-min Human Quickstart"
+    href="/docs/getting-started"
+  >
+    Install DeepEval, create your first test case, run it with `deepeval test
+    run`, and inspect the results — by hand.
+  </Card>
+  <Card
+    icon={<Sparkles />}
+    title="5-min Vibe Coder Quickstart"
+    href="/docs/vibe-coder-quickstart"
+  >
+    Install the Skill in Cursor / Claude Code / Codex and have your coding agent
+    build the test suite, run evals, and iterate for you.
+  </Card>
+</Cards>
+
+## Start with a Use Case in Mind
+
+Alternatively, if you already have a concrete use case - try out one of our use case specific quickstarts:
+
+<Cards>
+  <Card icon={<Bot />} title="AI Agents" href="/docs/getting-started-agents">
+    Set up tracing, evaluate end-to-end task completion, and score individual
+    agent components.
+  </Card>
+  <Card
+    icon={<MessagesSquare />}
+    title="Chatbots"
+    href="/docs/getting-started-chatbots"
+  >
+    Evaluate multi-turn conversations, turns, and simulated user interactions.
+  </Card>
+  <Card icon={<FileSearch />} title="RAG" href="/docs/getting-started-rag">
+    Evaluate RAG quality end-to-end, then test retrieval and generation
+    separately.
+  </Card>
+  <Card icon={<Plug />} title="MCP" href="/docs/getting-started-mcp">
+    Evaluate MCP clients across single-turn and multi-turn interactions.
+  </Card>
+</Cards>
+
+:::tip
+All quickstarts include a guide on how to bring evals to production near the end.
+:::
+
+## More Resources
+
+### The Core Building Blocks
+
+These concepts show up throughout DeepEval and learning these fundamentals are imperative:
+
+<Cards>
+  <Card
+    icon={<FlaskConical />}
+    title="Test Cases"
+    description="A single behavior you want to evaluate: task input, agent output, expected behavior, tools, context, and metadata."
+    href="/docs/evaluation-test-cases"
+  />
+  <Card
+    icon={<Database />}
+    title="Datasets"
+    description="Collections of goldens that make evals repeatable across prompts, models, and releases."
+    href="/docs/evaluation-datasets"
+  />
+  <Card
+    icon={<Gauge />}
+    title="Metrics"
+    description="The scoring logic that determines whether an agent response, trace, span, or output satisfies your criteria."
+    href="/docs/metrics-introduction"
+  />
+  <Card
+    icon={<GitMerge />}
+    title="Traces"
+    description="Runtime records of your agent's steps, spans, inputs, outputs, tool calls, and component behavior."
+    href="/docs/evaluation-llm-tracing"
+  />
+</Cards>
+
+### Three Modes of Evals
+
+DeepEval supports three complementary ways to evaluate your application. Choose the scope that matches what you need to measure:
+
+<Cards>
+  <Card
+    icon={<Route />}
+    title="End-to-End LLM Evals"
+    description="Best for raw LLM APIs, simple apps, chatbots, and black-box quality checks."
+    href="/docs/evaluation-end-to-end-llm-evals"
+  >
+    <div className="pt-2">
+      Treat your LLM app as a black box. Provide inputs, outputs, expected
+      behavior, and metrics, then use DeepEval to detect quality regressions.
+    </div>
+  </Card>
+  <Card
+    icon={<GitMerge />}
+    title="Component-Level LLM Evals"
+    description="Best for agents, tool-using workflows, MCP systems, and complex multi-step applications."
+    href="/docs/evaluation-component-level-llm-evals"
+  >
+    <div className="pt-2">
+      Trace your app and evaluate individual spans, tools, planners, retrievers,
+      generators, or other internal components.
+    </div>
+  </Card>
+  <Card
+    className="md:col-span-2"
+    icon={<Workflow />}
+    title="Trajectory-Based Evals"
+    description="Best for AI agents and long-horizon agents whose execution path affects quality."
+    href="/docs/evaluation-trajectory-based-llm-evals"
+  >
+    <div className="pt-2">
+      Trace your agent and evaluate its complete chain of plans, model calls,
+      tools, handoffs, and intermediate steps as one trajectory.
+    </div>
+  </Card>
+</Cards>
+
+Use any mode independently or combine all three: score the black-box result, evaluate
+the complete agent trajectory, then inspect individual spans to locate failures.
+
+### DeepEval Ecosystem
+
+DeepEval can run by itself, but it also connects to adjacent tools when your
+workflow needs collaboration, monitoring, or security testing.
+
+<Cards>
+  <Card
+    icon={<Cloud />}
+    title="Confident AI"
+    description="An AI quality platform for shared eval dashboards, regression analysis, observability, and monitoring."
+    href="https://www.confident-ai.com/docs?utm_source=deepeval&utm_medium=docs&utm_content=introduction_ecosystem_card&ref_page=/docs/introduction"
+    external
+  />
+  <Card
+    icon={<ShieldCheck />}
+    title="DeepTeam"
+    description="A safety and security testing framework for red-teaming LLM applications against vulnerabilities."
+    href="https://trydeepteam.com"
+    external
+  />
+</Cards>
+
+## Quick Shoutout To Our Community
+
+DeepEval is shaped by the people who report bugs, propose ideas, review changes, improve docs, and ship code with us. Thank you for building this project with us.
+
+<RepoContributors limit={128} />
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "What is DeepEval?",
+      answer:
+        "DeepEval is an open-source LLM evaluation framework. It lets you unit-test LLM outputs, run end-to-end and component-level evals, generate synthetic datasets, and bring evals into CI/CD from Python.",
+    },
+    {
+      question: "Do I need an account to use DeepEval?",
+      answer: (
+        <>
+          No. DeepEval runs locally. You only need an LLM provider key, such as{" "}
+          <code>OPENAI_API_KEY</code>, for metrics that use an LLM judge. An
+          account is only needed if you want to send results to Confident AI.
+        </>
+      ),
+    },
+    {
+      question: "What can I evaluate with DeepEval?",
+      answer:
+        "AI agents, MCP systems, chatbots, tool-using workflows, LLM arenas, RAG pipelines, summarizers, structured outputs, multimodal apps, and custom LLM workflows.",
+    },
+    {
+      question: "How is DeepEval different from observability tools?",
+      answer:
+        "Observability tools help you inspect what happened. DeepEval focuses on whether behavior is good enough by running metrics against test cases, traces, spans, and datasets. You can use both together.",
+    },
+    {
+      question: "Can I use DeepEval in CI/CD?",
+      answer: (
+        <>
+          Yes. DeepEval is built to run with <code>pytest</code> and CI
+          providers, so you can gate changes on LLM regression tests.
+        </>
+      ),
+    },
+  ]}
+/>

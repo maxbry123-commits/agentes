@@ -1,0 +1,593 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::GlobalError;
+use metrics::{Counter, CounterFn, Gauge, GaugeFn, Histogram, HistogramFn, Key, KeyName, Label, Metadata, SharedString, Unit};
+use opentelemetry::{
+    InstrumentationScope, InstrumentationScopeBuilder, KeyValue, global,
+    metrics::{Meter, MeterProvider},
+};
+use opentelemetry_sdk::metrics::{MeterProviderBuilder, SdkMeterProvider};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    ops::Deref,
+    sync::{
+        Arc, Mutex, OnceLock, RwLock,
+        atomic::{AtomicU64, Ordering},
+    },
+};
+use tracing::error;
+
+const LOG_COMPONENT_OBS: &str = "obs";
+const LOG_SUBSYSTEM_RECORDER: &str = "recorder";
+const EVENT_RECORDER_STATE: &str = "recorder_state";
+static GLOBAL_RECORDER: OnceLock<Recorder> = OnceLock::new();
+
+macro_rules! configure_builder {
+    ($builder:expr, $metadata:expr) => {{
+        let mut builder = $builder;
+        if let Some(metadata) = $metadata {
+            if let Some(unit) = metadata.unit {
+                builder = builder.with_unit(unit.as_canonical_label());
+            }
+            builder = builder.with_description(metadata.description.to_string());
+        }
+        builder
+    }};
+}
+
+/// A builder for constructing a [`Recorder`].
+#[derive(Debug)]
+pub struct Builder {
+    builder: MeterProviderBuilder,
+    scope: InstrumentationScopeBuilder,
+}
+
+impl Builder {
+    /// Runs the closure (`f`) to modify the [`MeterProviderBuilder`] to build a
+    /// [`MeterProvider`](MeterProvider).
+    pub fn with_meter_provider(mut self, f: impl FnOnce(MeterProviderBuilder) -> MeterProviderBuilder) -> Self {
+        self.builder = f(self.builder);
+        self
+    }
+
+    /// Modify the [`InstrumentationScope`] to provide additional metadata from the
+    /// closure (`f`).
+    pub fn with_instrumentation_scope(
+        mut self,
+        f: impl FnOnce(InstrumentationScopeBuilder) -> InstrumentationScopeBuilder,
+    ) -> Self {
+        self.scope = f(self.scope);
+        self
+    }
+
+    /// Consumes the builder and builds a new [`Recorder`] and returns
+    /// a [`SdkMeterProvider`].
+    ///
+    /// A [`SdkMeterProvider`] is provided so you have the responsibility to
+    /// do whatever you need to do with it.
+    ///
+    /// This will not install the recorder as the global recorder for
+    /// the [`metrics`] crate, use [`Builder::install`]. This will not install a meter
+    /// provider to [`global`], use [`Builder::install_global`].
+    pub fn build(self) -> (SdkMeterProvider, Recorder) {
+        let provider = self.builder.build();
+        let meter = provider.meter_with_scope(self.scope.build());
+
+        (provider, Recorder::with_meter(meter))
+    }
+
+    /// Builds a [`Recorder`] and sets it as the global recorder for the [`metrics`]
+    /// crate.
+    ///
+    /// This method will not call [`global::set_meter_provider`] for OpenTelemetry and
+    /// will be returned as the first element in the return's type tuple.
+    pub fn install(self) -> Result<(SdkMeterProvider, Recorder), GlobalError> {
+        let (provider, recorder) = self.build();
+        metrics::set_global_recorder(recorder.clone())?;
+        remember_global_recorder(&recorder);
+
+        Ok((provider, recorder))
+    }
+
+    /// Builds the [`Recorder`] to record metrics to OpenTelemetry, set the global
+    /// recorder for the [`metrics`] crate, and calls [`global::set_meter_provider`]
+    /// to set the constructed [`SdkMeterProvider`].
+    pub fn install_global(self) -> Result<Recorder, GlobalError> {
+        let (provider, recorder) = self.install()?;
+        global::set_meter_provider(provider);
+
+        Ok(recorder)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct MetricMetadata {
+    unit: Option<Unit>,
+    description: SharedString,
+}
+
+/// A standard recorder that implements [`metrics::Recorder`].
+///
+/// This instance implements <code>[`Deref`]\<Target = [`Meter`]\></code>, so
+/// you can still interact with the SDK's initialized [`Meter`] instance.
+#[derive(Debug, Clone)]
+pub struct Recorder {
+    meter: Meter,
+    metrics_metadata: Arc<Mutex<HashMap<KeyName, MetricMetadata>>>,
+    // cache metric handlers as to not reregister on each call
+    cached_counters: Arc<RwLock<HashMap<Key, Counter>>>,
+    cached_gauges: Arc<RwLock<HashMap<Key, Gauge>>>,
+    cached_histograms: Arc<RwLock<HashMap<Key, Histogram>>>,
+}
+
+impl Recorder {
+    /// Creates a new [`Builder`] with a given name for instrumentation.
+    pub fn builder<S: Into<Cow<'static, str>>>(name: S) -> Builder {
+        Builder {
+            builder: MeterProviderBuilder::default(),
+            scope: InstrumentationScope::builder(name.into()),
+        }
+    }
+
+    /// Creates a [`Recorder`] with an already established [`Meter`].
+    pub fn with_meter(meter: Meter) -> Self {
+        Recorder {
+            meter,
+            metrics_metadata: Default::default(),
+            cached_counters: Default::default(),
+            cached_gauges: Default::default(),
+            cached_histograms: Default::default(),
+        }
+    }
+
+    fn get_cached_metric<T: Clone>(lock: &RwLock<HashMap<Key, T>>, key: &Key, metric_type: &str) -> Option<T> {
+        let cache = match lock.read() {
+            Ok(g) => g,
+            Err(e) => {
+                error!(event = EVENT_RECORDER_STATE, component = LOG_COMPONENT_OBS, subsystem = LOG_SUBSYSTEM_RECORDER, metric_type = %metric_type, result = "cache_read_lock_poisoned", error = %e, "recorder state changed");
+                e.into_inner()
+            }
+        };
+        cache.get(key).cloned()
+    }
+
+    fn insert_cached_metric<T: Clone>(lock: &RwLock<HashMap<Key, T>>, key: Key, value: T, metric_type: &str) -> T {
+        let mut cache = match lock.write() {
+            Ok(g) => g,
+            Err(e) => {
+                error!(event = EVENT_RECORDER_STATE, component = LOG_COMPONENT_OBS, subsystem = LOG_SUBSYSTEM_RECORDER, metric_type = %metric_type, result = "cache_write_lock_poisoned", error = %e, "recorder state changed");
+                e.into_inner()
+            }
+        };
+
+        if let Some(v) = cache.get(&key) {
+            return v.clone();
+        }
+        cache.insert(key, value.clone());
+        value
+    }
+
+    fn remove_cached_metric<T>(lock: &RwLock<HashMap<Key, T>>, key: &Key, metric_type: &str) -> bool {
+        let mut cache = match lock.write() {
+            Ok(g) => g,
+            Err(e) => {
+                error!(event = EVENT_RECORDER_STATE, component = LOG_COMPONENT_OBS, subsystem = LOG_SUBSYSTEM_RECORDER, metric_type = %metric_type, result = "cache_remove_lock_poisoned", error = %e, "recorder state changed");
+                e.into_inner()
+            }
+        };
+
+        cache.remove(key).is_some()
+    }
+
+    fn with_metadata_lock<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut HashMap<KeyName, MetricMetadata>) -> R,
+    {
+        let mut guard = self.metrics_metadata.lock().unwrap_or_else(|e| {
+            error!(event = EVENT_RECORDER_STATE, component = LOG_COMPONENT_OBS, subsystem = LOG_SUBSYSTEM_RECORDER, result = "metrics_metadata_lock_poisoned", error = %e, "recorder state changed");
+            e.into_inner()
+        });
+        f(&mut guard)
+    }
+
+    fn describe_metric(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
+        self.with_metadata_lock(|metadata| {
+            metadata.insert(key, MetricMetadata { unit, description });
+        });
+    }
+
+    fn get_metadata_for_builder(&self, key_name: &str) -> Option<MetricMetadata> {
+        self.with_metadata_lock(|metadata| metadata.get(key_name).cloned())
+    }
+
+    fn retire_metric_series_key(&self, key: &Key) -> usize {
+        let mut retired = 0usize;
+        retired += usize::from(Self::remove_cached_metric(&self.cached_counters, key, "counter"));
+        retired += usize::from(Self::remove_cached_metric(&self.cached_gauges, key, "gauge"));
+        retired += usize::from(Self::remove_cached_metric(&self.cached_histograms, key, "histogram"));
+        retired
+    }
+}
+
+fn remember_global_recorder(recorder: &Recorder) {
+    let _ = GLOBAL_RECORDER.set(recorder.clone());
+}
+
+pub(crate) fn install_process_global_recorder(recorder: Recorder) -> Result<(), metrics::SetRecorderError<Recorder>> {
+    metrics::set_global_recorder(recorder.clone())?;
+    remember_global_recorder(&recorder);
+    Ok(())
+}
+
+pub fn retire_metric_series(name: &str, labels: &[(&'static str, Cow<'static, str>)]) -> usize {
+    let Some(recorder) = GLOBAL_RECORDER.get() else {
+        return 0;
+    };
+
+    let key = Key::from_parts(
+        name.to_string(),
+        labels
+            .iter()
+            .map(|(key, value)| Label::new((*key).to_string(), value.to_string()))
+            .collect::<Vec<_>>(),
+    );
+    recorder.retire_metric_series_key(&key)
+}
+
+impl Deref for Recorder {
+    type Target = Meter;
+
+    fn deref(&self) -> &Self::Target {
+        &self.meter
+    }
+}
+
+impl metrics::Recorder for Recorder {
+    fn describe_counter(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
+        self.describe_metric(key, unit, description);
+    }
+
+    fn describe_gauge(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
+        self.describe_metric(key, unit, description);
+    }
+
+    fn describe_histogram(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
+        self.describe_metric(key, unit, description);
+    }
+
+    fn register_counter(&self, key: &Key, _metadata: &Metadata<'_>) -> Counter {
+        if let Some(counter) = Self::get_cached_metric(&self.cached_counters, key, "counter") {
+            return counter;
+        }
+
+        let builder = self.meter.u64_counter(key.name().to_owned());
+        let metadata = self.get_metadata_for_builder(key.name());
+        let builder = configure_builder!(builder, metadata);
+
+        let counter = builder.build();
+        let labels = key
+            .labels()
+            .map(|label| KeyValue::new(label.key().to_owned(), label.value().to_owned()))
+            .collect();
+
+        let handle = Counter::from_arc(Arc::new(WrappedCounter {
+            counter,
+            labels,
+            value: AtomicU64::new(0),
+        }));
+
+        Self::insert_cached_metric(&self.cached_counters, key.clone(), handle, "counter")
+    }
+
+    fn register_gauge(&self, key: &Key, _metadata: &Metadata<'_>) -> Gauge {
+        if let Some(gauge) = Self::get_cached_metric(&self.cached_gauges, key, "gauge") {
+            return gauge;
+        }
+
+        let builder = self.meter.f64_gauge(key.name().to_owned());
+        let metadata = self.get_metadata_for_builder(key.name());
+        let builder = configure_builder!(builder, metadata);
+
+        let gauge = builder.build();
+        let labels = key
+            .labels()
+            .map(|label| KeyValue::new(label.key().to_owned(), label.value().to_owned()))
+            .collect();
+
+        let handle = Gauge::from_arc(Arc::new(WrappedGauge {
+            gauge,
+            labels,
+            value: AtomicU64::new(0),
+            record_lock: Mutex::new(()),
+        }));
+
+        Self::insert_cached_metric(&self.cached_gauges, key.clone(), handle, "gauge")
+    }
+
+    fn register_histogram(&self, key: &Key, _metadata: &Metadata<'_>) -> Histogram {
+        if let Some(histogram) = Self::get_cached_metric(&self.cached_histograms, key, "histogram") {
+            return histogram;
+        }
+
+        let builder = self.meter.f64_histogram(key.name().to_owned());
+        let metadata = self.get_metadata_for_builder(key.name());
+        let builder = configure_builder!(builder, metadata);
+
+        let histogram = builder.build();
+        let labels = key
+            .labels()
+            .map(|label| KeyValue::new(label.key().to_owned(), label.value().to_owned()))
+            .collect();
+
+        let handle = Histogram::from_arc(Arc::new(WrappedHistogram { histogram, labels }));
+
+        Self::insert_cached_metric(&self.cached_histograms, key.clone(), handle, "histogram")
+    }
+}
+
+struct WrappedCounter {
+    counter: opentelemetry::metrics::Counter<u64>,
+    labels: Vec<KeyValue>,
+    value: AtomicU64,
+}
+
+impl CounterFn for WrappedCounter {
+    fn increment(&self, value: u64) {
+        self.value.fetch_add(value, Ordering::Relaxed);
+        self.counter.add(value, &self.labels);
+    }
+
+    fn absolute(&self, value: u64) {
+        let prev = self.value.swap(value, Ordering::Relaxed);
+        let diff = value.saturating_sub(prev);
+        self.counter.add(diff, &self.labels);
+    }
+}
+
+struct WrappedGauge {
+    gauge: opentelemetry::metrics::Gauge<f64>,
+    labels: Vec<KeyValue>,
+    value: AtomicU64,
+    record_lock: Mutex<()>,
+}
+
+impl GaugeFn for WrappedGauge {
+    fn increment(&self, value: f64) {
+        let _guard = self.record_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut current = self.value.load(Ordering::Relaxed);
+        let mut new = f64::from_bits(current) + value;
+        while let Err(val) = self
+            .value
+            .compare_exchange(current, new.to_bits(), Ordering::AcqRel, Ordering::Relaxed)
+        {
+            current = val;
+            new = f64::from_bits(current) + value;
+        }
+
+        self.gauge.record(new, &self.labels);
+    }
+
+    fn decrement(&self, value: f64) {
+        let _guard = self.record_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut current = self.value.load(Ordering::Relaxed);
+        let mut new = f64::from_bits(current) - value;
+        while let Err(val) = self
+            .value
+            .compare_exchange(current, new.to_bits(), Ordering::AcqRel, Ordering::Relaxed)
+        {
+            current = val;
+            new = f64::from_bits(current) - value;
+        }
+
+        self.gauge.record(new, &self.labels);
+    }
+
+    fn set(&self, value: f64) {
+        let _guard = self.record_lock.lock().unwrap_or_else(|e| e.into_inner());
+        self.value.store(value.to_bits(), Ordering::Relaxed);
+        self.gauge.record(value, &self.labels);
+    }
+}
+
+struct WrappedHistogram {
+    histogram: opentelemetry::metrics::Histogram<f64>,
+    labels: Vec<KeyValue>,
+}
+
+impl HistogramFn for WrappedHistogram {
+    fn record(&self, value: f64) {
+        self.histogram.record(value, &self.labels);
+    }
+
+    fn record_many(&self, value: f64, count: usize) {
+        for _ in 0..count {
+            self.histogram.record(value, &self.labels);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use metrics::Recorder as _;
+    use opentelemetry_sdk::metrics::Temporality;
+
+    fn test_recorder() -> Recorder {
+        let exporter = opentelemetry_stdout::MetricExporterBuilder::default()
+            .with_temporality(Temporality::Cumulative)
+            .build();
+
+        let (_provider, recorder) = Recorder::builder("test")
+            .with_meter_provider(|b| b.with_periodic_exporter(exporter))
+            .build();
+
+        recorder
+    }
+
+    fn test_metadata() -> Metadata<'static> {
+        Metadata::new(module_path!(), metrics::Level::INFO, None)
+    }
+
+    #[test]
+    fn standard_usage() {
+        let exporter = opentelemetry_stdout::MetricExporterBuilder::default()
+            .with_temporality(Temporality::Cumulative)
+            .build();
+
+        let (provider, recorder) = Recorder::builder("my-app")
+            .with_meter_provider(|builder| builder.with_periodic_exporter(exporter))
+            .build();
+
+        global::set_meter_provider(provider.clone());
+        metrics::set_global_recorder(recorder).unwrap();
+
+        let counter = metrics::counter!("my-counter");
+        counter.increment(1);
+
+        provider.force_flush().unwrap();
+    }
+
+    #[test]
+    fn counter_cached_on_repeated_registration() {
+        let recorder = test_recorder();
+        let key = Key::from_name("requests_total");
+        let meta = test_metadata();
+
+        let _first = recorder.register_counter(&key, &meta);
+        let _second = recorder.register_counter(&key, &meta);
+
+        let cache = recorder.cached_counters.read().unwrap();
+        assert_eq!(cache.len(), 1, "counter should be cached and inserted only once");
+    }
+
+    #[test]
+    fn gauge_cached_on_repeated_registration() {
+        let recorder = test_recorder();
+        let key = Key::from_name("active_connections");
+        let meta = test_metadata();
+
+        let _first = recorder.register_gauge(&key, &meta);
+        let _second = recorder.register_gauge(&key, &meta);
+
+        let cache = recorder.cached_gauges.read().unwrap();
+        assert_eq!(cache.len(), 1, "gauge should be cached and inserted only once");
+    }
+
+    #[test]
+    fn histogram_cached_on_repeated_registration() {
+        let recorder = test_recorder();
+        let key = Key::from_name("request_duration");
+        let meta = test_metadata();
+
+        let _first = recorder.register_histogram(&key, &meta);
+        let _second = recorder.register_histogram(&key, &meta);
+
+        let cache = recorder.cached_histograms.read().unwrap();
+        assert_eq!(cache.len(), 1, "histogram should be cached and inserted only once");
+    }
+
+    #[test]
+    fn concurrent_register_counter_inserts_once() {
+        let recorder = test_recorder();
+        let key = Key::from_name("concurrent_counter");
+        let shared = Arc::new(recorder);
+        let barrier = Arc::new(std::sync::Barrier::new(10));
+
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let r = Arc::clone(&shared);
+                let k = key.clone();
+                let b = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    b.wait();
+                    let _ = r.register_counter(&k, &test_metadata());
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let cache = shared.cached_counters.read().unwrap();
+        assert_eq!(cache.len(), 1, "concurrent registrations should produce exactly one cache entry");
+    }
+
+    #[test]
+    fn metadata_is_available_for_multiple_label_variants() {
+        let recorder = test_recorder();
+        recorder.describe_counter("shared_counter".into(), Unit::from_string("bytes"), "shared description".into());
+
+        let first = Key::from_parts("shared_counter", vec![metrics::Label::new("kind", "a")]);
+        let second = Key::from_parts("shared_counter", vec![metrics::Label::new("kind", "b")]);
+        let meta = test_metadata();
+
+        let _ = recorder.register_counter(&first, &meta);
+        let second_metadata = recorder.get_metadata_for_builder("shared_counter");
+        assert!(second_metadata.is_some());
+        assert_eq!(second_metadata.as_ref().and_then(|metadata| metadata.unit), Unit::from_string("bytes"));
+        assert_eq!(
+            second_metadata.as_ref().map(|metadata| metadata.description.to_string()),
+            Some("shared description".to_string())
+        );
+
+        let _ = recorder.register_counter(&second, &meta);
+    }
+
+    #[test]
+    fn retire_metric_series_key_removes_cached_counter() {
+        let recorder = test_recorder();
+        let key = Key::from_parts("retired_counter", vec![metrics::Label::new("bucket", "tmp")]);
+        let meta = test_metadata();
+
+        let _counter = recorder.register_counter(&key, &meta);
+        assert_eq!(recorder.cached_counters.read().unwrap().len(), 1);
+
+        let retired = recorder.retire_metric_series_key(&key);
+        assert_eq!(retired, 1);
+        assert!(recorder.cached_counters.read().unwrap().is_empty());
+    }
+
+    #[test]
+    fn retiring_churned_series_bounds_the_cache() {
+        // #1026: under bucket/target churn the recorder handle cache used to grow
+        // unbounded. After each churned series is retired the cache must fall back
+        // to a bounded size, and a same-named label set must re-register cleanly.
+        let recorder = test_recorder();
+        let meta = test_metadata();
+
+        let mut keys = Vec::with_capacity(3000);
+        for i in 0..3000 {
+            let key = Key::from_parts("churn_counter", vec![metrics::Label::new("bucket", format!("bucket-{i}"))]);
+            let _ = recorder.register_counter(&key, &meta);
+            keys.push(key);
+        }
+        assert_eq!(recorder.cached_counters.read().unwrap().len(), 3000);
+
+        for key in &keys {
+            assert_eq!(recorder.retire_metric_series_key(key), 1);
+        }
+        assert!(
+            recorder.cached_counters.read().unwrap().is_empty(),
+            "recorder cache must be bounded after churned series are retired"
+        );
+
+        // A previously retired label set can be registered and observed again.
+        let reused = &keys[0];
+        let _ = recorder.register_counter(reused, &meta);
+        assert_eq!(recorder.cached_counters.read().unwrap().len(), 1);
+    }
+}

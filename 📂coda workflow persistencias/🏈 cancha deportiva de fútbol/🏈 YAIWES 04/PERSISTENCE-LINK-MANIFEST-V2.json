@@ -1,0 +1,13 @@
+{
+  "schema": "yaiwes.coda.persistence-link/v2",
+  "component": "🏈 04-AI-Pentest",
+  "upstream_component": "04-AI-Pentest",
+  "version": "YAIWES-PERSISTENCE-v2.0",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "adapter": "📂coda workflow persistencias/🏈 04-AI-Pentest/code/coda_persistence/yaiwes_persistence_adapter.py",
+  "test": "📂coda workflow persistencias/🏈 04-AI-Pentest/code/coda_persistence/test_yaiwes_persistence_adapter.py",
+  "mode": "TASK_PERSISTENCE_ONLY",
+  "offensive_execution": false,
+  "network_default": "deny",
+  "source_execution_during_discovery": false
+}

@@ -1,0 +1,540 @@
+{
+  "repository_path": "D:\\Codes\\VS\\Intent-LED-mul-agent",
+  "report_id": "codebase_c19229bf640a",
+  "files": [
+    {
+      "path": "cfg/virat/led_virat.yml",
+      "role": "Experiment configuration.",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "config_keys": [
+        "description",
+        "results_root_dir",
+        "dataset",
+        "data_root",
+        "scenes",
+        "num_agents",
+        "min_agents",
+        "train_stride",
+        "test_stride",
+        "num_workers",
+        "past_frames",
+        "future_frames",
+        "min_past_frames",
+        "min_future_frames",
+        "motion_dim",
+        "forecast_dim",
+        "traj_mean",
+        "traj_scale",
+        "k_pred",
+        "pretrained_core_denoising_model",
+        "pretrained_initializer_model",
+        "train_core_if_missing",
+        "core_num_epochs",
+        "core_lr",
+        "debug",
+        "diffusion",
+        "steps",
+        "beta_start",
+        "beta_end",
+        "beta_schedule",
+        "lr",
+        "train_batch_size",
+        "test_batch_size",
+        "num_epochs",
+        "test_interval",
+        "lr_scheduler",
+        "decay_step",
+        "decay_gamma"
+      ],
+      "important_patterns": [
+        "initializer checkpoint",
+        "core fallback training",
+        "debug-mode control"
+      ]
+    },
+    {
+      "path": "cfg/virat/led_virat_debug.yml",
+      "role": "Experiment configuration.",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "config_keys": [
+        "description",
+        "results_root_dir",
+        "dataset",
+        "data_root",
+        "scenes",
+        "num_agents",
+        "min_agents",
+        "train_stride",
+        "test_stride",
+        "num_workers",
+        "past_frames",
+        "future_frames",
+        "min_past_frames",
+        "min_future_frames",
+        "motion_dim",
+        "forecast_dim",
+        "traj_mean",
+        "traj_scale",
+        "k_pred",
+        "pretrained_core_denoising_model",
+        "pretrained_initializer_model",
+        "train_core_if_missing",
+        "core_num_epochs",
+        "core_lr",
+        "debug",
+        "diffusion",
+        "steps",
+        "beta_start",
+        "beta_end",
+        "beta_schedule",
+        "lr",
+        "train_batch_size",
+        "test_batch_size",
+        "num_epochs",
+        "test_interval",
+        "lr_scheduler",
+        "decay_step",
+        "decay_gamma"
+      ],
+      "important_patterns": [
+        "initializer checkpoint",
+        "core fallback training",
+        "debug-mode control"
+      ]
+    },
+    {
+      "path": "cfg/virat/led_virat_intent.yml",
+      "role": "Experiment configuration.",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "config_keys": [
+        "description",
+        "results_root_dir",
+        "dataset",
+        "data_root",
+        "scenes",
+        "num_agents",
+        "min_agents",
+        "train_stride",
+        "test_stride",
+        "num_workers",
+        "past_frames",
+        "future_frames",
+        "min_past_frames",
+        "min_future_frames",
+        "motion_dim",
+        "forecast_dim",
+        "traj_mean",
+        "traj_scale",
+        "k_pred",
+        "pretrained_core_denoising_model",
+        "pretrained_initializer_model",
+        "train_core_if_missing",
+        "core_num_epochs",
+        "core_lr",
+        "debug",
+        "motion_condition",
+        "enabled",
+        "dim",
+        "scale",
+        "diffusion",
+        "steps",
+        "beta_start",
+        "beta_end",
+        "beta_schedule",
+        "lr",
+        "train_batch_size",
+        "test_batch_size",
+        "num_epochs",
+        "test_interval",
+        "lr_scheduler",
+        "decay_step",
+        "decay_gamma"
+      ],
+      "important_patterns": [
+        "initializer checkpoint",
+        "core fallback training",
+        "debug-mode control"
+      ]
+    },
+    {
+      "path": "cfg/virat/led_virat_intent_debug.yml",
+      "role": "Experiment configuration.",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "config_keys": [
+        "description",
+        "results_root_dir",
+        "dataset",
+        "data_root",
+        "scenes",
+        "num_agents",
+        "min_agents",
+        "train_stride",
+        "test_stride",
+        "num_workers",
+        "past_frames",
+        "future_frames",
+        "min_past_frames",
+        "min_future_frames",
+        "motion_dim",
+        "forecast_dim",
+        "traj_mean",
+        "traj_scale",
+        "k_pred",
+        "pretrained_core_denoising_model",
+        "pretrained_initializer_model",
+        "train_core_if_missing",
+        "core_num_epochs",
+        "core_lr",
+        "debug",
+        "motion_condition",
+        "enabled",
+        "dim",
+        "scale",
+        "diffusion",
+        "steps",
+        "beta_start",
+        "beta_end",
+        "beta_schedule",
+        "lr",
+        "train_batch_size",
+        "test_batch_size",
+        "num_epochs",
+        "test_interval",
+        "lr_scheduler",
+        "decay_step",
+        "decay_gamma"
+      ],
+      "important_patterns": [
+        "initializer checkpoint",
+        "core fallback training",
+        "debug-mode control"
+      ]
+    },
+    {
+      "path": "data/dataloader_virat.py",
+      "role": "Dataset and batch collation.",
+      "imports": [
+        "import os",
+        "import sys",
+        "from pathlib import Path",
+        "import dill",
+        "import numpy as np",
+        "import torch",
+        "from torch.utils.data import Dataset"
+      ],
+      "classes": [
+        "VIRATDataset"
+      ],
+      "functions": [
+        "_default_mid_root",
+        "_ensure_mid_environment_importable",
+        "_node_sort_key",
+        "__init__",
+        "_load_env",
+        "_valid_agents_at",
+        "_build_index",
+        "__len__",
+        "__getitem__",
+        "seq_collate"
+      ],
+      "config_keys": [],
+      "important_patterns": [
+        "agent masking",
+        "history trajectory tensor",
+        "future trajectory tensor"
+      ]
+    },
+    {
+      "path": "main_led_nba.py",
+      "role": "CLI entry point for train/eval.",
+      "imports": [
+        "import argparse",
+        "from trainer import train_led_trajectory_augment_input as led"
+      ],
+      "classes": [],
+      "functions": [
+        "parse_config",
+        "main"
+      ],
+      "config_keys": [],
+      "important_patterns": []
+    },
+    {
+      "path": "models/layers.py",
+      "role": "Project file.",
+      "imports": [
+        "import math",
+        "import torch",
+        "import torch.nn as nn",
+        "from torch.nn import Module, Linear"
+      ],
+      "classes": [
+        "PositionalEncoding",
+        "ConcatSquashLinear",
+        "GAT",
+        "MLP",
+        "social_transformer",
+        "st_encoder"
+      ],
+      "functions": [
+        "__init__",
+        "forward",
+        "__init__",
+        "forward",
+        "batch_generate",
+        "__init__",
+        "forward",
+        "__init__",
+        "forward",
+        "__init__",
+        "forward",
+        "__init__",
+        "reset_parameters",
+        "forward"
+      ],
+      "config_keys": [],
+      "important_patterns": []
+    },
+    {
+      "path": "models/model_diffusion.py",
+      "role": "Transformer denoising model used by diffusion sampling.",
+      "imports": [
+        "import math",
+        "import torch",
+        "import torch.nn as nn",
+        "from torch.nn import Module, Linear",
+        "from models.layers import PositionalEncoding, ConcatSquashLinear"
+      ],
+      "classes": [
+        "st_encoder",
+        "social_transformer",
+        "TransformerDenoisingModel"
+      ],
+      "functions": [
+        "__init__",
+        "reset_parameters",
+        "forward",
+        "__init__",
+        "forward",
+        "__init__",
+        "forward",
+        "generate_accelerate"
+      ],
+      "config_keys": [],
+      "important_patterns": [
+        "denoiser"
+      ]
+    },
+    {
+      "path": "models/model_led_initializer.py",
+      "role": "Leapfrog initializer for multi-sample future trajectory proposals.",
+      "imports": [
+        "import torch",
+        "import torch.nn as nn",
+        "from models.layers import MLP, social_transformer, st_encoder"
+      ],
+      "classes": [
+        "LEDInitializer"
+      ],
+      "functions": [
+        "__init__",
+        "forward"
+      ],
+      "config_keys": [],
+      "important_patterns": [
+        "initializer"
+      ]
+    },
+    {
+      "path": "README.md",
+      "role": "Project file.",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "config_keys": [],
+      "important_patterns": []
+    },
+    {
+      "path": "trainer/train_led_trajectory_augment_input.py",
+      "role": "Training, denoising, evaluation, and metric loop.",
+      "imports": [
+        "import os",
+        "import time",
+        "import torch",
+        "import random",
+        "import numpy as np",
+        "import torch.nn as nn",
+        "from utils.config import Config",
+        "from utils.utils import print_log",
+        "from torch.utils.data import DataLoader",
+        "from models.model_led_initializer import LEDInitializer as InitializationModel",
+        "from models.model_diffusion import TransformerDenoisingModel as CoreDenoisingModel",
+        "import pdb",
+        "from data.dataloader_virat import VIRATDataset, seq_collate",
+        "from data.dataloader_nba import NBADataset, seq_collate"
+      ],
+      "classes": [
+        "Trainer"
+      ],
+      "functions": [
+        "__init__",
+        "print_model_param",
+        "_load_or_train_core_model",
+        "noise_estimation_loss_masked",
+        "_pretrain_core_model",
+        "make_beta_schedule",
+        "extract",
+        "noise_estimation_loss",
+        "p_sample",
+        "p_sample_accelerate",
+        "p_sample_loop",
+        "p_sample_loop_mean",
+        "p_sample_loop_accelerate",
+        "fit",
+        "data_preprocess",
+        "build_motion_condition",
+        "_train_single_epoch",
+        "_test_single_epoch",
+        "prepare_seed",
+        "save_data",
+        "prepare_seed",
+        "test_single_model",
+        "prepare_seed"
+      ],
+      "config_keys": [],
+      "important_patterns": [
+        "agent masking",
+        "history trajectory tensor",
+        "future trajectory tensor",
+        "initializer",
+        "denoiser",
+        "initializer checkpoint",
+        "core fallback training",
+        "debug-mode control"
+      ]
+    },
+    {
+      "path": "utils/config.py",
+      "role": "Project file.",
+      "imports": [
+        "import yaml",
+        "import os",
+        "import os.path as osp",
+        "import glob",
+        "import numpy as np",
+        "from easydict import EasyDict",
+        "from utils.utils import recreate_dirs"
+      ],
+      "classes": [
+        "Config"
+      ],
+      "functions": [
+        "__init__",
+        "get_last_epoch",
+        "__getattribute__",
+        "__setattr__",
+        "get"
+      ],
+      "config_keys": [],
+      "important_patterns": []
+    },
+    {
+      "path": "utils/utils.py",
+      "role": "Project file.",
+      "imports": [
+        "import os",
+        "import shutil",
+        "import torch",
+        "import numpy as np",
+        "import random",
+        "import time",
+        "import copy",
+        "import glob",
+        "import glob2",
+        "from torch import nn"
+      ],
+      "classes": [
+        "AverageMeter"
+      ],
+      "functions": [
+        "__init__",
+        "reset",
+        "update",
+        "isnparray",
+        "isinteger",
+        "isfloat",
+        "isscalar",
+        "islogical",
+        "isstring",
+        "islist",
+        "convert_secs2time",
+        "get_timestring",
+        "recreate_dirs",
+        "is_path_valid",
+        "is_path_creatable",
+        "is_path_exists",
+        "is_path_exists_or_creatable",
+        "isfile",
+        "isfolder",
+        "mkdir_if_missing",
+        "safe_list",
+        "safe_path",
+        "prepare_seed",
+        "initialize_weights"
+      ],
+      "config_keys": [],
+      "important_patterns": [
+        "debug-mode control"
+      ]
+    },
+    {
+      "path": "work.md",
+      "role": "Project log and current baseline record.",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "config_keys": [],
+      "important_patterns": [
+        "history trajectory tensor",
+        "future trajectory tensor",
+        "initializer",
+        "initializer checkpoint",
+        "debug-mode control"
+      ]
+    }
+  ],
+  "project_notes": "# LED + VIRAT 工作日志\n\n## 当前目标\n\n用 LED 在 VIRAT 上跑通原协议 baseline，作为后续意图/约束模块的对照基线。\n\n## 关键结论\n\n- 当前 `LED-main` 是精简版官方代码包，缺少 README 中提到的 `data/` 目录、NBA `.npy` 数据和官方 checkpoint。\n- VIRAT 数据沿用相邻项目 `../MID-main/processed_data_virat/` 中已处理好的 pkl：\n  - `virat_s1_train/test.pkl`\n  - `virat_s2_train/test.pkl`\n  - `virat_s3_train/test.pkl`\n- VIRAT 行人数量远少于 NBA 固定 11 人，通常为 1-2 人，因此 LED 数据输入按 `num_agents=2` 适配。\n- 单人窗口使用 padding agent，但 padding 不参与 loss 和 ADE/FDE 指标。\n- 不做 MID+VIRAT 的 8/12 对齐版；本阶段只保留 LED 原协议 10/20 baseline。\n\n## 已完成\n\n### 2026-06-15\n\n- 新增 `data/dataloader_virat.py`\n  - 从 `../MID-main/processed_data_virat/` 读取 VIRAT pkl。\n  - 输出 LED trainer 需要的 `pre_motion_3D`、`fut_motion_3D`、mask 和元信息。\n  - 支持 `num_agents=2`，padding agent 不计入有效样本。\n- 修改 `trainer/train_led_trajectory_augment_input.py`\n  - 根据 `dataset: virat` 切换 VIRAT dataloader。\n  - 将原代码硬编码的 11 agents 改为配置化 `num_agents`。\n  - loss / ADE / FDE 只统计真实 agent。\n  - 若缺少 core denoising checkpoint，可先在当前数据集训练 core。\n  - `test_single_model()` 支持配置里的 `pretrained_initializer_model`。\n- 新增配置：\n  - `cfg/virat/led_virat_debug.yml`：快速 smoke 测试。\n  - `cfg/virat/led_virat.yml`：正式 LED 原协议 VIRAT baseline。\n- 修复 `utils/utils.py`\n  - `glob2` 缺失时 fallback 到 Python 标准库 `glob`。\n- 已完成 smoke run：\n  - config: `led_virat_debug`\n  - output: `results/led_virat_debug/baseline/`\n  - 目的：验证 core 预训练、initializer 训练、测试指标闭环。\n- 已完成 v0 run：\n  - config: 临时缩短版 `led_virat`\n  - output: `results/led_virat/baseline/`\n  - 说明：仅用于链路验证，不作为最终 baseline。\n\n## 正式 baseline 协议\n\n配置文件：`cfg/virat/led_virat.yml`\n\n- dataset: `virat`\n- scenes: `virat_s1`, `virat_s2`, `virat_s3`\n- data_root: `../MID-main/processed_data_virat`\n- num_agents: `2`\n- past_frames: `10`\n- future_frames: `20`\n- diffusion steps: `100`\n- k_pred: `20`\n- train_batch_size: `10`\n- test_batch_size: `500`\n- num_epochs: `100`\n- lr: `1e-3`\n- lr scheduler: step, `decay_step=8`, `decay_gamma=0.5`\n- traj_mean: `[0, 0]`\n- traj_scale: `1`\n- core checkpoint: `results/checkpoints/virat_core_denoising_model_e100.p`\n- initializer checkpoint: `results/led_virat/baseline_original/models/model_0100.p`\n\n## 下一步\n\n1. 导出 baseline 数据：\n   - history\n   - future_gt\n   - predictions\n   - per-sample ADE/FDE\n   - summary.json\n   - samples.csv\n2. 最终结果写回本文件，只保留关键指标和输出路径。\n\n## 正式训练状态\n\n### 2026-06-15 训练日志检查\n\n- 目录：`results/led_virat/baseline_original/`\n- core denoising 训练已完成 100 epoch，并保存：\n  - `results/checkpoints/virat_core_denoising_model_e100.p`\n- initializer 训练已完成 100 epoch，并保存：\n  - `results/led_virat/baseline_original/models/model_0100.p`\n- checkpoint 已完整保存 `model_0010.p` 到 `model_0100.p`。\n- 日志没有 NaN / crash / loss 爆炸；epoch 50 后指标基本趋稳。\n\nepoch 100 最终评估：\n- ADE(1s) / FDE(1s): `0.0075 / 0.0054`\n- ADE(2s) / FDE(2s): `0.0101 / 0.0095`\n- ADE(3s) / FDE(3s): `0.0129 / 0.0139`\n- ADE(4s) / FDE(4s): `0.0189 / 0.0249`\n\n## 可视化\n\n### 2026-06-16 单样本预测路径\n\n- 脚本：`visualize_virat_prediction.py`\n- 输出：`results/fig/led_virat_prediction_example.png`\n- 样本：`virat_s1_test`, timestep `14329`, agent `30`\n- 预测：20 条 LED 采样轨迹，红色为 best ADE 样本\n- 指标：best ADE `0.031090`, best FDE `0.117497`\n\n## 多智能体探索记录\n\n### 2026-06-16 motion-intent 条件实验\n\n- 新增配置：\n  - `cfg/virat/led_virat_intent_debug.yml`\n  - `cfg/virat/led_virat_intent.yml`\n- 新增可选 `motion_condition` 开关，默认旧配置不启用，因此 `led_virat_debug.yml` / `led_virat.yml` baseline 路径保持不变。\n- 条件特征来自历史轨迹本身，不依赖额外标注：\n  - 起点到终点位移 `dx, dy`\n  - 最后一帧速度 `vx, vy`\n- 第一版只注入 `LEDInitializer` 的 mean / variance / scale 三个 ego embedding 分支；denoising core 暂不改，降低张量维度风险。\n- 可先跑：\n  - `python main_led_nba.py --cfg led_virat_intent_debug --gpu 0 --train 1 --info motion_condition`\n- 已完成 debug 验证：\n  - 环境：`D:\\Develop_Tools\\Anaconda3\\envs\\video_llava\\python.exe`\n  - 训练命令：`python main_led_nba.py --cfg led_virat_intent_debug --gpu 0 --train 1 --info motion_condition`\n  - 评估命令：`python main_led_nba.py --cfg led_virat_intent_debug --gpu 0 --train 0 --info motion_condition`\n  - 输出 checkpoint：`results/led_virat_intent_debug/motion_condition/models/model_0002.p`\n  - ADE/FDE：\n    - 1s: `0.1902 / 0.0930`\n    - 2s: `0.1986 / 0.1334`\n    - 3s: `0.1918 / 0.1524`",
+  "integration_points": [
+    "Add optional per-agent intention/language features in VIRATDataset output.",
+    "Fuse optional condition features in data_preprocess before initializer/denoiser calls.",
+    "Inject condition features into LEDInitializer mean/variance/scale branches.",
+    "Extend TransformerDenoisingModel context conditioning after initializer smoke tests.",
+    "Gate every experiment behind cfg/virat flags to keep baseline configs reproducible."
+  ],
+  "suggested_first_patch_files": [
+    "cfg/virat/led_virat_debug.yml",
+    "cfg/virat/led_virat.yml",
+    "data/dataloader_virat.py",
+    "trainer/train_led_trajectory_augment_input.py",
+    "models/model_led_initializer.py",
+    "work.md"
+  ],
+  "smoke_commands": [
+    "cd /d D:/Codes/VS/Intent-LED-mul-agent && python main_led_nba.py --cfg led_virat_intent_debug --gpu 0 --train 1 --info motion_condition",
+    "cd /d D:/Codes/VS/Intent-LED-mul-agent && python main_led_nba.py --cfg led_virat_intent_debug --gpu 0 --train 0 --info motion_condition"
+  ],
+  "risks": [
+    "Project copy is not a git repository; use backups or copied files for rollback.",
+    "VIRAT data is loaded from ../MID-main, so dataloader changes should not mutate source pkl files.",
+    "Denoiser context dimensions are hard-coded around 256/512; condition fusion must preserve tensor shapes.",
+    "High exploration mode allows code edits after local report generation; keep smoke tests short."
+  ]
+}

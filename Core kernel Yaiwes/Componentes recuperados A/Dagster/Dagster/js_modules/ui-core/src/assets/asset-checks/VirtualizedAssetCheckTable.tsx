@@ -1,0 +1,210 @@
+import {
+  Box,
+  Container,
+  HeaderCell,
+  HeaderRow,
+  Inner,
+  Row,
+  RowCell,
+  Text,
+} from '@dagster-io/ui-components';
+import {useVirtualizer} from '@tanstack/react-virtual';
+import {useRef} from 'react';
+import {Link} from 'react-router-dom';
+
+import {ASSET_CHECK_EXECUTION_FRAGMENT, MetadataCell} from './AssetCheckDetailDialog';
+import {AssetCheckStatusTag} from './AssetCheckStatusTag';
+import {EXECUTE_CHECKS_BUTTON_CHECK_FRAGMENT, ExecuteChecksButton} from './ExecuteChecksButton';
+import styles from './css/VirtualizedAssetCheckTable.module.css';
+import {ExecuteChecksButtonAssetNodeFragment} from './types/ExecuteChecksButton.types';
+import {AssetCheckTableFragment} from './types/VirtualizedAssetCheckTable.types';
+import {gql} from '../../apollo-client';
+import {linkToRunEvent} from '../../runs/RunUtils';
+import {TimestampDisplay} from '../../schedules/TimestampDisplay';
+import {testId} from '../../testing/testId';
+import {assetDetailsPathForAssetCheck} from '../assetDetailsPathForKey';
+
+type Props = {
+  assetNode: ExecuteChecksButtonAssetNodeFragment;
+  rows: AssetCheckTableFragment[];
+};
+
+export const VirtualizedAssetCheckTable = ({assetNode, rows}: Props) => {
+  const parentRef = useRef<HTMLDivElement | null>(null);
+  const count = rows.length;
+
+  const rowVirtualizer = useVirtualizer({
+    count,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 64,
+    overscan: 5,
+  });
+
+  const totalHeight = rowVirtualizer.getTotalSize();
+  const items = rowVirtualizer.getVirtualItems();
+
+  return (
+    <div style={{overflow: 'hidden'}}>
+      <Container ref={parentRef}>
+        <VirtualizedAssetCheckHeader />
+        <Inner totalHeight={totalHeight}>
+          {items.map(({index, key, size, start}) => {
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            const row: AssetCheckTableFragment = rows[index]!;
+            return (
+              <VirtualizedAssetCheckRow
+                assetNode={assetNode}
+                key={key}
+                height={size}
+                start={start}
+                row={row}
+              />
+            );
+          })}
+        </Inner>
+      </Container>
+    </div>
+  );
+};
+
+const TEMPLATE_COLUMNS = '2fr 150px 1fr 1.5fr 120px';
+
+interface AssetCheckRowProps {
+  row: AssetCheckTableFragment;
+  assetNode: ExecuteChecksButtonAssetNodeFragment;
+  height: number;
+  start: number;
+}
+
+export const VirtualizedAssetCheckRow = ({assetNode, height, start, row}: AssetCheckRowProps) => {
+  const execution = row.executionForLatestMaterialization;
+  const timestamp = execution?.evaluation?.timestamp;
+
+  return (
+    <Row height={height} start={start} data-testid={testId(`row-#TODO_USE_CHECK_ID`)}>
+      <Box className={styles.rowGrid} border="bottom">
+        <RowCell style={{flexDirection: 'row', alignItems: 'center'}}>
+          <Box flex={{direction: 'column', gap: 4}}>
+            <Link
+              to={assetDetailsPathForAssetCheck({assetKey: assetNode.assetKey, name: row.name})}
+            >
+              <Text size={14}>{row.name}</Text>
+            </Link>
+            <Text size={12} className={styles.captionEllipsed}>
+              {row.description}
+            </Text>
+          </Box>
+        </RowCell>
+        <RowCell style={{flexDirection: 'row', alignItems: 'center'}}>
+          <div>
+            <AssetCheckStatusTag execution={execution} check={row} />
+          </div>
+        </RowCell>
+        <RowCell style={{flexDirection: 'row', alignItems: 'center'}}>
+          {timestamp ? (
+            <Link
+              to={linkToRunEvent(
+                {id: execution.runId},
+                {stepKey: execution.stepKey, timestamp: execution.timestamp},
+              )}
+            >
+              <TimestampDisplay timestamp={timestamp} />
+            </Link>
+          ) : (
+            ' - '
+          )}
+        </RowCell>
+        <RowCell>
+          <MetadataCell
+            metadataEntries={execution?.evaluation?.metadataEntries}
+            type="inline-or-dialog"
+          />
+        </RowCell>
+        <RowCell>
+          <Box flex={{justifyContent: 'flex-end'}}>
+            <ExecuteChecksButton
+              assetNode={assetNode}
+              checks={[row]}
+              label="Execute"
+              icon={false}
+            />
+          </Box>
+        </RowCell>
+      </Box>
+    </Row>
+  );
+};
+
+export const VirtualizedAssetCheckHeader = () => {
+  return (
+    <HeaderRow templateColumns={TEMPLATE_COLUMNS} sticky>
+      <HeaderCell>Check name</HeaderCell>
+      <HeaderCell>Status</HeaderCell>
+      <HeaderCell>Evaluation timestamp</HeaderCell>
+      <HeaderCell>Evaluation metadata</HeaderCell>
+      <HeaderCell>Actions</HeaderCell>
+    </HeaderRow>
+  );
+};
+
+export const ASSET_CHECK_TABLE_FRAGMENT = gql`
+  fragment AssetCheckTableFragment on AssetCheck {
+    name
+    description
+    canExecuteIndividually
+    blocking
+    automationCondition {
+      label
+      expandedLabel
+    }
+    ...ExecuteChecksButtonCheckFragment
+    executionForLatestMaterialization {
+      ...AssetCheckExecutionFragment
+    }
+    partitionDefinition {
+      name
+      description
+    }
+    partitionStatuses {
+      ... on AssetCheckDefaultPartitionStatuses {
+        succeededPartitions
+        failedPartitions
+        inProgressPartitions
+        skippedPartitions
+        executionFailedPartitions
+      }
+      ... on AssetCheckTimePartitionStatuses {
+        ranges {
+          startKey
+          endKey
+          status
+        }
+      }
+      ... on AssetCheckMultiPartitionStatuses {
+        primaryDimensionName
+        ranges {
+          primaryDimStartKey
+          primaryDimEndKey
+          secondaryDim {
+            ... on AssetCheckDefaultPartitionStatuses {
+              succeededPartitions
+              failedPartitions
+              inProgressPartitions
+              skippedPartitions
+              executionFailedPartitions
+            }
+            ... on AssetCheckTimePartitionStatuses {
+              ranges {
+                startKey
+                endKey
+                status
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  ${ASSET_CHECK_EXECUTION_FRAGMENT}
+  ${EXECUTE_CHECKS_BUTTON_CHECK_FRAGMENT}
+`;

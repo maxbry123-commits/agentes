@@ -1,0 +1,25 @@
+# Adapted from
+# https://github.com/woodruffw/gha-hazmat/blob/main/.github/workflows/template-injection.yml
+name: safe
+on:
+  issues:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ok-ish:
+    name: ok-ish
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        frob: ["nothing", "special"]
+
+    steps:
+      - name: Nothing to fear
+        run: |
+          echo "issue created: ${{ matrix.frob }}"

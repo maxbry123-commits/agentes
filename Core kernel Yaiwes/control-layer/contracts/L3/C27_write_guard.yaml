@@ -1,0 +1,18 @@
+# C27 — L3. B2 SALIDA4
+id: C27
+layer: L3
+name: write_guard
+implementado: true
+critical: false
+description: "Guard de escrituras al filesystem"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C27 aplica en capa L3"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - write_guard_check
+evidence:
+  type: write_guard_marker
+  required: false

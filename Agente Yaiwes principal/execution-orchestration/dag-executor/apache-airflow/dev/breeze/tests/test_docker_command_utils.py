@@ -1,0 +1,583 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+from __future__ import annotations
+
+import json
+from unittest import mock
+from unittest.mock import call
+
+import pytest
+
+from airflow_breeze.global_constants import (
+    ALLOWED_POSTGRES_VERSIONS,
+    CI_IMAGE_SOURCES_HASH_LABEL,
+    CURRENT_POSTGRES_VERSIONS,
+)
+from airflow_breeze.params.build_ci_params import BuildCiParams
+from airflow_breeze.params.build_prod_params import BuildProdParams
+from airflow_breeze.utils.docker_command_utils import (
+    autodetect_docker_context,
+    bring_all_compose_projects_down,
+    check_docker_compose_version,
+    check_docker_version,
+    discover_running_compose_projects,
+    enter_shell,
+    get_images_to_pull,
+    is_known_breeze_compose_project,
+    prepare_docker_build_command,
+    pull_images_with_retries,
+)
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_docker_permission_denied")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+def test_check_docker_version_unknown(
+    mock_console_print, mock_run_command, mock_check_docker_permission_denied
+):
+    mock_check_docker_permission_denied.return_value = False
+    with pytest.raises(SystemExit) as e:
+        check_docker_version()
+    assert e.value.code == 1
+    expected_run_command_calls = [
+        call(
+            ["docker", "version", "--format", "{{.Client.Version}}"],
+            no_output_dump_on_exception=True,
+            capture_output=True,
+            text=True,
+            check=False,
+            dry_run_override=False,
+        ),
+    ]
+    mock_run_command.assert_has_calls(expected_run_command_calls)
+    mock_console_print.assert_called_with(
+        """
+[warning]Your version of docker is unknown. If the scripts fail, please make sure to[/]
+[warning]install docker at least: 25.0.0 version.[/]
+"""
+    )
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_docker_permission_denied")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+def test_check_docker_version_too_low(
+    mock_console_print, mock_run_command, mock_check_docker_permission_denied
+):
+    mock_check_docker_permission_denied.return_value = False
+    mock_run_command.return_value.returncode = 0
+    mock_run_command.return_value.stdout = "0.9"
+    with pytest.raises(SystemExit) as e:
+        check_docker_version()
+    assert e.value.code == 1
+    mock_check_docker_permission_denied.assert_called()
+    mock_run_command.assert_called_with(
+        ["docker", "version", "--format", "{{.Client.Version}}"],
+        no_output_dump_on_exception=True,
+        capture_output=True,
+        text=True,
+        check=False,
+        dry_run_override=False,
+    )
+    mock_console_print.assert_called_with(
+        """
+[error]Your version of docker is too old: 0.9.\n[/]\n[warning]Please upgrade to at least 25.0.0.\n[/]\n\
+You can find installation instructions here: https://docs.docker.com/engine/install/
+"""
+    )
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_docker_permission_denied")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+def test_check_docker_version_ok(mock_console_print, mock_run_command, mock_check_docker_permission_denied):
+    mock_check_docker_permission_denied.return_value = False
+    mock_run_command.return_value.returncode = 0
+    mock_run_command.return_value.stdout = "25.0.0"
+    check_docker_version()
+    mock_check_docker_permission_denied.assert_called()
+    mock_run_command.assert_called_with(
+        ["docker", "version", "--format", "{{.Client.Version}}"],
+        no_output_dump_on_exception=True,
+        capture_output=True,
+        text=True,
+        check=False,
+        dry_run_override=False,
+    )
+    mock_console_print.assert_called_with("[success]Good version of Docker: 25.0.0.[/]")
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_docker_permission_denied")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+def test_check_docker_version_higher(
+    mock_console_print, mock_run_command, mock_check_docker_permission_denied
+):
+    mock_check_docker_permission_denied.return_value = False
+    mock_run_command.return_value.returncode = 0
+    mock_run_command.return_value.stdout = "25.0.0"
+    check_docker_version()
+    mock_check_docker_permission_denied.assert_called()
+    mock_run_command.assert_called_with(
+        ["docker", "version", "--format", "{{.Client.Version}}"],
+        no_output_dump_on_exception=True,
+        capture_output=True,
+        text=True,
+        check=False,
+        dry_run_override=False,
+    )
+    mock_console_print.assert_called_with("[success]Good version of Docker: 25.0.0.[/]")
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_docker_permission_denied")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+def test_check_docker_version_higher_rancher_desktop(
+    mock_console_print, mock_run_command, mock_check_docker_permission_denied
+):
+    mock_check_docker_permission_denied.return_value = False
+    mock_run_command.return_value.returncode = 0
+    mock_run_command.return_value.stdout = "25.0.0-rd"
+    check_docker_version()
+    mock_check_docker_permission_denied.assert_called()
+    mock_run_command.assert_called_with(
+        ["docker", "version", "--format", "{{.Client.Version}}"],
+        no_output_dump_on_exception=True,
+        capture_output=True,
+        text=True,
+        check=False,
+        dry_run_override=False,
+    )
+    mock_console_print.assert_called_with("[success]Good version of Docker: 25.0.0-r.[/]")
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+def test_check_docker_compose_version_unknown(mock_console_print, mock_run_command):
+    with pytest.raises(SystemExit) as e:
+        check_docker_compose_version()
+    assert e.value.code == 1
+    expected_run_command_calls = [
+        call(
+            ["docker", "compose", "version"],
+            no_output_dump_on_exception=True,
+            capture_output=True,
+            text=True,
+            dry_run_override=False,
+        ),
+    ]
+    mock_run_command.assert_has_calls(expected_run_command_calls)
+    mock_console_print.assert_called_with(
+        """
+[error]Unknown docker-compose version.[/]\n[warning]At least 2.20.2 needed! Please upgrade!\n[/]
+See https://docs.docker.com/compose/install/ for installation instructions.\n
+Make sure docker-compose you install is first on the PATH variable of yours.\n
+"""
+    )
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+def test_check_docker_compose_version_low(mock_console_print, mock_run_command):
+    mock_run_command.return_value.returncode = 0
+    mock_run_command.return_value.stdout = "1.28.5"
+    with pytest.raises(SystemExit) as e:
+        check_docker_compose_version()
+    assert e.value.code == 1
+    mock_run_command.assert_called_with(
+        ["docker", "compose", "version"],
+        no_output_dump_on_exception=True,
+        capture_output=True,
+        text=True,
+        dry_run_override=False,
+    )
+    mock_console_print.assert_called_with(
+        """
+[error]You have too old version of docker-compose: 1.28.5!\n[/]
+[warning]At least 2.20.2 needed! Please upgrade!\n[/]
+See https://docs.docker.com/compose/install/ for installation instructions.\n
+Make sure docker-compose you install is first on the PATH variable of yours.\n
+"""
+    )
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+def test_check_docker_compose_version_ok(mock_console_print, mock_run_command):
+    mock_run_command.return_value.returncode = 0
+    mock_run_command.return_value.stdout = "2.20.2"
+    check_docker_compose_version()
+    mock_run_command.assert_called_with(
+        ["docker", "compose", "version"],
+        no_output_dump_on_exception=True,
+        capture_output=True,
+        text=True,
+        dry_run_override=False,
+    )
+    mock_console_print.assert_called_with("[success]Good version of docker-compose: 2.20.2[/]")
+
+
+def _fake_ctx_output(*names: str) -> str:
+    return "\n".join(json.dumps({"Name": name, "DockerEndpoint": f"unix://{name}"}) for name in names)
+
+
+@pytest.mark.parametrize(
+    ("context_output", "selected_context", "console_output"),
+    [
+        (
+            _fake_ctx_output("default"),
+            "default",
+            "[info]Using 'default' as context",
+        ),
+        ("\n", "default", "[warning]Could not detect docker builder"),
+        (
+            _fake_ctx_output("a", "b"),
+            "a",
+            "[warning]Could not use any of the preferred docker contexts",
+        ),
+        (
+            _fake_ctx_output("a", "desktop-linux"),
+            "desktop-linux",
+            "[info]Using 'desktop-linux' as context",
+        ),
+        (
+            _fake_ctx_output("a", "default"),
+            "default",
+            "[info]Using 'default' as context",
+        ),
+        (
+            _fake_ctx_output("a", "default", "desktop-linux"),
+            "desktop-linux",
+            "[info]Using 'desktop-linux' as context",
+        ),
+        (
+            '[{"Name": "desktop-linux", "DockerEndpoint": "unix://desktop-linux"}]',
+            "desktop-linux",
+            "[info]Using 'desktop-linux' as context",
+        ),
+    ],
+)
+def test_autodetect_docker_context(context_output: str, selected_context: str, console_output: str):
+    with mock.patch("airflow_breeze.utils.docker_command_utils.run_command") as mock_run_command:
+        mock_run_command.return_value.returncode = 0
+        mock_run_command.return_value.stdout = context_output
+        with mock.patch("airflow_breeze.utils.docker_command_utils.console_print") as mock_console_print:
+            assert autodetect_docker_context() == selected_context
+            mock_console_print.assert_called_once()
+            assert console_output in mock_console_print.call_args[0][0]
+
+
+SOCKET_INFO = json.dumps(
+    [
+        {
+            "Name": "default",
+            "Metadata": {},
+            "Endpoints": {"docker": {"Host": "unix:///not-standard/docker.sock", "SkipTLSVerify": False}},
+            "TLSMaterial": {},
+            "Storage": {"MetadataPath": "\u003cIN MEMORY\u003e", "TLSPath": "\u003cIN MEMORY\u003e"},
+        }
+    ]
+)
+
+SOCKET_INFO_DESKTOP_LINUX = json.dumps(
+    [
+        {
+            "Name": "desktop-linux",
+            "Metadata": {},
+            "Endpoints": {
+                "docker": {"Host": "unix:///VERY_NON_STANDARD/docker.sock", "SkipTLSVerify": False}
+            },
+            "TLSMaterial": {},
+            "Storage": {"MetadataPath": "\u003cIN MEMORY\u003e", "TLSPath": "\u003cIN MEMORY\u003e"},
+        }
+    ]
+)
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("breeze", True),
+        ("breeze-prek", True),
+        ("docker-compose", False),
+        ("docs", False),
+        ("db", False),
+        ("providers", False),
+        ("breeze-registry-abcd1234", True),
+        ("breeze-backfill-deadbeef", True),
+        ("breeze-run-12345678", True),
+        ("airflow-test", False),
+        ("airflow-test-providers-google", False),
+        ("constraints-3-12", False),
+        ("providers-7", False),
+        ("my-other-project", False),
+        ("airflow", False),
+        ("doc", False),
+        ("", False),
+    ],
+)
+def test_is_known_breeze_compose_project(name, expected):
+    assert is_known_breeze_compose_project(name) is expected
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+def test_discover_running_compose_projects_parses_label_output(mock_run_command):
+    mock_run_command.return_value = mock.Mock(
+        returncode=0,
+        stdout="breeze\nbreeze\nairflow-test-providers-amazon\n   \n",
+    )
+    assert discover_running_compose_projects() == {"breeze", "airflow-test-providers-amazon"}
+    cmd = mock_run_command.call_args.args[0]
+    assert cmd[:2] == ["docker", "ps"]
+    assert "label=com.docker.compose.project" in cmd
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+def test_discover_running_compose_projects_returns_empty_on_failure(mock_run_command):
+    mock_run_command.return_value = mock.Mock(returncode=1, stdout="")
+    assert discover_running_compose_projects() == set()
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.discover_running_compose_projects")
+def test_bring_all_compose_projects_down_filters_unknown_by_default(
+    mock_discover, mock_run_command, _mock_console
+):
+    mock_discover.return_value = {"breeze", "providers-3", "my-app"}
+    brought_down, skipped = bring_all_compose_projects_down()
+    assert brought_down == ["breeze"]
+    assert skipped == ["my-app", "providers-3"]
+    down_calls = [c for c in mock_run_command.call_args_list if c.args[0][:2] == ["docker", "compose"]]
+    assert len(down_calls) == 1
+    for c in down_calls:
+        assert "--volumes" in c.args[0]
+        assert "--remove-orphans" in c.args[0]
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.discover_running_compose_projects")
+def test_bring_all_compose_projects_down_include_unknown(mock_discover, mock_run_command, _mock_console):
+    mock_discover.return_value = {"breeze", "my-app"}
+    brought_down, skipped = bring_all_compose_projects_down(include_unknown=True)
+    assert brought_down == ["breeze", "my-app"]
+    assert skipped == []
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.discover_running_compose_projects")
+def test_bring_all_compose_projects_down_only_project_skips_discovery(
+    mock_discover, mock_run_command, _mock_console
+):
+    brought_down, skipped = bring_all_compose_projects_down(only_project="my-app")
+    assert brought_down == ["my-app"]
+    assert skipped == []
+    mock_discover.assert_not_called()
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@mock.patch("airflow_breeze.utils.docker_command_utils.discover_running_compose_projects")
+def test_bring_all_compose_projects_down_preserve_volumes(mock_discover, mock_run_command, _mock_console):
+    mock_discover.return_value = {"breeze"}
+    bring_all_compose_projects_down(preserve_volumes=True)
+    down_call = next(c for c in mock_run_command.call_args_list if c.args[0][:2] == ["docker", "compose"])
+    assert "--volumes" not in down_call.args[0]
+    assert "--remove-orphans" in down_call.args[0]
+
+
+def _shell_params_for_openlineage(
+    backend: str, postgres_version: str, integration: tuple[str, ...] = ("openlineage",)
+) -> mock.MagicMock:
+    shell_params = mock.MagicMock()
+    shell_params.use_airflow_version = None
+    shell_params.restart = False
+    shell_params.include_mypy_volume = False
+    shell_params.quiet = True
+    shell_params.project_name = None
+    shell_params.tty = "disabled"
+    shell_params.command_passed = None
+    shell_params.integration = integration
+    shell_params.backend = backend
+    shell_params.postgres_version = postgres_version
+    return shell_params
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.fix_ownership_using_docker")
+@mock.patch("airflow_breeze.utils.docker_command_utils.cleanup_python_generated_files")
+@mock.patch("airflow_breeze.utils.docker_command_utils.read_from_cache_file", return_value="1")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@pytest.mark.parametrize("integration", [("openlineage",), ("all",)])
+@pytest.mark.parametrize("postgres_version", CURRENT_POSTGRES_VERSIONS)
+def test_enter_shell_openlineage_allows_current_postgres_versions(
+    mock_run_command,
+    mock_console_print,
+    _mock_read_cache,
+    _mock_cleanup,
+    _mock_fix_ownership,
+    postgres_version,
+    integration,
+):
+    mock_run_command.return_value.returncode = 0
+    shell_params = _shell_params_for_openlineage("postgres", postgres_version, integration)
+    enter_shell(shell_params)
+    mock_run_command.assert_called_once()
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.fix_ownership_using_docker")
+@mock.patch("airflow_breeze.utils.docker_command_utils.cleanup_python_generated_files")
+@mock.patch("airflow_breeze.utils.docker_command_utils.read_from_cache_file", return_value="1")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@pytest.mark.parametrize("integration", [("openlineage",), ("all",)])
+@pytest.mark.parametrize("postgres_version", set(ALLOWED_POSTGRES_VERSIONS) - set(CURRENT_POSTGRES_VERSIONS))
+def test_enter_shell_openlineage_rejects_stale_postgres_versions(
+    mock_run_command,
+    mock_console_print,
+    _mock_read_cache,
+    _mock_cleanup,
+    _mock_fix_ownership,
+    postgres_version,
+    integration,
+):
+    shell_params = _shell_params_for_openlineage("postgres", postgres_version, integration)
+    with pytest.raises(SystemExit) as exc_info:
+        enter_shell(shell_params)
+    assert exc_info.value.code == 1
+    error_message = mock_console_print.call_args[0][0]
+    assert all(version in error_message for version in CURRENT_POSTGRES_VERSIONS)
+    mock_run_command.assert_not_called()
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.fix_ownership_using_docker")
+@mock.patch("airflow_breeze.utils.docker_command_utils.cleanup_python_generated_files")
+@mock.patch("airflow_breeze.utils.docker_command_utils.read_from_cache_file", return_value="1")
+@mock.patch("airflow_breeze.utils.docker_command_utils.console_print")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+@pytest.mark.parametrize("integration", [("openlineage",), ("all",)])
+def test_enter_shell_openlineage_rejects_non_postgres_backend(
+    mock_run_command, mock_console_print, _mock_read_cache, _mock_cleanup, _mock_fix_ownership, integration
+):
+    shell_params = _shell_params_for_openlineage("mysql", CURRENT_POSTGRES_VERSIONS[0], integration)
+    with pytest.raises(SystemExit) as exc_info:
+        enter_shell(shell_params)
+    assert exc_info.value.code == 1
+    mock_run_command.assert_not_called()
+
+
+CI_IMAGE = "ghcr.io/apache/airflow/main/ci/python3.10:latest"
+
+
+def _fake_docker_calls(present_images: set[str], failing_pulls: dict[str, int]):
+    """
+    Builds a run_command side effect emulating docker for the pull helpers.
+
+    :param present_images: images `docker image inspect` reports as already available
+    :param failing_pulls: how many times `docker pull` fails for a given image before succeeding
+    """
+    remaining_failures = dict(failing_pulls)
+
+    def _run_command(cmd, **kwargs):
+        result = mock.MagicMock()
+        result.returncode = 0
+        if cmd[:2] == ["docker", "compose"]:
+            result.stdout = f"{CI_IMAGE}\npostgres:17\notel/opentelemetry-collector-contrib:0.155.0\n"
+        elif cmd[:3] == ["docker", "image", "inspect"]:
+            result.returncode = 0 if cmd[3] in present_images else 1
+        elif cmd[:2] == ["docker", "pull"]:
+            if remaining_failures.get(cmd[2], 0) > 0:
+                remaining_failures[cmd[2]] -= 1
+                result.returncode = 1
+        return result
+
+    return _run_command
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+def test_get_images_to_pull_skips_present_and_skipped_images(mock_run_command):
+    mock_run_command.side_effect = _fake_docker_calls(present_images={"postgres:17"}, failing_pulls={})
+
+    images = get_images_to_pull("breeze-test", env={}, skip_images={CI_IMAGE})
+
+    assert images == ["otel/opentelemetry-collector-contrib:0.155.0"]
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+def test_get_images_to_pull_returns_nothing_when_compose_config_fails(mock_run_command):
+    mock_run_command.return_value = mock.MagicMock(returncode=1, stdout="")
+
+    assert get_images_to_pull("breeze-test", env={}, skip_images=set()) == []
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.time.sleep")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+def test_pull_images_with_retries_recovers_from_transient_failures(mock_run_command, mock_sleep):
+    otel_image = "otel/opentelemetry-collector-contrib:0.155.0"
+    mock_run_command.side_effect = _fake_docker_calls(
+        present_images={"postgres:17"}, failing_pulls={otel_image: 2}
+    )
+
+    assert pull_images_with_retries("breeze-test", env={}, skip_images={CI_IMAGE}) is True
+    assert mock_sleep.call_args_list == [call(15), call(30)]
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.time.sleep")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+def test_pull_images_with_retries_gives_up_after_all_attempts(mock_run_command, mock_sleep):
+    otel_image = "otel/opentelemetry-collector-contrib:0.155.0"
+    mock_run_command.side_effect = _fake_docker_calls(
+        present_images={"postgres:17"}, failing_pulls={otel_image: 99}
+    )
+
+    assert pull_images_with_retries("breeze-test", env={}, skip_images={CI_IMAGE}, attempts=3) is False
+    assert mock_sleep.call_args_list == [call(15), call(30)]
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.time.sleep")
+@mock.patch("airflow_breeze.utils.docker_command_utils.run_command")
+def test_pull_images_with_retries_does_not_pull_when_all_images_are_present(mock_run_command, mock_sleep):
+    mock_run_command.side_effect = _fake_docker_calls(
+        present_images={"postgres:17", "otel/opentelemetry-collector-contrib:0.155.0"}, failing_pulls={}
+    )
+
+    assert pull_images_with_retries("breeze-test", env={}, skip_images={CI_IMAGE}) is True
+    assert not any(c.args[0][:2] == ["docker", "pull"] for c in mock_run_command.call_args_list)
+    mock_sleep.assert_not_called()
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.calculate_ci_sources_hash")
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_if_buildx_plugin_installed")
+def test_prepare_docker_build_command_labels_ci_image_with_sources_hash(
+    mock_check_if_buildx_plugin_installed, mock_calculate_ci_sources_hash
+):
+    mock_check_if_buildx_plugin_installed.return_value = False
+    mock_calculate_ci_sources_hash.return_value = "hash-of-sources"
+    command = prepare_docker_build_command(BuildCiParams())
+    label_index = command.index("--label")
+    assert command[label_index + 1] == f"{CI_IMAGE_SOURCES_HASH_LABEL}=hash-of-sources"
+
+
+@mock.patch("airflow_breeze.utils.docker_command_utils.check_if_buildx_plugin_installed")
+def test_prepare_docker_build_command_does_not_add_sources_hash_label_to_prod_image(
+    mock_check_if_buildx_plugin_installed,
+):
+    mock_check_if_buildx_plugin_installed.return_value = False
+    command = prepare_docker_build_command(BuildProdParams())
+    assert not any(flag.startswith(CI_IMAGE_SOURCES_HASH_LABEL) for flag in command)

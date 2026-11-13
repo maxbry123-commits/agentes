@@ -1,0 +1,30 @@
+<tools>
+  <tool name="comprehensive_subdomain_enum">
+    <description>Run comprehensive subdomain enumeration combining passive, external tools, smart generation, and active DNS brute-forcing.</description>
+    <parameters>
+      <parameter name="domain" type="string" required="true">
+        <description>Target domain (e.g., "example.com").</description>
+      </parameter>
+      <parameter name="stealth" type="boolean" required="false">
+        <description>Enable stealth mode (slower, more careful). Default: false.</description>
+      </parameter>
+      <parameter name="include_bruteforce" type="boolean" required="false">
+        <description>Include DNS brute-forcing phase. Default: true.</description>
+      </parameter>
+      <parameter name="bruteforce_size" type="string" required="false">
+        <description>Wordlist size for bruteforce: small, medium, large. Default: medium.</description>
+      </parameter>
+      <parameter name="use_external_tools" type="boolean" required="false">
+        <description>Try to use subfinder/assetfinder if available. Default: true.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>All discovered subdomains, results by source, and sources_used.</description>
+    </returns>
+    <examples>
+      <function=comprehensive_subdomain_enum>
+        <parameter=domain>example.com</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

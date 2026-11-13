@@ -1,0 +1,572 @@
+include::ROOT:partial$attributes.adoc[]
+
+= Deploy Cerbos to Cloud platforms
+
+include::ROOT:partial$version-check.adoc[]
+
+== AWS Marketplace
+
+Cerbos is avaliable via the link:https://aws.amazon.com/marketplace/pp/prodview-6kkahbtwv3gtq[AWS Marketplace] and can be deployed in either link:https://aws.amazon.com/eks/[Elastic Kubernetes Service (EKS)] or link:https://aws.amazon.com/ecs/[Elastic Container Service (ECS)]. When deploying Cerbos via the Marketplace, your Cerbos Hub account is included with the purchase via AWS and no additional paid account is required.
+
+=== Elastic Kubernetes Service (EKS)
+
+==== Step 1: Create an IAM policy
+To deploy Cerbos from AWS Marketplace, you need to assign an IAM policy with appropriate IAM permission to a Kubernetes service account before starting the deployment. You can either use AWS managed policy `arn:aws:iam::aws:policy/AWSMarketplaceMeteringRegisterUsage` or create your own IAM policy.
+
+Here's an example IAM policy:
+
+[source,json]
+----
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "aws-marketplace:RegisterUsage"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    }
+  ]
+}
+----
+
+==== Step 2: Create an IAM role for the Kubernetes service account (IRSA)
+
+Once the IAM role has been created, a Kubernetes service account needs to be created and assicated with the role. We recommend doing this via link:https://docs.aws.amazon.com/eks/latest/userguide/eksctl.html[eksctl]. The command below automates the process to:
+
+1. Create an IAM role with AWS-managed IAM policy (or you can provide your own ARN).
+2. Create a Kubernetes service account name `cerbos-serviceaccount` in the cluster.
+3. Set up a trust relationship between the IAM role and the service account.
+4. Modify `cerbos-serviceaccount` annotation to associate it with the created IAM role
+
+Remember to replace `CLUSTER_NAME` with your actual Amazon EKS cluster name and optionally set the namespace.
+
+[source,sh]
+----
+eksctl create iamserviceaccount \
+    --name cerbos-serviceaccount \
+    --attach-policy-arn arn:aws:iam::aws:policy/AWSMarketplaceMeteringRegisterUsage \
+    --namespace default \
+    --cluster CLUSTER_NAME \
+    --approve \
+    --override-existing-serviceaccounts
+----
+
+==== Step 4: Deploy Cerbos with the service account
+
+include::ROOT:partial$try-cerbos-hub.adoc[]
+
+For the following steps, you need a Cerbos Hub account with a workspace connected to your policy repository and a set of client credentials. See the xref:cerbos-hub:ROOT:getting-started.adoc[Cerbos Hub getting started guide] for details.
+
+
+* Create a new Kubernetes secret to hold the Cerbos Hub credentials. See the xref:cerbos-hub:ROOT:getting-started.adoc[Cerbos Hub guide] for details.
++
+[source,sh]
+----
+kubectl create secret generic cerbos-hub-credentials \
+   --from-literal=CERBOS_HUB_CLIENT_ID=YOUR_CLIENT_ID \ <1>
+   --from-literal=CERBOS_HUB_CLIENT_SECRET=YOUR_CLIENT_SECRET \ <2>
+   --from-literal=CERBOS_HUB_DEPLOYMENT_ID=YOUR_DEPLOYMENT_ID <3>
+----
+<1> Client ID from the Cerbos Hub credential
+<2> Client secret from the Cerbos Hub credential
+<3> Cerbos Hub xref:cerbos-hub:ROOT:deployments.adoc[Deployment ID]
+
+* Create a new values file named `hub-values.yaml` with the following contents:
++
+[source,yaml,linenums,subs="attributes"]
+----
+# Assign the service account
+serviceAccount:
+  name: cerbos-serviceaccount
+
+# Set Cerbos configuration
+cerbos:
+  config:
+    # Configure the Hub audit backend
+    audit:
+      enabled: true <1>
+      backend: "hub"
+      hub:
+        storagePath: /audit_logs
+
+# Create environment variables from the secret.
+envFrom:
+  - secretRef:
+      name: cerbos-hub-credentials
+
+# Mount volume for locally buffering the audit logs. A persistent volume is recommended for production use cases.
+volumes:
+  - name: cerbos-audit-logs
+    emptyDir: {}
+
+volumeMounts:
+  - name: cerbos-audit-logs
+    mountPath: /audit_logs
+----
+<1> Enables audit log collection. See xref:cerbos-hub:ROOT:audit-log-collection.adoc[Hub audit log collection documentation] for information about masking sensitive fields and other advanced settings.
+
+* Deploy Cerbos using the AWS Helm chart
++
+[source,sh,subs="attributes"]
+----
+aws ecr get-login-password \
+     --region us-west-1 | helm registry login \
+     --username AWS \
+     --password-stdin 709825985650.dkr.ecr.us-west-1.amazonaws.com
+
+helm install cerbos oci://709825985650.dkr.ecr.us-east-1.amazonaws.com/cerbos/cerbos-aws-helm  --values=hub-values.yaml
+----
+
+=== Elastic Container Service (ECS)
+
+==== Step 1: Create ECS Task Role policy
+To deploy Cerbos from AWS Marketplace, you need to create an ECS Task AIM Role with appropriate IAM permission before starting the deployment. You can either use AWS managed policy `arn:aws:iam::aws:policy/AWSMarketplaceMeteringRegisterUsage` or create your own IAM policy.
+
+Here's an example IAM policy required - you will need the ARN for this role when defining the task.
+
+[source,json]
+----
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+          "aws-marketplace:RegisterUsage"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    }
+  ]
+}
+----
+
+==== Step 2: Create the task definition
+
+In the AWS console or the CLI, create the task using the following JSON definition, subsituting the values noted:
+
+[source,json,subs="attributes"]
+----
+{
+  "family": "cerbos",
+  "containerDefinitions": [
+    {
+      "name": "cerbos",
+      "image": "{app-aws-img}",
+      "cpu": 0,
+      "portMappings": [
+        {
+          "name": "cerbos-3592-tcp",
+          "containerPort": 3592,
+          "hostPort": 3592,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        },
+        {
+          "name": "cerbos-3593-tcp",
+          "containerPort": 3593,
+          "hostPort": 3593,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        {
+          "name": "CERBOS_HUB_CLIENT_ID",
+          "value": "YOUR_CLIENT_ID" <1>
+        },
+        {
+          "name": "CERBOS_HUB_CLIENT_SECRET",
+          "value": "YOUR_CLIENT_SECRET" <2>
+        },
+        {
+          "name": "CERBOS_HUB_DEPLOYMENT_ID",
+          "value": "YOUR_DEPLOYMENT_ID" <3>
+        }
+      ],
+      "command": [
+        "server",
+        "--set=audit.enabled=true", <4>
+        "--set=audit.backend=hub",
+        "--set=audit.hub.storagePath=/tmp"
+      ],
+      "environmentFiles": [],
+      "mountPoints": [],
+      "volumesFrom": [],
+      "ulimits": [],
+      "healthCheck": {
+        "command": [
+            "CMD",
+            "/cerbos",
+            "healthcheck"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 5
+      },
+      "systemControls": []
+    }
+  ],
+  "taskRoleArn": "TASK_ROLE_ARN", <5>
+  "executionRoleArn": "TASK_EXECUTION_ROLE_ARN", <6>
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "1024",
+  "memory": "3072",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  }
+}
+----
+<1> Client ID from the Cerbos Hub credential
+<2> Client secret from the Cerbos Hub credential
+<3> Cerbos Hub xref:cerbos-hub:ROOT:deployments.adoc[Deployment ID]
+<4> Enables audit log collection. See xref:cerbos-hub:ROOT:audit-log-collection.adoc[Hub audit log collection documentation] for information about masking sensitive fields and other advanced settings.
+<5> The ARN for the custom ECS Task Role defined in Step 1.
+<6> The ARN for the ECS Task Execution. The default is `arn:aws:iam::<AWS_ACCOUNT_ID>:role/ecsTaskExecutionRole`
+
+==== Step 4: Launch a service
+
+Using the above task defintion, launch a service in your ECS Cluster. Take note to ensure the service is running attached to the security groups which your applications will be calling Cerbos from.
+
+
+== Fly.io
+
+You can deploy Cerbos on Fly.io as a link:https://fly.io/docs/apps[Fly Launch] app. The following `fly.toml` file shows
+how to deploy Cerbos with healthchecks and metrics:
+
+[source,toml,linenums,subs="attributes+"]
+----
+app = '<APPLICATION_NAME>' <1>
+primary_region = '<REGION>' <2>
+
+[build]
+  image = 'ghcr.io/cerbos/cerbos:{app-version}'
+
+[[mounts]]
+  source = 'policies'
+  destination = '/policies'
+  initial_size = '1GB'
+
+[[services]]
+  protocol = ''
+  internal_port = 3592
+
+[[services.ports]]
+    port = 3592
+    handlers = ['tls', 'http']
+
+[[services.http_checks]]
+    interval = '5s'
+    timeout = '2s'
+    grace_period = '5s'
+    method = 'get'
+    path = '/_cerbos/health'
+    protocol = 'http'
+
+[[services]]
+  protocol = ''
+  internal_port = 3593
+
+[[services.ports]]
+    port = 3593
+    handlers = ['tls']
+
+    [services.ports.tls_options]
+      alpn = ['h2']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+
+[metrics]
+  port = 3592
+  path = "/_cerbos/metrics"
+----
+<1> The name of the link:https://fly.io/docs/apps[Fly App]
+<2> Pick a Fly.io link:https://fly.io/docs/reference/regions/#fly-io-regions[region]
+
+The example above launches a Cerbos instance with the xref:configuration:index.adoc#minimal-configuration[minimal configuration] using an empty link:https://fly.io/docs/reference/volumes/[Fly volume] mounted as the policy directory. For production use cases, consider using one of the following methods for policy storage.
+
+TIP: Your host or service for an application should be listening on the right address within the VM: Fly Proxy reaches services through a private IPv4 address on each VM, so the process should listen on `0.0.0.0:<port>` (link:https://fly.io/docs/networking/app-services/#a-note-on-ipv4-and-ipv6-wildcards[but see A note on IPv4 and IPv6 wildcards]).
+
+- Cerbos xref:configuration:storage.adoc#git-driver[`git` driver] with a Git provider such as GitHub or GitLab
+- Cerbos xref:configuration:storage.adoc#blob-driver[`blob` driver] with link:https://fly.io/docs/reference/tigris/#create-and-manage-a-tigris-storage-bucket[Tigris]
+- Cerbos xref:configuration:storage.adoc#sqlite3[`sqlite3` driver] with a standalone SQLite database or link:https://fly.io/docs/litefs/#litefs-cloud[LiteFS]
+- Cerbos xref:configuration:storage.adoc#postgres[`postgres` driver] with link:https://fly.io/docs/postgres/[Fly Postgres]
+- link:https://www.cerbos.dev/product-cerbos-hub[Cerbos Hub]
+
+
+TIP: Cerbos can be xref:configuration:index.adoc[configured entirely from the command line] using `--set` flags. On the Fly.io platform, they can be set by overriding the `cmd` setting in the link:https://fly.io/docs/reference/configuration/#the-experimental-section[`experimental` section] of the `fly.toml` file.
+
+=== Using Tigris as a policy repository
+
+Cerbos `blob` driver can be used with any S3-compatible blob storage backend such as link:https://fly.io/docs/reference/tigris[Tigris].
+
+
+Create a storage bucket on Tigris. Refer to https://fly.io/docs/reference/tigris/#create-and-manage-a-tigris-storage-bucket for more information about creating storage buckets.
+
+[source,bash,linenums]
+----
+flyctl storage create
+----
+
+Note down the credentials for accessing the bucket and save them as application secrets.
+
+[source,bash,linenums]
+----
+flyctl apps create <APPLICATION_NAME> <1>
+flyctl secrets set --app=<APPLICATION_NAME> AWS_ACCESS_KEY_ID=tid_XXXXXX <2>
+flyctl secrets set --app=<APPLICATION_NAME> AWS_SECRET_ACCESS_KEY=tsec_XXXXXX <3>
+----
+<1> Your application name on Fly.io
+<2> Tigris key ID
+<3> Tigris secret access key
+
+
+Create a `fly.toml` file.
+
+[source,toml,linenums,subs="attributes+"]
+----
+app = '<APPLICATION_NAME>' <1>
+primary_region = '<REGION>' <2>
+
+[build]
+  image = 'ghcr.io/cerbos/cerbos:{app-version}'
+
+[experimental]
+  cmd = [
+    'server',
+    '--set', 'storage.driver=blob',
+    '--set', 'storage.blob.bucket=s3://<BUCKET_NAME>?endpoint=fly.storage.tigris.dev&region=auto', <3>
+    '--set', 'storage.blob.downloadTimeout=30s',
+    '--set', 'storage.blob.prefix=policies',
+    '--set', 'storage.blob.updatePollInterval=15s',
+    '--set', 'storage.blob.workDir=/policies'
+  ]
+
+[[mounts]]
+  source = 'policies'
+  destination = '/policies'
+  initial_size = '1GB'
+
+[[services]]
+  protocol = ''
+  internal_port = 3592
+  auto_stop_machines = true
+
+[[services.ports]]
+    port = 3592
+    handlers = ['tls', 'http']
+
+[[services.http_checks]]
+    interval = '5s'
+    timeout = '2s'
+    grace_period = '5s'
+    method = 'get'
+    path = '/_cerbos/health'
+    protocol = 'http'
+
+[[services]]
+  protocol = ''
+  internal_port = 3593
+  auto_stop_machines = true
+
+[[services.ports]]
+    port = 3593
+    handlers = ['tls']
+
+    [services.ports.tls_options]
+      alpn = ['h2']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+
+[metrics]
+  port = 3592
+  path = "/_cerbos/metrics"
+----
+<1> The name of the link:https://fly.io/docs/apps[Fly App]
+<2> Pick a Fly.io link:https://fly.io/docs/reference/regions/#fly-io-regions[region]
+<3> Storage bucket name
+
+Deploy the app.
+
+[source,bash,linenums]
+----
+flyctl deploy
+----
+
+=== Using LiteFS as a policy repository
+
+Fly.io's distributed SQLite storage layer link:https://fly.io/docs/litefs[LiteFS] can be used for policy storage using
+Cerbos' `sqlite3` driver.
+
+Start by creating an app on Fly.io.
+
+[source,bash,linenums]
+----
+flyctl apps create <APPLICATION_NAME>
+----
+
+Create a LiteFS configuration file named `litefs.yml`.
+
+[source,yaml,linenums]
+----
+data:
+  dir: "/var/lib/litefs"
+
+exec:
+  - cmd: "/cerbos server --set=storage.driver=sqlite3 --set=storage.sqlite3.dsn=file:/litefs/db --set=server.adminAPI.enabled=true --set=server.adminAPI.adminCredentials.username=$CERBOS_ADMIN_USER --set=server.adminAPI.adminCredentials.passwordHash=$CERBOS_ADMIN_PASSWORD_HASH"
+
+exit-on-error: false
+
+fuse:
+  dir: "/litefs"
+
+lease:
+  advertise-url: "http://${FLY_ALLOC_ID}.vm.${FLY_APP_NAME}.internal:20202"
+  candidate: ${FLY_REGION == PRIMARY_REGION}
+  consul:
+    url: "${FLY_CONSUL_URL}"
+    key: "${FLY_APP_NAME}/primary"
+  promote: true
+  type: "consul"
+----
+
+TIP: Refer to link:https://fly.io/docs/litefs/getting-started-docker/#configuring-litefs[Configuring LiteFS] documentation for other available configuration parameters.
+
+
+Create a Dockerfile.
+
+[source,Dockerfile,subs="attributes+"]
+----
+FROM flyio/litefs:0.5 AS litefs
+
+FROM ghcr.io/cerbos/cerbos:{app-version} AS cerbos
+
+FROM alpine:3.16 AS base
+RUN apk add fuse3 sqlite
+ADD litefs.yml /etc/litefs.yml
+COPY --from=cerbos /cerbos /cerbos
+COPY --from=litefs /usr/local/bin/litefs /usr/local/bin/litefs
+
+ENTRYPOINT ["litefs"]
+CMD ["mount"]
+----
+
+Create a `fly.toml` file to launch Cerbos.
+
+[source,toml,linenums,subs="attributes+"]
+----
+app = '<APPLICATION_NAME>' <1>
+primary_region = '<REGION>' <2>
+
+[build]
+  dockerfile = "Dockerfile"
+
+[mounts]
+  source = "litefs"
+  destination = "/var/lib/litefs" <3>
+
+[[services]]
+  protocol = ''
+  internal_port = 3592
+
+[[services.ports]]
+    port = 3592
+    handlers = ['tls', 'http']
+
+[[services.http_checks]]
+    interval = '5s'
+    timeout = '2s'
+    grace_period = '5s'
+    method = 'get'
+    path = '/_cerbos/health'
+    protocol = 'http'
+
+[[services]]
+  protocol = ''
+  internal_port = 3593
+
+[[services.ports]]
+    port = 3593
+    handlers = ['tls']
+
+    [services.ports.tls_options]
+      alpn = ['h2']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+
+[metrics]
+  port = 3592
+  path = "/_cerbos/metrics"
+----
+<1> The name of the link:https://fly.io/docs/apps[Fly App]
+<2> Pick a link:https://fly.io/docs/reference/regions/#fly-io-regions[region]
+<3> Destination must be equal to the one specified in the `litefs.yaml`
+
+
+Create secrets to hold Cerbos Admin API credentials. Refer to xref:configuration:server.adoc#password-hash[password hash generation instructions] to learn how to generate the password hash.
+
+[source,bash]
+----
+flyctl secrets set CERBOS_ADMIN_USER=<ADMIN_USER_NAME>
+flyctl secrets set CERBOS_ADMIN_PASSWORD_HASH=<ADMIN_PASSWORD_HASH>
+----
+
+Attach to Consul to manage LiteFS leases.
+
+[source,bash]
+----
+flyctl consul attach
+----
+
+TIP: See link:https://fly.io/docs/litefs/getting-started-fly/#lease-configuration[lease configuration] for more information about Consul leases on Fly.io.
+
+Finally, deploy Cerbos.
+
+[source,bash]
+----
+flyctl deploy
+----
+
+You can interact with the Cerbos xref:api:admin_api.adoc[Admin API] using one of the Cerbos SDKs or the xref:cli:cerbosctl.adoc[`cerbosctl`] utility to manage the policies stored on LiteFS.
+
+.List policies with cerbosctl
+[source,bash,linenums]
+----
+cerbosctl \
+  --server=<APPLICATION_NAME>.fly.dev:3593 \
+  --username=<ADMIN_USER_NAME> \
+  --password=<ADMIN_PASSWORD> \
+  get rp
+
+----
+
+.Put a policy or a directory consisting of multiple policies with cerbosctl
+[source,bash,linenums]
+----
+cerbosctl \
+  --server=<APPLICATION_NAME>.fly.dev:3593 \
+  --username=<ADMIN_USER_NAME> \
+  --password=<ADMIN_PASSWORD> \
+  put policies -R \
+  policy_dir
+----
+
+[TIP]
+====
+https://docs.cerbos.dev/cerbos-hub/[Cerbos Hub] securely distributes policy bundles to connected PDPs, eliminating per-instance polling and reload logic.
+====

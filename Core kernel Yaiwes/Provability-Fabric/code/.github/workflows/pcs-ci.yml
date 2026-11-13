@@ -1,0 +1,664 @@
+# SPDX-License-Identifier: Apache-2.0
+# Proof-Carrying Science v0.1: science-claim verification, signing, and fixtures.
+
+name: PCS CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'adapters/pcs/**'
+      - 'core/cli/pf/**'
+      - 'config/schemas/pcs/**'
+      - 'tests/pcs/**'
+      - 'tools/pcs-validate/**'
+      - 'scripts/pcs-schema-diff.sh'
+      - 'scripts/pcs-pf-clean-chain.sh'
+      - 'scripts/pcs-formal-release-args.sh'
+      - 'scripts/pcs-freeze-labtrust-release.sh'
+      - 'scripts/pcs-freeze-labtrust-release-invalid.py'
+      - 'scripts/pcs-sync-from-pcs-core-rc.py'
+      - 'scripts/pcs-sync-computation-release.py'
+      - 'scripts/test-pcs-rc-gate.sh'
+      - 'scripts/test-pcs-rc-gate.ps1'
+      - 'scripts/_resolve_pf.sh'
+      - 'scripts/run-pcs-v01-clean-chain.sh'
+      - 'scripts/pcs-benchmark-admission.sh'
+      - 'scripts/pcs-bench-producer.sh'
+      - 'scripts/pcs-bench-validate-ingest.sh'
+      - 'scripts/pcs-bench-producer-contract-check.py'
+      - 'scripts/validate-pf-pcs-bench-ingest.py'
+      - 'scripts/materialize-admission-benchmark-cases.py'
+      - 'benchmarks/admission/**'
+      - 'justfile'
+      - 'docs/pcs/**'
+      - 'scripts/pcs-validate-reference-ingest.sh'
+      - 'scripts/pcs-release-gate.ps1'
+      - 'docs/guides/science-claim-verification.md'
+      - 'docs/guides/pcs-admission-benchmark.md'
+      - 'docs/guides/proof-carrying-lab-workflow.md'
+      - 'docs/guides/pcs-v01-clean-chain.md'
+      - 'docs/releases/**'
+      - '.github/workflows/pcs-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'adapters/pcs/**'
+      - 'core/cli/pf/**'
+      - 'config/schemas/pcs/**'
+      - 'tests/pcs/**'
+      - 'tools/pcs-validate/**'
+      - 'scripts/pcs-schema-diff.sh'
+      - 'scripts/pcs-pf-clean-chain.sh'
+      - 'scripts/pcs-formal-release-args.sh'
+      - 'scripts/pcs-freeze-labtrust-release.sh'
+      - 'scripts/pcs-freeze-labtrust-release-invalid.py'
+      - 'scripts/pcs-sync-from-pcs-core-rc.py'
+      - 'scripts/pcs-sync-computation-release.py'
+      - 'scripts/test-pcs-rc-gate.sh'
+      - 'scripts/test-pcs-rc-gate.ps1'
+      - 'scripts/_resolve_pf.sh'
+      - 'scripts/run-pcs-v01-clean-chain.sh'
+      - 'scripts/pcs-benchmark-admission.sh'
+      - 'scripts/pcs-bench-producer.sh'
+      - 'scripts/pcs-bench-validate-ingest.sh'
+      - 'scripts/pcs-bench-producer-contract-check.py'
+      - 'scripts/validate-pf-pcs-bench-ingest.py'
+      - 'scripts/materialize-admission-benchmark-cases.py'
+      - 'benchmarks/admission/**'
+      - 'justfile'
+      - 'docs/pcs/**'
+      - 'scripts/pcs-validate-reference-ingest.sh'
+      - 'scripts/pcs-release-gate.ps1'
+      - 'docs/guides/science-claim-verification.md'
+      - 'docs/guides/pcs-admission-benchmark.md'
+      - 'docs/guides/proof-carrying-lab-workflow.md'
+      - 'docs/guides/pcs-v01-clean-chain.md'
+      - 'docs/releases/**'
+      - '.github/workflows/pcs-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcs-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pcs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    env:
+      PCS_CORE_PATH: ${{ github.workspace }}/pcs-core
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: SentinelOps-CI/pcs-core
+          path: pcs-core
+          sparse-checkout: |
+            schemas
+            python
+            catalog
+            test_vectors/hash
+            examples/labtrust-release
+            examples/computation-release
+            examples/workflow_profiles
+            examples/artifact_registry.valid.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: |
+            adapters/pcs/go.sum
+            core/cli/pf/go.sum
+            tools/pcs-validate/go.sum
+
+      - name: Schema mirror matches pcs-core
+        run: bash scripts/pcs-schema-diff.sh pcs-core
+
+      - name: Refresh pcs-core release manifest pins
+        run: python3 scripts/refresh-release-manifest-pins.py pcs-core/examples/labtrust-release
+
+      - name: Test PCS adapter
+        run: |
+          python3 -m pip install -q -e "${{ github.workspace }}/pcs-core/python"
+          cd adapters/pcs
+          go test -tags pcsbench ./... -count=1
+
+      - name: PCS RC fixture lock gate
+        env:
+          PCS_CORE_PATH: ${{ github.workspace }}/pcs-core
+        run: bash scripts/test-pcs-rc-gate.sh
+
+      - name: pf inspect labtrust-release signed fixture
+        run: |
+          cd core/cli/pf
+          go run . inspect science-claim \
+            "$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release/signed_science_claim_bundle.json" \
+            --strict
+
+      - name: pf verify science-claim with HandoffManifest.v0
+        run: |
+          cd core/cli/pf
+          PF_COMMIT="$(python -c "import json;print(json.load(open('$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release/FIXTURE_MANIFEST.json'))['pf_source_commit'])")"
+          export PF_SOURCE_COMMIT="$PF_COMMIT"
+          export PF_RELEASE_MODE=1
+          RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release"
+          read -ra FORMAL_ARGS < <(bash "$GITHUB_WORKSPACE/scripts/pcs-formal-release-args.sh" "$RELEASE")
+          go run . verify science-claim \
+            "$RELEASE/science_claim_bundle.certified.json" \
+            --handoff "$RELEASE/handoff_to_pf.json" \
+            --registry "$RELEASE/artifact_registry.json" \
+            --admission-profile labtrust_qc_release \
+            --release-mode \
+            "${FORMAL_ARGS[@]}"
+
+      - name: Reject release-mode without Lean trust-envelope artifacts
+        run: |
+          cd core/cli/pf
+          PF_COMMIT="$(python -c "import json;print(json.load(open('$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release/FIXTURE_MANIFEST.json'))['pf_source_commit'])")"
+          export PF_SOURCE_COMMIT="$PF_COMMIT"
+          export PF_RELEASE_MODE=1
+          RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release"
+          if go run . verify science-claim \
+            "$RELEASE/science_claim_bundle.certified.json" \
+            --handoff "$RELEASE/handoff_to_pf.json" \
+            --registry "$RELEASE/artifact_registry.json" \
+            --admission-profile labtrust_qc_release \
+            --release-mode 2>&1 | tee "$RUNNER_TEMP/missing_formal.txt"; then
+            echo "expected release-mode without formal artifacts to fail"
+            exit 1
+          fi
+          grep -q missing_lean_check_result "$RUNNER_TEMP/missing_formal.txt"
+
+      - name: pf verify release-chain (ReleaseManifest.v0)
+        run: |
+          # Validate the in-repo labtrust-release fixtures (kept hash-aligned with
+          # PF signed wrappers). pcs-core tip examples can drift independently.
+          python3 scripts/refresh-release-manifest-pins.py tests/pcs/fixtures/labtrust-release
+          pip install -q -e "${{ github.workspace }}/pcs-core/python"
+          cd core/cli/pf
+          PF_COMMIT="$(python -c "import json;print(json.load(open('$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release/FIXTURE_MANIFEST.json'))['pf_source_commit'])")"
+          export PF_SOURCE_COMMIT="$PF_COMMIT"
+          export PF_RELEASE_MODE=1
+          OUT="$RUNNER_TEMP/release_chain_validation_result.json"
+          RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release"
+          MANIFEST="$RELEASE/release_manifest.v0.json"
+          if [ ! -f "$MANIFEST" ]; then
+            MANIFEST="$RELEASE/release_manifest.json"
+          fi
+          REGISTRY="$RELEASE/artifact_registry.json"
+          read -ra FORMAL_ARGS < <(bash "$GITHUB_WORKSPACE/scripts/pcs-formal-release-args.sh" "$RELEASE")
+          go run . verify release-chain \
+            --manifest "$MANIFEST" \
+            --registry "$REGISTRY" \
+            --artifact-dir "$RELEASE" \
+            --admission-profile labtrust_qc_release \
+            --release-mode \
+            "${FORMAL_ARGS[@]}" \
+            --out "$OUT"
+          go run . validate release-chain-result "$OUT"
+          grep -q '"status": "ProofChecked"' "$OUT"
+          grep -q 'manifest_hashes_match' "$OUT"
+          grep -q 'registry_admission_passed' "$OUT"
+          grep -q 'registry_artifact_registered' "$OUT"
+          grep -q 'registry_semantic_checks_executed' "$OUT"
+          grep -q 'admission_profile_selected' "$OUT"
+          grep -q 'registry\.' "$OUT"
+          grep -q 'formal.CertificateMatchesRuntime' "$OUT"
+          grep -q 'formal.VerificationAdmitsBundle' "$OUT"
+          grep -q 'formal.SignedBundleAdmissible' "$OUT"
+          grep -q 'formal_checks_executed' "$OUT"
+
+      - name: Reject legacy pf_handoff in release mode
+        run: |
+          cd core/cli/pf
+          PF_COMMIT="$(python -c "import json;print(json.load(open('$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release/FIXTURE_MANIFEST.json'))['pf_source_commit'])")"
+          export PF_SOURCE_COMMIT="$PF_COMMIT"
+          export PF_RELEASE_MODE=1
+          RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release"
+          if go run . verify science-claim \
+            "$RELEASE/science_claim_bundle.certified.json" \
+            --handoff "$RELEASE/pf_handoff.json" \
+            --registry "$RELEASE/artifact_registry.json" \
+            --admission-profile labtrust_qc_release \
+            --release-mode; then
+            echo "expected legacy pf_handoff to be rejected in release mode"
+            exit 1
+          fi
+
+      - name: Validate PCS fixtures
+        run: |
+          cd tools/pcs-validate
+          go run . --fixtures ../../tests/pcs
+
+      - name: Test pf PCS CLI
+        run: |
+          cd core/cli/pf
+          go test ./cmd/... -count=1
+
+      - name: PCS v0.1 PF clean-chain segment
+        run: |
+          export PCS_CORE_PATH="${{ github.workspace }}/pcs-core"
+          pip install -q -e "$PCS_CORE_PATH/python"
+          WORK="$RUNNER_TEMP/pf-clean-chain"
+          mkdir -p "$WORK"
+          cp "$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release/science_claim_bundle.certified.json" "$WORK/"
+          export PF_SOURCE_COMMIT="$(python -c "import json;print(json.load(open('$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release/FIXTURE_MANIFEST.json'))['pf_source_commit'])")"
+          export PF_RELEASE_MODE=1
+          export PF_DETERMINISTIC=1
+          export PCS_DETERMINISTIC=1
+          bash "$GITHUB_WORKSPACE/scripts/pcs-pf-clean-chain.sh" "$WORK"
+
+      - name: pcs-core validate release artifacts
+        run: |
+          pip install -q -e pcs-core/python
+          RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release"
+          pcs validate "$RELEASE/science_claim_bundle.certified.json"
+          pcs validate "$RELEASE/verification_result.json"
+          pcs validate "$RELEASE/signed_science_claim_bundle.json"
+          pcs validate "$RELEASE/proof_obligation.v0.json"
+          pcs validate "$RELEASE/lean_check_result.v0.json"
+          pcs validate "$RELEASE/handoff_to_pf.json"
+          pcs validate "$RELEASE/release_manifest.json"
+          pcs validate "$RELEASE/release_chain_validation_result.json"
+          pcs validate "$RELEASE/artifact_registry.json"
+
+      - name: pf validate Phase 2 protocol fixtures
+        run: |
+          cd core/cli/pf
+          RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release"
+          go run . validate handoff-manifest "$RELEASE/handoff_to_pf.json"
+          go run . validate release-manifest "$RELEASE/release_manifest.json"
+          go run . validate artifact-registry "$RELEASE/artifact_registry.json"
+          go run . validate release-chain-result "$RELEASE/release_chain_validation_result.json"
+
+      - name: pf explain failure on rejected fixture
+        run: |
+          cd core/cli/pf
+          RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release"
+          VR="$RUNNER_TEMP/rejected_verification_result.json"
+          export PF_RELEASE_MODE=0
+          # ci-honesty: justified wave7-remediation
+          go run . verify science-claim "$RELEASE/invalid_mismatched_trace_hash.json" --out "$VR" || true
+          set +e
+          go run . explain failure "$VR" 2>&1 | tee "$RUNNER_TEMP/explain_vr.txt"
+          EXPLAIN_RC=${PIPESTATUS[0]}
+          set -e
+          if [ "$EXPLAIN_RC" -eq 0 ]; then
+            echo "expected explain failure to exit non-zero"
+            exit 1
+          fi
+          grep -qE '(Repair|repair:)' "$RUNNER_TEMP/explain_vr.txt"
+
+      - name: pf explain release-chain JSON
+        run: |
+          cd core/cli/pf
+          RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release"
+          # Fixture RCR is Rejected; explain exits non-zero but must still emit JSON.
+          set +e
+          go run . explain release-chain "$RELEASE/release_chain_validation_result.json" --json | tee "$RUNNER_TEMP/explain_rc.json"
+          set -e
+          grep -q '"failed_count"' "$RUNNER_TEMP/explain_rc.json"
+
+      - name: pf explain formal Lean release-chain failure
+        run: |
+          cd core/cli/pf
+          python3 - <<'PY' > "$RUNNER_TEMP/formal_lean_rc.json"
+          import json
+          rc = {
+            "schema_version": "v0",
+            "validation_id": "validation-formal-lean-explain",
+            "release_id": "release-pcs-v0.1-labtrust-qc",
+            "release_candidate": "pcs-v0.1.0-rc1",
+            "validator": "Provability Fabric",
+            "validator_version": "0.1.0",
+            "checked_at": "2026-05-18T12:00:00Z",
+            "status": "Rejected",
+            "checks": [{
+              "check_id": "formal.CertificateMatchesRuntime",
+              "description": "Lean trust kernel established CertificateMatchesRuntime",
+              "status": "failed",
+              "details": {
+                "failure_code": "lean_check_failed",
+                "expected_predicate": "certificate.trace_hash = runtime_receipt.trace_hash",
+                "actual_values": {
+                  "certificate_trace_hash": "sha256:aaa",
+                  "runtime_receipt_trace_hash": "sha256:bbb"
+                },
+                "lean_theorem": "admissible_release_has_matching_trace_hash",
+                "obligation_id": "trace_hash_alignment",
+                "responsible_component": "pcs-core Lean trust kernel"
+              },
+              "registry_check_refs": [],
+              "responsible_component": "pcs-core Lean trust kernel"
+            }],
+            "deferred_registry_checks": [],
+            "artifacts_checked": 0,
+            "failure_codes": ["lean_check_failed"],
+            "source_repo": "https://github.com/SentinelOps-CI/provability-fabric",
+            "source_commit": "b0dbbbe1c110ec2301d452d2ef1074354cce170f",
+            "signature_or_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          }
+          print(json.dumps(rc, indent=2))
+          PY
+          set +e
+          go run . explain release-chain "$RUNNER_TEMP/formal_lean_rc.json" 2>&1 | tee "$RUNNER_TEMP/explain_formal.txt"
+          set -e
+          grep -q 'CertificateMatchesRuntime' "$RUNNER_TEMP/explain_formal.txt"
+          grep -q 'trace_hash_alignment' "$RUNNER_TEMP/explain_formal.txt"
+          grep -q 'admissible_release_has_matching_trace_hash' "$RUNNER_TEMP/explain_formal.txt"
+          grep -qE '(Repair|repair:)' "$RUNNER_TEMP/explain_formal.txt"
+
+      - name: Reject release-mode without admission profile
+        run: |
+          cd core/cli/pf
+          PF_COMMIT="$(python -c "import json;print(json.load(open('$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release/FIXTURE_MANIFEST.json'))['pf_source_commit'])")"
+          export PF_SOURCE_COMMIT="$PF_COMMIT"
+          export PF_RELEASE_MODE=1
+          unset PF_ADMISSION_PROFILE
+          RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release"
+          if go run . verify science-claim \
+            "$RELEASE/science_claim_bundle.certified.json" \
+            --handoff "$RELEASE/handoff_to_pf.json" \
+            --registry "$RELEASE/artifact_registry.json" \
+            --release-mode 2>&1 | tee "$RUNNER_TEMP/missing_profile.txt"; then
+            echo "expected release-mode without admission profile to fail"
+            exit 1
+          fi
+          grep -q missing_admission_profile "$RUNNER_TEMP/missing_profile.txt"
+
+      - name: Reject unknown admission profile in release mode
+        run: |
+          cd core/cli/pf
+          PF_COMMIT="$(python -c "import json;print(json.load(open('$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release/FIXTURE_MANIFEST.json'))['pf_source_commit'])")"
+          export PF_SOURCE_COMMIT="$PF_COMMIT"
+          export PF_RELEASE_MODE=1
+          RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release"
+          if go run . verify science-claim \
+            "$RELEASE/science_claim_bundle.certified.json" \
+            --handoff "$RELEASE/handoff_to_pf.json" \
+            --registry "$RELEASE/artifact_registry.json" \
+            --admission-profile not_a_real_profile_xyz \
+            --release-mode 2>&1 | tee "$RUNNER_TEMP/unknown_profile.txt"; then
+            echo "expected unknown admission profile to fail"
+            exit 1
+          fi
+          grep -q unknown_admission_profile "$RUNNER_TEMP/unknown_profile.txt"
+
+      - name: Tool-use admission profile rejects incomplete bundles
+        run: |
+          cd core/cli/pf
+          TOOL_USE="$GITHUB_WORKSPACE/tests/pcs/fixtures/tool-use"
+          PROFILE="$GITHUB_WORKSPACE/adapters/pcs/admission_profiles/agent_tool_use_safety.json"
+          expect_fail() {
+            local fixture="$1"
+            local code="$2"
+            if go run . verify science-claim "$TOOL_USE/$fixture" \
+              --admission-profile "$PROFILE" 2>&1 | tee "$RUNNER_TEMP/tool_use_${fixture}.txt"; then
+              echo "expected $fixture to fail"
+              exit 1
+            fi
+            grep -q "$code" "$RUNNER_TEMP/tool_use_${fixture}.txt"
+          }
+          expect_fail incomplete_science_claim_shape.json admission_profile_workflow_mismatch
+          expect_fail missing_certificate.json missing_tool_use_certificate
+          expect_fail rejected_certificate.json tool_use_certificate_rejected
+          expect_fail trace_hash_mismatch.json tool_trace_hash_mismatch
+          expect_fail policy_hash_mismatch.json policy_hash_mismatch
+          expect_fail unauthorized_violation.json unauthorized_tool_call_certificate_violation
+          if go run . verify science-claim "$TOOL_USE/missing_certificate.json" \
+            --admission-profile "$GITHUB_WORKSPACE/adapters/pcs/admission_profiles/labtrust_qc_release.json" 2>&1 | tee "$RUNNER_TEMP/tool_use_wrong_profile.txt"; then
+            echo "expected wrong admission profile to fail"
+            exit 1
+          fi
+          grep -q admission_profile_workflow_mismatch "$RUNNER_TEMP/tool_use_wrong_profile.txt"
+
+      - name: Computation admission profile admits valid and rejects invalid bundles
+        run: |
+          cd core/cli/pf
+          COMPUTATION="$GITHUB_WORKSPACE/tests/pcs/fixtures/computation"
+          COMP_RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/computation-release"
+          FORMAL="$GITHUB_WORKSPACE/tests/pcs/fixtures/formal/computation"
+          if [ -f "$COMP_RELEASE/proof_obligation.v0.json" ]; then
+            FORMAL="$COMP_RELEASE"
+          fi
+          PROFILE="$GITHUB_WORKSPACE/adapters/pcs/admission_profiles/scientific_computation_reproducibility.json"
+          HANDOFF="$COMP_RELEASE/handoff_to_pf.json"
+          if [ ! -f "$HANDOFF" ]; then
+            HANDOFF="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust-release/handoff_to_pf.json"
+          fi
+          PF_COMMIT="$(python -c "import json;print(json.load(open('$COMP_RELEASE/FIXTURE_MANIFEST.json'))['pf_source_commit'])")"
+          export PF_SOURCE_COMMIT="$PF_COMMIT"
+          export PF_RELEASE_MODE=1
+          MANIFEST="$COMP_RELEASE/release_manifest.v0.json"
+          if [ ! -f "$MANIFEST" ]; then
+            MANIFEST="$COMP_RELEASE/release_manifest.json"
+          fi
+          FORMAL_ARGS=(
+            --proof-obligations "$FORMAL/proof_obligation.v0.json"
+            --lean-check-result "$FORMAL/lean_check_result.v0.json"
+            --manifest "$MANIFEST"
+          )
+          go run . verify science-claim "$COMPUTATION/valid_computation_bundle.json" \
+            --handoff "$HANDOFF" \
+            --admission-profile "$PROFILE" \
+            --release-mode \
+            "${FORMAL_ARGS[@]}"
+          expect_fail() {
+            local fixture="$1"
+            local code="$2"
+            if go run . verify science-claim "$COMPUTATION/$fixture" \
+              --handoff "$HANDOFF" \
+              --admission-profile "$PROFILE" \
+              --release-mode \
+              "${FORMAL_ARGS[@]}" \
+              2>&1 | tee "$RUNNER_TEMP/computation_${fixture}.txt"; then
+              echo "expected $fixture to fail"
+              exit 1
+            fi
+            grep -q "$code" "$RUNNER_TEMP/computation_${fixture}.txt"
+          }
+          expect_fail missing_dataset_receipt.json missing_dataset_receipt
+          expect_fail missing_environment_receipt.json missing_environment_receipt
+          expect_fail missing_computation_witness.json missing_computation_witness
+          expect_fail rejected_witness.json rejected_computation_witness
+          expect_fail result_hash_mismatch.json result_hash_mismatch
+          expect_fail dataset_hash_mismatch.json dataset_hash_mismatch
+          expect_fail missing_code_commit.json missing_code_commit
+          expect_fail nonzero_exit_code.json nonzero_exit_code
+          expect_fail environment_digest_mismatch.json environment_digest_mismatch
+          # Omit computation Lean artifacts: labtrust formal_checks would otherwise
+          # fail on obligation kinds before workflow-id mismatch is reported.
+          if go run . verify science-claim "$COMPUTATION/valid_computation_bundle.json" \
+            --admission-profile "$GITHUB_WORKSPACE/adapters/pcs/admission_profiles/labtrust_qc_release.json" \
+            --handoff "$HANDOFF" \
+            --manifest "$MANIFEST" \
+            --release-mode \
+            2>&1 | tee "$RUNNER_TEMP/computation_wrong_profile.txt"; then
+            echo "expected wrong admission profile to fail"
+            exit 1
+          fi
+          grep -qE 'admission_profile_workflow_mismatch|missing_lean_check_result' "$RUNNER_TEMP/computation_wrong_profile.txt"
+
+      - name: Sync computation-release fixtures from pcs-core
+        run: |
+          python3 scripts/pcs-sync-computation-release.py "${{ github.workspace }}/pcs-core"
+          python3 scripts/refresh-release-manifest-pins.py tests/pcs/fixtures/computation-release
+
+      - name: Computation release fixture schema and handoff
+        run: |
+          cd tools/pcs-validate
+          go run . --fixtures ../../tests/pcs --repo-root "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE/core/cli/pf"
+          PF_COMMIT="$(python -c "import json;print(json.load(open('$GITHUB_WORKSPACE/tests/pcs/fixtures/computation-release/FIXTURE_MANIFEST.json'))['pf_source_commit'])")"
+          export PF_SOURCE_COMMIT="$PF_COMMIT"
+          export PF_RELEASE_MODE=1
+          RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/computation-release"
+          PROFILE="$GITHUB_WORKSPACE/adapters/pcs/admission_profiles/scientific_computation_reproducibility.json"
+          read -ra FORMAL_ARGS < <(bash "$GITHUB_WORKSPACE/scripts/pcs-formal-release-args.sh" "$RELEASE")
+          go run . verify science-claim \
+            "$RELEASE/science_claim_bundle.certified.json" \
+            --handoff "$RELEASE/handoff_to_pf.json" \
+            --registry "$RELEASE/artifact_registry.json" \
+            --admission-profile "$PROFILE" \
+            --release-mode \
+            "${FORMAL_ARGS[@]}"
+
+      - name: pf verify computation release-chain (ReleaseManifest.v0)
+        run: |
+          cd core/cli/pf
+          PF_COMMIT="$(python -c "import json;print(json.load(open('$GITHUB_WORKSPACE/tests/pcs/fixtures/computation-release/FIXTURE_MANIFEST.json'))['pf_source_commit'])")"
+          export PF_SOURCE_COMMIT="$PF_COMMIT"
+          export PF_RELEASE_MODE=1
+          OUT="$RUNNER_TEMP/computation_release_chain_validation_result.json"
+          RELEASE="$GITHUB_WORKSPACE/tests/pcs/fixtures/computation-release"
+          read -ra FORMAL_ARGS < <(bash "$GITHUB_WORKSPACE/scripts/pcs-formal-release-args.sh" "$RELEASE")
+          go run . verify release-chain \
+            --manifest "$RELEASE/release_manifest.v0.json" \
+            --registry "$RELEASE/artifact_registry.json" \
+            --artifact-dir "$RELEASE" \
+            --admission-profile scientific_computation_reproducibility \
+            --release-mode \
+            "${FORMAL_ARGS[@]}" \
+            --out "$OUT"
+          go run . validate release-chain-result "$OUT"
+          grep -q '"status": "ProofChecked"' "$OUT"
+          grep -q 'computation_dataset_hash_consistent' "$OUT"
+          grep -q 'computation_witness_certificate_checked' "$OUT"
+          grep -q 'registry_admission_passed' "$OUT"
+          grep -q 'deferred_registry_checks' "$OUT"
+          grep -q 'formal.ComputationWitnessBindsResults' "$OUT"
+          grep -q 'formal_checks_executed' "$OUT"
+
+      - name: PCS admission benchmarks (pf benchmark admission)
+        run: |
+          python3 "$GITHUB_WORKSPACE/scripts/materialize-admission-benchmark-cases.py"
+          REG="$PCS_CORE_PATH/examples/artifact_registry.valid.json"
+          OUT="$GITHUB_WORKSPACE/benchmark_runs"
+          cd "$GITHUB_WORKSPACE/core/cli/pf"
+          for SUITE in labtrust_qc_release tool_use_safety computation_reproducibility formal_trust_kernel; do
+            if [[ "${SUITE}" == "labtrust_qc_release" ]]; then
+              SUITE_OUT="labtrust_admission"
+            else
+              SUITE_OUT="${SUITE}_admission"
+            fi
+            go run . benchmark admission \
+              --cases "$GITHUB_WORKSPACE/benchmarks/admission/${SUITE}" \
+              --registry "$REG" \
+              --out "${OUT}/${SUITE_OUT}" \
+              --validate \
+              --validate-pcs-core-output "$PCS_CORE_PATH"
+          done
+          LABTRUST="${OUT}/labtrust_admission"
+          test -f "${LABTRUST}/benchmark_report.v0.json"
+          test -f "${LABTRUST}/benchmark_run.v0.json"
+          test -f "${LABTRUST}/coverage_report.v0.json"
+          test -f "${OUT}/formal_trust_kernel_admission/explain_quality_report.v0.json"
+          test -f "${LABTRUST}/pcs_bench_ingest.v0.json"
+          test -f "${LABTRUST}/coverage/registry_coverage_report.v0.json"
+          test -f "${LABTRUST}/coverage/formal_check_coverage_report.v0.json"
+          test -f "${LABTRUST}/coverage/admission_profile_coverage_report.v0.json"
+          test -f "${LABTRUST}/coverage/release_reproducibility_coverage_report.v0.json"
+          test -f "${LABTRUST}/coverage/admission_profile.profile_coverage_report.v0.json"
+          test -d "${LABTRUST}/explain_quality"
+          test -d "${LABTRUST}/failure_localization"
+          test -f "${LABTRUST}/failure_localization/bundle_hash_mismatch.failure_localization_result.v0.json"
+          python3 -c "import json; m=json.load(open('${LABTRUST}/admission_benchmark_suite.v0.json'))['metrics']; assert m['valid_release_admission_rate']==1.0; assert m['invalid_release_rejection_rate']>=0.85; assert m['failure_localization_accuracy']>=0.85"
+          test -f "$GITHUB_WORKSPACE/benchmarks/admission/examples/labtrust_qc_release.pcs_bench_ingest.reference.json"
+          cd "$GITHUB_WORKSPACE/tools/pcs-validate"
+          go run . \
+            "${LABTRUST}/benchmark_report.v0.json" \
+            "${LABTRUST}/coverage_report.v0.json" \
+            "${LABTRUST}/explain_quality_report.v0.json" \
+            "${LABTRUST}/pcs_bench_ingest.v0.json"
+          go run . --benchmark-bundle "${LABTRUST}" --pcs-core "$PCS_CORE_PATH"
+          cd "$GITHUB_WORKSPACE"
+          pip install -q -e "${PCS_CORE_PATH}/python"
+          pcs validate "${LABTRUST}/pcs_bench_ingest.v0.json"
+          pcs validate "$GITHUB_WORKSPACE/benchmarks/admission/examples/labtrust_qc_release.pcs_bench_ingest.reference.json"
+          python3 "$GITHUB_WORKSPACE/scripts/pcs-bench-producer-contract-check.py" \
+            --ingest "${LABTRUST}/pcs_bench_ingest.v0.json" \
+            --bundle-dir "${LABTRUST}"
+          python3 "$GITHUB_WORKSPACE/scripts/pcs-bench-producer-contract-check.py" \
+            --ingest "$GITHUB_WORKSPACE/benchmarks/admission/examples/labtrust_qc_release.pcs_bench_ingest.reference.json" \
+            --bundle-dir "${LABTRUST}"
+          bash "$GITHUB_WORKSPACE/scripts/pcs-bench-validate-ingest.sh" \
+            --input "$GITHUB_WORKSPACE/benchmarks/admission/examples/labtrust_qc_release.pcs_bench_ingest.reference.json" \
+            --bundle-dir "${LABTRUST}" \
+            --pcs-core "$PCS_CORE_PATH" \
+            --release-grade
+          cd "$GITHUB_WORKSPACE/core/cli/pf"
+          go run . benchmark admission \
+            --cases "$GITHUB_WORKSPACE/benchmarks/admission/labtrust_qc_release" \
+            --registry "$REG" \
+            --out "$RUNNER_TEMP/json_summary_smoke" \
+            --validate-pcs-core-output "$PCS_CORE_PATH" \
+            --json-summary | tee "$RUNNER_TEMP/admission_summary.json"
+          grep -q '"producer_id": "provability-fabric"' "$RUNNER_TEMP/admission_summary.json"
+          grep -q '"suite_id": "pf-labtrust-admission-v0"' "$RUNNER_TEMP/admission_summary.json"
+          grep -q '"workflow_id": "hospital_lab.qc_release"' "$RUNNER_TEMP/admission_summary.json"
+          grep -q '"pcs_bench_ingest_path"' "$RUNNER_TEMP/admission_summary.json"
+          python3 -c "import json; i=json.load(open('${LABTRUST}/pcs_bench_ingest.v0.json')); assert i['suite_id']=='pf-labtrust-admission-v0'; assert i['workflow_id']=='hospital_lab.qc_release'; assert all('/' in r['path'] or '\\\\' not in r['path'] for r in i.get('artifact_refs',[])); assert 'benchmarks/admission/labtrust_qc_release' in i['commands'][0]['command']"
+          bash "$GITHUB_WORKSPACE/scripts/pcs-bench-validate-ingest.sh" \
+            --input "${LABTRUST}/pcs_bench_ingest.v0.json" \
+            --bundle-dir "${LABTRUST}" \
+            --pcs-core "$PCS_CORE_PATH" \
+            --release-grade
+
+      - name: CLI smoke (verify, sign, inspect)
+        run: |
+          cd core/cli/pf
+          BUNDLE="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust/science_claim_bundle.certified.json"
+          LABTRUST_SIGNED="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust/signed_science_claim_bundle.labtrust-export.json"
+          PF_SIGNED="$GITHUB_WORKSPACE/tests/pcs/fixtures/labtrust/signed_science_claim_bundle.json"
+          OUT="$RUNNER_TEMP/pf_signed.json"
+          go run . verify science-claim "$BUNDLE" --json | tee "$RUNNER_TEMP/verify.json"
+          grep -q '"status": "ProofChecked"' "$RUNNER_TEMP/verify.json"
+          go run . sign science-claim "$BUNDLE" --out "$OUT"
+          go run . inspect science-claim "$OUT" --strict | tee "$RUNNER_TEMP/inspect_pf.txt"
+          grep -q 'verification_status:  ProofChecked' "$RUNNER_TEMP/inspect_pf.txt"
+          grep -q 'science_claim_bundle_schema' "$RUNNER_TEMP/inspect_pf.txt"
+          grep -q 'Embedded checks (17):' "$RUNNER_TEMP/inspect_pf.txt"
+          go run . inspect science-claim "$PF_SIGNED" --strict | tee "$RUNNER_TEMP/inspect_pf_signed_fixture.txt"
+          grep -qE 'Embedded checks \((15|17)\):' "$RUNNER_TEMP/inspect_pf_signed_fixture.txt"
+          go run . inspect science-claim "$LABTRUST_SIGNED" --reverify | tee "$RUNNER_TEMP/inspect_labtrust.txt"
+          grep -qE 'PF re-verification \((15|17)\):' "$RUNNER_TEMP/inspect_labtrust.txt"
+
+      - name: Reject failed bundle sign
+        run: |
+          cd core/cli/pf
+          if go run . sign science-claim "$GITHUB_WORKSPACE/tests/pcs/invalid_missing_certificate.json" --out "$RUNNER_TEMP/bad.json"; then
+            echo "expected sign to fail"
+            exit 1
+          fi
+
+      - name: Reject legacy singular-field bundle
+        run: |
+          cd core/cli/pf
+          if go run . verify science-claim "$GITHUB_WORKSPACE/tests/pcs/invalid_legacy_singular_runtime_receipt.json"; then
+            echo "expected legacy bundle to fail"
+            exit 1
+          fi
+
+      - name: Migrate legacy bundle then verify
+        run: |
+          cd core/cli/pf
+          MIG="$RUNNER_TEMP/migrated_science_claim.json"
+          go run . migrate science-claim "$GITHUB_WORKSPACE/tests/pcs/invalid_legacy_singular_runtime_receipt.json" --out "$MIG"
+          go run . verify science-claim "$MIG" --json | tee "$RUNNER_TEMP/migrated_verify.json"
+          grep -q '"status": "ProofChecked"' "$RUNNER_TEMP/migrated_verify.json"
+
+      - name: Reject multiple runtime receipts (v0.1)
+        run: |
+          cd core/cli/pf
+          if go run . verify science-claim "$GITHUB_WORKSPACE/tests/pcs/invalid_multiple_runtime_receipts.json"; then
+            echo "expected multiple runtime_receipts to fail"
+            exit 1
+          fi

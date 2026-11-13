@@ -1,0 +1,1342 @@
+// Adapted from: https://github.com/hatchet-dev/hatchet-v1-archived/blob/3c2c13168afa1af68d4baaf5ed02c9d49c5f0323/internal/config/loader/loader.go
+
+package loader
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/exaring/otelpgx"
+	"github.com/hatchet-dev/pgoutbox"
+	pgxzero "github.com/jackc/pgx-zerolog"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/tracelog"
+	"github.com/rs/zerolog"
+	"golang.org/x/oauth2"
+
+	"github.com/hatchet-dev/hatchet/internal/integrations/alerting"
+	"github.com/hatchet-dev/hatchet/internal/services/ingestor"
+	"github.com/hatchet-dev/hatchet/pkg/analytics"
+	"github.com/hatchet-dev/hatchet/pkg/analytics/posthog"
+	"github.com/hatchet-dev/hatchet/pkg/auth/cookie"
+	"github.com/hatchet-dev/hatchet/pkg/auth/exchangetoken"
+	"github.com/hatchet-dev/hatchet/pkg/auth/oauth"
+	"github.com/hatchet-dev/hatchet/pkg/auth/token"
+	"github.com/hatchet-dev/hatchet/pkg/authmode"
+	"github.com/hatchet-dev/hatchet/pkg/config/client"
+	"github.com/hatchet-dev/hatchet/pkg/config/database"
+	"github.com/hatchet-dev/hatchet/pkg/config/loader/loaderutils"
+	"github.com/hatchet-dev/hatchet/pkg/config/server"
+	"github.com/hatchet-dev/hatchet/pkg/config/shared"
+	"github.com/hatchet-dev/hatchet/pkg/encryption"
+	"github.com/hatchet-dev/hatchet/pkg/errors"
+	"github.com/hatchet-dev/hatchet/pkg/errors/sentry"
+	"github.com/hatchet-dev/hatchet/pkg/integrations/email"
+	"github.com/hatchet-dev/hatchet/pkg/integrations/email/postmark"
+	"github.com/hatchet-dev/hatchet/pkg/integrations/email/smtp"
+	"github.com/hatchet-dev/hatchet/pkg/integrations/metrics/prometheus"
+	"github.com/hatchet-dev/hatchet/pkg/logger"
+	"github.com/hatchet-dev/hatchet/pkg/repository/cache"
+	"github.com/hatchet-dev/hatchet/pkg/repository/debugger"
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlcv1"
+	v1 "github.com/hatchet-dev/hatchet/pkg/scheduling/v1"
+	"github.com/hatchet-dev/hatchet/pkg/security"
+	"github.com/hatchet-dev/hatchet/pkg/validator"
+
+	"github.com/hatchet-dev/hatchet/internal/msgqueue"
+	natsmq "github.com/hatchet-dev/hatchet/internal/msgqueue/nats"
+	pgmq "github.com/hatchet-dev/hatchet/internal/msgqueue/postgres"
+	"github.com/hatchet-dev/hatchet/internal/msgqueue/rabbitmq"
+	clientv1 "github.com/hatchet-dev/hatchet/pkg/client/v1"
+	repov1 "github.com/hatchet-dev/hatchet/pkg/repository"
+)
+
+// LoadDatabaseConfigFile loads the database config file via viper
+func LoadDatabaseConfigFile(files ...[]byte) (*database.ConfigFile, error) {
+	configFile := &database.ConfigFile{}
+	f := database.BindAllEnv
+
+	_, err := loaderutils.LoadConfigFromViper(f, configFile, files...)
+
+	return configFile, err
+}
+
+// LoadServerConfigFile loads the server config file via viper
+func LoadServerConfigFile(files ...[]byte) (*server.ServerConfigFile, error) {
+	configFile := &server.ServerConfigFile{}
+	f := server.BindAllEnv
+
+	_, err := loaderutils.LoadConfigFromViper(f, configFile, files...)
+	return configFile, err
+}
+
+func parseRetentionDuration(name, value string) (time.Duration, error) {
+	retentionPeriod, err := time.ParseDuration(value)
+
+	if err != nil {
+		return 0, fmt.Errorf("could not parse %s %s: %w", name, value, err)
+	}
+
+	return retentionPeriod, nil
+}
+
+type ConfigLoader struct {
+	directory string
+}
+
+func NewConfigLoader(directory string) *ConfigLoader {
+	return &ConfigLoader{directory: directory}
+}
+
+// InitDataLayer initializes the database layer from the configuration
+func (c *ConfigLoader) InitDataLayer() (res *database.Layer, err error) {
+	sharedFilePath := filepath.Join(c.directory, "database.yaml")
+	configFileBytes, err := loaderutils.GetConfigBytes(sharedFilePath)
+
+	if err != nil {
+		return nil, err
+	}
+
+	cf, err := LoadDatabaseConfigFile(configFileBytes...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	serverSharedFilePath := filepath.Join(c.directory, "server.yaml")
+	serverConfigFileBytes, err := loaderutils.GetConfigBytes(serverSharedFilePath)
+
+	if err != nil {
+		return nil, err
+	}
+
+	scf, err := LoadServerConfigFile(serverConfigFileBytes...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	l := logger.NewStdErr(&cf.Logger, "database")
+
+	databaseUrl := os.Getenv("DATABASE_URL")
+
+	if databaseUrl == "" {
+		databaseUrl = fmt.Sprintf(
+			"postgresql://%s:%s@%s:%d/%s?sslmode=%s",
+			cf.PostgresUsername,
+			cf.PostgresPassword,
+			cf.PostgresHost,
+			cf.PostgresPort,
+			cf.PostgresDbName,
+			cf.PostgresSSLMode,
+		)
+
+		_ = os.Setenv("DATABASE_URL", databaseUrl)
+	}
+
+	pgxpoolConnAfterConnect := func(ctx context.Context, conn *pgx.Conn) error {
+		// Set timezone to UTC for all connections
+		if _, err := conn.Exec(ctx, "SET TIME ZONE 'UTC'"); err != nil {
+			return err
+		}
+
+		// ref: https://github.com/jackc/pgx/issues/1549
+		t, err := conn.LoadType(ctx, "v1_readable_status_olap")
+		if err != nil {
+			return err
+		}
+
+		conn.TypeMap().RegisterType(t)
+
+		t, err = conn.LoadType(ctx, "_v1_readable_status_olap")
+		if err != nil {
+			return err
+		}
+
+		conn.TypeMap().RegisterType(t)
+
+		t, err = conn.LoadType(ctx, "v1_log_line_level")
+		if err != nil {
+			return err
+		}
+
+		conn.TypeMap().RegisterType(t)
+
+		t, err = conn.LoadType(ctx, "_v1_log_line_level")
+		if err != nil {
+			return err
+		}
+
+		conn.TypeMap().RegisterType(t)
+
+		if uuidType, ok := conn.TypeMap().TypeForName("uuid"); ok {
+			var uuidrangeOID uint32
+			err = conn.QueryRow(ctx, "SELECT oid FROM pg_type WHERE typname = 'uuidrange'").Scan(&uuidrangeOID)
+			if err != nil && err != pgx.ErrNoRows {
+				return fmt.Errorf("loading uuidrange oid: %w", err)
+			}
+			if err == nil {
+				conn.TypeMap().RegisterType(&pgtype.Type{
+					Name:  "uuidrange",
+					OID:   uuidrangeOID,
+					Codec: &pgtype.RangeCodec{ElementType: uuidType},
+				})
+			}
+		}
+
+		_, err = conn.Exec(ctx, "SET statement_timeout=30000")
+		if err != nil {
+			return err
+		}
+
+		_, err = conn.Exec(ctx, "SET idle_in_transaction_session_timeout=30000")
+
+		return err
+	}
+
+	// Determine which URL the main pool should use:
+	// - If DATABASE_PGBOUNCER_URL is set, main pool connects through pgbouncer
+	// - Otherwise, main pool connects directly via DATABASE_URL
+	mainPoolUrl := databaseUrl
+	if cf.PgBouncerURL != "" {
+		mainPoolUrl = cf.PgBouncerURL
+
+		l.Info().Msgf("main pool will connect through pgbouncer")
+	}
+
+	// application_name shows up in pg_stat_activity, letting us attribute connections
+	// and idle transactions to a specific service (and shard namespace) on shared
+	// postgres instances.
+	appName := scf.OpenTelemetry.ServiceName
+	if cf.ApplicationNamePrefix != "" {
+		appName = cf.ApplicationNamePrefix + ":" + appName
+	}
+
+	config, err := pgxpool.ParseConfig(mainPoolUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	setPgxApplicationName(config, appName)
+
+	config.AfterConnect = pgxpoolConnAfterConnect
+
+	if cf.LogQueries {
+		config.ConnConfig.Tracer = &tracelog.TraceLog{
+			Logger:   pgxzero.NewLogger(l),
+			LogLevel: tracelog.LogLevelDebug,
+		}
+	} else {
+		config.ConnConfig.Tracer = newOTelPgxTracer()
+	}
+
+	if cf.MaxConns != 0 {
+		config.MaxConns = int32(cf.MaxConns) // nolint: gosec
+	}
+
+	if cf.MinConns != 0 {
+		config.MinConns = int32(cf.MinConns) // nolint: gosec
+	}
+
+	config.MaxConnLifetime = cf.MaxConnLifetime
+	config.MaxConnIdleTime = cf.MaxConnIdleTime
+
+	// Check database instance timezone if enforcement is enabled
+	if cf.EnforceUTCTimezone {
+		if err := checkDatabaseTimezone(config.ConnConfig, cf.PostgresDbName, "primary database", &l); err != nil {
+			return nil, err
+		}
+	}
+
+	var debug *debugger.Debugger
+
+	if cf.Logger.Level == "debug" {
+		debug = debugger.NewDebugger(&l)
+
+		config.BeforeAcquire = debug.BeforeAcquire // nolint: staticcheck
+		config.AfterRelease = debug.AfterRelease
+	}
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to database: %w", err)
+	}
+
+	if debug != nil {
+		// pool needs the debugger hooks (BeforeAcquire/AfterRelease) but debugger needs the pool
+		// to track active connections, so we add the pool later
+		debug.Setup(pool)
+	}
+
+	// a pool for read replicas, if enabled
+	var readReplicaPool *pgxpool.Pool
+
+	if cf.ReadReplicaEnabled {
+		if cf.ReadReplicaDatabaseURL == "" {
+			return nil, fmt.Errorf("read replica database url is required if read replica is enabled")
+		}
+
+		readReplicaConfig, err := pgxpool.ParseConfig(cf.ReadReplicaDatabaseURL)
+
+		if err != nil {
+			return nil, fmt.Errorf("could not parse read replica database url: %w", err)
+		}
+
+		setPgxApplicationName(readReplicaConfig, appName+":read-replica")
+
+		if cf.ReadReplicaMaxConns != 0 {
+			readReplicaConfig.MaxConns = int32(cf.ReadReplicaMaxConns) // nolint: gosec
+		}
+
+		if cf.ReadReplicaMinConns != 0 {
+			readReplicaConfig.MinConns = int32(cf.ReadReplicaMinConns) // nolint: gosec
+		}
+
+		readReplicaConfig.MaxConnLifetime = cf.MaxConnLifetime
+		readReplicaConfig.MaxConnIdleTime = cf.MaxConnIdleTime
+		readReplicaConfig.ConnConfig.Tracer = newOTelPgxTracer()
+
+		// Check read replica database instance timezone if enforcement is enabled
+		if cf.EnforceUTCTimezone {
+			if err := checkDatabaseTimezone(readReplicaConfig.ConnConfig, "", "read replica database", &l); err != nil {
+				return nil, err
+			}
+		}
+
+		readReplicaConfig.AfterConnect = pgxpoolConnAfterConnect
+
+		readReplicaPool, err = pgxpool.NewWithConfig(context.Background(), readReplicaConfig)
+
+		if err != nil {
+			return nil, fmt.Errorf("could not connect to read replica database: %w", err)
+		}
+	}
+
+	// Create a separate direct pool using DATABASE_URL for DDL operations. These operations are
+	// critical and cannot use the main pool if it's routed through pgbouncer, so a separate pool
+	// is justified.
+	ddlConfig, err := pgxpool.ParseConfig(databaseUrl)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse direct database url: %w", err)
+	}
+
+	setPgxApplicationName(ddlConfig, appName+":ddl")
+
+	ddlConfig.MaxConns = int32(cf.DDLPoolMaxConns) // nolint: gosec
+	ddlConfig.MinConns = int32(cf.DDLPoolMinConns) // nolint: gosec
+	ddlConfig.MaxConnLifetime = cf.MaxConnLifetime
+	ddlConfig.MaxConnIdleTime = cf.MaxConnIdleTime
+	ddlConfig.AfterConnect = pgxpoolConnAfterConnect
+	ddlConfig.ConnConfig.Tracer = newOTelPgxTracer()
+
+	ddlPool, err := pgxpool.NewWithConfig(context.Background(), ddlConfig)
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to direct database: %w", err)
+	}
+
+	ch := cache.New(cf.CacheDuration)
+
+	_, err = parseRetentionDuration("default tenant retention period", scf.Runtime.Limits.DefaultTenantRetentionPeriod)
+
+	if err != nil {
+		return nil, err
+	}
+
+	corePartitionRetention, err := parseRetentionDuration("core partition retention", scf.Runtime.Limits.CorePartitionRetentionOrDefault())
+
+	if err != nil {
+		return nil, err
+	}
+
+	olapPartitionRetention, err := parseRetentionDuration("OLAP partition retention", scf.Runtime.Limits.OLAPPartitionRetentionOrDefault())
+
+	if err != nil {
+		return nil, err
+	}
+
+	taskLimits := repov1.TaskOperationLimits{
+		TimeoutLimit:      scf.Runtime.TaskOperationLimits.TimeoutLimit,
+		ReassignLimit:     scf.Runtime.TaskOperationLimits.ReassignLimit,
+		RetryQueueLimit:   scf.Runtime.TaskOperationLimits.RetryQueueLimit,
+		DurableSleepLimit: scf.Runtime.TaskOperationLimits.DurableSleepLimit,
+	}
+
+	inlineStoreTTLDays := scf.PayloadStore.InlineStoreTTLDays
+
+	if inlineStoreTTLDays <= 0 {
+		return nil, fmt.Errorf("inline store TTL days must be greater than 0")
+	}
+
+	inlineStoreTTL := time.Duration(inlineStoreTTLDays) * 24 * time.Hour
+
+	payloadStoreOpts := repov1.PayloadStoreRepositoryOpts{
+		ExternalCutoverProcessInterval:       scf.PayloadStore.ExternalCutoverProcessInterval,
+		ExternalCutoverBatchSize:             scf.PayloadStore.ExternalCutoverBatchSize,
+		ExternalCutoverNumConcurrentOffloads: scf.PayloadStore.ExternalCutoverNumConcurrentOffloads,
+		InlineStoreTTL:                       &inlineStoreTTL,
+		EnableWindowSizeOptimization:         scf.PayloadStore.EnableWindowSizeOptimization,
+	}
+
+	statusUpdateOpts := repov1.StatusUpdateBatchSizeLimits{
+		Task: int32(scf.OLAPStatusUpdates.TaskBatchSizeLimit), // #nosec G115 -- admin-configured server setting, not attacker-controlled
+		DAG:  int32(scf.OLAPStatusUpdates.DagBatchSizeLimit),  // #nosec G115 -- admin-configured server setting, not attacker-controlled
+	}
+
+	v1, cleanupV1 := repov1.NewRepository(
+		pool,
+		ddlPool,
+		&l,
+		cf.CacheDuration,
+		corePartitionRetention,
+		olapPartitionRetention,
+		scf.Runtime.MaxInternalRetryCount,
+		taskLimits,
+		payloadStoreOpts,
+		statusUpdateOpts,
+		scf.Runtime.Limits,
+		scf.Runtime.EnforceLimits,
+	)
+
+	if readReplicaPool != nil {
+		v1.OLAP().SetReadReplicaPool(readReplicaPool)
+	}
+
+	return &database.Layer{
+		Disconnect: func() error {
+			ch.Stop()
+
+			return cleanupV1()
+		},
+		Pool:              pool,
+		DirectDatabaseURL: databaseUrl,
+		DDLPool:           ddlPool,
+		V1:                v1,
+		Seed:              cf.Seed,
+	}, nil
+}
+
+type ServerConfigFileOverride func(*server.ServerConfigFile)
+
+// CreateServerFromConfig loads the server configuration and returns a server
+func (c *ConfigLoader) CreateServerFromConfig(version string, overrides ...ServerConfigFileOverride) (cleanup func() error, res *server.ServerConfig, err error) {
+	sharedFilePath := filepath.Join(c.directory, "server.yaml")
+
+	configFileBytes, err := loaderutils.GetConfigBytes(sharedFilePath)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	dc, err := c.InitDataLayer()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cf, err := LoadServerConfigFile(configFileBytes...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, override := range overrides {
+		override(cf)
+	}
+
+	if cf.VersionOverride != "" {
+		version = cf.VersionOverride
+	}
+
+	return createControllerLayer(dc, cf, version)
+}
+
+func createControllerLayer(dc *database.Layer, cf *server.ServerConfigFile, version string) (cleanup func() error, res *server.ServerConfig, err error) {
+	l := logger.NewStdErr(&cf.Logger, "server")
+	queueLogger := logger.NewStdErr(&cf.AdditionalLoggers.Queue, "queue")
+
+	tls, err := loaderutils.LoadServerTLSConfig(&cf.TLS)
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not load TLS config: %w", err)
+	}
+
+	ss, err := cookie.NewUserSessionStore(
+		cookie.WithSessionRepository(dc.V1.UserSession()),
+		cookie.WithCookieAllowInsecure(cf.Auth.Cookie.Insecure),
+		cookie.WithCookieDomain(cf.Auth.Cookie.Domain),
+		cookie.WithCookieName(cf.Auth.Cookie.Name),
+		cookie.WithCookieSecrets(getStrArr(cf.Auth.Cookie.Secrets)...),
+		cookie.WithLogger(&l),
+	)
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not create session store: %w", err)
+	}
+
+	var mqv1 msgqueue.MessageQueue
+	var pubsubv1 msgqueue.PubSub
+	cleanup1 := func() error {
+		return nil
+	}
+	cleanupPubSub := func() error {
+		return nil
+	}
+
+	var ing ingestor.Ingestor
+
+	if cf.MessageQueue.Enabled {
+		switch strings.ToLower(cf.MessageQueue.Kind) {
+		case "postgres":
+			var cleanupv1 func() error
+
+			cleanupv1, mqv1, err = pgmq.NewPostgresMQ(
+				dc.V1.MessageQueue(),
+				pgmq.WithLogger(&l),
+				pgmq.WithQos(cf.MessageQueue.Postgres.Qos),
+			)
+
+			if err != nil {
+				return nil, nil, fmt.Errorf("could not init postgres queue: %w", err)
+			}
+
+			cleanup1 = func() error {
+				return cleanupv1()
+			}
+		case "rabbitmq":
+			if cf.MessageQueue.RabbitMQ.URL == "" {
+				return nil, nil, fmt.Errorf("using RabbitMQ as message queue requires a URL to be set")
+			}
+
+			var cleanupv1 func() error
+
+			cleanupv1, mqv1, err = rabbitmq.New(
+				rabbitmq.WithURL(cf.MessageQueue.RabbitMQ.URL),
+				rabbitmq.WithLogger(&l),
+				rabbitmq.WithQos(cf.MessageQueue.RabbitMQ.Qos),
+				rabbitmq.WithMaxPubChannels(cf.MessageQueue.RabbitMQ.MaxPubChans),
+				rabbitmq.WithMaxSubChannels(cf.MessageQueue.RabbitMQ.MaxSubChans),
+				rabbitmq.WithGzipCompression(
+					cf.MessageQueue.RabbitMQ.CompressionEnabled,
+					cf.MessageQueue.RabbitMQ.CompressionThreshold,
+				),
+				rabbitmq.WithMessageRejection(cf.MessageQueue.RabbitMQ.EnableMessageRejection, cf.MessageQueue.RabbitMQ.MaxDeathCount),
+			)
+
+			if err != nil {
+				return nil, nil, fmt.Errorf("could not init rabbitmq: %w", err)
+			}
+
+			cleanup1 = func() error {
+				return cleanupv1()
+			}
+		}
+
+		cleanupPubSub, pubsubv1, err = createPubSubV1(dc, cf, &l)
+
+		if err != nil {
+			return nil, nil, err
+		}
+
+		ing, err = ingestor.NewIngestor(
+			ingestor.WithMessageQueueV1(mqv1),
+			ingestor.WithPubSub(pubsubv1),
+			ingestor.WithRepositoryV1(dc.V1),
+		)
+
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not create ingestor: %w", err)
+		}
+	}
+
+	var alerter errors.Alerter
+
+	if cf.Alerting.Sentry.Enabled {
+		alerter, err = sentry.NewSentryAlerter(&sentry.SentryAlerterOpts{
+			DSN:         cf.Alerting.Sentry.DSN,
+			Environment: cf.Alerting.Sentry.Environment,
+			SampleRate:  cf.Alerting.Sentry.SampleRate,
+		})
+
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not create sentry alerter: %w", err)
+		}
+	} else {
+		alerter = errors.NoOpAlerter{}
+	}
+
+	cleanupSecurityCheck := func() {}
+
+	if cf.SecurityCheck.Enabled {
+		var oauthProviders []string
+		if cf.Auth.Google.Enabled {
+			oauthProviders = append(oauthProviders, "google")
+		}
+		if cf.Auth.Github.Enabled {
+			oauthProviders = append(oauthProviders, "github")
+		}
+
+		securityCheck := security.NewSecurityCheck(&security.DefaultSecurityCheck{
+			Enabled:        cf.SecurityCheck.Enabled,
+			Endpoint:       cf.SecurityCheck.Endpoint,
+			Logger:         &l,
+			Version:        version,
+			MQKind:         cf.MessageQueue.Kind,
+			OAuthProviders: oauthProviders,
+			AuthDisabled:   authmode.IsDisabled,
+		}, dc.V1.SecurityCheck())
+
+		securityCheckCtx, cancel := context.WithCancel(context.Background())
+		cleanupSecurityCheck = func() {
+			cancel()
+			securityCheck.Shutdown()
+		}
+
+		go securityCheck.Start(securityCheckCtx)
+	}
+
+	var analyticsEmitter analytics.Analytics
+	var feAnalyticsConfig *server.FePosthogConfig
+
+	if cf.Analytics.Posthog.Enabled {
+		flushInterval, _ := time.ParseDuration(cf.Analytics.AggregateFlushInterval)
+
+		phAnalytics, phErr := posthog.NewPosthogAnalytics(&posthog.PosthogAnalyticsOpts{
+			ApiKey:           cf.Analytics.Posthog.ApiKey,
+			Endpoint:         cf.Analytics.Posthog.Endpoint,
+			Logger:           &l,
+			AggregateEnabled: cf.Analytics.AggregateEnabled,
+			FlushInterval:    flushInterval,
+			MaxKeys:          int64(cf.Analytics.AggregateMaxKeys),
+			ServerURL:        cf.Runtime.ServerURL,
+		})
+
+		if phErr != nil {
+			return nil, nil, fmt.Errorf("could not create posthog analytics: %w", phErr)
+		}
+
+		phAnalytics.Start()
+		defer func() {
+			if err != nil {
+				if closeErr := phAnalytics.Close(); closeErr != nil {
+					l.Error().Err(closeErr).Msg("error closing analytics emitter during cleanup")
+				}
+			}
+		}()
+		analyticsEmitter = phAnalytics
+
+		if cf.Analytics.Posthog.FeApiKey != "" && cf.Analytics.Posthog.FeApiHost != "" {
+			feAnalyticsConfig = &server.FePosthogConfig{
+				ApiKey:  cf.Analytics.Posthog.FeApiKey,
+				ApiHost: cf.Analytics.Posthog.FeApiHost,
+			}
+		}
+	} else {
+		analyticsEmitter = analytics.NoOpAnalytics{}
+	}
+
+	dc.V1.Tenant().RegisterCreateCallback(func(tenant *sqlcv1.Tenant) error {
+		tenantId := tenant.ID
+
+		analyticsEmitter.Tenant(tenantId, map[string]interface{}{
+			"id":   tenantId.String(),
+			"name": tenant.Name,
+			"slug": tenant.Slug,
+		})
+
+		return nil
+	})
+
+	var pylon server.PylonConfig
+
+	if cf.Pylon.Enabled {
+		if cf.Pylon.AppID == "" {
+			return nil, nil, fmt.Errorf("pylon app id is required")
+		}
+
+		pylon.AppID = cf.Pylon.AppID
+		pylon.Secret = cf.Pylon.Secret
+	}
+
+	auth := server.AuthConfig{
+		RestrictedEmailDomains: getStrArr(cf.Auth.RestrictedEmailDomains),
+		ConfigFile:             cf.Auth,
+	}
+
+	if authmode.IsDisabled {
+		l.Warn().Msg("This is an authdisabled build: dashboard/REST authentication is DISABLED and runs as the seed admin user. Never use this in production.")
+
+		applyAuthDisabledOverrides(&cf.Runtime)
+	}
+
+	if cf.Auth.Google.Enabled {
+		if cf.Auth.Google.ClientID == "" {
+			return nil, nil, fmt.Errorf("google client id is required")
+		}
+
+		if cf.Auth.Google.ClientSecret == "" {
+			return nil, nil, fmt.Errorf("google client secret is required")
+		}
+
+		gClient := oauth.NewGoogleClient(&oauth.Config{
+			ClientID:     cf.Auth.Google.ClientID,
+			ClientSecret: cf.Auth.Google.ClientSecret,
+			BaseURL:      cf.Runtime.ServerURL,
+			Scopes:       cf.Auth.Google.Scopes,
+		})
+
+		auth.GoogleOAuthConfig = gClient
+	}
+
+	if cf.Auth.Github.Enabled {
+		if cf.Auth.Github.ClientID == "" {
+			return nil, nil, fmt.Errorf("github client id is required")
+		}
+
+		if cf.Auth.Github.ClientSecret == "" {
+			return nil, nil, fmt.Errorf("github client secret is required")
+		}
+
+		auth.GithubOAuthConfig = oauth.NewGithubClient(&oauth.Config{
+			ClientID:     cf.Auth.Github.ClientID,
+			ClientSecret: cf.Auth.Github.ClientSecret,
+			BaseURL:      cf.Runtime.ServerURL,
+			Scopes:       cf.Auth.Github.Scopes,
+		})
+	}
+
+	encryptionSvc, err := LoadEncryptionSvc(cf)
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not load encryption service: %w", err)
+	}
+
+	jwtEncryptionSvc := encryptionSvc
+
+	tokenOpts := &token.TokenOpts{
+		Issuer:               cf.Runtime.ServerURL,
+		Audience:             cf.Runtime.ServerURL,
+		GRPCBroadcastAddress: cf.Runtime.GRPCBroadcastAddress,
+		ServerURL:            cf.Runtime.ServerURL,
+	}
+
+	if authmode.IsDisabled {
+		jwtEncryptionSvc, err = encryption.NewInsecureJWTEncryption(authmode.EmbeddedPrivateKeyset(), authmode.EmbeddedPublicKeyset())
+
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not load authdisabled keyset: %w", err)
+		}
+
+		tokenOpts.Issuer = authmode.EmbeddedTokenIssuer
+		tokenOpts.Audience = authmode.EmbeddedTokenAudience
+		tokenOpts.ServerURL = authmode.EmbeddedTokenServerURL
+		tokenOpts.GRPCBroadcastAddress = authmode.EmbeddedTokenGRPCAddress
+	}
+
+	auth.JWTManager, err = token.NewJWTManager(jwtEncryptionSvc, dc.V1.APIToken(), tokenOpts)
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not create JWT manager: %w", err)
+	}
+
+	if cf.Auth.ControlPlaneExchangeTokenConfig.Enabled {
+		if cf.Auth.ControlPlaneExchangeTokenConfig.JWTPublicKeyset == "" && cf.Auth.ControlPlaneExchangeTokenConfig.JWTPublicKeysetFile == "" {
+			return nil, nil, fmt.Errorf("control plane exchange token JWT public keyset is required when exchange token config is enabled (set jwtPublicKeyset or jwtPublicKeysetFile)")
+		}
+
+		publicJwt := cf.Auth.ControlPlaneExchangeTokenConfig.JWTPublicKeyset
+
+		if cf.Auth.ControlPlaneExchangeTokenConfig.JWTPublicKeysetFile != "" {
+			keysetBytes, keyErr := os.ReadFile(cf.Auth.ControlPlaneExchangeTokenConfig.JWTPublicKeysetFile)
+
+			if keyErr != nil {
+				return nil, nil, fmt.Errorf("could not read control plane exchange token JWT public keyset file: %w", keyErr)
+			}
+
+			publicJwt = strings.TrimSpace(string(keysetBytes))
+		}
+
+		publicJWTHandle, handleErr := encryption.InsecureHandleFromBytes([]byte(publicJwt))
+
+		if handleErr != nil {
+			return nil, nil, fmt.Errorf("could not create keyset handle from control plane exchange token JWT public keyset: %w", handleErr)
+		}
+
+		auth.ExchangeTokenClient, err = exchangetoken.NewExchangeTokenClient(publicJWTHandle, &exchangetoken.ExchangeTokenOpts{
+			Issuer:   cf.Auth.ControlPlaneExchangeTokenConfig.Issuer,
+			Audience: cf.Auth.ControlPlaneExchangeTokenConfig.Audience,
+		})
+
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not create exchange token client: %w", err)
+		}
+	}
+
+	var emailSvc email.EmailService = &email.NoOpService{}
+
+	switch strings.ToLower(cf.Email.Kind) {
+	case "postmark":
+		if !cf.Email.Postmark.Enabled {
+			break
+		}
+		emailSvc = postmark.NewPostmarkClient(
+			cf.Email.Postmark.ServerKey,
+			cf.Email.Postmark.FromEmail,
+			cf.Email.Postmark.FromName,
+			cf.Email.Postmark.SupportEmail,
+		)
+
+	case "smtp":
+		if !cf.Email.SMTP.Enabled {
+			break
+		}
+		emailSvc, err = smtp.NewSMTPService(
+			cf.Email.SMTP.ServerAddr,
+			cf.Email.SMTP.BasicAuth.Username,
+			cf.Email.SMTP.BasicAuth.Password,
+			cf.Email.SMTP.FromEmail,
+			cf.Email.SMTP.FromName,
+			cf.Email.SMTP.SupportEmail,
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create SMTP service: %w", err)
+		}
+	default:
+		return nil, nil, fmt.Errorf("invalid email provider of type %s, must be 'postmark' or 'smtp'", cf.Email.Kind)
+	}
+
+	additionalOAuthConfigs := make(map[string]*oauth2.Config)
+
+	if cf.TenantAlerting.Slack.Enabled {
+		additionalOAuthConfigs["slack"] = oauth.NewSlackClient(&oauth.Config{
+			ClientID:     cf.TenantAlerting.Slack.SlackAppClientID,
+			ClientSecret: cf.TenantAlerting.Slack.SlackAppClientSecret,
+			BaseURL:      cf.Runtime.ServerURL,
+			Scopes:       cf.TenantAlerting.Slack.SlackAppScopes,
+		})
+	}
+
+	v := validator.NewDefaultValidator()
+
+	promGate := prometheus.NewGate(dc.V1.TenantEntitlement(), cf.Prometheus.TenantScoped, &l)
+
+	concurrencyOutbox, cleanupConcurrencyOutbox, err := newConcurrencyOutbox(dc.Pool, l)
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not create concurrency outbox: %w", err)
+	}
+
+	schedulingPoolV1, cleanupSchedulingPoolV1, err := v1.NewSchedulingPool(
+		dc.V1.Scheduler(),
+		dc.V1.Tasks(),
+		concurrencyOutbox,
+		&queueLogger,
+		cf.Runtime.SingleQueueLimit,
+		cf.Runtime.SchedulerConcurrencyRateLimit,
+		cf.Runtime.SchedulerConcurrencyPollingMinInterval,
+		cf.Runtime.SchedulerConcurrencyPollingMaxInterval,
+		cf.Runtime.SchedulerCheckActiveMinInterval,
+		cf.Runtime.SchedulerCheckActiveMaxInterval,
+		cf.Runtime.SchedulerAdvisoryLockTimeout,
+		cf.Runtime.OptimisticSchedulingEnabled,
+		cf.Runtime.OptimisticSchedulingSlots,
+		cf.Runtime.ConcurrencyInMemoryIndexEnabled,
+		promGate,
+	)
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not create scheduling pool (v1): %w", err)
+	}
+
+	schedulingPoolV1.AddExtension(v1.NewPrometheusExtension(promGate))
+
+	cleanup = func() error {
+		log.Printf("cleaning up server config")
+
+		cleanupSecurityCheck()
+
+		cleanupConcurrencyOutbox()
+
+		if err := cleanupSchedulingPoolV1(); err != nil {
+			return fmt.Errorf("error cleaning up scheduling pool (v1): %w", err)
+		}
+
+		if err := cleanup1(); err != nil {
+			return fmt.Errorf("error cleaning up rabbitmq: %w", err)
+		}
+
+		if err := cleanupPubSub(); err != nil {
+			return fmt.Errorf("error cleaning up pubsub: %w", err)
+		}
+
+		if closeErr := analyticsEmitter.Close(); closeErr != nil {
+			l.Error().Err(closeErr).Msg("error closing analytics emitter")
+		}
+
+		return nil
+	}
+
+	services := cf.Services
+
+	// edge case to support backwards-compatibility with the services array in the config file
+	if cf.ServicesString != "" {
+		services = strings.Split(cf.ServicesString, " ")
+	}
+
+	pausedControllers := make(map[string]bool)
+
+	if cf.PausedControllers != "" {
+		for _, controller := range strings.Split(cf.PausedControllers, " ") {
+			pausedControllers[controller] = true
+		}
+	}
+
+	if cf.Runtime.AllowedOriginsString != "" {
+		cf.Runtime.AllowedOrigins = getStrArr(cf.Runtime.AllowedOriginsString)
+	}
+
+	if cf.Runtime.OperatorInfraBlockedCIDRsString != "" {
+		cf.Runtime.OperatorInfraBlockedCIDRs = getStrArr(cf.Runtime.OperatorInfraBlockedCIDRsString)
+	}
+
+	if cf.Runtime.Monitoring.TLSRootCAFile == "" {
+		cf.Runtime.Monitoring.TLSRootCAFile = cf.TLS.TLSRootCAFile
+	}
+
+	internalClientFactory, err := loadInternalClient(&l, &cf.InternalClient, cf.TLS, cf.Runtime.GRPCBroadcastAddress, cf.Runtime.GRPCInsecure)
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not load internal client: %w", err)
+	}
+
+	if cf.Runtime.FrontendURL == "" {
+		cf.Runtime.FrontendURL = cf.Runtime.ServerURL
+	}
+
+	return cleanup, &server.ServerConfig{
+		Alerter:                alerter,
+		Analytics:              analyticsEmitter,
+		FePosthog:              feAnalyticsConfig,
+		Pylon:                  &pylon,
+		Runtime:                cf.Runtime,
+		Auth:                   auth,
+		Encryption:             encryptionSvc,
+		Layer:                  dc,
+		MessageQueueV1:         mqv1,
+		PubSubV1:               pubsubv1,
+		Services:               services,
+		PausedControllers:      pausedControllers,
+		InternalClientFactory:  internalClientFactory,
+		Logger:                 &l,
+		TLSConfig:              tls,
+		SessionStore:           ss,
+		Validator:              v,
+		Ingestor:               ing,
+		OpenTelemetry:          cf.OpenTelemetry,
+		Prometheus:             cf.Prometheus,
+		PrometheusGate:         promGate,
+		Observability:          cf.Observability,
+		Email:                  emailSvc,
+		TenantAlerter:          alerting.New(dc.V1, encryptionSvc, cf.Runtime.FrontendURL, emailSvc),
+		AdditionalOAuthConfigs: additionalOAuthConfigs,
+		AdditionalLoggers:      cf.AdditionalLoggers,
+		EnableDataRetention:    cf.EnableDataRetention,
+		EnableWorkerRetention:  cf.EnableWorkerRetention,
+		SchedulingPoolV1:       schedulingPoolV1,
+		Version:                version,
+		Sampling:               cf.Sampling,
+		Operations:             cf.OLAP,
+		CronOperations:         cf.CronOperations,
+		OLAPStatusUpdates:      cf.OLAPStatusUpdates,
+		MQMaxDeathCount:        cf.MessageQueue.RabbitMQ.MaxDeathCount,
+	}, nil
+}
+
+// createPubSubV1 constructs the best-effort pub/sub with strictly disjoint
+// pooled resources: its own AMQP connections/channel pools, or its own small
+// pgx pool on the direct database URL. The result is wrapped in the
+// DisableTenantPubs gate.
+func createPubSubV1(dc *database.Layer, cf *server.ServerConfigFile, l *zerolog.Logger) (cleanup func() error, ps msgqueue.PubSub, err error) {
+	pubsubKind, pubsubURL := resolvePubSubKindAndURL(cf)
+	kind := strings.ToLower(pubsubKind)
+
+	switch kind {
+	case "postgres":
+		// never dc.Pool and never the pgbouncer URL: the pub/sub owns its pool,
+		// and LISTEN does not survive transaction pooling
+		pubsubPoolConfig, err := pgxpool.ParseConfig(dc.DirectDatabaseURL)
+
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not parse direct database url for pubsub: %w", err)
+		}
+
+		setPgxApplicationName(pubsubPoolConfig, cf.OpenTelemetry.ServiceName+":pubsub")
+
+		pubsubPoolConfig.MaxConns = cf.MessageQueue.PubSub.Postgres.MaxConns
+		pubsubPoolConfig.MinConns = cf.MessageQueue.PubSub.Postgres.MinConns
+		pubsubPoolConfig.ConnConfig.Tracer = newOTelPgxTracer()
+
+		pubsubPool, err := pgxpool.NewWithConfig(context.Background(), pubsubPoolConfig)
+
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not create pubsub pool: %w", err)
+		}
+
+		pubsubRepo, cleanupPubSubRepo := repov1.NewMessageQueueRepositoryWithPool(l, pubsubPool)
+
+		cleanupPg, pgps, err := pgmq.NewPubSub(
+			pubsubRepo,
+			pgmq.WithPubSubLogger(l),
+			pgmq.WithPubSubPool(pubsubPool),
+		)
+
+		if err != nil {
+			pubsubPool.Close()
+			return nil, nil, fmt.Errorf("could not init postgres pubsub: %w", err)
+		}
+
+		ps = pgps
+		cleanup = func() error {
+			if err := cleanupPg(); err != nil {
+				return err
+			}
+
+			if err := cleanupPubSubRepo(); err != nil {
+				return err
+			}
+
+			pubsubPool.Close()
+			return nil
+		}
+	case "rabbitmq":
+		if pubsubURL == "" {
+			return nil, nil, fmt.Errorf("using RabbitMQ as pubsub requires a URL to be set")
+		}
+
+		cleanupRmq, rmqps, err := rabbitmq.NewPubSub(
+			rabbitmq.WithPubSubURL(pubsubURL),
+			rabbitmq.WithPubSubLogger(l),
+			rabbitmq.WithPubSubMaxPubChannels(cf.MessageQueue.PubSub.RabbitMQ.MaxPubChans),
+			rabbitmq.WithPubSubMaxSubChannels(cf.MessageQueue.PubSub.RabbitMQ.MaxSubChans),
+			// compression settings inherit from the durable queue: both sides
+			// publish to the same tenant exchanges, so they must agree
+			rabbitmq.WithPubSubGzip(
+				cf.MessageQueue.RabbitMQ.CompressionEnabled,
+				cf.MessageQueue.RabbitMQ.CompressionThreshold,
+			),
+		)
+
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not init rabbitmq pubsub: %w", err)
+		}
+
+		ps = rmqps
+		cleanup = cleanupRmq
+	case "nats":
+		natsURL := cf.MessageQueue.PubSub.NATS.URL
+
+		if natsURL == "" {
+			return nil, nil, fmt.Errorf("using NATS as pubsub requires a URL to be set")
+		}
+
+		cleanupNats, natsps, err := natsmq.NewPubSub(
+			natsmq.WithPubSubURL(natsURL),
+			natsmq.WithPubSubUsername(cf.MessageQueue.PubSub.NATS.Username),
+			natsmq.WithPubSubPassword(cf.MessageQueue.PubSub.NATS.Password),
+			natsmq.WithPubSubTLSEnabled(cf.MessageQueue.PubSub.NATS.TLSEnabled),
+			natsmq.WithPubSubTLSRootCAFile(cf.MessageQueue.PubSub.NATS.TLSRootCAFile),
+			natsmq.WithPubSubSubjectPrefix(cf.MessageQueue.PubSub.NATS.SubjectPrefix),
+			natsmq.WithPubSubLogger(l),
+		)
+
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not init nats pubsub: %w", err)
+		}
+
+		ps = natsps
+		cleanup = cleanupNats
+	default:
+		return nil, nil, fmt.Errorf("invalid pubsub kind %q, must be 'rabbitmq', 'postgres', or 'nats'", pubsubKind)
+	}
+
+	return cleanup, msgqueue.NewGatedPubSub(msgqueue.NewInstrumentedPubSub(ps, kind), cf.Runtime.DisableTenantPubs), nil
+}
+
+// resolvePubSubKindAndURL resolves the pub/sub kind and rabbit URL, inheriting
+// from the resolved durable msgQueue settings when unset. This is the config
+// backwards-compatibility invariant: a deployment configured only with today's
+// durable variables (including the legacy SERVER_TASKQUEUE_* aliases) gets a
+// fully working pub/sub path with zero new configuration.
+func resolvePubSubKindAndURL(cf *server.ServerConfigFile) (kind string, rabbitURL string) {
+	kind = cf.MessageQueue.PubSub.Kind
+
+	if kind == "" {
+		kind = cf.MessageQueue.Kind
+	}
+
+	rabbitURL = cf.MessageQueue.PubSub.RabbitMQ.URL
+
+	if rabbitURL == "" {
+		rabbitURL = cf.MessageQueue.RabbitMQ.URL
+	}
+
+	return kind, rabbitURL
+}
+
+func getStrArr(v string) []string {
+	return strings.Split(v, " ")
+}
+
+func LoadEncryptionSvc(cf *server.ServerConfigFile) (encryption.EncryptionService, error) {
+	var err error
+
+	hasLocalMasterKeyset := cf.Encryption.MasterKeyset != "" || cf.Encryption.MasterKeysetFile != ""
+	isCloudKMSEnabled := cf.Encryption.CloudKMS.Enabled
+
+	if !hasLocalMasterKeyset && !isCloudKMSEnabled {
+		return nil, fmt.Errorf("encryption is required")
+	}
+
+	if hasLocalMasterKeyset && isCloudKMSEnabled {
+		return nil, fmt.Errorf("cannot use both encryption and cloud kms")
+	}
+
+	hasJWTKeys := (cf.Encryption.JWT.PublicJWTKeyset != "" || cf.Encryption.JWT.PublicJWTKeysetFile != "") &&
+		(cf.Encryption.JWT.PrivateJWTKeyset != "" || cf.Encryption.JWT.PrivateJWTKeysetFile != "")
+
+	if !hasJWTKeys {
+		return nil, fmt.Errorf("jwt encryption is required")
+	}
+
+	privateJWT := cf.Encryption.JWT.PrivateJWTKeyset
+
+	if cf.Encryption.JWT.PrivateJWTKeysetFile != "" {
+		privateJWTBytes, err := loaderutils.GetFileBytes(cf.Encryption.JWT.PrivateJWTKeysetFile)
+
+		if err != nil {
+			return nil, fmt.Errorf("could not load private jwt keyset file: %w", err)
+		}
+
+		privateJWT = string(privateJWTBytes)
+	}
+
+	publicJWT := cf.Encryption.JWT.PublicJWTKeyset
+
+	if cf.Encryption.JWT.PublicJWTKeysetFile != "" {
+		publicJWTBytes, err := loaderutils.GetFileBytes(cf.Encryption.JWT.PublicJWTKeysetFile)
+
+		if err != nil {
+			return nil, fmt.Errorf("could not load public jwt keyset file: %w", err)
+		}
+
+		publicJWT = string(publicJWTBytes)
+	}
+
+	var encryptionSvc encryption.EncryptionService
+
+	if hasLocalMasterKeyset {
+		masterKeyset := cf.Encryption.MasterKeyset
+
+		if cf.Encryption.MasterKeysetFile != "" {
+			masterKeysetBytes, err := loaderutils.GetFileBytes(cf.Encryption.MasterKeysetFile)
+
+			if err != nil {
+				return nil, fmt.Errorf("could not load master keyset file: %w", err)
+			}
+
+			masterKeyset = string(masterKeysetBytes)
+		}
+
+		encryptionSvc, err = encryption.NewLocalEncryption(
+			[]byte(masterKeyset),
+			[]byte(privateJWT),
+			[]byte(publicJWT),
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("could not create raw keyset encryption service: %w", err)
+		}
+	}
+
+	if isCloudKMSEnabled {
+		encryptionSvc, err = encryption.NewCloudKMSEncryption(
+			cf.Encryption.CloudKMS.KeyURI,
+			[]byte(cf.Encryption.CloudKMS.CredentialsJSON),
+			[]byte(privateJWT),
+			[]byte(publicJWT),
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("could not create CloudKMS encryption service: %w", err)
+		}
+	}
+
+	return encryptionSvc, nil
+}
+
+func applyAuthDisabledOverrides(rt *server.ConfigFileRuntime) {
+	rt.AllowCreateTenant = false
+	rt.AllowSignup = false
+	rt.AllowInvites = false
+	rt.AllowChangePassword = false
+}
+
+func loadInternalClient(l *zerolog.Logger, conf *server.InternalClientTLSConfigFile, baseServerTLS shared.TLSConfigFile, grpcBroadcastAddress string, grpcInsecure bool) (*clientv1.GRPCClientFactory, error) {
+	// get gRPC broadcast address
+	broadcastAddress := grpcBroadcastAddress
+
+	if conf.InternalGRPCBroadcastAddress != "" {
+		broadcastAddress = conf.InternalGRPCBroadcastAddress
+	}
+
+	tlsServerName := conf.TLSServerName
+
+	if tlsServerName == "" {
+		// parse host from broadcast address
+		host, _, err := net.SplitHostPort(broadcastAddress)
+
+		if err != nil {
+			return nil, fmt.Errorf("could not parse host from broadcast address %s: %w", broadcastAddress, err)
+		}
+
+		tlsServerName = host
+	}
+
+	// construct TLS config
+	var base shared.TLSConfigFile
+
+	if conf.InheritBase {
+		base = baseServerTLS
+
+		if grpcInsecure {
+			base.TLSStrategy = "none"
+		}
+	} else {
+		base = conf.Base
+	}
+
+	tlsConfig, err := loaderutils.LoadClientTLSConfig(&client.ClientTLSConfigFile{
+		Base:          base,
+		TLSServerName: tlsServerName,
+	}, tlsServerName)
+
+	if err != nil {
+		return nil, fmt.Errorf("could not load client TLS config: %w", err)
+	}
+
+	return clientv1.NewGRPCClientFactory(
+		clientv1.WithHostPort(broadcastAddress),
+		clientv1.WithTLS(tlsConfig),
+		clientv1.WithLogger(l),
+	), nil
+}
+
+// checkDatabaseTimezone validates that the database instance timezone is set to UTC.
+// It creates a temporary connection to check the timezone without using the AfterConnect hook.
+func checkDatabaseTimezone(connConfig *pgx.ConnConfig, dbName string, dbLabel string, l *zerolog.Logger) error {
+	tempConn, err := pgx.ConnectConfig(context.Background(), connConfig)
+	if err != nil {
+		return fmt.Errorf("could not create temporary connection to %s to check timezone: %w", dbLabel, err)
+	}
+	defer tempConn.Close(context.Background())
+
+	var dbTimezone string
+	if err := tempConn.QueryRow(context.Background(), "SHOW timezone").Scan(&dbTimezone); err != nil {
+		return fmt.Errorf("could not query %s timezone: %w", dbLabel, err)
+	}
+
+	// Accept both "UTC" and "Etc/UTC" as valid UTC timezones
+	if dbTimezone != "UTC" && dbTimezone != "Etc/UTC" {
+		if dbName == "" {
+			dbName = "<your_database_name>"
+		}
+		return fmt.Errorf(
+			"%s instance timezone is set to '%s' but must be 'UTC' or 'Etc/UTC'\n"+
+				"This check ensures time-based operations work correctly across all sessions\n"+
+				"To fix this issue, you have two options:\n"+
+				"  1. Set your PostgreSQL instance timezone to UTC by running: ALTER DATABASE %s SET TIMEZONE='UTC'\n"+
+				"  2. Disable this check by setting the environment variable: DATABASE_ENFORCE_UTC_TIMEZONE=false\n"+
+				"Note: Disabling this check is not recommended as it may lead to timezone-related issues",
+			dbLabel, dbTimezone, dbName,
+		)
+	}
+
+	l.Info().Msgf("%s instance timezone verified: %s", dbLabel, dbTimezone)
+	return nil
+}
+
+// setPgxApplicationName sets application_name on the pool config unless the
+// connection string already provided one explicitly.
+func setPgxApplicationName(config *pgxpool.Config, appName string) {
+	if config.ConnConfig.RuntimeParams["application_name"] != "" {
+		return
+	}
+
+	config.ConnConfig.RuntimeParams["application_name"] = appName
+}
+
+func newOTelPgxTracer() *otelpgx.Tracer {
+	return otelpgx.NewTracer(
+		otelpgx.WithDisableSQLStatementInAttributes(),
+		otelpgx.WithTrimSQLInSpanName(),
+		otelpgx.WithSpanNameFunc(sqlcSpanName),
+	)
+}
+
+// sqlcSpanName extracts the query name from sqlc's "-- name: QueryName :verb"
+// comment that prefixes every generated SQL constant. For ad-hoc queries without
+// the comment, it falls back to the first 6 words of the statement.
+func sqlcSpanName(stmt string) string {
+	if after, ok := strings.CutPrefix(stmt, "-- name: "); ok {
+		if end := strings.IndexAny(after, " \n"); end > 0 {
+			return after[:end]
+		}
+		// Fallback: if there is no space or newline after the query name,
+		// use the trimmed remainder as the span name instead of falling
+		// back to the entire SQL statement.
+		if trimmed := strings.TrimSpace(after); trimmed != "" {
+			return trimmed
+		}
+	}
+	return firstNWords(stmt, 6)
+}
+
+func firstNWords(s string, n int) string {
+	s = strings.TrimSpace(s)
+	end := 0
+	for i := 0; i < n; i++ {
+		next := strings.IndexByte(s[end:], ' ')
+		if next < 0 {
+			return strings.ToUpper(s)
+		}
+		end += next + 1
+	}
+	return strings.ToUpper(strings.TrimSpace(s[:end]))
+}
+
+func newConcurrencyOutbox(pool *pgxpool.Pool, l zerolog.Logger) (pgoutbox.Outbox, func(), error) {
+	ctx, cancel := context.WithCancel(context.Background()) // nolint:govet
+
+	// the scheduler's outbox shares the same database connection pool, this means that we need to be
+	// careful not to cause deadlocks by opening a tx inside of a tx. The outbox methods all have a tx-scoped
+	// method which should be used instead of the non-scoped versions.
+	concurrencyOutbox, err := pgoutbox.NewOutbox(
+		ctx,
+		pool,
+		pgoutbox.WithAutoMigrate(false),
+		pgoutbox.WithLogger(l),
+		pgoutbox.WithDefaultExpiration(24*time.Hour),
+	)
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not create concurrency outbox: %w", err) // nolint:govet
+	}
+
+	return concurrencyOutbox, cancel, nil
+}

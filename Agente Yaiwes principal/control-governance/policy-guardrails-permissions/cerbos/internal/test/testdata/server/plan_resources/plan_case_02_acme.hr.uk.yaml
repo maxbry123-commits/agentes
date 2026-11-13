@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=../../.jsonschema/ServerTestCase.schema.json
+---
+description: "Harry defers; scoped request 'acme.hr.uk', no auxData"
+wantStatus:
+  httpStatusCode: 200
+  grpcStatusCode: 0
+planResources:
+  input: {
+    "requestId": "test",
+    "includeMeta": true,
+    "action": "defer",
+    "principal": {
+      "id": "harry",
+      "policyVersion": "default",
+      "roles": [
+          "employee"
+      ],
+      "attr": {
+        "department": "marketing",
+        "geography": "GB",
+        "team": "design"
+      }
+    },
+    "resource": {
+      "kind": "leave_request",
+      "policyVersion": "default",
+      "scope": "acme.hr.uk"
+    }
+  }
+  wantResponse: {
+    "requestId": "test",
+    "action": "defer",
+    "resourceKind": "leave_request",
+    "policyVersion": "default",
+    "filter": {
+      "kind": "KIND_CONDITIONAL",
+      "condition": {
+        "expression": {
+          "operator": "eq",
+          "operands": [
+            { "variable": "request.resource.attr.owner" },
+            { "value": "harry"}
+          ]
+        }
+      }
+    },
+    "meta": {
+      "filterDebug": "(eq request.resource.attr.owner \"harry\")",
+      "matchedScope": "acme.hr"
+    }
+  }

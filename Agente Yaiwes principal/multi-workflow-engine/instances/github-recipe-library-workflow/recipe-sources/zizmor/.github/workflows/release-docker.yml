@@ -1,0 +1,80 @@
+name: Build and release Docker images 🐳
+
+on:
+  workflow_call:
+    inputs:
+      release-version:
+        type: string
+        required: true
+        description: |
+          The version to release (e.g., 1.0.0).
+
+          Note that this version does NOT have a `v` prefix.
+
+      latest:
+        type: boolean
+        required: true
+        default: true
+        description: |
+          Whether to tag the image as `latest`
+
+      dry-run:
+        type: boolean
+        required: false
+        default: false
+        description: |
+          Build the image without pushing it to GHCR.
+
+  workflow_dispatch:
+    inputs:
+      release-version:
+        type: string
+        required: true
+        description: |
+          The version to release (e.g., 1.0.0).
+
+          Note that this version does NOT have a `v` prefix.
+
+      latest:
+        type: boolean
+        required: true
+        default: true
+        description: |
+          Whether to tag the image as `latest`
+
+      dry-run:
+        type: boolean
+        required: false
+        default: true
+        description: |
+          Build the image without pushing it to GHCR.
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build and publish Docker image
+
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+
+    uses: docker/github-builder/.github/workflows/build.yml@58cb9f5b71b1836d6f690c1e95effdeb9b98cb8a # v1.17.0
+    with:
+      output: image
+      push: ${{ !inputs.dry-run }}
+      platforms: linux/amd64,linux/arm64
+      meta-images: ghcr.io/zizmorcore/zizmor
+      meta-tags: |
+        type=raw,value=${{ inputs.release-version }}
+        type=raw,value=latest,enable=${{ inputs.latest }}
+      build-args: |
+        ZIZMOR_VERSION=${{ inputs.release-version }}
+      set-meta-labels: true
+      set-meta-annotations: true
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}

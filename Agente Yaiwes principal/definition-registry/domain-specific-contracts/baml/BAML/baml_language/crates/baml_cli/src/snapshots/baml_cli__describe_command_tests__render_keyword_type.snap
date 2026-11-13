@@ -1,0 +1,25 @@
+---
+source: crates/baml_cli/src/describe_command_tests.rs
+expression: output
+---
+type — Creates type bindings; runtime type values use reflect.Type.
+
+Syntax:
+  type UserId = string
+  type Result = string | int
+  type MaybeInt = int?
+  interface Iterator {
+    type Item
+    type Error extends string = string
+  }
+  class IntIterator {
+    implements Iterator {
+      type Item = int
+    }
+  }
+  function from_runtime(t: reflect.Type) -> reflect.Type {
+    type T = unreflect(t)
+    reflect.Type.of<T>()
+  }
+
+At top level, `type Name = ...` creates an alias. Inside an interface, `type Item`, `type Item extends Bound`, `type Item = Default`, and `type Item extends Bound = Default` declare associated types. Inside an `implements` block, bind associated types with `type Item = Concrete`. Inside a function, `type T = unreflect(t)` creates a scoped type binding from a runtime value. The old `type.of<T>()` shorthand and bare `type` value annotation do not exist; write `reflect.Type.of<T>()` and `reflect.Type`.

@@ -1,0 +1,251 @@
+import { useActions, useValues } from 'kea'
+import { useEffect } from 'react'
+
+import { IconPerson } from '@posthog/icons'
+import { LemonInput, LemonSwitch } from '@posthog/lemon-ui'
+
+import { NotFound } from 'lib/components/NotFound'
+import { useOnMountEffect } from 'lib/hooks/useOnMountEffect'
+import { colonDelimitedDuration } from 'lib/utils/durations'
+import { createPostHogWidgetNode } from 'scenes/notebooks/Nodes/NodeWrapper'
+import { defineNotebookWidgetViews, getNotebookWidgetDefaultView } from 'scenes/notebooks/notebookWidgetCatalog'
+import { asDisplay } from 'scenes/persons/person-utils'
+import { sessionRecordingDataCoordinatorLogic } from 'scenes/session-recordings/player/sessionRecordingDataCoordinatorLogic'
+import {
+    SessionRecordingPlayer,
+    SessionRecordingPlayerProps,
+} from 'scenes/session-recordings/player/SessionRecordingPlayer'
+import {
+    SessionRecordingPlayerMode,
+    sessionRecordingPlayerLogic,
+} from 'scenes/session-recordings/player/sessionRecordingPlayerLogic'
+import {
+    SessionRecordingPreview,
+    SessionRecordingPreviewSkeleton,
+} from 'scenes/session-recordings/playlist/SessionRecordingPreview'
+import { urls } from 'scenes/urls'
+
+import { SessionRecordingId } from '~/types'
+
+import { NotebookNodeAttributeProperties, NotebookNodeProps, NotebookNodeType } from '../types'
+import { notebookNodeLogic } from './notebookNodeLogic'
+
+const HEIGHT = 500
+const MIN_HEIGHT = '20rem'
+
+const Component = ({ attributes }: NotebookNodeProps<NotebookNodeRecordingAttributes>): JSX.Element => {
+    const { id, noInspector, timestampMs } = attributes
+
+    const recordingLogicProps: SessionRecordingPlayerProps = {
+        ...sessionRecordingPlayerProps(id),
+        autoPlay: false,
+        mode: SessionRecordingPlayerMode.Notebook,
+        noBorder: true,
+        withSidebar: !noInspector,
+    }
+
+    const { expanded } = useValues(notebookNodeLogic)
+    const { setActions, insertAfter, setMessageListeners, setExpanded, setTitlePlaceholder } =
+        useActions(notebookNodeLogic)
+
+    const { sessionPlayerMetaData, sessionPlayerMetaDataLoading, sessionPlayerData } = useValues(
+        sessionRecordingDataCoordinatorLogic(recordingLogicProps)
+    )
+    const { loadRecordingMeta, loadSnapshots } = useActions(sessionRecordingDataCoordinatorLogic(recordingLogicProps))
+    const { seekToTimestamp, seekToTime, setPlay, setPause } = useActions(
+        sessionRecordingPlayerLogic(recordingLogicProps)
+    )
+
+    // TODO Only load data when in view...
+    useOnMountEffect(loadRecordingMeta)
+
+    useEffect(() => {
+        const person = sessionPlayerMetaData?.person
+        setTitlePlaceholder(person ? asDisplay(person) : 'Session recording')
+        setActions([
+            person
+                ? {
+                      text: `View ${asDisplay(person)}`,
+                      icon: <IconPerson />,
+                      onClick: () => {
+                          insertAfter({
+                              type: NotebookNodeType.Person,
+                              attrs: {
+                                  id: person.uuid,
+                              },
+                          })
+                      },
+                  }
+                : undefined,
+        ])
+    }, [sessionPlayerMetaData?.person?.id]) // oxlint-disable-line exhaustive-deps
+
+    useOnMountEffect(() => {
+        setMessageListeners({
+            'play-replay': ({ time }) => {
+                if (!expanded) {
+                    setExpanded(true)
+                }
+                setPlay()
+                seekToTimestamp(time)
+            },
+        })
+    })
+
+    // Seek to timestamp when widget is expanded and has a timestamp
+    useEffect(() => {
+        if (expanded && timestampMs && sessionPlayerData?.start) {
+            setPause()
+            loadSnapshots()
+            seekToTime(timestampMs) // seekToTime only works when sessionPlayerData.start is available
+        }
+    }, [expanded, timestampMs, sessionPlayerData?.start]) // oxlint-disable-line exhaustive-deps
+
+    if (!sessionPlayerMetaData && !sessionPlayerMetaDataLoading) {
+        return <NotFound object="replay" />
+    }
+
+    return !expanded ? (
+        <div>
+            {sessionPlayerMetaData ? (
+                <SessionRecordingPreview recording={sessionPlayerMetaData} />
+            ) : (
+                <SessionRecordingPreviewSkeleton />
+            )}
+        </div>
+    ) : (
+        <SessionRecordingPlayer {...recordingLogicProps} />
+    )
+}
+
+export const Settings = ({
+    attributes,
+    updateAttributes,
+}: NotebookNodeAttributeProperties<NotebookNodeRecordingAttributes>): JSX.Element => {
+    return (
+        <div className="p-3">
+            <LemonSwitch
+                onChange={() => updateAttributes({ noInspector: !attributes.noInspector })}
+                label="Hide Inspector"
+                checked={attributes.noInspector}
+                fullWidth={true}
+            />
+            <div className="mt-3">
+                <label className="block text-muted mb-1">Start at timestamp</label>
+                <LemonInput
+                    type="text"
+                    fullWidth
+                    value={attributes.timestampMs ? colonDelimitedDuration(attributes.timestampMs / 1000) : ''}
+                    onBlur={(e) => updateAttributes({ timestampMs: parseTimestampToMs(e.currentTarget.value) })}
+                    placeholder="e.g. 00:13:37"
+                />
+            </div>
+        </div>
+    )
+}
+
+type NotebookNodeRecordingAttributes = {
+    id: string
+    view?: string
+    noInspector: boolean
+    timestampMs?: number
+}
+
+function RecordingSummary({ attributes }: NotebookNodeProps<NotebookNodeRecordingAttributes>): JSX.Element {
+    const recordingLogicProps = sessionRecordingPlayerProps(attributes.id)
+    const { sessionPlayerMetaData, sessionPlayerMetaDataLoading } = useValues(
+        sessionRecordingDataCoordinatorLogic(recordingLogicProps)
+    )
+    const { loadRecordingMeta } = useActions(sessionRecordingDataCoordinatorLogic(recordingLogicProps))
+    const { setTitlePlaceholder } = useActions(notebookNodeLogic)
+
+    useOnMountEffect(loadRecordingMeta)
+
+    useEffect(() => {
+        setTitlePlaceholder(
+            sessionPlayerMetaData?.person ? asDisplay(sessionPlayerMetaData.person) : 'Session recording'
+        )
+    }, [sessionPlayerMetaData?.person, setTitlePlaceholder])
+
+    if (!sessionPlayerMetaData && !sessionPlayerMetaDataLoading) {
+        return <NotFound object="replay" />
+    }
+
+    return sessionPlayerMetaData ? (
+        <SessionRecordingPreview recording={sessionPlayerMetaData} />
+    ) : (
+        <SessionRecordingPreviewSkeleton />
+    )
+}
+
+const RECORDING_NOTEBOOK_WIDGET_VIEWS = defineNotebookWidgetViews<NotebookNodeRecordingAttributes, 'Recording'>(
+    'Recording',
+    { summary: RecordingSummary }
+)
+
+export const NotebookNodeRecording = createPostHogWidgetNode<NotebookNodeRecordingAttributes>({
+    nodeType: NotebookNodeType.Recording,
+    titlePlaceholder: 'Session recording',
+    editableTitle: false,
+    Component,
+    heightEstimate: HEIGHT,
+    minHeight: MIN_HEIGHT,
+    href: (attrs) =>
+        attrs.timestampMs
+            ? `${urls.replaySingle(attrs.id)}?t=${Math.floor(attrs.timestampMs / 1000)}`
+            : urls.replaySingle(attrs.id),
+    resizeable: true,
+    attributes: {
+        id: {
+            default: null,
+        },
+        view: {},
+        noInspector: {
+            default: false,
+        },
+        timestampMs: {
+            default: undefined,
+        },
+    },
+    Settings,
+    defaultView: getNotebookWidgetDefaultView('Recording'),
+    views: RECORDING_NOTEBOOK_WIDGET_VIEWS,
+    serializedText: () => 'Session recording',
+})
+
+export function sessionRecordingPlayerProps(id: SessionRecordingId): SessionRecordingPlayerProps {
+    return {
+        sessionRecordingId: id,
+        playerKey: `notebook-${id}`,
+    }
+}
+
+/**
+ * Parse timestamp strings of form "1:23" or "00:01:23" into milliseconds
+ * @param input - Timestamp string
+ * @returns Number of milliseconds, or undefined if invalid
+ */
+export function parseTimestampToMs(input?: string | null): number | undefined {
+    if (input == null) {
+        return undefined
+    }
+    const value = String(input).trim()
+    if (!value.length) {
+        return undefined
+    }
+
+    // Handle mm:ss or hh:mm:ss format
+    const parts = value.split(':').map((p) => Number(p))
+    if (parts.length > 1 && parts.length <= 3 && parts.every((n) => Number.isSafeInteger(n) && n >= 0)) {
+        let seconds = 0
+        if (parts.length === 2) {
+            const [mm, ss] = parts
+            seconds = mm * 60 + ss
+        } else if (parts.length === 3) {
+            const [hh, mm, ss] = parts
+            seconds = hh * 3600 + mm * 60 + ss
+        }
+        return seconds * 1000
+    }
+    return undefined
+}

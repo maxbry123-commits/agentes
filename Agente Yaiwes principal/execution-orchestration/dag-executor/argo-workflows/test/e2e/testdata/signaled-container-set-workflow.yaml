@@ -1,0 +1,49 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: example
+  namespace: argo
+spec:
+  templates:
+    - name: entrypoint
+      metadata: {}
+      containerSet:
+        containers:
+          - name: one
+            resources:
+              requests:
+                memory: "50Mi"
+                cpu: "50m"
+              limits:
+                memory: "50Mi"
+            image: argoproj/argosay:v2
+            command:
+              - bash
+              - '-c'
+            args:
+              - |
+                echo "hello one"
+                # Allocate a 512MB buffer in a single read, which exceeds the
+                # 50Mi cgroup limit and triggers an OOM kill. This avoids the
+                # flaky `apt install stress` dance which depends on reaching
+                # external package mirrors from CI.
+                dd if=/dev/zero of=/dev/null bs=512M count=1
+          - name: two
+            resources:
+              requests:
+                memory: "150Mi"
+                cpu: "50m"
+              limits:
+                memory: "250Mi"
+            image: argoproj/argosay:v2
+            command:
+              - bash
+              - '-c'
+            args:
+              - |
+                /bin/bash <<'EOF'
+                echo "hello world"
+                EOF
+            dependencies:
+              - one
+  entrypoint: entrypoint

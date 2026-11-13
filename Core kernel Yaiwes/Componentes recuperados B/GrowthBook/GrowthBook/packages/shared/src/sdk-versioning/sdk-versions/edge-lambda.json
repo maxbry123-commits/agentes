@@ -1,0 +1,77 @@
+{
+  "versions": [
+    {
+      "version": "0.0.29"
+    },
+    {
+      "version": "0.0.28"
+    },
+    {
+      "version": "0.0.27",
+      "capabilities": ["caseInsensitiveRegex", "caseInsensitiveMembership"]
+    },
+    {
+      "version": "0.0.26"
+    },
+    {
+      "version": "0.0.25"
+    },
+    {
+      "version": "0.0.24"
+    },
+    {
+      "version": "0.0.22"
+    },
+    {
+      "version": "0.0.21"
+    },
+    {
+      "version": "0.0.20"
+    },
+    {
+      "version": "0.0.10"
+    },
+    {
+      "version": "0.0.9"
+    },
+    {
+      "version": "0.0.8"
+    },
+    {
+      "version": "0.0.7",
+      "capabilities": ["savedGroupReferences"]
+    },
+    {
+      "version": "0.0.6",
+      "capabilities": [
+        "looseUnmarshalling",
+        "namespacesV2",
+        "encryption",
+        "streaming",
+        "bucketingV2",
+        "visualEditor",
+        "semverTargeting",
+        "visualEditorJS",
+        "visualEditorDragDrop",
+        "prerequisites",
+        "redirects",
+        "stickyBucketing"
+      ]
+    },
+    {
+      "version": "0.0.5"
+    },
+    {
+      "version": "0.0.4"
+    },
+    {
+      "version": "0.0.3"
+    },
+    {
+      "version": "0.0.2"
+    },
+    {
+      "version": "0.0.1"
+    }
+  ]
+}

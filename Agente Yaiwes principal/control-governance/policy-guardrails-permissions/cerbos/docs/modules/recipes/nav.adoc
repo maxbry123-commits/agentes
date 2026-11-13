@@ -1,0 +1,28 @@
+.Recipes
+* Example apps
+** xref:photo-share/index.adoc[Photo-share application]
+** link:https://github.com/cerbos/demo-rest[Demo of securing a REST API with Cerbos]
+** link:https://github.com/cerbos/demo-multitenant-saas[Modelling a multi-tenant SaaS with Cerbos]
+** link:https://github.com/cerbos/demo-admin-api[Admin API demo with Go and React]
+* Authentication integration
+** xref:authentication/auth0/index.adoc[Auth0]
+** xref:authentication/fusionauth/index.adoc[FusionAuth]
+** xref:authentication/jwt/index.adoc[JWT]
+** xref:authentication/magic/index.adoc[Magic]
+** xref:authentication/okta/index.adoc[Okta]
+** xref:authentication/aws-cognito/index.adoc[AWS Cognito]
+* Query plan adapters
+** xref:query-plan-adapters/index.adoc[Overview]
+** xref:query-plan-adapters/prisma.adoc[Prisma]
+** xref:query-plan-adapters/drizzle.adoc[Drizzle]
+** xref:query-plan-adapters/mongoose.adoc[Mongoose]
+** xref:query-plan-adapters/convex.adoc[Convex]
+** xref:query-plan-adapters/langchain-chromadb.adoc[LangChain / ChromaDB]
+** xref:query-plan-adapters/sqlalchemy.adoc[SQLAlchemy]
+* xref:ui.adoc[Checking permissions in your UI]
+* xref:filtering-resources.adoc[Filtering resources by permission]
+* xref:field-level-security.adoc[Field-level and column-level security]
+* xref:hierarchies-and-multi-tenancy.adoc[Modeling hierarchies and multi-tenancy]
+* xref:jwt-claims.adoc[Working with JWT claims in policies]
+* AI integration
+** xref:ai/rag-authorization/index.adoc[RAG authorization]

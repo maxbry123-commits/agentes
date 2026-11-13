@@ -1,0 +1,80 @@
+# axolotl SFT backend — E2E smoke config (Stage 3 GPU gate; also feeds Stage 4 footgun gate).
+#
+# Tiny, fast, delphi-template full-FT run: a few optimizer steps on a small HF dataset,
+# meant to prove the axolotl backend trains + checkpoints THROUGH the launcher
+# (`python -m hpc.launch --job_type sft --sft_backend axolotl`).
+#
+# aarch64 (TACC Vista GH200) constraints — see .agents/ops/tacc/ops.md:
+#   - NO flash-attn-2 wheel for torch 2.11+cu128 on aarch64 -> attn_implementation: sdpa
+#     (the translator honors an explicit attn_implementation; without it, sample_packing
+#      would force flash_attention_2 and the job would die at model load).
+#   - sample_packing: false (packing wants a varlen/flash backend; SDPA path stays simple).
+#
+# delphi PREREQUISITE (same as LLaMA-Factory): the 6 delphi protocol tokens
+# (<|start_think|>/<|end_think|>/<|tool_call|>/<|tool_call_end|>/<|tool_result|>/<|tool_result_end|>)
+# must be SINGLE ids on the base tokenizer BEFORE training — run
+# sft/delphi/prepare_delphi_tokenizer.py (reserved-slot rename + mean-init) on the base model
+# and point base_model at the prepared dir. Meta-Llama-3-8B-Instruct has those reserved slots
+# and an untied lm_head (required by the prep script), so it is a valid smoke base.
+#
+# supabase_register: false and mfu: false — a smoke must not write junk DB rows or add noise;
+# the template_integrity plugin STAYS because delphi needs the save-time footgun fix (Stage 4).
+
+# Overridden at launch via --model_path to the prepared (delphi-tokenizer) checkpoint dir.
+base_model: NousResearch/Meta-Llama-3-8B-Instruct
+trust_remote_code: true
+
+plugins:
+  - axolotl.integrations.template_integrity.TemplateIntegrityPlugin
+
+# NOTE: the launcher REBUILDS the `datasets:` block from the `--dataset` CLI arg
+# (translator _build_datasets), so this placeholder is overridden at launch. Pass a
+# ShareGPT-format dataset (conversations/from/value) — the translator hardcodes those
+# mappings. Smoke uses: --dataset philschmid/guanaco-sharegpt-style
+datasets:
+  - path: philschmid/guanaco-sharegpt-style
+    type: chat_template
+
+chat_template: delphi
+# footgun fix: embed the delphi chat_template into tokenizer_config.json on save
+# (the plugin also covers the flag-ignoring per-checkpoint dirs). Verified by Stage 4.
+tokenizer_save_jinja_files: false
+
+# aarch64: force SDPA (no flash-attn-2 wheel). The translator passes an explicit
+# attn_implementation straight through and will NOT override it to flash_attention_2.
+attn_implementation: sdpa
+sample_packing: false
+
+sequence_len: 1024
+val_set_size: 0.0
+
+# aarch64/TACC: the launcher sets TMPDIR to a deeply-nested experiment path; datasets
+# map with num_proc=CPU_count spawns a multiprocess SyncManager that binds an AF_UNIX
+# socket under TMPDIR -> "OSError: AF_UNIX path too long" (108-char sun_path limit).
+# Single-proc tokenization avoids the SyncManager (tiny smoke -> fast anyway).
+dataset_num_proc: 1
+
+micro_batch_size: 1
+gradient_accumulation_steps: 1
+num_epochs: 1
+max_steps: 6
+
+optimizer: adamw_torch
+lr_scheduler: cosine
+learning_rate: 0.00002
+warmup_steps: 1
+max_grad_norm: 1.0
+
+bf16: auto
+tf32: false
+gradient_checkpointing: true
+
+logging_steps: 1
+save_steps: 3
+save_total_limit: 2
+
+# smoke: no DB registration, no MFU noise.
+supabase_register: false
+mfu: false
+
+output_dir: axolotl-smoke-out

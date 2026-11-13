@@ -1,0 +1,1292 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+package node_service;
+
+/* -------------------------------------------------------------------- */
+message Error {
+  uint32 code = 1;
+  string error_info = 2;
+}
+
+// Typed control-plane error discriminants carried alongside the legacy
+// error_info string on control-plane responses. Rolling-upgrade compat:
+// old peers ignore the field and keep reading error_info.
+// RUSTFS_COMPAT_TODO(not-initialized-error-code-v1): legacy string dual-write. Remove after the minimum supported RustFS peer version always sends error_code.
+enum ControlPlaneErrorCode {
+  CONTROL_PLANE_ERROR_UNSPECIFIED = 0;
+  // The peer answered but its storage/IAM layer is not initialized yet
+  // (legacy string form: "errServerNotInitialized").
+  CONTROL_PLANE_ERROR_NOT_INITIALIZED = 1;
+  // The peer rejected a control-plane request before changing durable state.
+  // error_info carries the actionable validation reason.
+  CONTROL_PLANE_ERROR_INVALID_ARGUMENT = 2;
+}
+
+message PingRequest {
+  uint64 version = 1;
+  bytes body = 2;
+}
+
+message PingResponse {
+  uint64 version = 1;
+  bytes body = 2;
+}
+
+message HealBucketRequest {
+  string bucket = 1;
+  string options = 2;
+}
+
+message HealBucketResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message ListBucketRequest {
+  string options = 1;
+}
+
+message ListBucketResponse {
+  bool success = 1;
+  repeated string bucket_infos = 2;
+  optional Error error = 3;
+}
+
+message MakeBucketRequest {
+  string name = 1;
+  string options = 2;
+}
+
+message MakeBucketResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message GetBucketInfoRequest {
+  string bucket = 1;
+  string options = 2;
+}
+
+message GetBucketInfoResponse {
+  bool success = 1;
+  string bucket_info = 2;
+  optional Error error = 3;
+}
+
+message DeleteBucketRequest {
+  string bucket = 1;
+  string options = 2;
+}
+
+message DeleteBucketResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message ReadAllRequest {
+  string disk = 1;  // indicate which one in the disks
+  string volume = 2;
+  string path = 3;
+}
+
+message ReadAllResponse {
+  bool success = 1;
+  bytes data = 2;
+  optional Error error = 3;
+}
+
+message WriteAllRequest {
+  string disk = 1;  // indicate which one in the disks
+  string volume = 2;
+  string path = 3;
+  bytes data = 4;
+}
+
+message WriteAllResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message DeleteRequest {
+  string disk = 1;  // indicate which one in the disks
+  string volume = 2;
+  string path = 3;
+  string options = 4;
+  // Optional scanner publication lease token. When present, the target binds
+  // the complete delete operation to its movement read admission.
+  bytes scanner_publication_lease_token = 5;
+}
+
+message DeleteResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message VerifyFileRequest {
+  string disk = 1;  // indicate which one in the disks
+  string volume = 2;
+  string path = 3;
+  string file_info = 4;
+}
+
+message VerifyFileResponse {
+  bool success = 1;
+  string check_parts_resp = 2;
+  optional Error error = 3;
+}
+
+message ReadPartsRequest {
+  string disk = 1;
+  string bucket = 2;
+  repeated string paths = 3;
+}
+
+message ReadPartsResponse {
+  bool success = 1;
+  bytes object_part_infos = 2;
+  optional Error error = 3;
+}
+
+message CheckPartsRequest {
+  string disk = 1;  // indicate which one in the disks
+  string volume = 2;
+  string path = 3;
+  string file_info = 4;
+}
+
+message CheckPartsResponse {
+  bool success = 1;
+  string check_parts_resp = 2;
+  optional Error error = 3;
+}
+
+message RenamePartRequest {
+  string disk = 1;
+  string src_volume = 2;
+  string src_path = 3;
+  string dst_volume = 4;
+  string dst_path = 5;
+  bytes meta = 6;
+}
+
+message RenamePartResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message PreparePartTransactionRequest {
+  string disk = 1;
+  string src_volume = 2;
+  string src_path = 3;
+  string dst_volume = 4;
+  string dst_path = 5;
+  bytes meta = 6;
+}
+
+message PreparePartTransactionResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message SettlePartTransactionRequest {
+  string disk = 1;
+  string volume = 2;
+  string path = 3;
+  bool rollback = 4;
+}
+
+message SettlePartTransactionResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message RenameFileRequest {
+  string disk = 1;
+  string src_volume = 2;
+  string src_path = 3;
+  string dst_volume = 4;
+  string dst_path = 5;
+}
+
+message RenameFileResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message WriteRequest {
+  string disk = 1;  // indicate which one in the disks
+  string volume = 2;
+  string path = 3;
+  bool is_append = 4;
+  bytes data = 5;
+}
+
+message WriteResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+// message AppendRequest {
+//   string disk = 1;  // indicate which one in the disks
+//   string volume = 2;
+//   string path = 3;
+//   bytes data = 4;
+// }
+//
+// message AppendResponse {
+//   bool success = 1;
+//   optional Error error = 2;
+// }
+
+message ReadAtRequest {
+  string disk = 1;  // indicate which one in the disks
+  string volume = 2;
+  string path = 3;
+  int64 offset = 4;
+  int64 length = 5;
+}
+
+message ReadAtResponse {
+  bool success = 1;
+  bytes data = 2;
+  int64 read_size = 3;
+  optional Error error = 4;
+}
+
+message ListDirRequest {
+  string disk = 1;  // indicate which one in the disks
+  string volume = 2;
+  string dir_path = 3;
+  int32 count = 4;
+}
+
+message ListDirResponse {
+  bool success = 1;
+  repeated string volumes = 2;
+  optional Error error = 3;
+}
+
+message WalkDirRequest {
+  string disk = 1;  // indicate which one in the disks
+  bytes walk_dir_options = 2;
+}
+
+message WalkDirResponse {
+  bool success = 1;
+  string meta_cache_entry = 2;
+  optional string error_info = 3;
+}
+
+message RenameDataRequest {
+  string disk = 1;  // indicate which one in the disks
+  string src_volume = 2;
+  string src_path = 3;
+  string file_info = 4;
+  string dst_volume = 5;
+  string dst_path = 6;
+  bytes file_info_bin = 7;
+  // Optional target-side scanner publication lease.  Empty preserves the
+  // legacy rename request body; a non-empty token is checked at the target's
+  // rename linearization point.
+  bytes scanner_publication_lease_token = 8;
+}
+
+message RenameDataResponse {
+  bool success = 1;
+  string rename_data_resp = 2;
+  optional Error error = 3;
+  bytes rename_data_resp_bin = 4;
+}
+
+message MakeVolumesRequest {
+  string disk = 1;  // indicate which one in the disks
+  repeated string volumes = 2;
+}
+
+message MakeVolumesResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message MakeVolumeRequest {
+  string disk = 1;  // indicate which one in the disks
+  string volume = 2;
+}
+
+message MakeVolumeResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message ListVolumesRequest {
+  string disk = 1;  // indicate which one in the disks
+}
+
+message ListVolumesResponse {
+  bool success = 1;
+  repeated string volume_infos = 2;
+  optional Error error = 3;
+}
+
+message StatVolumeRequest {
+  string disk = 1;  // indicate which one in the disks
+  string volume = 2;
+}
+
+message StatVolumeResponse {
+  bool success = 1;
+  string volume_info = 2;
+  optional Error error = 3;
+}
+
+message DeletePathsRequest {
+  string disk = 1;
+  string volume = 2;
+  repeated string paths = 3;
+}
+
+message DeletePathsResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message SnapshotLeaseRequest {
+  string disk = 1;
+  string volume = 2;
+  string path = 3;
+  uint64 ttl_ms = 4;
+}
+
+message SnapshotLeaseRenewRequest {
+  string disk = 1;
+  string volume = 2;
+  string path = 3;
+  bytes token = 4;
+  uint64 ttl_ms = 5;
+}
+
+message SnapshotLeaseReleaseRequest {
+  string disk = 1;
+  string volume = 2;
+  string path = 3;
+  bytes token = 4;
+}
+
+message SnapshotLeaseResponse {
+  bool success = 1;
+  bytes token = 2;
+  uint32 protocol_version = 3;
+  optional Error error = 4;
+}
+
+message SnapshotLeaseMutationResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message ReadMetadataRequest {
+  string disk = 1;
+  string volume = 2;
+  string path = 3;
+}
+
+message ReadMetadataResponse {
+  bool success = 1;
+  optional Error error = 2;
+  bytes data = 3;
+}
+
+message UpdateMetadataRequest {
+  string disk = 1;
+  string volume = 2;
+  string path = 3;
+  string file_info = 4;
+  string opts = 5;
+  bytes file_info_bin = 6;
+  bytes opts_bin = 7;
+}
+
+message UpdateMetadataResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message WriteMetadataRequest {
+  string disk = 1;  // indicate which one in the disks
+  string volume = 2;
+  string path = 3;
+  string file_info = 4;
+  bytes file_info_bin = 5;
+}
+
+message WriteMetadataResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message ReadVersionRequest {
+  string disk = 1;
+  string volume = 2;
+  string path = 3;
+  string version_id = 4;
+  string opts = 5;
+  bytes opts_bin = 6;
+}
+
+message ReadVersionResponse {
+  bool success = 1;
+  string file_info = 2;
+  optional Error error = 3;
+  bytes file_info_bin = 4;
+}
+
+message BatchReadVersionRequest {
+  string disk = 1;
+  string batch_read_version_req = 2;
+  bytes batch_read_version_req_bin = 3;
+}
+
+message BatchReadVersionResponse {
+  bool success = 1;
+  repeated string batch_read_version_resps = 2;
+  optional Error error = 3;
+  repeated bytes batch_read_version_resps_bin = 4;
+}
+
+message ReadXLRequest {
+  string disk = 1;
+  string volume = 2;
+  string path = 3;
+  bool read_data = 4;
+}
+
+message ReadXLResponse {
+  bool success = 1;
+  string raw_file_info = 2;
+  optional Error error = 3;
+  bytes raw_file_info_bin = 4;
+}
+
+message DeleteVersionRequest {
+  string disk = 1;
+  string volume = 2;
+  string path = 3;
+  string file_info = 4;
+  bool force_del_marker = 5;
+  string opts = 6;
+  // msgpack payloads mirroring the JSON fields above (grpc-optimization P2). Senders dual-write
+  // both; receivers prefer the *_bin form and fall back to the JSON string when it is empty.
+  bytes file_info_bin = 7;
+  bytes opts_bin = 8;
+}
+
+message DeleteVersionResponse {
+  bool success = 1;
+  string raw_file_info = 2;
+  optional Error error = 3;
+}
+
+message DeleteVersionsRequest {
+  string disk = 1;
+  string volume = 2;
+  repeated string versions = 3;
+  string opts = 4;
+  // msgpack payloads mirroring the JSON fields above (grpc-optimization P2). Senders dual-write
+  // both; receivers prefer the *_bin form and fall back to the JSON string when it is empty.
+  repeated bytes versions_bin = 5;
+  bytes opts_bin = 6;
+}
+
+message DeleteVersionsResponse {
+  bool success = 1;
+  repeated string errors = 2;
+  optional Error error = 3;
+  // Senders dual-write the legacy strings and typed entries. Receivers prefer typed entries
+  // when present and fall back to strings for peers that predate this field. Code zero means success.
+  repeated Error item_errors = 4;
+}
+
+message ReadMultipleRequest {
+  string disk = 1;
+  string read_multiple_req = 2;
+  bytes read_multiple_req_bin = 3;
+}
+
+message ReadMultipleResponse {
+  bool success = 1;
+  repeated string read_multiple_resps = 2;
+  optional Error error = 3;
+  repeated bytes read_multiple_resps_bin = 4;
+}
+
+message DeleteVolumeRequest {
+  string disk = 1;
+  string volume = 2;
+  // When false (default), a non-empty volume is refused (VolumeNotEmpty); when
+  // true, the volume is deleted recursively. Old peers omit this field, which
+  // decodes to false — the safe, non-recursive behavior (backlog#799 B1).
+  bool force = 3;
+}
+
+message DeleteVolumeResponse {
+  bool success = 1;
+  optional Error error = 2;
+}
+
+message DiskInfoRequest {
+  string disk = 1;
+  string opts = 2;
+}
+
+message DiskInfoResponse {
+  bool success = 1;
+  string disk_info = 2;
+  optional Error error = 3;
+}
+
+// lock api have same argument type
+message GenerallyLockRequest {
+    string args = 1;
+}
+
+message GenerallyLockResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional string lock_info = 3; // JSON serialized LockInfo
+}
+
+message BatchGenerallyLockRequest {
+  repeated string args = 1;
+}
+
+message GenerallyLockResult {
+  bool success = 1;
+  optional string error_info = 2;
+  optional string lock_info = 3; // JSON serialized LockInfo
+}
+
+message BatchGenerallyLockResponse {
+  repeated GenerallyLockResult results = 1;
+}
+
+message Mss {
+  map<string, string> value = 1;
+}
+
+message LocalStorageInfoRequest {
+  bool metrics = 1;
+}
+
+message LocalStorageInfoResponse {
+  bool success = 1;
+  bytes storage_info = 2;
+  optional string error_info = 3;
+  optional ControlPlaneErrorCode error_code = 4;
+}
+
+message ServerInfoRequest {
+  bool metrics = 1;
+}
+
+message ServerInfoResponse {
+  bool success = 1;
+  bytes server_properties = 2;
+  optional string error_info = 3;
+}
+
+message GetCpusRequest {}
+
+message GetCpusResponse {
+  bool success = 1;
+  bytes cpus = 2;
+  optional string error_info = 3;
+}
+
+message GetNetInfoRequest {}
+
+message GetNetInfoResponse {
+  bool success = 1;
+  bytes net_info = 2;
+  optional string error_info = 3;
+}
+
+message GetPartitionsRequest {}
+
+message GetPartitionsResponse {
+  bool success = 1;
+  bytes partitions = 2;
+  optional string error_info = 3;
+}
+
+message GetOsInfoRequest {}
+
+message GetOsInfoResponse {
+  bool success = 1;
+  bytes os_info = 2;
+  optional string error_info = 3;
+}
+
+message GetSELinuxInfoRequest {}
+
+message GetSELinuxInfoResponse {
+  bool success = 1;
+  bytes sys_services = 2;
+  optional string error_info = 3;
+}
+
+message GetSysConfigRequest {}
+
+message GetSysConfigResponse {
+  bool success = 1;
+  bytes sys_config = 2;
+  optional string error_info = 3;
+}
+
+message GetSysErrorsRequest {}
+
+message GetSysErrorsResponse {
+  bool success = 1;
+  bytes sys_errors = 2;
+  optional string error_info = 3;
+}
+
+message GetMemInfoRequest {}
+
+message GetMemInfoResponse {
+  bool success = 1;
+  bytes mem_info = 2;
+  optional string error_info = 3;
+}
+
+message GetMetricsRequest {
+  bytes metric_type = 1;
+  bytes opts = 2;
+}
+
+message GetMetricsResponse {
+  bool success = 1;
+  bytes realtime_metrics = 2;
+  optional string error_info = 3;
+}
+
+message GetProcInfoRequest {}
+
+message GetProcInfoResponse {
+  bool success = 1;
+  bytes proc_info = 2;
+  optional string error_info = 3;
+}
+
+message StartProfilingRequest {
+  string profiler = 1;
+}
+
+message StartProfilingResponse {
+  bool success = 1;
+  optional string error_info = 2;
+}
+
+message DownloadProfileDataRequest {}
+
+message DownloadProfileDataResponse {
+  bool success = 1;
+  map<string, bytes> data = 2;
+  optional string error_info = 3;
+}
+
+message GetBucketStatsDataRequest {
+  string bucket = 1;
+}
+
+message GetBucketStatsDataResponse {
+  bool success = 1;
+  bytes bucket_stats = 2;
+  optional string error_info = 3;
+}
+
+message GetSRMetricsDataRequest {}
+
+message GetSRMetricsDataResponse {
+  bool success = 1;
+  bytes sr_metrics_summary = 2;
+  optional string error_info = 3;
+}
+
+message GetAllBucketStatsRequest {}
+
+message GetAllBucketStatsResponse {
+  bool success = 1;
+  bytes bucket_stats_map = 2;
+  optional string error_info = 3;
+}
+
+message LoadBucketMetadataRequest {
+  string bucket = 1;
+  bool scanner_maintenance_change = 2;
+}
+
+message LoadBucketMetadataResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message DeleteBucketMetadataRequest {
+  string bucket = 1;
+}
+
+message DeleteBucketMetadataResponse {
+  bool success = 1;
+  optional string error_info = 2;
+}
+
+message DeletePolicyRequest {
+  string policy_name = 1;
+}
+
+message DeletePolicyResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message LoadPolicyRequest {
+  string policy_name = 1;
+}
+
+message LoadPolicyResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message LoadPolicyMappingRequest {
+  string user_or_group = 1;
+  uint64 user_type = 2;
+  bool is_group = 3;
+}
+
+message LoadPolicyMappingResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message DeleteUserRequest {
+  string access_key = 1;
+}
+
+message DeleteUserResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message DeleteServiceAccountRequest {
+  string access_key = 1;
+}
+
+message DeleteServiceAccountResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message LoadUserRequest {
+  string access_key = 1;
+  bool temp = 2;
+}
+
+message LoadUserResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message LoadServiceAccountRequest {
+  string access_key = 1;
+}
+
+message LoadServiceAccountResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message LoadGroupRequest {
+  string group = 1;
+}
+
+message LoadGroupResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message ReloadSiteReplicationConfigRequest {}
+
+message ReloadSiteReplicationConfigResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message SignalServiceRequest {
+  Mss vars = 1;
+}
+
+message SignalServiceResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  uint32 protocol_version = 3;
+  // Redacted fingerprint of the KMS configuration this node is running.
+  // Only set for the "kms" dynamic config subsystem, and left unset when the
+  // responder has no KMS configuration. Peers built before that subsystem
+  // reject the signal outright rather than answering without this field.
+  optional string config_fingerprint = 4;
+}
+
+message ScannerActivityRequest {
+  bytes challenge = 1;
+  uint32 protocol_version = 2;
+  string acknowledge_instance_id = 3;
+  uint64 acknowledge_dirty_usage_generation = 4;
+}
+
+message ScannerActivityResponse {
+  string instance_id = 1;
+  uint64 namespace_generation = 2;
+  uint64 maintenance_generation = 3;
+  uint32 protocol_version = 4;
+  bytes topology_digest = 5;
+  bool data_movement_active = 6;
+  bytes response_proof = 7;
+  uint64 dirty_usage_generation = 8;
+  bool dirty_usage_pending = 9;
+  // v7 fields.  They are optional so v6 peers can continue to decode the
+  // response shape while newer readers fail closed when they are absent.
+  optional uint64 movement_generation = 10;
+  optional bool publication_blocked = 11;
+}
+
+message ScannerDirtyUsageBucket {
+  string bucket = 1;
+  uint64 generation = 2;
+  bytes bucket_incarnation = 3;
+}
+
+message ScannerDirtyUsageSnapshotRequest {
+  bytes challenge = 1;
+  uint32 protocol_version = 2;
+}
+
+message ScannerDirtyUsageSnapshotResponse {
+  string instance_id = 1;
+  uint64 generation = 2;
+  uint64 pending_bucket_count = 3;
+  uint32 protocol_version = 4;
+  // Incomplete snapshots are all-or-nothing and carry no bucket entries.
+  bool complete = 5;
+  repeated ScannerDirtyUsageBucket buckets = 6;
+  bytes response_proof = 7;
+  string owner_id = 8;
+}
+
+// Receiver-only protocol. Producers must retain whole-cycle ACK until they
+// have a durable per-bucket publication proof.
+message ScannerScopedDirtyUsageEntry {
+  string bucket = 1;
+  bytes bucket_incarnation = 2;
+  uint64 generation = 3;
+}
+
+message ScannerScopedDirtyUsageAckRequest {
+  bytes challenge = 1;
+  uint32 protocol_version = 2;
+  string owner_id = 3;
+  string instance_id = 4;
+  // Only scope 1 (a complete bucket) is supported; zero is invalid.
+  uint32 scope = 5;
+  bool probe_only = 6;
+  repeated ScannerScopedDirtyUsageEntry entries = 7;
+}
+
+message ScannerScopedDirtyUsageAckResponse {
+  uint32 protocol_version = 1;
+  string owner_id = 2;
+  string instance_id = 3;
+  bool supported = 4;
+  uint32 max_entries = 5;
+  uint32 max_request_bytes = 6;
+  uint64 cleared = 7;
+  bytes response_proof = 8;
+}
+
+// A short-lived storage-owned read admission used only around a final
+// scanner metadata publication.  It is intentionally separate from the
+// ScannerActivity observation wire so v6/v7 rolling compatibility remains
+// unchanged.
+message ScannerPublicationLeaseRequest {
+  bytes challenge = 1;
+  uint64 expected_movement_generation = 2;
+  uint64 ttl_ms = 3;
+  // The activity instance is a process session nonce.  It is intentionally
+  // separate from the storage-owned deployment identity returned by the
+  // lease response so a restart cannot reuse an old session token.
+  string expected_session_id = 4;
+  // A non-empty token turns the acquire RPC into an in-place validation of an
+  // existing lease.  Keeping this on the existing RPC lets old peers reject
+  // the proof without changing the v7 activity wire shape.
+  bytes token = 5;
+}
+
+message ScannerPublicationLeaseResponse {
+  bool success = 1;
+  bytes token = 2;
+  uint64 movement_generation = 3;
+  uint64 lease_ttl_ms = 4;
+  optional Error error = 5;
+  bytes response_proof = 6;
+  string owner_id = 7;
+  string session_id = 8;
+}
+
+message ScannerPublicationLeaseReleaseRequest {
+  bytes challenge = 1;
+  bytes token = 2;
+  string owner_id = 3;
+  string session_id = 4;
+}
+
+message ScannerPublicationLeaseReleaseResponse {
+  bool success = 1;
+  optional Error error = 2;
+  bytes response_proof = 3;
+}
+
+message BackgroundHealStatusRequest {
+  uint32 protocol_version = 1;
+}
+
+message BackgroundHealStatusResponse {
+  bool success = 1;
+  bytes bg_heal_state = 2;
+  optional string error_info = 3;
+  optional ControlPlaneErrorCode error_code = 4;
+}
+
+message ReplacementRecoveryStatusRequest {}
+
+message ReplacementRecoveryStatusResponse {
+  bool success = 1;
+  bytes recovery_status = 2;
+  optional string error_info = 3;
+  optional ControlPlaneErrorCode error_code = 4;
+}
+
+message HealControlRequest {
+  uint32 version = 1;
+  string topology_fingerprint = 2;
+  bytes command = 3;
+}
+
+message HealControlResponse {
+  bool success = 1;
+  bytes result = 2;
+  optional string error_info = 3;
+  bytes response_proof = 4;
+}
+
+message GetMetacacheListingRequest {
+  bytes opts = 1;
+}
+
+message GetMetacacheListingResponse {
+  bool success = 1;
+  bytes metacache = 2;
+  optional string error_info = 3;
+}
+
+message UpdateMetacacheListingRequest {
+  bytes metacache = 1;
+}
+
+message UpdateMetacacheListingResponse {
+  bool success = 1;
+  bytes metacache = 2;
+  optional string error_info = 3;
+}
+
+message ReloadPoolMetaRequest {}
+
+message ReloadPoolMetaResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message StopRebalanceRequest {
+  string expected_rebalance_id = 1;
+}
+
+message StopRebalanceResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message LoadRebalanceMetaRequest {
+  bool start_rebalance = 1;
+}
+
+message LoadRebalanceMetaResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message StartDecommissionRequest {
+  repeated uint32 pool_indices = 1;
+}
+
+message StartDecommissionResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message CancelDecommissionRequest {
+  uint32 pool_index = 1;
+}
+
+message CancelDecommissionResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message ClearDecommissionRequest {
+  uint32 pool_index = 1;
+}
+
+message ClearDecommissionResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message LoadTransitionTierConfigRequest {}
+
+message LoadTransitionTierConfigResponse {
+  bool success = 1;
+  optional string error_info = 2;
+  optional ControlPlaneErrorCode error_code = 3;
+}
+
+message TierDailyStatsRequest {}
+
+// One node's own rolling-day transition counters, per remote tier.
+//
+// `tier_daily_stats` is a msgpack map of tier name to the responder's 24-bin
+// ring plus the clock that ring was last aged to. A node counts only the
+// transitions it completed itself, so a caller sums the rings of every node to
+// obtain a cluster total. A peer that does not implement this RPC answers
+// UNIMPLEMENTED, which the caller reports as a non-reporting node rather than
+// as zero activity.
+message TierDailyStatsResponse {
+  bool success = 1;
+  bytes tier_daily_stats = 2;
+  optional string error_info = 3;
+}
+
+message TierMutationPrepareRequest {
+  uint32 version = 1;
+  string mutation_id = 2;
+  bytes canonical_payload = 3;
+}
+
+message TierMutationCommitRequest {
+  uint32 version = 1;
+  string mutation_id = 2;
+  bytes canonical_payload = 3;
+}
+
+message TierMutationAbortRequest {
+  uint32 version = 1;
+  string mutation_id = 2;
+  bytes canonical_payload = 3;
+}
+
+enum TierMutationPeerState {
+  TIER_MUTATION_PEER_STATE_UNSPECIFIED = 0;
+  TIER_MUTATION_PEER_STATE_PREPARED = 1;
+  TIER_MUTATION_PEER_STATE_COMMITTED = 2;
+  TIER_MUTATION_PEER_STATE_ABORTED = 3;
+}
+
+enum TierMutationFailureClass {
+  TIER_MUTATION_FAILURE_CLASS_UNSPECIFIED = 0;
+  TIER_MUTATION_FAILURE_CLASS_PRE_DISPATCH_REJECTED = 1;
+  TIER_MUTATION_FAILURE_CLASS_AMBIGUOUS = 2;
+}
+
+message TierMutationControlResponse {
+  bool success = 1;
+  TierMutationPeerState state = 2;
+  bool applied = 3;
+  optional string error_info = 4;
+  bytes response_proof = 5;
+  TierMutationFailureClass failure_class = 6;
+}
+
+message GetLiveEventsRequest {
+  uint64 after_sequence = 1;
+  uint32 limit = 2;
+}
+
+message GetLiveEventsResponse {
+  bool success = 1;
+  bytes events = 2;
+  uint64 next_sequence = 3;
+  bool truncated = 4;
+  optional string error_info = 5;
+}
+
+/* -------------------------------------------------------------------- */
+
+service NodeService {
+/* -------------------------------meta service-------------------------- */
+  rpc Ping(PingRequest) returns (PingResponse) {}; // auth-policy: read-only
+  rpc HealBucket(HealBucketRequest) returns (HealBucketResponse) {}; // auth-policy: body-bound
+  rpc ListBucket(ListBucketRequest) returns (ListBucketResponse) {}; // auth-policy: read-only
+  rpc MakeBucket(MakeBucketRequest) returns (MakeBucketResponse) {}; // auth-policy: body-bound
+  rpc GetBucketInfo(GetBucketInfoRequest) returns (GetBucketInfoResponse) {}; // auth-policy: read-only
+  rpc DeleteBucket(DeleteBucketRequest) returns (DeleteBucketResponse) {}; // auth-policy: body-bound
+
+/* -------------------------------disk service-------------------------- */
+
+  rpc ReadAll(ReadAllRequest) returns (ReadAllResponse) {}; // auth-policy: read-only
+  rpc WriteAll(WriteAllRequest) returns (WriteAllResponse) {}; // auth-policy: body-bound
+  rpc Delete(DeleteRequest) returns (DeleteResponse) {}; // auth-policy: body-bound
+  rpc AcquireSnapshotLease(SnapshotLeaseRequest) returns (SnapshotLeaseResponse) {}; // auth-policy: body-bound
+  rpc RenewSnapshotLease(SnapshotLeaseRenewRequest) returns (SnapshotLeaseResponse) {}; // auth-policy: body-bound
+  rpc ReleaseSnapshotLease(SnapshotLeaseReleaseRequest) returns (SnapshotLeaseMutationResponse) {}; // auth-policy: body-bound
+  rpc VerifyFile(VerifyFileRequest) returns (VerifyFileResponse) {}; // auth-policy: read-only
+  rpc ReadParts(ReadPartsRequest) returns (ReadPartsResponse) {}; // auth-policy: read-only
+  rpc CheckParts(CheckPartsRequest) returns (CheckPartsResponse) {}; // auth-policy: read-only
+  rpc PreparePartTransaction(PreparePartTransactionRequest) returns (PreparePartTransactionResponse) {}; // auth-policy: body-bound
+  rpc RenamePart(RenamePartRequest) returns (RenamePartResponse) {}; // auth-policy: body-bound
+  rpc SettlePartTransaction(SettlePartTransactionRequest) returns (SettlePartTransactionResponse) {}; // auth-policy: body-bound
+  rpc RenameFile(RenameFileRequest) returns (RenameFileResponse) {}; // auth-policy: body-bound
+  rpc Write(WriteRequest) returns (WriteResponse) {}; // auth-policy: unimplemented
+  rpc WriteStream(stream WriteRequest) returns (stream WriteResponse) {}; // auth-policy: streaming
+//  rpc Append(AppendRequest) returns (AppendResponse) {};
+  rpc ReadAt(stream ReadAtRequest) returns (stream ReadAtResponse) {}; // auth-policy: streaming
+  rpc ListDir(ListDirRequest) returns (ListDirResponse) {}; // auth-policy: read-only
+  rpc WalkDir(WalkDirRequest) returns (stream WalkDirResponse) {}; // auth-policy: streaming
+  rpc RenameData(RenameDataRequest) returns (RenameDataResponse) {}; // auth-policy: body-bound
+  rpc MakeVolumes(MakeVolumesRequest) returns (MakeVolumesResponse) {}; // auth-policy: body-bound
+  rpc MakeVolume(MakeVolumeRequest) returns (MakeVolumeResponse) {}; // auth-policy: body-bound
+  rpc ListVolumes(ListVolumesRequest) returns (ListVolumesResponse) {}; // auth-policy: read-only
+  rpc StatVolume(StatVolumeRequest) returns (StatVolumeResponse) {}; // auth-policy: read-only
+  rpc DeletePaths(DeletePathsRequest) returns (DeletePathsResponse) {}; // auth-policy: body-bound
+  rpc UpdateMetadata(UpdateMetadataRequest) returns (UpdateMetadataResponse) {}; // auth-policy: body-bound
+  rpc ReadMetadata(ReadMetadataRequest) returns (ReadMetadataResponse) {}; // auth-policy: read-only
+  rpc WriteMetadata(WriteMetadataRequest) returns (WriteMetadataResponse) {}; // auth-policy: body-bound
+  rpc ReadVersion(ReadVersionRequest) returns (ReadVersionResponse) {}; // auth-policy: read-only
+  rpc BatchReadVersion(BatchReadVersionRequest) returns (BatchReadVersionResponse) {}; // auth-policy: read-only
+  rpc ReadXL(ReadXLRequest) returns (ReadXLResponse) {}; // auth-policy: read-only
+  rpc DeleteVersion(DeleteVersionRequest) returns (DeleteVersionResponse) {}; // auth-policy: body-bound
+  rpc DeleteVersions(DeleteVersionsRequest) returns (DeleteVersionsResponse) {}; // auth-policy: body-bound
+  rpc ReadMultiple(ReadMultipleRequest) returns (ReadMultipleResponse) {}; // auth-policy: read-only
+  rpc DeleteVolume(DeleteVolumeRequest) returns (DeleteVolumeResponse) {}; // auth-policy: body-bound
+  rpc DiskInfo(DiskInfoRequest) returns (DiskInfoResponse) {}; // auth-policy: read-only
+  
+
+/* -------------------------------lock service-------------------------- */
+
+  rpc Lock(GenerallyLockRequest) returns (GenerallyLockResponse) {}; // auth-policy: body-bound
+  rpc UnLock(GenerallyLockRequest) returns (GenerallyLockResponse) {}; // auth-policy: body-bound
+  rpc ForceUnLock(GenerallyLockRequest) returns (GenerallyLockResponse) {}; // auth-policy: body-bound
+  rpc Refresh(GenerallyLockRequest) returns (GenerallyLockResponse) {}; // auth-policy: body-bound
+  rpc LockBatch(BatchGenerallyLockRequest) returns (BatchGenerallyLockResponse) {}; // auth-policy: body-bound
+  rpc UnLockBatch(BatchGenerallyLockRequest) returns (BatchGenerallyLockResponse) {}; // auth-policy: body-bound
+
+/* -------------------------------peer rest service-------------------------- */
+
+  rpc LocalStorageInfo(LocalStorageInfoRequest) returns (LocalStorageInfoResponse) {}; // auth-policy: read-only
+  rpc ServerInfo(ServerInfoRequest) returns (ServerInfoResponse) {}; // auth-policy: read-only
+  rpc GetCpus(GetCpusRequest) returns (GetCpusResponse) {}; // auth-policy: read-only
+  rpc GetNetInfo(GetNetInfoRequest) returns (GetNetInfoResponse) {}; // auth-policy: read-only
+  rpc GetPartitions(GetPartitionsRequest) returns (GetPartitionsResponse) {}; // auth-policy: read-only
+  rpc GetOsInfo(GetOsInfoRequest) returns (GetOsInfoResponse) {}; // auth-policy: read-only
+  rpc GetSELinuxInfo(GetSELinuxInfoRequest) returns (GetSELinuxInfoResponse) {}; // auth-policy: read-only
+  rpc GetSysConfig(GetSysConfigRequest) returns (GetSysConfigResponse) {}; // auth-policy: read-only
+  rpc GetSysErrors(GetSysErrorsRequest) returns (GetSysErrorsResponse) {}; // auth-policy: read-only
+  rpc GetMemInfo(GetMemInfoRequest) returns (GetMemInfoResponse) {}; // auth-policy: read-only
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse) {}; // auth-policy: read-only
+  rpc GetProcInfo(GetProcInfoRequest) returns (GetProcInfoResponse) {}; // auth-policy: read-only
+  rpc StartProfiling(StartProfilingRequest) returns (StartProfilingResponse) {}; // auth-policy: unimplemented
+  rpc DownloadProfileData(DownloadProfileDataRequest) returns (DownloadProfileDataResponse) {}; // auth-policy: unimplemented
+  rpc GetBucketStats(GetBucketStatsDataRequest) returns (GetBucketStatsDataResponse) {}; // auth-policy: read-only
+  rpc GetSRMetrics(GetSRMetricsDataRequest) returns (GetSRMetricsDataResponse) {}; // auth-policy: unimplemented
+  rpc GetAllBucketStats(GetAllBucketStatsRequest) returns (GetAllBucketStatsResponse) {}; // auth-policy: unimplemented
+  rpc LoadBucketMetadata(LoadBucketMetadataRequest) returns (LoadBucketMetadataResponse) {}; // auth-policy: body-bound
+  rpc DeleteBucketMetadata(DeleteBucketMetadataRequest) returns (DeleteBucketMetadataResponse) {}; // auth-policy: body-bound
+  rpc DeletePolicy(DeletePolicyRequest) returns (DeletePolicyResponse) {}; // auth-policy: body-bound
+  rpc LoadPolicy(LoadPolicyRequest) returns (LoadPolicyResponse) {}; // auth-policy: body-bound
+  rpc LoadPolicyMapping(LoadPolicyMappingRequest) returns (LoadPolicyMappingResponse) {}; // auth-policy: body-bound
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse) {}; // auth-policy: body-bound
+  rpc DeleteServiceAccount(DeleteServiceAccountRequest) returns (DeleteServiceAccountResponse) {}; // auth-policy: body-bound
+  rpc LoadUser(LoadUserRequest) returns (LoadUserResponse) {}; // auth-policy: body-bound
+  rpc LoadServiceAccount(LoadServiceAccountRequest) returns (LoadServiceAccountResponse) {}; // auth-policy: body-bound
+  rpc LoadGroup(LoadGroupRequest) returns (LoadGroupResponse) {}; // auth-policy: body-bound
+  rpc ReloadSiteReplicationConfig(ReloadSiteReplicationConfigRequest) returns (ReloadSiteReplicationConfigResponse) {}; // auth-policy: body-bound
+  // rpc VerifyBinary() returns () {};
+  // rpc CommitBinary() returns () {};
+  rpc SignalService(SignalServiceRequest) returns (SignalServiceResponse) {}; // auth-policy: body-bound
+  rpc ScannerActivity(ScannerActivityRequest) returns (ScannerActivityResponse) {}; // auth-policy: body-bound
+  rpc ScannerDirtyUsageSnapshot(ScannerDirtyUsageSnapshotRequest) returns (ScannerDirtyUsageSnapshotResponse) {}; // auth-policy: body-bound
+  rpc AcquireScannerPublicationLease(ScannerPublicationLeaseRequest) returns (ScannerPublicationLeaseResponse) {}; // auth-policy: body-bound
+  rpc ReleaseScannerPublicationLease(ScannerPublicationLeaseReleaseRequest) returns (ScannerPublicationLeaseReleaseResponse) {}; // auth-policy: body-bound
+  rpc BackgroundHealStatus(BackgroundHealStatusRequest) returns (BackgroundHealStatusResponse) {}; // auth-policy: read-only
+  rpc ReplacementRecoveryStatus(ReplacementRecoveryStatusRequest) returns (ReplacementRecoveryStatusResponse) {}; // auth-policy: read-only
+  rpc GetMetacacheListing(GetMetacacheListingRequest) returns (GetMetacacheListingResponse) {}; // auth-policy: unimplemented
+  rpc UpdateMetacacheListing(UpdateMetacacheListingRequest) returns (UpdateMetacacheListingResponse) {}; // auth-policy: unimplemented
+  rpc ReloadPoolMeta(ReloadPoolMetaRequest) returns (ReloadPoolMetaResponse) {}; // auth-policy: body-bound
+  rpc StopRebalance(StopRebalanceRequest) returns (StopRebalanceResponse) {}; // auth-policy: body-bound
+  rpc LoadRebalanceMeta(LoadRebalanceMetaRequest) returns (LoadRebalanceMetaResponse) {}; // auth-policy: body-bound
+  rpc StartDecommission(StartDecommissionRequest) returns (StartDecommissionResponse) {}; // auth-policy: body-bound
+  rpc CancelDecommission(CancelDecommissionRequest) returns (CancelDecommissionResponse) {}; // auth-policy: body-bound
+  rpc ClearDecommission(ClearDecommissionRequest) returns (ClearDecommissionResponse) {}; // auth-policy: body-bound
+  rpc LoadTransitionTierConfig(LoadTransitionTierConfigRequest) returns (LoadTransitionTierConfigResponse) {}; // auth-policy: body-bound
+  rpc TierDailyStats(TierDailyStatsRequest) returns (TierDailyStatsResponse) {}; // auth-policy: read-only
+  rpc GetLiveEvents(GetLiveEventsRequest) returns (GetLiveEventsResponse) {}; // auth-policy: read-only
+}
+
+service ScannerControlService {
+  rpc ScannerScopedDirtyUsageAck(ScannerScopedDirtyUsageAckRequest) returns (ScannerScopedDirtyUsageAckResponse) {}; // auth-policy: body-bound
+}
+
+service HealControlService {
+  rpc HealControl(HealControlRequest) returns (HealControlResponse) {};
+}
+
+service TierMutationControlService {
+  rpc PrepareTierMutation(TierMutationPrepareRequest) returns (TierMutationControlResponse) {};
+  rpc CommitTierMutation(TierMutationCommitRequest) returns (TierMutationControlResponse) {};
+  rpc AbortTierMutation(TierMutationAbortRequest) returns (TierMutationControlResponse) {};
+}

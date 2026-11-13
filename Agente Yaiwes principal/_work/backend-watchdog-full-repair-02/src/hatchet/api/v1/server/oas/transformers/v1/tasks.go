@@ -1,0 +1,578 @@
+package transformers
+
+import (
+	"encoding/json"
+	"math"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/oapi-codegen/runtime/types"
+
+	"github.com/hatchet-dev/hatchet/api/v1/server/oas/gen"
+	v1 "github.com/hatchet-dev/hatchet/pkg/repository"
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlcv1"
+)
+
+func jsonToMap(jsonBytes []byte) map[string]interface{} {
+	result := make(map[string]interface{})
+	json.Unmarshal(jsonBytes, &result) // nolint: errcheck
+	return result
+}
+
+func mapOlapStatus(olapStatus string) (gen.V1TaskStatus, bool) {
+	if olapStatus == "EVICTED" {
+		return gen.V1TaskStatusRUNNING, true
+	}
+	return gen.V1TaskStatus(olapStatus), false
+}
+
+func ToTaskSummary(task *v1.TaskWithPayloads, opts ...PayloadOption) gen.V1TaskSummary {
+	o := applyPayloadOptions(opts)
+	workflowVersionID := task.WorkflowVersionID
+
+	var finishedAt *time.Time
+
+	if task.FinishedAt.Valid {
+		finishedAt = &task.FinishedAt.Time
+	}
+
+	var startedAt *time.Time
+
+	if task.StartedAt.Valid {
+		startedAt = &task.StartedAt.Time
+	}
+
+	var durationPtr *int
+
+	if task.FinishedAt.Valid && task.StartedAt.Valid {
+		duration := int(task.FinishedAt.Time.Sub(task.StartedAt.Time).Milliseconds())
+		durationPtr = &duration
+	}
+
+	taskExternalId := task.ExternalID
+	stepId := task.StepID
+
+	retryCount := int(task.RetryCount)
+	attempt := retryCount + 1
+
+	status, isEvicted := mapOlapStatus(string(task.Status))
+
+	input := jsonToMap(task.InputPayload)
+	output := jsonToMap(task.OutputPayload)
+	additionalMetadata := jsonToMap(task.AdditionalMetadata)
+	additionalMetadataPtr := &additionalMetadata
+	var payloadsRestricted *bool
+
+	if !o.includePayloads {
+		input = emptyJSON()
+		output = emptyJSON()
+		payloadsRestricted = boolPtr(true)
+	}
+
+	summary := gen.V1TaskSummary{
+		Metadata: gen.APIResourceMeta{
+			Id:        task.ExternalID.String(),
+			CreatedAt: task.InsertedAt.Time,
+			UpdatedAt: task.InsertedAt.Time,
+		},
+		Input:                 input,
+		Output:                output,
+		Type:                  gen.V1WorkflowTypeTASK,
+		DisplayName:           task.DisplayName,
+		Duration:              durationPtr,
+		StartedAt:             startedAt,
+		FinishedAt:            finishedAt,
+		AdditionalMetadata:    additionalMetadataPtr,
+		ErrorMessage:          &task.ErrorMessage.String,
+		Status:                status,
+		TenantId:              task.TenantID,
+		WorkflowId:            task.WorkflowID,
+		TaskId:                int(task.ID),
+		TaskInsertedAt:        task.InsertedAt.Time,
+		TaskExternalId:        taskExternalId,
+		StepId:                &stepId,
+		ActionId:              &task.ActionID,
+		WorkflowRunExternalId: task.WorkflowRunID,
+		WorkflowVersionId:     &workflowVersionID,
+		RetryCount:            &retryCount,
+		Attempt:               &attempt,
+		ParentTaskExternalId:  task.ParentTaskExternalID,
+		IsEvicted:             &isEvicted,
+		IsDurable:             &task.IsDurable,
+		PayloadsRestricted:    payloadsRestricted,
+	}
+
+	return summary
+}
+
+func ToTaskSummaryRows(
+	tasks []*v1.TaskWithPayloads,
+	opts ...PayloadOption,
+) []gen.V1TaskSummary {
+	toReturn := make([]gen.V1TaskSummary, len(tasks))
+
+	for i, task := range tasks {
+		toReturn[i] = ToTaskSummary(task, opts...)
+	}
+
+	return toReturn
+}
+
+func ToDagChildren(
+	tasks []*v1.TaskWithPayloads,
+	taskIdToDagExternalId map[int64]uuid.UUID,
+	opts ...PayloadOption,
+) []gen.V1DagChildren {
+	dagIdToTasks := make(map[uuid.UUID][]gen.V1TaskSummary)
+
+	for _, task := range tasks {
+		dagId := taskIdToDagExternalId[task.ID]
+
+		dagIdToTasks[dagId] = append(dagIdToTasks[dagId], ToTaskSummary(task, opts...))
+	}
+
+	toReturn := make([]gen.V1DagChildren, 0, len(dagIdToTasks))
+
+	for dagId, tasks := range dagIdToTasks {
+		dagIdCp := dagId
+		tasksCp := tasks
+
+		toReturn = append(toReturn, gen.V1DagChildren{
+			DagId:    &dagIdCp,
+			Children: &tasksCp,
+		})
+	}
+
+	return toReturn
+}
+
+func ToTaskSummaryMany(
+	tasks []*v1.TaskWithPayloads,
+	total int, limit, offset int64,
+	opts ...PayloadOption,
+) gen.V1TaskSummaryList {
+	toReturn := ToTaskSummaryRows(tasks, opts...)
+
+	currentPage := (offset / limit) + 1
+	nextPage := currentPage + 1
+	numPages := int64(math.Ceil(float64(total) / float64(limit)))
+
+	return gen.V1TaskSummaryList{
+		Rows: toReturn,
+		Pagination: gen.PaginationResponse{
+			CurrentPage: &currentPage,
+			NextPage:    &nextPage,
+			NumPages:    &numPages,
+		},
+	}
+}
+
+func ToTaskRunEventMany(
+	events []*sqlcv1.ListTaskEventsRow,
+	taskExternalId uuid.UUID,
+) gen.V1TaskEventList {
+	toReturn := make([]gen.V1TaskEvent, len(events))
+
+	for i, event := range events {
+		retryCount := int(event.RetryCount)
+		attempt := retryCount + 1
+
+		toReturn[i] = gen.V1TaskEvent{
+			Id:              int(event.ID),
+			ErrorMessage:    &event.ErrorMessage.String,
+			EventType:       gen.V1TaskEventType(event.EventType),
+			Message:         event.AdditionalEventMessage.String,
+			Timestamp:       event.EventTimestamp.Time,
+			WorkerId:        event.WorkerID,
+			TaskId:          taskExternalId,
+			RetryCount:      &retryCount,
+			Attempt:         &attempt,
+			TaskDisplayName: &event.TaskDisplayName,
+		}
+	}
+
+	return gen.V1TaskEventList{
+		Rows:       &toReturn,
+		Pagination: &gen.PaginationResponse{},
+	}
+}
+
+func ToWorkflowRunTaskRunEventsMany(
+	events []*v1.TaskEventWithPayloads,
+	opts ...PayloadOption,
+) gen.V1TaskEventList {
+	o := applyPayloadOptions(opts)
+	toReturn := make([]gen.V1TaskEvent, len(events))
+
+	for i, event := range events {
+		retryCount := int(event.RetryCount)
+		attempt := retryCount + 1
+
+		toReturn[i] = gen.V1TaskEvent{
+			ErrorMessage:    &event.ErrorMessage.String,
+			EventType:       gen.V1TaskEventType(event.EventType),
+			Id:              int(event.ID),
+			Message:         event.AdditionalEventMessage.String,
+			TaskDisplayName: &event.DisplayName,
+			TaskId:          event.TaskExternalID,
+			Timestamp:       event.EventTimestamp.Time,
+			WorkerId:        event.WorkerID,
+			RetryCount:      &retryCount,
+			Attempt:         &attempt,
+		}
+
+		if o.includePayloads {
+			output := string(event.OutputPayload)
+			toReturn[i].Output = &output
+		}
+	}
+
+	return gen.V1TaskEventList{
+		Rows:       &toReturn,
+		Pagination: &gen.PaginationResponse{},
+	}
+}
+
+func StatusToTaskRunMetrics(metrics *[]v1.TaskRunMetric) gen.V1TaskRunMetrics {
+	statuses := []gen.V1TaskStatus{
+		gen.V1TaskStatusCANCELLED,
+		gen.V1TaskStatusCOMPLETED,
+		gen.V1TaskStatusFAILED,
+		gen.V1TaskStatusQUEUED,
+		gen.V1TaskStatusRUNNING,
+	}
+
+	metricsMap := make(map[gen.V1TaskStatus]v1.TaskRunMetric)
+	for _, m := range *metrics {
+		metricsMap[gen.V1TaskStatus(m.Status)] = m
+	}
+
+	toReturn := make([]gen.V1TaskRunMetric, len(statuses))
+
+	for i, status := range statuses {
+		metric := metricsMap[status]
+
+		toReturn[i] = gen.V1TaskRunMetric{
+			Count:  int(metric.Count), // nolint: gosec
+			Status: status,
+		}
+
+		if status == gen.V1TaskStatusRUNNING {
+			evicted := int(metric.EvictedCount)   // nolint: gosec
+			onWorker := int(metric.OnWorkerCount) // nolint: gosec
+			toReturn[i].RunningDetailCount = &gen.V1RunningDetailCount{
+				Evicted:  evicted,
+				OnWorker: onWorker,
+			}
+		}
+	}
+
+	return toReturn
+}
+
+func ToTask(taskWithData *v1.TaskWithPayloads, workflowRunExternalId uuid.UUID, workflowVersion *sqlcv1.GetWorkflowVersionByIdRow, opts ...PayloadOption) gen.V1TaskSummary {
+	o := applyPayloadOptions(opts)
+
+	var finishedAt *time.Time
+
+	if taskWithData.FinishedAt.Valid {
+		finishedAt = &taskWithData.FinishedAt.Time
+	}
+
+	var startedAt *time.Time
+
+	if taskWithData.StartedAt.Valid {
+		startedAt = &taskWithData.StartedAt.Time
+	}
+
+	var durationPtr *int
+
+	if taskWithData.FinishedAt.Valid && taskWithData.StartedAt.Valid {
+		duration := int(taskWithData.FinishedAt.Time.Sub(taskWithData.StartedAt.Time).Milliseconds())
+		durationPtr = &duration
+	}
+
+	output := emptyJSON()
+	input := emptyJSON()
+	additionalMetadata := jsonToMap(taskWithData.AdditionalMetadata)
+	additionalMetadataPtr := &additionalMetadata
+	var payloadsRestricted *bool
+
+	if o.includePayloads {
+		if len(taskWithData.OutputPayload) > 0 {
+			output = jsonToMap(taskWithData.OutputPayload)
+		}
+
+		input = jsonToMap(taskWithData.InputPayload)
+
+		if taskWithData.IsStandalone {
+			// fixme: improve this somehow - it's using this implicit assumption about how
+			// we structure payloads, which it shouldn't
+			if inputWithInternalHatchetData, ok := input["input"]; ok {
+				if actualInput, ok := inputWithInternalHatchetData.(map[string]interface{}); ok {
+					input = actualInput
+				}
+			}
+		}
+	} else {
+		payloadsRestricted = boolPtr(true)
+	}
+
+	stepId := taskWithData.StepID
+
+	retryCount := int(taskWithData.RetryCount)
+	attempt := retryCount + 1
+
+	workflowConfig := make(map[string]interface{})
+
+	if workflowVersion != nil && workflowVersion.WorkflowVersion.CreateWorkflowVersionOpts != nil {
+		workflowConfig = jsonToMap(workflowVersion.WorkflowVersion.CreateWorkflowVersionOpts)
+	}
+
+	var parentTaskExternalId *uuid.UUID
+
+	if taskWithData.ParentTaskExternalID != nil {
+		parentTaskUUID, err := uuid.Parse(taskWithData.ParentTaskExternalID.String())
+
+		if err == nil {
+			parentTaskExternalId = &parentTaskUUID
+		}
+	}
+
+	taskStatus, isEvicted := mapOlapStatus(string(taskWithData.Status))
+
+	summary := gen.V1TaskSummary{
+		Metadata: gen.APIResourceMeta{
+			Id:        taskWithData.ExternalID.String(),
+			CreatedAt: taskWithData.InsertedAt.Time,
+			UpdatedAt: taskWithData.InsertedAt.Time,
+		},
+		TaskId:                int(taskWithData.ID),
+		TaskInsertedAt:        taskWithData.InsertedAt.Time,
+		DisplayName:           taskWithData.DisplayName,
+		AdditionalMetadata:    additionalMetadataPtr,
+		Duration:              durationPtr,
+		StartedAt:             startedAt,
+		FinishedAt:            finishedAt,
+		Output:                output,
+		Status:                taskStatus,
+		Input:                 input,
+		PayloadsRestricted:    payloadsRestricted,
+		TenantId:              taskWithData.TenantID,
+		WorkflowId:            taskWithData.WorkflowID,
+		ErrorMessage:          &taskWithData.ErrorMessage.String,
+		WorkflowRunExternalId: workflowRunExternalId,
+		TaskExternalId:        taskWithData.ExternalID,
+		Type:                  gen.V1WorkflowTypeTASK,
+		NumSpawnedChildren:    int(taskWithData.NumSpawnedChildren),
+		StepId:                &stepId,
+		ActionId:              &taskWithData.ActionID,
+		RetryCount:            &retryCount,
+		Attempt:               &attempt,
+		WorkflowConfig:        &workflowConfig,
+		ParentTaskExternalId:  parentTaskExternalId,
+		IsDurable:             &taskWithData.IsDurable,
+		IsEvicted:             &isEvicted,
+	}
+
+	if workflowVersion != nil {
+		summary.WorkflowVersionId = &workflowVersion.WorkflowVersion.ID
+	} else if taskWithData.WorkflowVersionID != uuid.Nil {
+		summary.WorkflowVersionId = &taskWithData.WorkflowVersionID
+	}
+
+	return summary
+}
+
+func ToWorkflowRunDetails(
+	taskRunEvents []*v1.TaskEventWithPayloads,
+	workflowRun *v1.WorkflowRunData,
+	shape []*sqlcv1.GetWorkflowShapeRow,
+	tasks []*v1.TaskWithPayloads,
+	stepIdToTaskExternalId map[uuid.UUID]uuid.UUID,
+	workflowVersion *sqlcv1.GetWorkflowVersionByIdRow,
+	opts ...PayloadOption,
+) (gen.V1WorkflowRunDetails, error) {
+	o := applyPayloadOptions(opts)
+
+	var duration *int
+
+	if workflowRun.StartedAt.Valid && workflowRun.FinishedAt.Valid {
+		durInt := int(workflowRun.FinishedAt.Time.Sub(workflowRun.StartedAt.Time).Milliseconds())
+		duration = &durInt
+	}
+
+	var startedAt *time.Time
+
+	if workflowRun.StartedAt.Valid {
+		startedAt = &workflowRun.StartedAt.Time
+	}
+
+	input := jsonToMap(workflowRun.Input)
+	output := emptyJSON()
+	additionalMetadata := jsonToMap(workflowRun.AdditionalMetadata)
+	additionalMetadataPtr := &additionalMetadata
+	var payloadsRestricted *bool
+
+	if o.includePayloads {
+		if len(workflowRun.Output) > 0 {
+			output = jsonToMap(workflowRun.Output)
+		}
+	} else {
+		input = emptyJSON()
+		output = emptyJSON()
+		payloadsRestricted = boolPtr(true)
+	}
+
+	wrStatus, _ := mapOlapStatus(string(workflowRun.ReadableStatus))
+
+	parsedWorkflowRun := gen.V1WorkflowRun{
+		AdditionalMetadata:   additionalMetadataPtr,
+		CreatedAt:            &workflowRun.CreatedAt.Time,
+		DisplayName:          workflowRun.DisplayName,
+		Duration:             duration,
+		ErrorMessage:         &workflowRun.ErrorMessage,
+		FinishedAt:           &workflowRun.FinishedAt.Time,
+		ParentTaskExternalId: workflowRun.ParentTaskExternalId,
+		Metadata: gen.APIResourceMeta{
+			Id:        workflowRun.ExternalID.String(),
+			CreatedAt: workflowRun.InsertedAt.Time,
+			UpdatedAt: workflowRun.InsertedAt.Time,
+		},
+		StartedAt:          startedAt,
+		Status:             wrStatus,
+		TenantId:           workflowRun.TenantID,
+		WorkflowId:         workflowRun.WorkflowID,
+		Input:              input,
+		Output:             output,
+		PayloadsRestricted: payloadsRestricted,
+	}
+
+	if workflowVersion != nil {
+		parsedWorkflowRun.WorkflowVersionId = &workflowVersion.WorkflowVersion.ID
+	} else if workflowRun.WorkflowVersionId != uuid.Nil {
+		parsedWorkflowRun.WorkflowVersionId = &workflowRun.WorkflowVersionId
+	}
+
+	shapeRows := make([]gen.WorkflowRunShapeItemForWorkflowRunDetails, len(shape))
+
+	for i, shapeRow := range shape {
+		parentExternalId := stepIdToTaskExternalId[shapeRow.Parentstepid]
+		taskName := shapeRow.Stepname.String
+		stepId := shapeRow.Parentstepid
+
+		shapeRows[i] = gen.WorkflowRunShapeItemForWorkflowRunDetails{
+			ChildrenStepIds: shapeRow.Childrenstepids,
+			TaskExternalId:  parentExternalId,
+			TaskName:        taskName,
+			StepId:          stepId,
+		}
+	}
+
+	parsedTaskEvents := make([]gen.V1TaskEvent, len(taskRunEvents))
+
+	for i, event := range taskRunEvents {
+		retryCount := int(event.RetryCount)
+		attempt := retryCount + 1
+
+		parsedTaskEvents[i] = gen.V1TaskEvent{
+			ErrorMessage:    &event.ErrorMessage.String,
+			EventType:       gen.V1TaskEventType(event.EventType),
+			Id:              int(event.ID),
+			Message:         event.AdditionalEventMessage.String,
+			TaskDisplayName: &event.DisplayName,
+			Timestamp:       event.EventTimestamp.Time,
+			WorkerId:        event.WorkerID,
+			TaskId:          event.TaskExternalID,
+			RetryCount:      &retryCount,
+			Attempt:         &attempt,
+		}
+
+		if o.includePayloads {
+			output := string(event.OutputPayload)
+			parsedTaskEvents[i].Output = &output
+		}
+	}
+
+	parsedTasks := ToTaskSummaryRows(tasks, opts...)
+
+	workflowConfig := make(map[string]interface{})
+
+	if workflowVersion != nil && workflowVersion.WorkflowVersion.CreateWorkflowVersionOpts != nil {
+		workflowConfig = jsonToMap(workflowVersion.WorkflowVersion.CreateWorkflowVersionOpts)
+	}
+
+	return gen.V1WorkflowRunDetails{
+		Run:            parsedWorkflowRun,
+		Shape:          shapeRows,
+		TaskEvents:     parsedTaskEvents,
+		Tasks:          parsedTasks,
+		WorkflowConfig: &workflowConfig,
+	}, nil
+}
+
+func ToTaskTimings(
+	timings []*sqlcv1.PopulateTaskRunDataRow,
+	idsToDepth map[uuid.UUID]int32,
+) []gen.V1TaskTiming {
+	toReturn := make([]gen.V1TaskTiming, len(timings))
+
+	for i, timing := range timings {
+		depth := idsToDepth[timing.ExternalID]
+
+		workflowRunId := timing.WorkflowRunID
+		retryCount := int(timing.RetryCount)
+		attempt := retryCount + 1
+
+		timingStatus, timingIsEvicted := mapOlapStatus(string(timing.Status))
+
+		toReturn[i] = gen.V1TaskTiming{
+			Metadata: gen.APIResourceMeta{
+				Id:        timing.ExternalID.String(),
+				CreatedAt: timing.InsertedAt.Time,
+				UpdatedAt: timing.InsertedAt.Time,
+			},
+			Status:               timingStatus,
+			TaskDisplayName:      timing.DisplayName,
+			TaskId:               int(timing.ID),
+			TaskInsertedAt:       timing.InsertedAt.Time,
+			TaskExternalId:       timing.ExternalID,
+			TenantId:             timing.TenantID,
+			Depth:                int(depth),
+			WorkflowRunId:        &workflowRunId,
+			RetryCount:           &retryCount,
+			Attempt:              &attempt,
+			ParentTaskExternalId: timing.ParentTaskExternalID,
+		}
+
+		if timingIsEvicted {
+			toReturn[i].IsEvicted = &timingIsEvicted
+		}
+
+		if timing.QueuedAt.Valid {
+			toReturn[i].QueuedAt = &timing.QueuedAt.Time
+		}
+
+		if timing.StartedAt.Valid {
+			toReturn[i].StartedAt = &timing.StartedAt.Time
+		}
+
+		if timing.FinishedAt.Valid {
+			toReturn[i].FinishedAt = &timing.FinishedAt.Time
+		}
+	}
+
+	return toReturn
+}
+
+func ToCancelledOrReplayedTaskResponse(ids []string) gen.V1ReplayedTasks {
+	idUuids := make([]types.UUID, len(ids))
+
+	for i, id := range ids {
+		idUuids[i] = uuid.MustParse(id)
+	}
+
+	return gen.V1ReplayedTasks{
+		Ids: &idUuids,
+	}
+}

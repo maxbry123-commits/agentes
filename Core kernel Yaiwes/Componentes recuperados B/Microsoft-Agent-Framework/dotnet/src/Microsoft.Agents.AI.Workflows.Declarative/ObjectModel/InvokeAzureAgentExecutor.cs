@@ -1,0 +1,219 @@
+﻿// Copyright (c) Microsoft. All rights reserved.
+
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Agents.AI.Workflows.Declarative.Events;
+using Microsoft.Agents.AI.Workflows.Declarative.Extensions;
+using Microsoft.Agents.AI.Workflows.Declarative.Interpreter;
+using Microsoft.Agents.AI.Workflows.Declarative.Kit;
+using Microsoft.Agents.AI.Workflows.Declarative.PowerFx;
+using Microsoft.Agents.ObjectModel;
+using Microsoft.Agents.ObjectModel.Abstractions;
+using Microsoft.Extensions.AI;
+using Microsoft.PowerFx.Types;
+using Microsoft.Shared.Diagnostics;
+
+namespace Microsoft.Agents.AI.Workflows.Declarative.ObjectModel;
+
+[SendsMessage(typeof(ExternalInputRequest))]
+internal sealed class InvokeAzureAgentExecutor(InvokeAzureAgent model, ResponseAgentProvider agentProvider, WorkflowFormulaState state) :
+    DeclarativeActionExecutor<InvokeAzureAgent>(model, state)
+{
+    public static class Steps
+    {
+        public static string ExternalInput(string id) => $"{id}_{nameof(ExternalInput)}";
+        public static string Resume(string id) => $"{id}_{nameof(Resume)}";
+    }
+
+    public static bool RequiresInput(object? message) =>
+        message is ExternalInputRequest || (message is PortableValue pv && pv.IsType(out ExternalInputRequest? _));
+
+    public static bool RequiresNothing(object? message) =>
+        message is ActionExecutorResult || (message is PortableValue pv && pv.IsType(out ActionExecutorResult? _));
+
+    private AzureAgentUsage AgentUsage => Throw.IfNull(this.Model.Agent, $"{nameof(this.Model)}.{nameof(this.Model.Agent)}");
+    private AzureAgentInput? AgentInput => this.Model.Input;
+    private AzureAgentOutput? AgentOutput => this.Model.Output;
+
+    protected override bool EmitResultEvent => false;
+    protected override bool IsDiscreteAction => false;
+
+    protected override async ValueTask<object?> ExecuteAsync(IWorkflowContext context, CancellationToken cancellationToken = default)
+    {
+        await this.InvokeAgentAsync(context, this.GetInputMessages(), cancellationToken).ConfigureAwait(false);
+
+        return default;
+    }
+
+    public async ValueTask ResumeAsync(IWorkflowContext context, ExternalInputResponse response, CancellationToken cancellationToken)
+    {
+        ChatMessage? lastMessage = response.Messages.LastOrDefault();
+        if (lastMessage is not null)
+        {
+            await context.SetLastMessageAsync(lastMessage).ConfigureAwait(false);
+        }
+        await this.InvokeAgentAsync(context, response.Messages, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask CompleteAsync(IWorkflowContext context, ActionExecutorResult message, CancellationToken cancellationToken)
+    {
+        await context.RaiseCompletionEventAsync(this.Model, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask InvokeAgentAsync(IWorkflowContext context, IEnumerable<ChatMessage>? messages, CancellationToken cancellationToken)
+    {
+        string? conversationId = this.GetConversationId();
+        string agentName = this.GetAgentName();
+        bool autoSend = this.GetAutoSendValue();
+        Dictionary<string, object?>? inputParameters = this.GetStructuredInputs();
+        AgentResponse agentResponse = await agentProvider.InvokeAgentAsync(this.Id, context, agentName, conversationId, autoSend, messages, inputParameters, cancellationToken).ConfigureAwait(false);
+
+        ChatMessage[] actionableMessages = FilterActionableContent(agentResponse).ToArray();
+        if (actionableMessages.Length > 0)
+        {
+            AgentResponse filteredResponse =
+                new(actionableMessages)
+                {
+                    AdditionalProperties = agentResponse.AdditionalProperties,
+                    AgentId = agentResponse.AgentId,
+                    CreatedAt = agentResponse.CreatedAt,
+                    ResponseId = agentResponse.ResponseId,
+                    Usage = agentResponse.Usage,
+                };
+            await context.SendMessageAsync(new ExternalInputRequest(filteredResponse), cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await this.AssignAsync(this.AgentOutput?.Messages?.Path, agentResponse.Messages.ToTable(), context).ConfigureAwait(false);
+
+        // Attempt to parse the last message as JSON and assign to the response object variable.
+        PropertyPath? responseObjectPath = this.AgentOutput?.ResponseObject?.Path;
+        string? lastMessageText = agentResponse.Messages.LastOrDefault()?.Text;
+        if (responseObjectPath is not null && !string.IsNullOrEmpty(lastMessageText))
+        {
+            FormulaValue? responseObjectValue = null;
+            try
+            {
+                using JsonDocument jsonDocument = JsonDocument.Parse(lastMessageText);
+                responseObjectValue = jsonDocument.ParseJsonValue(lastMessageText).ToFormula();
+            }
+            catch (JsonException)
+            {
+                // Not valid JSON — skip assignment.
+            }
+            catch (DeclarativeWorkflowException)
+            {
+                // Valid JSON, but not convertible to a workflow value (e.g. a mixed-type or nested array).
+                // Output parsing is best-effort — skip assignment rather than fail the action.
+            }
+
+            if (responseObjectValue is not null)
+            {
+                await this.AssignAsync(responseObjectPath, responseObjectValue, context).ConfigureAwait(false);
+            }
+        }
+
+        if (this.Model.Input?.ExternalLoop?.When is not null)
+        {
+            bool requestInput = this.Evaluator.GetValue(this.Model.Input.ExternalLoop.When).Value;
+            if (requestInput)
+            {
+                ExternalInputRequest inputRequest = new(agentResponse);
+                await context.SendMessageAsync(inputRequest, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+        }
+
+        await context.SendResultMessageAsync(this.Id, result: null, cancellationToken).ConfigureAwait(false);
+    }
+
+    private Dictionary<string, object?>? GetStructuredInputs()
+    {
+        Dictionary<string, object?>? inputs = null;
+
+        if (this.AgentInput?.Arguments is not null)
+        {
+            inputs = [];
+
+            foreach (KeyValuePair<string, ValueExpression> argument in this.AgentInput.Arguments)
+            {
+                inputs[argument.Key] = this.Evaluator.GetValue(argument.Value).Value.ToObject();
+            }
+        }
+
+        return inputs;
+    }
+
+    private IEnumerable<ChatMessage>? GetInputMessages()
+    {
+        DataValue? userInput = null;
+
+        if (this.AgentInput?.Messages is not null)
+        {
+            EvaluationResult<DataValue> expressionResult = this.Evaluator.GetValue(this.AgentInput.Messages);
+            userInput = expressionResult.Value;
+        }
+
+        return userInput?.ToChatMessages();
+    }
+
+    private static IEnumerable<ChatMessage> FilterActionableContent(AgentResponse agentResponse)
+    {
+        HashSet<string> functionResultIds =
+            [.. agentResponse.Messages
+                    .SelectMany(
+                        m =>
+                            m.Contents
+                                .OfType<FunctionResultContent>()
+                                .Select(functionCall => functionCall.CallId))];
+
+        foreach (ChatMessage responseMessage in agentResponse.Messages)
+        {
+            if (responseMessage.Contents.Any(content => content is ToolApprovalRequestContent))
+            {
+                yield return responseMessage;
+                continue;
+            }
+
+            if (responseMessage.Contents.OfType<FunctionCallContent>().Any(functionCall => !functionResultIds.Contains(functionCall.CallId)))
+            {
+                yield return responseMessage;
+            }
+        }
+    }
+
+    private string? GetConversationId()
+    {
+        if (this.Model.ConversationId is null)
+        {
+            return null;
+        }
+
+        EvaluationResult<string> conversationIdResult = this.Evaluator.GetValue(this.Model.ConversationId);
+        return conversationIdResult.Value.Length == 0 ? null : conversationIdResult.Value;
+    }
+
+    private string GetAgentName() =>
+        this.Evaluator.GetValue(
+            Throw.IfNull(
+                this.AgentUsage.Name,
+                $"{nameof(this.Model)}.{nameof(this.Model.Agent)}.{nameof(this.Model.Agent.Name)}")).Value;
+
+    private bool GetAutoSendValue()
+    {
+        // AzureAgentOutput.AutoSend is never null — it returns a literal-false default
+        // when the YAML omits the field. Use AutoSendIsDefaultValue to distinguish an
+        // explicit autoSend value from the implicit default, and treat the implicit
+        // default as autoSend = true (the historical behavior for actions that omit
+        // autoSend or have no output block at all).
+        if (this.AgentOutput is { AutoSendIsDefaultValue: false } output)
+        {
+            return this.Evaluator.GetValue(output.AutoSend).Value;
+        }
+
+        return true;
+    }
+}

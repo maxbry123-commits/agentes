@@ -1,0 +1,89 @@
+name: _Build Python packages
+
+on:
+  workflow_call:
+    inputs:
+      expected_version:
+        description: Expected release version; omit for a consistency-only check
+        required: false
+        default: ''
+        type: string
+      upload_artifacts:
+        description: Upload distributions for later publish jobs
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  distributions:
+    name: Build Python distributions
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build packaging pytest twine
+
+      - name: Validate package versions
+        if: inputs.expected_version == ''
+        run: python scripts/bump_version.py --check
+
+      - name: Validate release version
+        if: inputs.expected_version != ''
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: python scripts/bump_version.py --check --expected-version "${EXPECTED_VERSION}"
+
+      - name: Run package tests
+        run: PYTHONPATH=. python -m pytest tests/unit/test_package_versions.py -q
+
+      - name: Build and check distributions
+        run: |
+          mkdir -p dist/reme
+          python -m build --outdir dist/reme
+          python -m twine check dist/reme/*
+
+      - name: Verify distributions and isolated installation
+        run: |
+          REME_WHEEL="$(pwd)/$(ls dist/reme/reme_ai-[0-9]*.whl)"
+          python -m zipfile -l "${REME_WHEEL}" | (! grep 'reme/web/')
+          python -m zipfile -l "${REME_WHEEL}" | (! grep 'reme_studio/')
+          python -m venv "${RUNNER_TEMP}/reme-package-smoke"
+          "${RUNNER_TEMP}/reme-package-smoke/bin/python" -m pip install "${REME_WHEEL}[as]"
+          cd "${RUNNER_TEMP}"
+          "${RUNNER_TEMP}/reme-package-smoke/bin/python" -c "import reme"
+
+      - name: Verify released core dependencies
+        if: inputs.expected_version != ''
+        run: |
+          REME_WHEEL="$(pwd)/$(ls dist/reme/reme_ai-[0-9]*.whl)"
+          python -m venv "${RUNNER_TEMP}/reme-core-package-smoke"
+          "${RUNNER_TEMP}/reme-core-package-smoke/bin/python" -m pip install "${REME_WHEEL}[core]"
+          cd "${RUNNER_TEMP}"
+          "${RUNNER_TEMP}/reme-core-package-smoke/bin/python" - <<'PY'
+          from reme_studio import static_dir
+
+          assert (static_dir() / "index.html").is_file()
+          PY
+
+      - name: Upload ReMe distributions
+        if: inputs.upload_artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reme-distributions
+          path: dist/reme/
+          if-no-files-found: error

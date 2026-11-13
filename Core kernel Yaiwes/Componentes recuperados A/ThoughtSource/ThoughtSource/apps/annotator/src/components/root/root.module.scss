@@ -1,0 +1,36 @@
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css');
+
+.Root {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 1.1rem;
+
+    .Main {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+
+    .ErrorMessage {
+        margin: 20px;
+        padding: 10px;
+        max-width: 1000px;
+
+        border-radius: 3px;
+        background-color: #ecc92c;
+    }
+}
+
+body {
+    margin: 0px;
+}
+
+li {
+    list-style: none;
+}
+
+ul {
+    list-style-type: none;
+    margin: 0px;
+    padding: 0px
+}

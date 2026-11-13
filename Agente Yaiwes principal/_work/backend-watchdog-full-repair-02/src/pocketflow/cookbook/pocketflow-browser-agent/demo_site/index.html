@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pocket Cafe</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; color: #3b2a1a; }
+  .wrap { background: #fff; border-radius: 16px; padding: 28px 32px; box-shadow: 0 8px 30px rgba(0,0,0,.08); }
+  h1 { margin: 0; } .sub { color: #8a7a6a; margin-top: 4px; }
+  h2 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: #6b4a2a; margin: 22px 0 8px; }
+  .row { display: flex; gap: 12px; }
+  button, input { font: inherit; padding: 12px; border: 1px solid #d9cbb8; border-radius: 8px; background: #fdfaf4; }
+  .row button { flex: 1; cursor: pointer; }
+  .row button.picked { border-color: #b5651d; box-shadow: 0 0 0 2px #b5651d33; background: #fbefe0; }
+  input { width: 100%; box-sizing: border-box; }
+  .order { width: 100%; margin-top: 18px; background: #b5651d; color: #fff; font-weight: 600; border: none; cursor: pointer; }
+  .order:disabled { background: #bcae9c; cursor: not-allowed; }
+  #status { margin-top: 16px; padding: 12px; border-radius: 8px; background: #f6efe2; color: #6b5a48; }
+  #status.ok { background: #e7f3e2; color: #2f6b2f; }
+  #cookies { position: fixed; left: 0; right: 0; bottom: 0; background: #2b2b2b; color: #eee; padding: 16px; }
+  #cookies .card { max-width: 620px; margin: 0 auto; display: flex; align-items: center; gap: 14px; }
+  #cookies p { margin: 0; flex: 1; font-size: 14px; }
+  #cookies button { background: #b5651d; color: #fff; border: none; cursor: pointer; }
+  #cookies .ghost { background: transparent; color: #ccc; border: 1px solid #555; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pocket Cafe</h1>
+  <p class="sub">Order at the counter of the internet.</p>
+
+  <h2>1 &middot; Pick a drink</h2>
+  <div class="row" id="drinks">
+    <button id="espresso" onclick="pickDrink('Espresso')">Espresso</button>
+    <button id="latte" onclick="pickDrink('Latte')">Latte</button>
+    <button id="mocha" onclick="pickDrink('Mocha')">Mocha</button>
+  </div>
+
+  <h2>2 &middot; Size</h2>
+  <div class="row" id="sizes">
+    <button id="small" class="picked" onclick="pickSize('Small')">Small</button>
+    <button id="medium" onclick="pickSize('Medium')">Medium</button>
+    <button id="large" onclick="pickSize('Large')">Large</button>
+  </div>
+
+  <h2>3 &middot; Name for the cup</h2>
+  <input type="text" id="name" placeholder="Your name" aria-label="Name for the cup">
+
+  <button class="order" id="submit" onclick="order()" disabled>Place order</button>
+  <div id="status">No order yet.</div>
+</div>
+
+<div id="cookies">
+  <div class="card">
+    <p>We use cookies. Also the edible kind. Accept to continue to the cafe.</p>
+    <button onclick="document.getElementById('cookies').remove()">Accept</button>
+    <button class="ghost" onclick="document.getElementById('cookies').remove()">Reject</button>
+  </div>
+</div>
+
+<script>
+let drink = null, size = 'Small', orderNo = 0;
+function pick(rowId, id) {
+  for (const b of document.querySelectorAll('#' + rowId + ' button')) b.classList.remove('picked');
+  document.getElementById(id).classList.add('picked');
+}
+function pickDrink(d) {
+  drink = d;
+  pick('drinks', d.toLowerCase());
+  document.getElementById('submit').disabled = false;
+}
+function pickSize(s) {
+  size = s;
+  pick('sizes', s.toLowerCase());
+}
+function order() {
+  const name = document.getElementById('name').value.trim();
+  const s = document.getElementById('status');
+  if (!drink) { s.textContent = 'Please pick a drink first.'; s.className = ''; return; }
+  if (!name) { s.textContent = 'Please type a name for the cup.'; s.className = ''; return; }
+  orderNo += 1;
+  s.textContent = `Order #${orderNo} confirmed: ${size} ${drink} for ${name}.`;
+  s.className = 'ok';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,259 @@
+{
+  "$id": "https://api.cerbos.dev/cerbos/audit/v1/AccessLogEntry.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "cerbos.audit.v1.MetaValues": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "cerbos.audit.v1.Peer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "authInfo": {
+          "type": "string"
+        },
+        "forwardedFor": {
+          "type": "string"
+        },
+        "userAgent": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.audit.v1.PolicySource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "blob": {
+          "$ref": "#/definitions/cerbos.audit.v1.PolicySource.Blob"
+        },
+        "database": {
+          "$ref": "#/definitions/cerbos.audit.v1.PolicySource.Database"
+        },
+        "disk": {
+          "$ref": "#/definitions/cerbos.audit.v1.PolicySource.Disk"
+        },
+        "embeddedPdp": {
+          "$ref": "#/definitions/cerbos.audit.v1.PolicySource.EmbeddedPDP"
+        },
+        "git": {
+          "$ref": "#/definitions/cerbos.audit.v1.PolicySource.Git"
+        },
+        "hub": {
+          "$ref": "#/definitions/cerbos.audit.v1.PolicySource.Hub"
+        }
+      }
+    },
+    "cerbos.audit.v1.PolicySource.Blob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bucketUrl": {
+          "type": "string"
+        },
+        "prefix": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.audit.v1.PolicySource.Database": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "driver": {
+          "$ref": "#/definitions/cerbos.audit.v1.PolicySource.Database.Driver"
+        }
+      }
+    },
+    "cerbos.audit.v1.PolicySource.Database.Driver": {
+      "type": "string",
+      "enum": [
+        "DRIVER_UNSPECIFIED",
+        "DRIVER_MYSQL",
+        "DRIVER_POSTGRES",
+        "DRIVER_SQLITE3"
+      ]
+    },
+    "cerbos.audit.v1.PolicySource.Disk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.audit.v1.PolicySource.EmbeddedPDP": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "builtAt": {
+          "$ref": "#/definitions/google.protobuf.Timestamp"
+        },
+        "commitHash": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.audit.v1.PolicySource.Git": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "repositoryUrl": {
+          "type": "string"
+        },
+        "subdirectory": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.audit.v1.PolicySource.Hub": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "deploymentId": {
+          "type": "string"
+        },
+        "embeddedBundle": {
+          "$ref": "#/definitions/cerbos.audit.v1.PolicySource.Hub.EmbeddedBundle"
+        },
+        "label": {
+          "type": "string"
+        },
+        "localBundle": {
+          "$ref": "#/definitions/cerbos.audit.v1.PolicySource.Hub.LocalBundle"
+        },
+        "playgroundId": {
+          "type": "string"
+        },
+        "remoteBundle": {
+          "$ref": "#/definitions/cerbos.audit.v1.PolicySource.Hub.RemoteBundle"
+        }
+      }
+    },
+    "cerbos.audit.v1.PolicySource.Hub.EmbeddedBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bundleId": {
+          "type": "string"
+        },
+        "ruleId": {
+          "type": "string"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "cerbos.audit.v1.PolicySource.Hub.LocalBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bundleId": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.audit.v1.PolicySource.Hub.RemoteBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bundleId": {
+          "type": "string"
+        },
+        "deploymentId": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.audit.v1.RequestContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/google.protobuf.Value"
+          },
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "google.protobuf.Timestamp": {
+      "title": "Timestamp",
+      "description": "A point in time, independent of any time zone or calendar.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "google.protobuf.Value": {
+      "title": "Value",
+      "description": "A dynamically-typed value."
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "callId": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/cerbos.audit.v1.MetaValues"
+      }
+    },
+    "method": {
+      "type": "string"
+    },
+    "oversized": {
+      "type": "boolean"
+    },
+    "peer": {
+      "$ref": "#/definitions/cerbos.audit.v1.Peer"
+    },
+    "policySource": {
+      "$ref": "#/definitions/cerbos.audit.v1.PolicySource"
+    },
+    "requestContext": {
+      "$ref": "#/definitions/cerbos.audit.v1.RequestContext"
+    },
+    "statusCode": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timestamp": {
+      "$ref": "#/definitions/google.protobuf.Timestamp"
+    }
+  }
+}

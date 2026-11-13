@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "GrowthBook",
+    "path": "packages/back-end/test/__snapshots__/sqlintegration.test.ts.snap",
+    "chunks_dir": "GrowthBook/packages/back-end/test/__snapshots__/sqlintegration.test.ts.snap.chunks",
+    "bytes": 9368271,
+    "chunk_bytes": 8388608
+  }
+]

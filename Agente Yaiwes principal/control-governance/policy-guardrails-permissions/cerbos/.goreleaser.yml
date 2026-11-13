@@ -1,0 +1,283 @@
+---
+version: 2
+
+snapshot:
+  version_template: "{{ incminor .Version }}-prerelease"
+
+git:
+  ignore_tags:
+    - api/genpb/*
+    - helm/*
+
+builds:
+  - main: ./cmd/cerbos
+    binary: cerbos
+    id: "cerbos"
+    env:
+      - CGO_ENABLED=0
+      - GOAMD64=v2
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/cerbos/cerbos/internal/util.Version={{.Version}} -X github.com/cerbos/cerbos/internal/util.Commit={{.FullCommit}} -X github.com/cerbos/cerbos/internal/util.BuildDate={{.Date}} -X github.com/cerbos/cerbos/internal/telemetry.WriteKey={{.Env.TELEMETRY_WRITE_KEY}} -X github.com/cerbos/cerbos/internal/telemetry.DataPlaneURL={{.Env.TELEMETRY_URL}}
+    hooks:
+      post:
+        - cmd: hack/scripts/copy-binary-to-npm-package.sh
+          env:
+            - BINARY_NAME=cerbos
+            - BINARY_OS={{ .Os }}
+            - BINARY_ARCH={{ .Arch }}
+            - BINARY_VERSION={{ .Version }}
+            - BINARY_PATH={{ .Path }}
+
+  - main: ./cmd/awslambda/extension
+    binary: cerbosext
+    id: cerbos-aws-lambda-ext
+    env:
+      - CGO_ENABLED=0
+      - GOAMD64=v2
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/cerbos/cerbos/internal/util.Version={{.Version}} -X github.com/cerbos/cerbos/internal/util.Commit={{.FullCommit}} -X github.com/cerbos/cerbos/internal/util.BuildDate={{.Date}} -X github.com/cerbos/cerbos/internal/telemetry.WriteKey={{.Env.TELEMETRY_WRITE_KEY}} -X github.com/cerbos/cerbos/internal/telemetry.DataPlaneURL={{.Env.TELEMETRY_URL}}
+  - main: ./cmd/awslambda/function
+    binary: bootstrap
+    id: "cerbos-aws-lambda-func"
+    env:
+      - CGO_ENABLED=0
+      - GOAMD64=v2
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    tags:
+      - lambda.norpc
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/cerbos/cerbos/internal/util.Version={{.Version}} -X github.com/cerbos/cerbos/internal/util.Commit={{.FullCommit}} -X github.com/cerbos/cerbos/internal/util.BuildDate={{.Date}} -X github.com/cerbos/cerbos/internal/telemetry.WriteKey={{.Env.TELEMETRY_WRITE_KEY}} -X github.com/cerbos/cerbos/internal/telemetry.DataPlaneURL={{.Env.TELEMETRY_URL}}
+  - main: ./cmd/cerbos
+    binary: cerbos
+    id: "cerbos-aws"
+    env:
+      - CGO_ENABLED=0
+      - GOAMD64=v2
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/cerbos/cerbos/internal/util.Version={{.Version}}-aws -X github.com/cerbos/cerbos/internal/util.Commit={{.FullCommit}} -X github.com/cerbos/cerbos/internal/util.BuildDate={{.Date}} -X github.com/cerbos/cerbos/internal/telemetry.WriteKey={{.Env.TELEMETRY_WRITE_KEY}} -X github.com/cerbos/cerbos/internal/telemetry.DataPlaneURL={{.Env.TELEMETRY_URL}} -X github.com/cerbos/cerbos/internal/integrations.AWSProductCode={{.Env.AWS_PRODUCT_CODE}}
+
+  - main: ./cmd/cerbosctl
+    binary: cerbosctl
+    id: "cerbosctl"
+    env:
+      - CGO_ENABLED=0
+      - GOAMD64=v2
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/cerbos/cerbos/internal/util.Version={{.Version}} -X github.com/cerbos/cerbos/internal/util.Commit={{.FullCommit}} -X github.com/cerbos/cerbos/internal/util.BuildDate={{.Date}} -X github.com/cerbos/cerbos/internal/telemetry.WriteKey={{.Env.TELEMETRY_WRITE_KEY}} -X github.com/cerbos/cerbos/internal/telemetry.DataPlaneURL={{.Env.TELEMETRY_URL}}
+    hooks:
+      post:
+        - cmd: hack/scripts/copy-binary-to-npm-package.sh
+          env:
+            - BINARY_NAME=cerbosctl
+            - BINARY_OS={{ .Os }}
+            - BINARY_ARCH={{ .Arch }}
+            - BINARY_VERSION={{ .Version }}
+            - BINARY_PATH={{ .Path }}
+
+sboms:
+  - artifacts: archive
+
+universal_binaries:
+  - id: "cerbos"
+    replace: false
+    name_template: "cerbos"
+  - id: "cerbosctl"
+    replace: false
+    name_template: "cerbosctl"
+
+archives:
+  - id: cerbos
+    ids:
+      - cerbos
+      - cerbosctl
+    name_template: 'cerbos_{{ .Version }}_{{ title .Os }}_{{ if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+  - id: cerbosctl
+    ids:
+      - cerbosctl
+    name_template: 'cerbosctl_{{ .Version }}_{{ title .Os }}_{{ if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+  - id: cerbosext
+    ids:
+      - cerbos-aws-lambda-ext
+    name_template: 'cerbos_aws_lambda_ext_{{ .Version }}_{{ title .Os }}_{{ if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+  - id: cerbosfunc
+    ids:
+      - cerbos-aws-lambda-func
+    name_template: 'cerbos_aws_lambda_func_{{ .Version }}_{{ title .Os }}_{{ if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+
+nfpms:
+  - id: cerbos
+    package_name: cerbos
+    ids:
+      - cerbos
+      - cerbosctl
+    vendor: Zenauth Ltd.
+    homepage: https://cerbos.dev
+    maintainer: "Cerbos Authors <help@cerbos.dev>"
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+    scripts:
+      postinstall: deploy/linux/scripts/post-install.sh
+      preremove: deploy/linux/scripts/pre-remove.sh
+    contents:
+      - src: deploy/linux/conf/cerbos.yaml
+        dst: /etc/cerbos.yaml
+        type: config|noreplace
+      - src: deploy/linux/unit/cerbos.service
+        dst: /etc/systemd/system/cerbos.service
+      - dst: /var/cerbos/policies
+        type: dir
+
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - --yes
+      - "--bundle=${signature}"
+      - "${artifact}"
+    artifacts: all
+
+dockers_v2:
+  - id: cerbos
+    dockerfile: Dockerfile.cerbos
+    images:
+      - "ghcr.io/cerbos/cerbos"
+      - "docker.io/cerbos/cerbos"
+    tags:
+      - "{{.Version}}"
+      - latest
+      - dev
+    ids:
+      - cerbos
+    labels:
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.name": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
+
+  - id: cerbosctl
+    dockerfile: Dockerfile.cerbosctl
+    images:
+      - "ghcr.io/cerbos/cerbosctl"
+      - "docker.io/cerbos/cerbosctl"
+    tags:
+      - "{{.Version}}"
+      - latest
+      - dev
+    ids:
+      - cerbosctl
+    labels:
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.name": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
+
+  - id: aws
+    dockerfile: Dockerfile.cerbos
+    images:
+      - "{{ .Env.AWS_CONTAINER_REPO }}"
+    tags:
+      - "{{.Version}}"
+    ids:
+      - cerbos
+    labels:
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.name": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.source": "{{.GitURL}}"
+
+docker_signs:
+  - id: sign-images
+    cmd: cosign
+    args:
+      - sign
+      - --yes
+      - "${artifact}"
+    output: true
+
+homebrew_casks:
+  - repository:
+      owner: cerbos
+      name: homebrew-tap
+      branch: "release_{{ .Version }}"
+      token: "{{ .Env.HOMEBREW_GITHUB_TOKEN }}"
+      pull_request:
+        enabled: true
+        base:
+          branch: main
+    url:
+      verified: github.com/cerbos/homebrew-tap
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/cerbos"]
+          end
+    directory: Casks
+    ids:
+      - cerbos
+    homepage: "https://cerbos.dev"
+    description: "Cerbos is the open core, language-agnostic, scalable authorization solution that makes user permissions and authorization simple to implement and manage by writing context-aware access control policies for your application resources."
+    license: "Apache-2.0"
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  extra_files:
+    - glob: "**/*.bundle"
+  header: |-
+    Cerbos {{ .Version }}
+    ---------------------
+
+    View the full release notes at https://docs.cerbos.dev/cerbos/latest/releases/v{{ .Version }}.html
+
+changelog:
+  sort: asc

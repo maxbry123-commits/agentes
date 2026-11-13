@@ -1,0 +1,216 @@
+---
+id: multimodal-metrics-image-helpfulness
+title: Image Helpfulness
+sidebar_label: Image Helpfulness
+languages: [python, typescript]
+---
+<MetricTagsDisplayer singleTurn={true} custom={true} />
+
+The Image Helpfulness metric assesses how effectively images **contribute to a user's comprehension of the text**, including providing additional insights, clarifying complex ideas, or supporting textual details. `deepeval`'s Image Helpfulness metric is a self-explaining MLLM-Eval, meaning it outputs a reason for its metric score.
+
+:::info
+Image Helpfulness evaluates MLLM responses containing text accompanied by retrieved or generated images.
+:::
+
+## Required Arguments
+
+To use the `ImageHelpfulness`, you'll have to provide the following arguments when creating a [`LLMTestCase`](/docs/evaluation-test-cases#llm-test-case):
+
+- `input`
+- <Term py="actual_output" ts="actualOutput"/>
+
+:::note
+Remember that the <Term py="actual_output" ts="actualOutput"/> of an `LLMTestCase` is a list of strings and `Image` objects. If multiple images are provided in the actual output, The final score will be the average of each image's helpfulness score.
+:::
+
+The `input` and <Term py="actual_output" ts="actualOutput"/> are required to create an `LLMTestCase` (and hence required by all metrics) even though they might not be used for metric calculation. Read the [How Is It Calculated](#how-is-it-calculated) section below to learn more.
+
+## Usage
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import LLMTestCase, MLLMImage
+from deepeval.metrics import ImageHelpfulnessMetric
+from deepeval import evaluate
+
+metric = ImageHelpfulnessMetric(
+    threshold=0.7,
+    include_reason=True,
+)
+m_test_case = LLMTestCase(
+    input=f"Provide step-by-step instructions on how to fold a paper airplane.",
+    # Replace with your MLLM app output
+    actual_output=f"""
+        1. Take the sheet of paper and fold it lengthwise:
+        {MLLMImage(url="./paper_plane_1", local=True)}
+        2. Unfold the paper. Fold the top left and right corners towards the center.
+        {MLLMImage(url="./paper_plane_2", local=True)}
+        ...
+    """
+)
+
+
+evaluate(test_cases=[m_test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { LLMTestCase, MLLMImage } from "deepeval/test-case";
+import { ImageHelpfulnessMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+const metric = new ImageHelpfulnessMetric({
+  threshold: 0.7,
+});
+const mTestCase = new LLMTestCase({
+  input: "Provide step-by-step instructions on how to fold a paper airplane.",
+  // Replace with your MLLM app output
+  actualOutput: `
+        1. Take the sheet of paper and fold it lengthwise:
+        ${new MLLMImage({ url: "./paper_plane_1", local: true })}
+        2. Unfold the paper. Fold the top left and right corners towards the center.
+        ${new MLLMImage({ url: "./paper_plane_2", local: true })}
+        ...
+    `,
+});
+
+
+await evaluate([mTestCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+<Switch>
+
+<Case id="python">
+
+There are **SIX** optional parameters when creating a `ImageHelpfulnessMetric`:
+
+</Case>
+
+<Case id="typescript">
+
+There are **FIVE** optional parameters when creating a `ImageHelpfulnessMetric`:
+
+</Case>
+
+</Switch>
+
+- [Optional] `threshold`: a number representing the minimum passing threshold. Can also be set to <Term py="None" ts="null"/> to run the metric in [score-only mode](/docs/metrics-introduction#metric-thresholds). Defaulted to `0.5`.
+- [Optional] <Term py="strict_mode" ts="strictMode"/>: a boolean which when set to <Term py="True" ts="true"/>, enforces a binary metric score: 1 for perfection, 0 otherwise. It also overrides the current threshold and sets it to 1. Defaulted to <Term py="False" ts="false"/>.
+- <Only id="python">
+    [Optional] `async_mode`: a boolean which when set to `True`, enables [concurrent execution within the `measure()` method.](/docs/metrics-introduction#measuring-metrics-in-async) Defaulted to `True`.
+  </Only>
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] <Term py="max_context_size" ts="maxContextSize"/>: a number representing the maximum number of characters in each context, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="None" ts="null"/>.
+- [Optional] `flaky`: a boolean which when set to <Term py="True" ts="true"/>, [marks the metric as flaky](/docs/metrics-introduction#flaky-metrics). Defaulted to <Term py="False" ts="false"/>.
+
+### As a standalone
+
+You can also run the `ImageHelpfulnessMetric` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(m_test_case)
+print(metric.score, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+// ...
+
+await metric.measure(mTestCase);
+console.log(metric.score, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+## How Is It Calculated?
+
+The `ImageHelpfulness` score is calculated as follows:
+
+1. **Individual Image Helpfulness**: Each image's helpfulness score is based on the text directly above and below the image, limited by a <Term py="max_context_size" ts="maxContextSize"/> in characters. If <Term py="max_context_size" ts="maxContextSize"/> is not supplied, all available text is used. The equation can be expressed as:
+
+<Equation formula="H_i = f(\text{Context}_{\text{above}}, \text{Context}_{\text{below}}, \text{Image}_i)" />
+
+2. **Final Score**: The overall `ImageHelpfulness` score is the average of all individual image helpfulness scores for each image:
+
+<Equation formula="O = \frac{\sum_{i=1}^n H_i}{n}" />
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "Are my generated images actually adding value to the answer?",
+      answer: (
+        <>
+          That's what <code>ImageHelpfulness</code> measures — whether
+          each image aids comprehension (adds insight, clarifies, supports the
+          text) versus being decorative or redundant. Read{" "}
+          <code>metric.reason</code> for the per-image verdict.
+        </>
+      ),
+    },
+    {
+      question:
+        "How is Image Helpfulness different from Image Coherence and Image Reference?",
+      answer: (
+        <>
+          Helpfulness is <em>usefulness</em> (does the image improve
+          understanding?),{" "}
+          <a href="/docs/multimodal-metrics-image-coherence">
+            <code>ImageCoherence</code>
+          </a>{" "}
+          is <em>alignment</em> (does it fit the narrative?), and{" "}
+          <a href="/docs/multimodal-metrics-image-reference">
+            <code>ImageReference</code>
+          </a>{" "}
+          is <em>grounding</em> (does the text refer to it?). An image can be
+          coherent yet add no value.
+        </>
+      ),
+    },
+    {
+      question:
+        "How does scoring work when the response interleaves several images?",
+      answer: (
+        <>
+          Each <code>MLLMImage</code> is scored from the text directly above and
+          below it, and the final score is the <strong>average</strong>{" "}
+          (<code>O = (ΣH_i) / n</code>). Use <Term py="max_context_size" ts="maxContextSize"/> to
+          limit how much neighboring text feeds each judgment.
+        </>
+      ),
+    },
+    {
+      question: "What does a low Image Helpfulness score tell me?",
+      answer: (
+        <>
+          The model is inserting images that don't advance understanding
+          — generic stock-like visuals, repetition of the text, or images
+          only loosely related to their step. They may be coherent and
+          referenced, just not <em>helpful</em>.
+        </>
+      ),
+    },
+  ]}
+/>

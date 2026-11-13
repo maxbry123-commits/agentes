@@ -1,0 +1,33 @@
+# L4 failure
+- id: C34
+  capa: L4
+  define: Timeout duro
+  aplica_en: [DELETE, MULTI_STEP]
+  severity: alta
+  priority: 90
+  implementado: true
+  impl_ref: control-layer/contract_engine/sentinela_router.py
+- id: C35
+  capa: L4
+  define: Rollback / compensación
+  aplica_en: [WRITE_LOCAL, DELETE, MULTI_STEP]
+  severity: alta
+  priority: 92
+  implementado: true
+  impl_ref: control-layer/loops/correction_set.py
+- id: C40
+  capa: L4
+  define: Degradación controlada
+  aplica_en: [NETWORK_CALL, LLM_CALL]
+  severity: media
+  priority: 70
+  implementado: true
+  impl_ref: control-layer/contract_engine/threat.py
+- id: C46
+  capa: L4
+  define: Recuperación de estado corrupto
+  aplica_en: [STATEFUL]
+  severity: alta
+  priority: 88
+  implementado: true
+  impl_ref: control-layer/runtime/durable.py

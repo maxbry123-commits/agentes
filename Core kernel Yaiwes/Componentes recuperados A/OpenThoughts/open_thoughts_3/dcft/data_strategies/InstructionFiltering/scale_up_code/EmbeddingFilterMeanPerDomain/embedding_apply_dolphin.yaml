@@ -1,0 +1,154 @@
+operators:
+- id: hf_source_taco
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/bespokelabs-sky-t1-taco-rejection-sampled
+    split: train
+- id: hf_source_leetcode
+  config:
+    type: hf_source
+    dataset: Asap7772/leetcode-rosetta-processed-with-test-cases
+    split: train
+- id: rename_task_column_leetcode
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        content: question
+  input_ids:
+  -  hf_source_leetcode
+
+- id: hf_source_bad_seed_code_reflect
+  config:
+    type: load_preexisting
+    framework_name: reflection
+- id: hf_source_bad_seed_code_octo
+  config:
+    type: load_preexisting
+    framework_name: octopack_sft
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        instruction_seed: question
+  input_ids:
+  - hf_source_bad_seed_code_octo
+  - hf_source_bad_seed_code_reflect
+
+- id: calc_embeddings_positive
+  config:
+    type: gpu_function
+    num_gpus: 1
+    num_shards: 1
+    sharded: true
+    function: data_strategies.commons.calc_sentence_transformers_embedding
+    function_config:
+      text_column: question
+      model_name: intfloat/multilingual-e5-large-instruct
+  input_ids:
+    - rename_task_column_leetcode
+    - hf_source_taco
+
+- id: force_merge_shards_positive
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_000_000
+  input_ids:
+  - calc_embeddings_positive
+
+- id: calc_embeddings_negative
+  config:
+    type: gpu_function
+    num_gpus: 1
+    num_shards: 1
+    sharded: true
+    function: data_strategies.commons.calc_sentence_transformers_embedding
+    function_config:
+      text_column: question
+      model_name: intfloat/multilingual-e5-large-instruct
+  input_ids:
+    - rename_task_column
+
+- id: force_merge_shards_negative
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_000_000
+  input_ids:
+  - calc_embeddings_negative
+
+- id: seed_code_load_in
+  config:
+    type: load_preexisting
+    framework_name: seed_code_load_in
+
+- id: get_dolphin
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: "dolphin"
+  input_ids:
+    - seed_code_load_in
+- id: calc_embeddings_dolphin
+  config:
+    type: gpu_function
+    num_gpus: 1
+    num_shards: 8
+    sharded: true
+    function: data_strategies.commons.calc_sentence_transformers_embedding
+    function_config:
+      text_column: instruction_seed
+      model_name: intfloat/multilingual-e5-large-instruct
+  input_ids:
+    - get_dolphin
+
+- id: force_merge_shards_actual
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_000_000
+  input_ids:
+  - calc_embeddings_dolphin
+- id: calc_embedding_difference_dolphin
+  config:
+    type: high_memory_function
+    memory: 210
+    function: data_strategies.InstructionFiltering.EmbeddingFilter.utils.calc_embedding_score_mean
+    function_config:
+      embedding_column: embeddings
+      positive_embedding_column: embeddings
+      negative_embedding_column: embeddings
+    input_dataset_map:
+      dataset: force_merge_shards_actual
+      negative_dataset: force_merge_shards_negative
+      positive_dataset: force_merge_shards_positive
+  input_ids:
+    - force_merge_shards_actual
+    - force_merge_shards_negative
+    - force_merge_shards_positive
+- id: select_to_be_used_dolphin
+  config:
+    type: function
+    function: data_strategies.InstructionFiltering.AskLLM.utils.filter_rank
+    function_config:
+      top_percentage: 0.10
+      rating_column: difference_score
+  input_ids:
+    - calc_embedding_difference_dolphin
+- id: sample_dataset_dolphin
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 4_000
+  input_ids:
+  - select_to_be_used_dolphin

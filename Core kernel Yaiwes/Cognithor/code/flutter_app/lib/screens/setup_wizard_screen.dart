@@ -1,0 +1,1157 @@
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:cognithor_ui/l10n/generated/app_localizations.dart';
+import 'package:cognithor_ui/providers/connection_provider.dart';
+import 'package:cognithor_ui/theme/cognithor_theme.dart';
+import 'package:cognithor_ui/widgets/glass_panel.dart';
+import 'package:cognithor_ui/widgets/gradient_background.dart';
+import 'package:cognithor_ui/widgets/neon_card.dart';
+import 'package:cognithor_ui/screens/main_shell.dart';
+import 'package:cognithor_ui/screens/vllm_setup_screen.dart';
+
+/// First-run setup wizard -- 3-step onboarding shown once on initial launch.
+///
+/// Step 1: Backend selection (Claude / Ollama / OpenAI / Anthropic)
+/// Step 2: Backend-specific configuration
+/// Step 3: Connection test result + launch
+class SetupWizardScreen extends StatefulWidget {
+  const SetupWizardScreen({super.key});
+
+  /// SharedPreferences key that gates the wizard.
+  static const prefKey = 'first_run_complete';
+
+  @override
+  State<SetupWizardScreen> createState() => _SetupWizardScreenState();
+}
+
+class _SetupWizardScreenState extends State<SetupWizardScreen> {
+  int _step = 0;
+
+  // Step 1 -- backend selection
+  String? _selectedBackend;
+
+  // Backend status from API
+  Map<String, dynamic>? _backendStatus;
+  bool _statusLoading = true;
+
+  // Step 2 -- configuration
+  final _ollamaUrlController = TextEditingController(
+    text: 'http://localhost:11434',
+  );
+  final _apiKeyController = TextEditingController();
+  final _lmStudioUrlController = TextEditingController(
+    text: 'http://localhost:1234/v1',
+  );
+
+  // Connection test
+  _TestState _testState = _TestState.idle;
+  String? _testMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBackendStatus();
+  }
+
+  @override
+  void dispose() {
+    _ollamaUrlController.dispose();
+    _apiKeyController.dispose();
+    _lmStudioUrlController.dispose();
+    super.dispose();
+  }
+
+  // -- Load backend status from API -------------------------------------------
+
+  Future<void> _loadBackendStatus() async {
+    setState(() => _statusLoading = true);
+    try {
+      final conn = context.read<ConnectionProvider>();
+      final result = await conn.api.getBackendStatus();
+      if (mounted) {
+        setState(() {
+          _backendStatus = result;
+          _statusLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _backendStatus = null;
+          _statusLoading = false;
+        });
+      }
+    }
+  }
+
+  // -- Helpers ----------------------------------------------------------------
+
+  Map<String, dynamic> _backendInfo(String key) {
+    final backends = _backendStatus?['backends'] as Map<String, dynamic>? ?? {};
+    return backends[key] as Map<String, dynamic>? ?? {};
+  }
+
+  bool _isAuthenticated(String key) =>
+      _backendInfo(key)['authenticated'] == true;
+
+  bool _isInstalled(String key) => _backendInfo(key)['installed'] == true;
+
+  List<dynamic> _modelsFor(String key) =>
+      _backendInfo(key)['models'] as List<dynamic>? ?? [];
+
+  // -- Navigation -------------------------------------------------------------
+
+  void _next() {
+    if (_step < 2) setState(() => _step++);
+  }
+
+  void _back() {
+    if (_step > 0) {
+      setState(() {
+        _step--;
+        _testState = _TestState.idle;
+        _testMessage = null;
+      });
+    }
+  }
+
+  // -- Connection Test --------------------------------------------------------
+
+  Future<void> _testConnection() async {
+    final l = AppLocalizations.of(context);
+    setState(() {
+      _testState = _TestState.testing;
+      _testMessage = null;
+    });
+
+    try {
+      if (_selectedBackend == 'claude-code') {
+        // Claude: just check if authenticated
+        if (_isAuthenticated('claude-code')) {
+          setState(() {
+            _testState = _TestState.success;
+            _testMessage =
+                'Claude Code CLI connected. Version: ${_backendInfo('claude-code')['version'] ?? 'unknown'}';
+          });
+        } else {
+          setState(() {
+            _testState = _TestState.error;
+            _testMessage = l.notInstalled;
+          });
+        }
+      } else if (_selectedBackend == 'vllm') {
+        // vllm setup happens in the dedicated screen — refresh status
+        await _loadBackendStatus();
+        final status = _backendInfo('vllm')['status'] as String? ?? 'configure';
+        if (status == 'ready') {
+          setState(() {
+            _testState = _TestState.success;
+            _testMessage = 'vLLM container running and ready.';
+          });
+        } else if (status == 'configured') {
+          setState(() {
+            _testState = _TestState.success;
+            _testMessage =
+                'vLLM is configured. Start the container from the Setup screen before chatting.';
+          });
+        } else {
+          setState(() {
+            _testState = _TestState.error;
+            _testMessage =
+                'vLLM not configured yet. Open the vLLM Setup above.';
+          });
+        }
+      } else if (_selectedBackend == 'ollama') {
+        final url = _ollamaUrlController.text.trim();
+        // Reload status to re-check
+        await _loadBackendStatus();
+        final models = _modelsFor('ollama');
+        if (_isAuthenticated('ollama')) {
+          setState(() {
+            _testState = _TestState.success;
+            _testMessage = models.isEmpty
+                ? l.ollamaNoModels
+                : l.ollamaModelsAvailable(models.length);
+          });
+        } else {
+          setState(() {
+            _testState = _TestState.error;
+            _testMessage = l.connectionFailed('Ollama not reachable at $url');
+          });
+        }
+      } else if (_selectedBackend == 'lmstudio') {
+        // LM Studio -- probe the local OpenAI-compatible /models endpoint.
+        final raw = _lmStudioUrlController.text.trim();
+        final base = raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
+        try {
+          final resp = await http
+              .get(Uri.parse('$base/models'))
+              .timeout(const Duration(seconds: 5));
+          if (resp.statusCode == 200) {
+            setState(() {
+              _testState = _TestState.success;
+              _testMessage = 'LM Studio server reachable at $base';
+            });
+          } else {
+            setState(() {
+              _testState = _TestState.error;
+              _testMessage =
+                  'LM Studio responded with HTTP ${resp.statusCode} — '
+                  'is a model loaded?';
+            });
+          }
+        } catch (_) {
+          setState(() {
+            _testState = _TestState.error;
+            _testMessage = l.connectionFailed(
+              'LM Studio not reachable at $base — start its local server.',
+            );
+          });
+        }
+      } else {
+        // OpenAI / Anthropic -- validate key format
+        final key = _apiKeyController.text.trim();
+        if (key.isEmpty) {
+          setState(() {
+            _testState = _TestState.error;
+            _testMessage = l.enterApiKey;
+          });
+          return;
+        }
+        if (key.length < 20) {
+          setState(() {
+            _testState = _TestState.error;
+            _testMessage = l.apiKeyTooShort(
+              _selectedBackend == 'openai' ? 'OpenAI' : 'Anthropic',
+            );
+          });
+          return;
+        }
+        setState(() {
+          _testState = _TestState.success;
+          _testMessage = l.apiKeySaved(
+            _selectedBackend == 'openai' ? 'OpenAI' : 'Anthropic',
+          );
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _testState = _TestState.error;
+        _testMessage = l.connectionFailed(e.toString());
+      });
+    }
+  }
+
+  // -- Switch backend via API -------------------------------------------------
+
+  Future<void> _switchBackend(String backend) async {
+    try {
+      final conn = context.read<ConnectionProvider>();
+      await conn.api.switchBackend(backend);
+    } catch (_) {
+      // Best-effort; wizard continues even if API is down.
+    }
+  }
+
+  // -- Finish Wizard ----------------------------------------------------------
+
+  Future<void> _finish() async {
+    // Switch backend on server
+    if (_selectedBackend != null) {
+      await _switchBackend(_selectedBackend!);
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(SetupWizardScreen.prefKey, true);
+
+    if (_selectedBackend == 'ollama') {
+      final ollamaUrl = _ollamaUrlController.text.trim();
+      final isLocal =
+          ollamaUrl.contains('localhost') || ollamaUrl.contains('127.0.0.1');
+      await prefs.setString('jarvis_server_url', 'http://localhost:8741');
+      await prefs.setString('ollama_url', ollamaUrl);
+      await prefs.setString('ollama_mode', isLocal ? 'local' : 'remote');
+    }
+
+    if (_selectedBackend == 'lmstudio') {
+      await prefs.setString('lmstudio_url', _lmStudioUrlController.text.trim());
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(builder: (_) => const MainShell()),
+    );
+  }
+
+  // -- Build ------------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: CognithorTheme.dark,
+      child: Scaffold(
+        body: GradientBackground(
+          particleColor: CognithorTheme.accent,
+          child: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 32,
+                  ),
+                  child: Column(
+                    children: [
+                      _StepIndicator(current: _step),
+                      const SizedBox(height: 32),
+                      Expanded(
+                        child: AnimatedSwitcher(
+                          duration: CognithorTheme.animDuration,
+                          child: switch (_step) {
+                            0 => _buildStep1(),
+                            1 => _buildStep2(),
+                            2 => _buildStep3(),
+                            _ => const SizedBox.shrink(),
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // -- Step 1: Backend Selection ----------------------------------------------
+
+  Widget _buildStep1() {
+    final l = AppLocalizations.of(context);
+    final claudeDetected = _isInstalled('claude-code');
+
+    return Column(
+      key: const ValueKey('step1'),
+      children: [
+        Text(
+          'COGNITHOR',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontSize: 40,
+            fontWeight: FontWeight.w700,
+            color: CognithorTheme.accent,
+            letterSpacing: 6,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          l.wizardSubtitle,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: CognithorTheme.textSecondary),
+        ),
+        const SizedBox(height: 24),
+        Text(l.chooseBackend, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 16),
+
+        if (_statusLoading)
+          const Padding(
+            padding: EdgeInsets.all(32),
+            child: CircularProgressIndicator(),
+          )
+        else
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  // 1. Claude Subscription
+                  _BackendCard(
+                    icon: Icons.psychology,
+                    title: l.claudeSubscription,
+                    subtitle: l.claudeSubscriptionDesc,
+                    tint: CognithorTheme.sectionChat,
+                    selected: _selectedBackend == 'claude-code',
+                    status: _isAuthenticated('claude-code')
+                        ? l.connected
+                        : l.notInstalled,
+                    statusOk: _isAuthenticated('claude-code'),
+                    badge: claudeDetected ? l.recommended : null,
+                    onTap: () =>
+                        setState(() => _selectedBackend = 'claude-code'),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 2. Ollama (Local)
+                  _BackendCard(
+                    icon: Icons.computer,
+                    title: l.ollamaLocal,
+                    subtitle: l.ollamaLocalDesc,
+                    tint: CognithorTheme.matrix,
+                    selected: _selectedBackend == 'ollama',
+                    status: _isAuthenticated('ollama')
+                        ? '${_modelsFor('ollama').length} models'
+                        : l.notInstalled,
+                    statusOk: _isAuthenticated('ollama'),
+                    onTap: () => setState(() => _selectedBackend = 'ollama'),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 3. LM Studio (Local)
+                  _BackendCard(
+                    icon: Icons.dns,
+                    title: 'LM Studio (Local)',
+                    subtitle:
+                        'Local OpenAI-compatible server — run any GGUF model',
+                    tint: const Color(0xFF536DFE),
+                    selected: _selectedBackend == 'lmstudio',
+                    status: 'localhost:1234',
+                    statusOk: false,
+                    onTap: () => setState(() => _selectedBackend = 'lmstudio'),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 4. OpenAI API
+                  _BackendCard(
+                    icon: Icons.auto_awesome,
+                    title: l.openaiApi,
+                    subtitle: 'GPT-5, o3 -- pay-per-use with API key',
+                    tint: CognithorTheme.sectionChat,
+                    selected: _selectedBackend == 'openai',
+                    status: _isAuthenticated('openai')
+                        ? l.keyConfigured
+                        : l.noKey,
+                    statusOk: _isAuthenticated('openai'),
+                    onTap: () => setState(() => _selectedBackend = 'openai'),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 5. Anthropic API
+                  _BackendCard(
+                    icon: Icons.key,
+                    title: l.anthropicApi,
+                    subtitle: 'Claude via API -- pay-per-use with API key',
+                    tint: const Color(0xFFAB68FF),
+                    selected: _selectedBackend == 'anthropic',
+                    status: _isAuthenticated('anthropic')
+                        ? l.keyConfigured
+                        : l.noKey,
+                    statusOk: _isAuthenticated('anthropic'),
+                    onTap: () => setState(() => _selectedBackend = 'anthropic'),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 6. vLLM (Local GPU)
+                  _BackendCard(
+                    icon: Icons.memory,
+                    title: 'vLLM (Local GPU)',
+                    subtitle:
+                        'NVIDIA GPU with Docker — NVFP4 / FP8 quantised models',
+                    tint: const Color(0xFFFF6E40),
+                    selected: _selectedBackend == 'vllm',
+                    status:
+                        _backendInfo('vllm')['status'] as String? ??
+                        'configure',
+                    statusOk:
+                        (_backendInfo('vllm')['status'] as String?) == 'ready',
+                    onTap: () => setState(() => _selectedBackend = 'vllm'),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 7. OpenRouter / Custom OpenAI-compatible
+                  _BackendCard(
+                    icon: Icons.hub,
+                    title: 'OpenRouter / Custom',
+                    subtitle:
+                        'Any OpenAI-compatible API (OpenRouter, Together, Groq, etc.)',
+                    tint: const Color(0xFF00BFA5),
+                    selected: _selectedBackend == 'openrouter',
+                    status: _isAuthenticated('openrouter')
+                        ? l.keyConfigured
+                        : l.noKey,
+                    statusOk: _isAuthenticated('openrouter'),
+                    onTap: () =>
+                        setState(() => _selectedBackend = 'openrouter'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: _NeonButton(
+            label: l.next,
+            onPressed: _selectedBackend != null ? _next : null,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // -- Step 2: Configuration --------------------------------------------------
+
+  Widget _buildStep2() {
+    final l = AppLocalizations.of(context);
+
+    return Column(
+      key: const ValueKey('step2'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _selectedBackend == 'claude-code'
+              ? l.claudeSubscription
+              : _selectedBackend == 'ollama'
+              ? l.ollamaConfiguration
+              : _selectedBackend == 'vllm'
+              ? 'vLLM (Local GPU)'
+              : _selectedBackend == 'lmstudio'
+              ? 'LM Studio (Local)'
+              : l.cloudApiConfiguration,
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 8),
+        Text(_configHint(), style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 24),
+
+        // Claude Code
+        if (_selectedBackend == 'claude-code') ...[
+          if (_isAuthenticated('claude-code')) ...[
+            GlassPanel(
+              tint: CognithorTheme.green,
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.check_circle,
+                    color: CognithorTheme.green,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${l.connected} -- ${_backendInfo('claude-code')['version'] ?? ''}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Available models: opus, sonnet, haiku',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ] else ...[
+            GlassPanel(
+              tint: CognithorTheme.red,
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.error, color: CognithorTheme.red, size: 20),
+                      const SizedBox(width: 10),
+                      Text(
+                        l.notInstalled,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${l.installClaude}: npm install -g @anthropic-ai/claude-code',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+
+        // Ollama
+        if (_selectedBackend == 'ollama') ...[
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(
+                value: 'local',
+                label: Text('Local'),
+                icon: Icon(Icons.computer),
+              ),
+              ButtonSegment(
+                value: 'remote',
+                label: Text('Remote API'),
+                icon: Icon(Icons.cloud),
+              ),
+            ],
+            selected: {
+              _ollamaUrlController.text.contains('localhost') ||
+                      _ollamaUrlController.text.contains('127.0.0.1')
+                  ? 'local'
+                  : 'remote',
+            },
+            onSelectionChanged: (s) {
+              setState(() {
+                if (s.first == 'local') {
+                  _ollamaUrlController.text = 'http://localhost:11434';
+                } else {
+                  _ollamaUrlController.text = 'http://';
+                }
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+          Text(l.ollamaUrl, style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _ollamaUrlController,
+            decoration: const InputDecoration(
+              hintText: 'http://localhost:11434',
+              prefixIcon: Icon(Icons.link),
+            ),
+          ),
+        ],
+
+        // vLLM — defer to dedicated setup screen (Docker / GPU / model)
+        if (_selectedBackend == 'vllm') ...[
+          GlassPanel(
+            tint: const Color(0xFFFF6E40),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'vLLM has its own configuration flow',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'GPU detection, Docker container, NVFP4/FP8 model selection — '
+                  'open the dedicated vLLM setup, then return here.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Open vLLM Setup'),
+              onPressed: () async {
+                // Wrap in CognithorTheme so the pushed setup screen
+                // doesn't render against the system's default light
+                // theme (which made everything look white-on-grey
+                // when launched from the dark wizard).
+                await Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => Theme(
+                      data: CognithorTheme.dark,
+                      child: const VllmSetupScreen(),
+                    ),
+                  ),
+                );
+                // refresh status when user returns
+                if (mounted) await _loadBackendStatus();
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFFF6E40),
+                side: const BorderSide(color: Color(0xFFFF6E40)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // LM Studio — local OpenAI-compatible server
+        if (_selectedBackend == 'lmstudio') ...[
+          Text('Base URL', style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _lmStudioUrlController,
+            decoration: const InputDecoration(
+              hintText: 'http://localhost:1234/v1',
+              prefixIcon: Icon(Icons.link),
+            ),
+          ),
+          const SizedBox(height: 12),
+          GlassPanel(
+            tint: CognithorTheme.accent,
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  color: CognithorTheme.accent,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Start LM Studio and enable its local server in the '
+                    'Developer tab.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        // OpenAI / Anthropic / OpenRouter
+        if (_selectedBackend == 'openai' ||
+            _selectedBackend == 'anthropic' ||
+            _selectedBackend == 'openrouter') ...[
+          if (_selectedBackend == 'openrouter') ...[
+            Text('Base URL', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _ollamaUrlController,
+              decoration: const InputDecoration(
+                hintText: 'https://openrouter.ai/api/v1',
+                prefixIcon: Icon(Icons.link),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          Text(l.apiKey, style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 8),
+          if (_isAuthenticated(_selectedBackend!))
+            Row(
+              children: [
+                Icon(
+                  Icons.check_circle_outline,
+                  color: CognithorTheme.green,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'API key saved',
+                  style: TextStyle(color: CognithorTheme.green),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () => setState(() {}),
+                  child: const Text('Change'),
+                ),
+              ],
+            )
+          else
+            TextField(
+              controller: _apiKeyController,
+              obscureText: true,
+              decoration: InputDecoration(
+                hintText: _selectedBackend == 'openai'
+                    ? 'sk-...'
+                    : _selectedBackend == 'anthropic'
+                    ? 'sk-ant-...'
+                    : 'sk-or-...',
+                prefixIcon: const Icon(Icons.key),
+              ),
+            ),
+        ],
+
+        const SizedBox(height: 24),
+
+        // Test connection button
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: OutlinedButton.icon(
+            onPressed: _testState == _TestState.testing
+                ? null
+                : _testConnection,
+            icon: _testState == _TestState.testing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.wifi_tethering),
+            label: Text(
+              _testState == _TestState.testing
+                  ? l.testingConnection
+                  : l.testConnection,
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: CognithorTheme.accent,
+              side: BorderSide(color: CognithorTheme.accent),
+            ),
+          ),
+        ),
+
+        // Test result
+        if (_testMessage != null) ...[
+          const SizedBox(height: 16),
+          GlassPanel(
+            tint: _testState == _TestState.success
+                ? CognithorTheme.green
+                : CognithorTheme.red,
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Icon(
+                  _testState == _TestState.success
+                      ? Icons.check_circle
+                      : Icons.error,
+                  color: _testState == _TestState.success
+                      ? CognithorTheme.green
+                      : CognithorTheme.red,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _testMessage!,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        const Spacer(),
+
+        // Navigation buttons
+        Row(
+          children: [
+            TextButton.icon(
+              onPressed: _back,
+              icon: const Icon(Icons.arrow_back),
+              label: Text(l.back),
+            ),
+            const Spacer(),
+            SizedBox(
+              height: 48,
+              child: _NeonButton(
+                label: l.next,
+                onPressed: _testState == _TestState.success ? _next : null,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  String _configHint() {
+    switch (_selectedBackend) {
+      case 'claude-code':
+        return 'Claude Code uses your existing Claude subscription. No API key needed.';
+      case 'ollama':
+        return 'Enter the URL where Ollama is running.';
+      case 'vllm':
+        return 'vLLM runs in Docker on your local NVIDIA GPU. Use the dedicated setup below.';
+      case 'lmstudio':
+        return 'LM Studio runs a local OpenAI-compatible server. Default port 1234.';
+      case 'openrouter':
+        return 'Enter your OpenAI-compatible base URL and API key.';
+      default:
+        return 'Enter your API key to connect.';
+    }
+  }
+
+  // -- Step 3: Success --------------------------------------------------------
+
+  Widget _buildStep3() {
+    final l = AppLocalizations.of(context);
+    final backendLabel = switch (_selectedBackend) {
+      'claude-code' => 'Claude Subscription',
+      'ollama' => 'Ollama',
+      'openai' => 'OpenAI',
+      'anthropic' => 'Anthropic',
+      'vllm' => 'vLLM (Local GPU)',
+      'lmstudio' => 'LM Studio (Local)',
+      'openrouter' => 'OpenRouter / Custom',
+      _ => '',
+    };
+
+    return Column(
+      key: const ValueKey('step3'),
+      children: [
+        const Spacer(),
+        Icon(Icons.rocket_launch, size: 72, color: CognithorTheme.accent),
+        const SizedBox(height: 24),
+        Text(
+          l.youreAllSet,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontSize: 28,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '$backendLabel is configured. Cognithor will use it for planning and execution.',
+          textAlign: TextAlign.center,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: CognithorTheme.textSecondary),
+        ),
+        const SizedBox(height: 8),
+        if (_selectedBackend != 'claude-code')
+          GlassPanel(
+            tint: CognithorTheme.accent,
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  color: CognithorTheme.accent,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    l.restartRequired,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 8),
+        Text(
+          l.changeSettingsAnytime,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const Spacer(),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: _NeonButton(
+            label: l.startUsingCognithor,
+            onPressed: _finish,
+            glow: true,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextButton.icon(
+          onPressed: _back,
+          icon: const Icon(Icons.arrow_back),
+          label: Text(l.back),
+        ),
+      ],
+    );
+  }
+}
+
+// -- Helper Types -------------------------------------------------------------
+
+enum _TestState { idle, testing, success, error }
+
+// -- Reusable Widgets ---------------------------------------------------------
+
+/// Backend selection card with status indicator and optional badge.
+class _BackendCard extends StatelessWidget {
+  const _BackendCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.tint,
+    required this.selected,
+    required this.status,
+    required this.statusOk,
+    required this.onTap,
+    this.badge,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color tint;
+  final bool selected;
+  final String status;
+  final bool statusOk;
+  final VoidCallback onTap;
+  final String? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return NeonCard(
+      tint: selected ? tint : null,
+      glowOnHover: true,
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: (selected ? tint : CognithorTheme.textTertiary).withValues(
+                alpha: 0.12,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: selected ? tint : CognithorTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: selected ? tint : null,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                    if (badge != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: tint.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          badge!,
+                          style: TextStyle(
+                            color: tint,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      statusOk
+                          ? Icons.check_circle_outline
+                          : Icons.radio_button_unchecked,
+                      size: 14,
+                      color: statusOk
+                          ? CognithorTheme.green
+                          : CognithorTheme.textTertiary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      status,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: statusOk
+                            ? CognithorTheme.green
+                            : CognithorTheme.textTertiary,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (selected) Icon(Icons.check_circle, color: tint, size: 24),
+        ],
+      ),
+    );
+  }
+}
+
+/// Neon-glowing primary button matching the Sci-Fi aesthetic.
+class _NeonButton extends StatelessWidget {
+  const _NeonButton({
+    required this.label,
+    required this.onPressed,
+    this.glow = false,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final bool glow;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return AnimatedContainer(
+      duration: CognithorTheme.animDuration,
+      decoration: glow && enabled
+          ? BoxDecoration(
+              borderRadius: BorderRadius.circular(CognithorTheme.buttonRadius),
+              boxShadow: [
+                BoxShadow(
+                  color: CognithorTheme.accent.withValues(alpha: 0.35),
+                  blurRadius: 18,
+                  spreadRadius: -2,
+                ),
+              ],
+            )
+          : null,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: enabled
+              ? CognithorTheme.accent
+              : CognithorTheme.surface,
+          foregroundColor: enabled
+              ? CognithorTheme.bg
+              : CognithorTheme.textTertiary,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(CognithorTheme.buttonRadius),
+          ),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+      ),
+    );
+  }
+}
+
+/// Three-dot step indicator at the top of the wizard.
+class _StepIndicator extends StatelessWidget {
+  const _StepIndicator({required this.current});
+
+  final int current;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(3, (i) {
+        final active = i <= current;
+        return AnimatedContainer(
+          duration: CognithorTheme.animDuration,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: i == current ? 28 : 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: active
+                ? CognithorTheme.accent
+                : CognithorTheme.accent.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(5),
+          ),
+        );
+      }),
+    );
+  }
+}

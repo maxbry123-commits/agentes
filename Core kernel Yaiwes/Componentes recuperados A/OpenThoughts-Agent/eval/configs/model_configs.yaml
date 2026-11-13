@@ -1,0 +1,537 @@
+# AUTO-GENERATED from model_config/ — do NOT hand-edit.
+# Edit the per-model files under model_config/<org>/<slug>.yaml and run:
+#     python scripts/generate_eval_registry.py
+# (or scripts/generate_eval_registry.py --check in CI to detect drift).
+# Source of truth: model_config/ (file-per-model, layered schema).
+
+models:
+  GAIR/OpenSWE-32B:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 2
+    swap_space: 32
+    extra_args: --enable-prefix-caching --override-generation-config {"temperature":0.7,"top_p":0.8,"top_k":20,"repetition_penalty":1.2}
+  GAIR/daVinci-Dev-32B:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 2
+    swap_space: 32
+    extra_args: --enable-prefix-caching
+  Lite-Coder/LiteCoder-Terminal-30b-a3b-sft:
+    max_model_len: 32768
+    trust_remote_code: true
+    tensor_parallel_size: 2
+    swap_space: 32
+    extra_args: --enable-prefix-caching
+  NovaSky-AI/SA-SWE-32B:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    tensor_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+  QuantTrio/GLM-4.6-AWQ:
+    max_model_len: 32768
+    trust_remote_code: true
+    conda_env: otagent2-fix
+    tensor_parallel_size: 4
+    swap_space: 8
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-expert-parallel --enable-prefix-caching --enable-chunked-prefill
+      --max-num-seqs 64 --max-num-batched-tokens 32768 --dtype bfloat16 --kv-cache-dtype
+      fp8
+  QuantTrio/GLM-4.7-AWQ:
+    max_model_len: 32768
+    trust_remote_code: true
+    conda_env: otagent2-fix
+    tensor_parallel_size: 4
+    swap_space: 4
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-expert-parallel --enable-prefix-caching --enable-chunked-prefill
+      --max-num-seqs 52 --max-num-batched-tokens 32768 --dtype bfloat16 --kv-cache-dtype
+      fp8
+  Qwen/Qwen3-30B-A3B-Instruct-2507:
+    max_model_len: 32768
+    trust_remote_code: true
+    tensor_parallel_size: 2
+    swap_space: 32
+    extra_args: --enable-prefix-caching
+  Qwen/Qwen3-30B-A3B-Thinking-2507:
+    tool_call_parser: hermes
+  Qwen/Qwen3-30B-A3B-Thinking-2507@gh200:
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching --max-num-seqs 512
+  Qwen/Qwen3-32B:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    tensor_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+  Qwen/Qwen3-32B@gh200:
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    extra_args: --enable-prefix-caching
+  Qwen/Qwen3-32B@gh200-65k:
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    extra_args: --enable-prefix-caching
+  Qwen/Qwen3-8B:
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    trust_remote_code: true
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+  Qwen/Qwen3-8B@gh200:
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    trust_remote_code: true
+    extra_args: --enable-prefix-caching
+  Qwen/Qwen3-8B@gh200-65k:
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    trust_remote_code: true
+    extra_args: --enable-prefix-caching
+  Qwen/Qwen3-Coder-30B-A3B-Instruct:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: qwen3_coder
+    tensor_parallel_size: 2
+    extra_args: --enable-prefix-caching --override-generation-config {"temperature":0.7,"top_p":0.8,"top_k":20,"repetition_penalty":1.05}
+  Qwen/Qwen3.5-35B-A3B:
+    max_model_len: 32768
+    trust_remote_code: true
+    limit_mm_per_prompt: '{"image":0,"video":0}'
+    conda_env: eval-qwen35
+    tensor_parallel_size: 2
+    data_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+  Qwen/Qwen3.5-35B-A3B@gh200:
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    limit_mm_per_prompt: '{"image":0,"video":0}'
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching --max-num-seqs 512
+  Qwen/Qwen3.6-35B-A3B:
+    max_model_len: 32768
+    trust_remote_code: true
+    limit_mm_per_prompt: '{"image":0,"video":0}'
+    conda_env: eval-qwen35
+    tensor_parallel_size: 2
+    data_parallel_size: 2
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+  Qwen/Qwen3.6-35B-A3B@gh200:
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    limit_mm_per_prompt: '{"image":0,"video":0}'
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching --max-num-seqs 512
+  R2E-Gym/R2EGym-32B-Agent:
+    max_model_len: 32768
+    tensor_parallel_size: 2
+    swap_space: 32
+    extra_args: --enable-prefix-caching
+  SWE-Lego/SWE-Lego-Qwen3-8B:
+    trust_remote_code: true
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching --override-generation-config {"temperature":0.0,"top_p":1.0,"top_k":-1}
+  SWE-bench/SWE-agent-LM-32B:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 2
+    swap_space: 32
+    extra_args: --enable-prefix-caching
+  SWE-bench/SWE-agent-LM-7B:
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: --enable-prefix-caching
+  Skywork/Skywork-SWE-32B:
+    max_model_len: 32768
+    tensor_parallel_size: 2
+    swap_space: 32
+    extra_args: --enable-prefix-caching
+  allenai/SERA-32B:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enforce-eager --disable-cascade-attn --seed 42
+  allenai/SERA-8B:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 1
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enforce-eager --disable-cascade-attn --seed 42
+  allenai/tmax-27b:
+    max_model_len: 32768
+    limit_mm_per_prompt: '{"image":0,"video":0}'
+    conda_env: eval-qwen35
+    tensor_parallel_size: 2
+    data_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+  allenai/tmax-9b:
+    max_model_len: 32768
+    limit_mm_per_prompt: '{"image":0,"video":0}'
+    conda_env: eval-qwen35
+    tensor_parallel_size: 4
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+  allenai/tmax-9b@gh200:
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    trust_remote_code: true
+    limit_mm_per_prompt: '{"image":0,"video":0}'
+    extra_args: --enable-prefix-caching
+  allenai/tmax-9b@gh200-65k:
+    tensor_parallel_size: 1
+    max_model_len: 65536
+    trust_remote_code: true
+    limit_mm_per_prompt: '{"image":0,"video":0}'
+    extra_args: --enable-prefix-caching
+  ethanlshen/Qwen3-32B-10000_sera_46_47000:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enforce-eager --disable-cascade-attn --seed 42
+  ethanlshen/Qwen3-32B-1000_sera_46_47000:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enforce-eager --disable-cascade-attn --seed 42
+  ethanlshen/Qwen3-32B-31600_sera_46_47000_converted:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enforce-eager --disable-cascade-attn --seed 42
+  ethanlshen/Qwen3-32B-3160_sera_46_47000-converted:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enforce-eager --disable-cascade-attn --seed 42
+  ethanlshen/Qwen3-32B-316_sera_46_47000:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enforce-eager --disable-cascade-attn --seed 42
+  ethanlshen/Qwen3-32B-47000-46:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enforce-eager --disable-cascade-attn --seed 42
+  google/gemma-4-26B-A4B-it:
+    max_model_len: 32768
+    trust_remote_code: false
+    limit_mm_per_prompt: '{"image":0,"video":0}'
+    reasoning_parser: gemma4
+    conda_env: eval-qwen35
+    tensor_parallel_size: 1
+    data_parallel_size: 1
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --chat-template /app/eval/configs/gemma4_chat_template.jinja --enable-prefix-caching
+  google/gemma-4-26B-A4B:
+    max_model_len: 32768
+    trust_remote_code: false
+    limit_mm_per_prompt: '{"image":0,"video":0}'
+    tool_call_parser: hermes
+    reasoning_parser: gemma4
+    conda_env: eval-qwen35
+    tensor_parallel_size: 1
+    data_parallel_size: 1
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --chat-template /app/eval/configs/gemma4_chat_template.jinja --enable-prefix-caching
+  laion/CoderForge-Preview-v2-10000__Qwen3-8B:
+    tool_call_parser: hermes
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+  laion/CoderForge-Preview-v3-1000-axolotl__Qwen3-8B:
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+  laion/CoderForge-Preview-v3-316-axolotl__Qwen3-8B:
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+  laion/GLM-4_7-swesmith-sandboxes-with_tests-oracle_verified_120s-maxeps-131k-fixthink:
+    max_model_len: 32768
+    tensor_parallel_size: 1
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+  laion/Qwen3-32B-OpenThoughts-Agent-SFT-10K-axolotl-step250@gh200:
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    extra_args: --enable-prefix-caching --dtype bfloat16 --kv-cache-dtype fp8
+  laion/Sera-4.5A-Full-T1-v2-10000__Qwen3-8B:
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+  laion/Sera-4.5A-Full-T1-v2-1000__Qwen3-8B:
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+  laion/Sera-4.5A-Full-T1-v2-3160__Qwen3-8B:
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+  laion/Sera-4.5A-Full-T1-v2-316__Qwen3-8B:
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+  laion/Sera-4.5A-Full-T1-v3-1000-axolotl__Qwen3-8B:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 1
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enforce-eager --disable-cascade-attn --seed 42
+  laion/Sera-4.5A-Full-T1-v3-316-axolotl__Qwen3-8B:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: hermes
+    tensor_parallel_size: 1
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enforce-eager --disable-cascade-attn --seed 42
+  laion/Sera-4.6-Lite-T2-v4-1000-axolotl__Qwen3-8B:
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+  laion/Sera-4.6-Lite-T2-v4-316-axolotl__Qwen3-8B:
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+  laion/qwen3-30b-a3b-thinking-opencode-sft-densemixer-serveparity:
+    tool_call_parser: hermes
+    max_model_len: 32768
+    trust_remote_code: true
+    extra_args: --enable-prefix-caching --max-num-seqs 512
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+  laion/qwen3-30b-a3b-thinking-opencode-sft-densemixer-serveparity@gh200:
+    tensor_parallel_size: 1
+    max_model_len: 65536
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching --max-num-seqs 512
+  laion/qwen3-30b-a3b-thinking-opencode-sft-densemixer:
+    tool_call_parser: hermes
+  laion/qwen3-30b-a3b-thinking-opencode-sft-densemixer@gh200:
+    tensor_parallel_size: 1
+    max_model_len: 65536
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching --max-num-seqs 512
+  laion/qwen3-30b-a3b-thinking-opencode-sft-sparse-serveparity:
+    tool_call_parser: hermes
+    max_model_len: 32768
+    trust_remote_code: true
+    extra_args: --enable-prefix-caching --max-num-seqs 512
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+  laion/qwen3-30b-a3b-thinking-opencode-sft-sparse-serveparity@gh200:
+    tensor_parallel_size: 1
+    max_model_len: 65536
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching --max-num-seqs 512
+  laion/qwen3-30b-a3b-thinking-opencode-sft-sparse:
+    tool_call_parser: hermes
+  laion/qwen3-30b-a3b-thinking-opencode-sft-sparse@gh200:
+    tensor_parallel_size: 1
+    max_model_len: 65536
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching --max-num-seqs 512
+  mistralai/Devstral-Small-2-24B-Instruct-2512:
+    max_model_len: 32768
+    tool_call_parser: mistral
+    tensor_parallel_size: 2
+    swap_space: 32
+    extra_args: --enable-prefix-caching
+  mistralai/Devstral-Small-2507:
+    max_model_len: 32768
+    tool_call_parser: mistral
+    tensor_parallel_size: 2
+    swap_space: 32
+    extra_args: --tokenizer-mode mistral --config-format mistral --load-format mistral
+      --enable-prefix-caching
+  nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16:
+    max_model_len: 32768
+    trust_remote_code: true
+    tool_call_parser: qwen3_coder
+    reasoning_parser: nano_v3
+    conda_env: otagent2-fix
+    tensor_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --reasoning-parser-plugin ${DCFT}/eval/configs/nano_v3_reasoning_parser.py
+      --chat-template ${DCFT}/eval/configs/nemotron_chat_template.jinja --enable-prefix-caching
+      --override-generation-config {"temperature":0.6,"top_p":0.95}
+  zai-org/GLM-4.7-Flash:
+    max_model_len: 32768
+    trust_remote_code: true
+    tensor_parallel_size: 2
+    swap_space: 32
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --enable-prefix-caching
+patterns:
+- match: (?i)qwen3\.5
+  profiles:
+  - default
+  conda_env: otagent2-fix
+  trust_remote_code: true
+  max_model_len: 32768
+  extra_args: --enable-prefix-caching
+- match: (?i)(?:32b.*(131k|-lc)|(131k|-lc).*32b)
+  profiles:
+  - default
+  trust_remote_code: true
+  tensor_parallel_size: 2
+  max_model_len: 131072
+  swap_space: 32
+  hf_overrides: '{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}}'
+  extra_args: --enable-prefix-caching
+- match: (?i)3[02][Bb]
+  profiles:
+  - default
+  trust_remote_code: true
+  tensor_parallel_size: 4
+  max_model_len: 32768
+  swap_space: 32
+  extra_args: --enable-prefix-caching --enforce-eager
+- match: 131k|-lc$
+  profiles:
+  - default
+  trust_remote_code: true
+  max_model_len: 131072
+  swap_space: 32
+  hf_overrides: '{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}}'
+  extra_args: --enable-prefix-caching
+- match: (?i)32[Bb]
+  profiles:
+  - gh200
+  - gh200-65k
+  trust_remote_code: true
+  tensor_parallel_size: 1
+  max_model_len: 32768
+  swap_space: 32
+  extra_args: --enable-prefix-caching
+- match: .*
+  profiles:
+  - gh200
+  - gh200-65k
+  trust_remote_code: true
+  tensor_parallel_size: 1
+  max_model_len: 32768
+  extra_args: --enable-prefix-caching

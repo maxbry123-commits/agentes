@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 6263072,
+  "bundle_sha256": "1a8f2dc85205dfaa57ba2e9ab8c6c3544ae07100654800e55e2a3924684f0119",
+  "extracted_tree": {
+    "bytes": 7626543,
+    "files": 511,
+    "sha256": "c3e2dd11b0dddd1e3342787c5ea74ef11d7ef81d601e1a4b1d554ba8de657ef6"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 6263072,
+      "name": "10-Pentest-Swarm-AI.bundle.zip.part-0001",
+      "sha256": "1a8f2dc85205dfaa57ba2e9ab8c6c3544ae07100654800e55e2a3924684f0119"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "10-Pentest-Swarm-AI",
+  "source_bytes": 7626543,
+  "source_commit": "2ea816af4884f91524268c4ffd7e945f3f364425",
+  "source_files": 511,
+  "source_ref": "HEAD",
+  "source_repo": "Armur-Ai/Pentest-Swarm-AI",
+  "source_tree": {
+    "bytes": 7626543,
+    "files": 511,
+    "sha256": "c3e2dd11b0dddd1e3342787c5ea74ef11d7ef81d601e1a4b1d554ba8de657ef6"
+  }
+}

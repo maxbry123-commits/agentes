@@ -1,0 +1,50 @@
+{
+  "bundle_bytes": 935878,
+  "bundle_sha256": "68a936c34d17a997101e6b7286fd272e894b23f8d7d8751fbcfd8abbe29b5959",
+  "extracted_tree": {
+    "bytes": 2818790,
+    "files": 653,
+    "sha256": "a28edf743413217c1973a289555291ddf5083b270b96a91d0a5e155cac635ed3"
+  },
+  "extraction_verified": true,
+  "extractor": {
+    "blob_sha": "a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500",
+    "path": "Motores/\u27a1\ufe0f\ud83d\udcc2 Motor de extracci\u00f3n zip/motor_1_extract_only.py",
+    "verdict": "VERIFIED_CLOSED"
+  },
+  "lfs_pointers": [],
+  "no_lfs": true,
+  "normalization": "materialize_internal_symlinks",
+  "normalized_symlinks": [
+    {
+      "materialized_bytes": 2128,
+      "path": "misc/releases/latest/Dockerfile",
+      "target": "../26.6/Dockerfile.26.6"
+    },
+    {
+      "materialized_bytes": 2556,
+      "path": "misc/releases/latest/Vagrantfile",
+      "target": "../26.6/Vagrantfile.26.6"
+    }
+  ],
+  "parts": [
+    {
+      "bytes": 935878,
+      "name": "Fast-Downward.bundle.zip.part-0001",
+      "sha256": "68a936c34d17a997101e6b7286fd272e894b23f8d7d8751fbcfd8abbe29b5959"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.kernel.normalized-download-extract/v1",
+  "slug": "Fast-Downward",
+  "source_bytes": 2818790,
+  "source_commit": "5a5fd1ef1db4e4ab99242cdcd104196e5bc16a63",
+  "source_files": 653,
+  "source_ref": "HEAD",
+  "source_repo": "aibasel/downward",
+  "source_tree": {
+    "bytes": 2818790,
+    "files": 653,
+    "sha256": "a28edf743413217c1973a289555291ddf5083b270b96a91d0a5e155cac635ed3"
+  }
+}

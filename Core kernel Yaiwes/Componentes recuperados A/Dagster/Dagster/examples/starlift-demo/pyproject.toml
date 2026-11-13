@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.19.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+packages = ["dbt_example"]
+
+[project]
+name = "starlift-demo"
+version = "1!0+dev"
+requires-python = ">=3.10,<3.15"
+dependencies = [
+    "dagster",
+    "dagster-webserver",
+    "dagster-airlift[core,in-airflow]",
+    "dagster-dbt",
+    "dbt-duckdb",
+    "pandas",
+    "apache-airflow<3.0.0",
+]
+
+[project.optional-dependencies]
+[tool.dagster]
+module_name = "dbt_example.definitions"
+
+[dependency-groups]
+test = [
+    "dagster[test]",
+    "dagster-webserver",
+    "dagster-test",
+    "dagster-pipes",
+    "dagster-shared",
+    "dagster-graphql",
+    "dagster-dbt",
+    "dagster-airlift[core,test,in-airflow]",
+    "pandas",
+    "pytest",
+]
+
+[tool.uv.sources]
+dagster = { path = "../../python_modules/dagster", editable = true }
+dagster-webserver = { path = "../../python_modules/dagster-webserver", editable = true }
+dagster-test = { path = "../../python_modules/dagster-test", editable = true }
+dagster-pipes = { path = "../../python_modules/dagster-pipes", editable = true }
+dagster-shared = { path = "../../python_modules/libraries/dagster-shared", editable = true }
+dagster-graphql = { path = "../../python_modules/dagster-graphql", editable = true }
+dagster-dbt = { path = "../../python_modules/libraries/dagster-dbt", editable = true }
+dagster-airlift = { path = "../../python_modules/libraries/dagster-airlift", editable = true }

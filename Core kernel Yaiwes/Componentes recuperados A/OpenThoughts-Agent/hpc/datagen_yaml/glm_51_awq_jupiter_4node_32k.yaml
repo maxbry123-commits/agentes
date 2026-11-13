@@ -1,0 +1,44 @@
+
+engine:
+  type: vllm_local
+  model: QuantTrio/GLM-5.1-AWQ
+  max_output_tokens: 16384
+  healthcheck_interval: 300
+  request_params:
+    temperature: 0.7
+    top_p: 0.95
+  vllm_local: {}
+backend:
+  type: ray
+  wait_for_endpoint: true
+  ray_cgraph_max_inflight_executions: 16
+  healthcheck_max_attempts: 160
+  healthcheck_retry_delay: 15
+vllm_server:
+  model_path: QuantTrio/GLM-5.1-AWQ
+  num_replicas: 1
+  tensor_parallel_size: 16
+  pipeline_parallel_size: 1
+  data_parallel_size: 1
+  time_limit: '11:59:00'
+  max_model_len: 32768
+  max_num_seqs: 32
+  gpu_memory_utilization: 0.9
+  enable_expert_parallel: true
+  enable_auto_tool_choice: true
+  tool_call_parser: glm47
+  reasoning_parser: glm45
+  trust_remote_code: true
+  use_deep_gemm: false
+  use_flashinfer_sampler: false
+  use_flashinfer_moe_fp16: true
+  extra_args:
+  - --dtype
+  - bfloat16
+  - --kv-cache-dtype
+  - fp8
+  - --enforce-eager
+  - --chat-template-content-format
+  - string
+  - --max-num-batched-tokens
+  - '32768'

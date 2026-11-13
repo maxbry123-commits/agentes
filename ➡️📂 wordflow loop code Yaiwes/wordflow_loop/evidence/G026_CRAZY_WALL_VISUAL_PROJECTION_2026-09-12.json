@@ -1,0 +1,52 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "gap_id": "G-026",
+  "owner": "ASTRA_GPT_LOOP",
+  "base_main_sha": "92c671fc63526c8fb4aec484688e06b86bd33093",
+  "result": "CLOSED_VERIFIED_LOCAL",
+  "gap_reproduced": [
+    "Existing projection preferred graphology+sigma contrary to Graphify-first policy.",
+    "Existing projection did not adapt real TASK-NODES and CHECKPOINT data into queue, GAP, agent, evidence and checkpoint panels."
+  ],
+  "implementation": {
+    "current_renderer": "renderer_agnostic_json",
+    "enrichment_preference": "graphify",
+    "graphify_runtime_verified": false,
+    "graphology_required": false,
+    "sigma_required": false,
+    "new_external_components": 0,
+    "motor_status": "NOT_REQUIRED_NO_ACQUISITION_OR_MOVE",
+    "source_contracts": ["yaiwes.crazywall-dag/v1", "tel.workflow/v4"]
+  },
+  "real_projection": {
+    "source_snapshot": "G026_CLAIMED",
+    "panels": {"tasks": 24, "queue": 11, "gaps": 7, "agents": 4, "evidence": 16, "checkpoints": 1},
+    "nodes": 52,
+    "edges": 49,
+    "node_types": ["agent", "checkpoint", "evidence", "gap", "task"],
+    "sha256": "7a3dad76f98ad6b058a28c7a8e8928af13e199fa91aa8e298462d048f7472bf5"
+  },
+  "tests": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 python -m unittest -v runtime.tests.test_graph_visual_projection_g026",
+    "result": "PASS_5_OF_5",
+    "exit_code": 0,
+    "pytest": "NOT_REQUIRED_UNITTEST_EXECUTED"
+  },
+  "read_back": {
+    "runtime/src/core/graph_visual_projection.py": {
+      "git_blob": "cb0a8f1405f3b13bebe92daa81e7eac20d44a25d",
+      "sha256": "0ea3060afc6f4b5d73dd23e2559693166ab4d26f7432054590ffd1925fcabaa0"
+    },
+    "runtime/tests/test_graph_visual_projection_g026.py": {
+      "git_blob": "3a87b26ad578ce8489030d10ee8fc8d772aaf9b8",
+      "sha256": "722b8a72001c09bef2d74a6d2387a3507d8f1483d0c2ba5d701e5c2ef24ec69f"
+    }
+  },
+  "limits": [
+    "Graphify runtime integration is not claimed.",
+    "No browser UI, Graphology, Sigma, provider, deployment or global PASS is claimed.",
+    "G-013 and G-018 were not modified."
+  ],
+  "no_lfs": true,
+  "no_force": true
+}

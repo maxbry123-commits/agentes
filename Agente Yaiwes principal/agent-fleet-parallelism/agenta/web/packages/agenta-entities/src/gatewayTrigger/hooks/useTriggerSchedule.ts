@@ -1,0 +1,109 @@
+import {useCallback, useState} from "react"
+
+import {getHostQueryClient} from "@agenta/shared/api"
+import {useAtomValue} from "jotai"
+import {atomFamily} from "jotai-family"
+import {atomWithQuery} from "jotai-tanstack-query"
+
+import {
+    createTriggerSchedule,
+    deleteTriggerSchedule,
+    editTriggerSchedule,
+    fetchTriggerSchedule,
+    startTriggerSchedule,
+    stopTriggerSchedule,
+} from "../api"
+import type {
+    TriggerSchedule,
+    TriggerScheduleCreate,
+    TriggerScheduleEdit,
+    TriggerScheduleResponse,
+} from "../core/types"
+import {invalidateTriggerSchedules} from "../state/invalidate"
+import {applyScheduleActiveOptimistic} from "../state/optimistic"
+
+// Single schedule (used to source the full PUT body before editing).
+export const triggerScheduleQueryAtomFamily = atomFamily((scheduleId: string) =>
+    atomWithQuery<TriggerScheduleResponse>(() => ({
+        queryKey: ["triggers", "schedules", "detail", scheduleId],
+        queryFn: () => fetchTriggerSchedule(scheduleId),
+        staleTime: 30_000,
+        refetchOnWindowFocus: false,
+        enabled: !!scheduleId,
+    })),
+)
+
+export const useTriggerSchedule = (scheduleId?: string) => {
+    const query = useAtomValue(triggerScheduleQueryAtomFamily(scheduleId ?? ""))
+    const [isMutating, setIsMutating] = useState(false)
+
+    const run = useCallback(
+        async (fn: () => Promise<TriggerScheduleResponse>): Promise<TriggerSchedule | null> => {
+            setIsMutating(true)
+            try {
+                const res = await fn()
+                invalidateTriggerSchedules()
+                // Seed the detail cache with the create/edit result so a drawer that
+                // selects the just-saved schedule reads it immediately (no loading flash);
+                // it still background-refetches since the list invalidation marks it stale.
+                if (res.schedule?.id) {
+                    getHostQueryClient().setQueryData(
+                        ["triggers", "schedules", "detail", res.schedule.id],
+                        res,
+                    )
+                }
+                return res.schedule ?? null
+            } finally {
+                setIsMutating(false)
+            }
+        },
+        [],
+    )
+
+    const create = useCallback(
+        (schedule: TriggerScheduleCreate) => run(() => createTriggerSchedule(schedule)),
+        [run],
+    )
+
+    const edit = useCallback(
+        (schedule: TriggerScheduleEdit) => run(() => editTriggerSchedule(schedule)),
+        [run],
+    )
+
+    const remove = useCallback(async (id: string) => {
+        setIsMutating(true)
+        try {
+            await deleteTriggerSchedule(id)
+            invalidateTriggerSchedules()
+        } finally {
+            setIsMutating(false)
+        }
+    }, [])
+
+    // Optimistically flip `flags.is_active` in the list cache, then call the
+    // start/stop route; on failure the cache is rolled back and refetched.
+    const setActive = useCallback(async (id: string, active: boolean): Promise<void> => {
+        const rollback = applyScheduleActiveOptimistic(id, active)
+        try {
+            await (active ? startTriggerSchedule(id) : stopTriggerSchedule(id))
+            invalidateTriggerSchedules()
+        } catch (error) {
+            rollback()
+            invalidateTriggerSchedules()
+            throw error
+        }
+    }, [])
+
+    return {
+        schedule: scheduleId ? (query.data?.schedule ?? null) : null,
+        isLoading: scheduleId ? query.isPending : false,
+        // Unlike isLoading, stays true while a refetch serves stale cache — edit forms need it.
+        isFetching: scheduleId ? query.isFetching : false,
+        error: query.error,
+        isMutating,
+        create,
+        edit,
+        remove,
+        setActive,
+    }
+}

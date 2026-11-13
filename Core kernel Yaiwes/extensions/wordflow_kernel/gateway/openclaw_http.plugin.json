@@ -1,0 +1,12 @@
+{
+  "plugin_id": "wordflow.openclaw.gateway",
+  "version": "1.0.0",
+  "type": "connection",
+  "entrypoint": "extensions/wordflow_kernel/gateway/openclaw_http.py",
+  "contract": "wordflow_kernel.gateway.intelligence.IntelligenceGateway",
+  "capability": "llm.complete",
+  "target": "OpenClaw Gateway /v1/chat/completions",
+  "configuration": ["OPENCLAW_GATEWAY_URL", "OPENCLAW_GATEWAY_TOKEN"],
+  "fail_closed": true,
+  "immutable_component": true
+}

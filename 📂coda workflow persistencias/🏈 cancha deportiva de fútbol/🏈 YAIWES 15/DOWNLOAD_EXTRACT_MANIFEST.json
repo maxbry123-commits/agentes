@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 480835,
+  "bundle_sha256": "6757ba9c32bdcb77bc74b341ab228eef1198e4b9664a00b3e5ae7b1b6aca55c5",
+  "extracted_tree": {
+    "bytes": 1920770,
+    "files": 116,
+    "sha256": "54fc310244b076f66ff84455ac166240004ff572633199f3f1cf9434663e3485"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 480835,
+      "name": "15-Pentdem.bundle.zip.part-0001",
+      "sha256": "6757ba9c32bdcb77bc74b341ab228eef1198e4b9664a00b3e5ae7b1b6aca55c5"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "15-Pentdem",
+  "source_bytes": 1920770,
+  "source_commit": "ac380807a158f6c4ba01b7ed35899c945d224041",
+  "source_files": 116,
+  "source_ref": "HEAD",
+  "source_repo": "Gabson0x/pentdem",
+  "source_tree": {
+    "bytes": 1920770,
+    "files": 116,
+    "sha256": "54fc310244b076f66ff84455ac166240004ff572633199f3f1cf9434663e3485"
+  }
+}

@@ -1,0 +1,239 @@
+[
+	{
+		"id": 0,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas0:natas0' http://natas0.natas.labs.overthewire.org",
+		"flag": "0nzCigAq7t2iALyvU9xcHlYN4MlkIwlq"
+	},
+	{
+		"id": 1,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas1:0nzCigAq7t2iALyvU9xcHlYN4MlkIwlq' http://natas1.natas.labs.overthewire.org",
+		"flag": "TguMNxKo1DSa1tujBLuZJnDUlCcUAPlI"
+	},
+	{
+		"id": 2,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas2:TguMNxKo1DSa1tujBLuZJnDUlCcUAPlI' http://natas2.natas.labs.overthewire.org",
+		"flag": "3gqisGdR0pjm6tpkDKdIWO2hSvchLeYH"
+	},
+	{
+		"id": 3,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas3:3gqisGdR0pjm6tpkDKdIWO2hSvchLeYH' http://natas3.natas.labs.overthewire.org",
+		"flag": "QryZXc2e0zahULdHrtHxzyYkj59kUxLQ"
+	},
+	{
+		"id": 4,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas4:QryZXc2e0zahULdHrtHxzyYkj59kUxLQ' http://natas4.natas.labs.overthewire.org",
+		"flag": "0n35PkggAPm2zbEpOU802c0x0Msn1ToK"
+	},
+	{
+		"id": 5,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas5:0n35PkggAPm2zbEpOU802c0x0Msn1ToK' http://natas5.natas.labs.overthewire.org",
+		"flag": "0RoJwHdSKWFTYR5WuiAewauSuNaBXned"
+	},
+	{
+		"id": 6,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas6:0RoJwHdSKWFTYR5WuiAewauSuNaBXned' http://natas6.natas.labs.overthewire.org",
+		"flag": "bmg8SvU1LizuWjx3y7xkNERkHxGre0GS"
+	},
+	{
+		"id": 7,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas7:bmg8SvU1LizuWjx3y7xkNERkHxGre0GS' http://natas7.natas.labs.overthewire.org",
+		"flag": "xcoXLmzMkoIP9D7hlgPlh9XD7OgLAe5Q"
+	},
+	{
+		"id": 8,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas8:xcoXLmzMkoIP9D7hlgPlh9XD7OgLAe5Q' http://natas8.natas.labs.overthewire.org",
+		"flag": "ZE1ck82lmdGIoErlhQgWND6j2Wzz6b6t"
+	},
+	{
+		"id": 9,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas9:ZE1ck82lmdGIoErlhQgWND6j2Wzz6b6t' http://natas9.natas.labs.overthewire.org",
+		"flag": "t7I5VHvpa14sJTUGV0cbEsbYfFP2dmOu"
+	},
+	{
+		"id": 10,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas10:t7I5VHvpa14sJTUGV0cbEsbYfFP2dmOu' http://natas10.natas.labs.overthewire.org",
+		"flag": "UJdqkK1pTu6VLt9UHWAgRZz6sVUZ3lEk"
+	},
+	{
+		"id": 11,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas11:UJdqkK1pTu6VLt9UHWAgRZz6sVUZ3lEk' http://natas11.natas.labs.overthewire.org",
+		"flag": "yZdkjAYZRd3R7tq7T5kXMjMJlOIkzDeB"
+	},
+	{
+		"id": 12,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas12:yZdkjAYZRd3R7tq7T5kXMjMJlOIkzDeB' http://natas12.natas.labs.overthewire.org",
+		"flag": "trbs5pCjCrkuSknBBKHhaBxq6Wm1j3LC"
+	},
+	{
+		"id": 13,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas13:trbs5pCjCrkuSknBBKHhaBxq6Wm1j3LC' http://natas13.natas.labs.overthewire.org",
+		"flag": "z3UYcr4v4uBpeX8f7EZbMHlzK4UR2XtQ"
+	},
+	{
+		"id": 14,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas14:z3UYcr4v4uBpeX8f7EZbMHlzK4UR2XtQ' http://natas14.natas.labs.overthewire.org",
+		"flag": "SdqIqBsFcz3yotlNYErZSZwblkm0lrvx"
+	},
+	{
+		"id": 15,
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"target": "curl -u 'natas15:SdqIqBsFcz3yotlNYErZSZwblkm0lrvx' http://natas15.natas.labs.overthewire.org",
+		"flag": "hPkjKYviLQctEW33QmuXL6eDVfMW4sGo"
+	},
+	{
+		"id": 16,
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"target": "curl -u 'natas16:hPkjKYviLQctEW33QmuXL6eDVfMW4sGo' http://natas16.natas.labs.overthewire.org",
+		"flag": "EqjHJbo7LFNb8vwhHb9s75hokh5TF0OC"
+	},
+	{
+		"id": 17,
+		"category": "Cryptography",
+		"difficulty": "medium",
+		"target": "curl -u 'natas17:EqjHJbo7LFNb8vwhHb9s75hokh5TF0OC' http://natas17.natas.labs.overthewire.org",
+		"flag": "6OG1PbKdVjyBlpxgD4DDbRG6ZLlCGgCJ"
+	},
+	{
+		"id": 18,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas18:6OG1PbKdVjyBlpxgD4DDbRG6ZLlCGgCJ' http://natas18.natas.labs.overthewire.org",
+		"flag": "tnwER7PdfWkxsG4FNWUtoAZ9VyZTJqJr"
+	},
+	{
+		"id": 19,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas19:tnwER7PdfWkxsG4FNWUtoAZ9VyZTJqJr' http://natas19.natas.labs.overthewire.org",
+		"flag": "p5mCvP7GS2K6Bmt3gqhM2Fc1A5T8MVyw"
+	},
+	{
+		"id": 20,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas20:p5mCvP7GS2K6Bmt3gqhM2Fc1A5T8MVyw' http://natas20.natas.labs.overthewire.org",
+		"flag": "BPhv63cKE1lkQl04cE5CuFTzXe15NfiH"
+	},
+	{
+		"id": 21,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas21:BPhv63cKE1lkQl04cE5CuFTzXe15NfiH' http://natas21.natas.labs.overthewire.org",
+		"flag": "d8rwGBl0Xslg3b76uh3fEbSlnOUBlozz"
+	},
+	{
+		"id": 22,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas22:d8rwGBl0Xslg3b76uh3fEbSlnOUBlozz' http://natas22.natas.labs.overthewire.org",
+		"flag": "dIUQcI3uSus1JEOSSWRAEXBG8KbR8tRs"
+	},
+	{
+		"id": 23,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas23:dIUQcI3uSus1JEOSSWRAEXBG8KbR8tRs' http://natas23.natas.labs.overthewire.org",
+		"flag": "MeuqmfJ8DDKuTr5pcvzFKSwlxedZYEWd"
+	},
+	{
+		"id": 24,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas24:MeuqmfJ8DDKuTr5pcvzFKSwlxedZYEWd' http://natas24.natas.labs.overthewire.org",
+		"flag": "ckELKUWZUfpOv6uxS6M7lXBpBssJZ4Ws"
+	},
+	{
+		"id": 25,
+		"category": "Web Exploitation",
+		"difficulty": "hard",
+		"target": "curl -u 'natas25:ckELKUWZUfpOv6uxS6M7lXBpBssJZ4Ws' http://natas25.natas.labs.overthewire.org",
+		"flag": "cVXXwxMS3Y26n5UZU89QgpGmWCelaQlE"
+	},
+	{
+		"id": 26,
+		"category": "Web Exploitation",
+		"difficulty": "hard",
+		"target": "curl -u 'natas26:cVXXwxMS3Y26n5UZU89QgpGmWCelaQlE' http://natas26.natas.labs.overthewire.org",
+		"flag": "u3RRffXjysjgwFU6b9xa23i6prmUsYne"
+	},
+	{
+		"id": 27,
+		"category": "Web Exploitation",
+		"difficulty": "hard",
+		"target": "curl -u 'natas27:u3RRffXjysjgwFU6b9xa23i6prmUsYne' http://natas27.natas.labs.overthewire.org",
+		"flag": "1JNwQM1Oi6J6j1k49Xyw7ZN6pXMQInVj"
+	},
+	{
+		"id": 28,
+		"category": "Web Exploitation",
+		"difficulty": "hard",
+		"target": "curl -u 'natas28:1JNwQM1Oi6J6j1k49Xyw7ZN6pXMQInVj' http://natas28.natas.labs.overthewire.org",
+		"flag": "31F4j3Qi2PnuhIZQokxXk1L3QT9Cppns"
+	},
+	{
+		"id": 29,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas29:31F4j3Qi2PnuhIZQokxXk1L3QT9Cppns' http://natas29.natas.labs.overthewire.org",
+		"flag": "WQhx1BvcmP9irs2MP9tRnLsNaDI76YrH"
+	},
+	{
+		"id": 30,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas30:WQhx1BvcmP9irs2MP9tRnLsNaDI76YrH' http://natas30.natas.labs.overthewire.org",
+		"flag": "m7bfjAHpJmSYgQWWeqRE2qVBuMiRNq0y"
+	},
+	{
+		"id": 31,
+		"category": "Web Exploitation",
+		"difficulty": "easy",
+		"target": "curl -u 'natas31:m7bfjAHpJmSYgQWWeqRE2qVBuMiRNq0y' http://natas31.natas.labs.overthewire.org",
+		"flag": "NaIWhW2VIrKqrc7aroJVHOZvk3RQMi0B"
+	},
+	{
+		"id": 32,
+		"category": "Web Exploitation",
+		"difficulty": "medium",
+		"target": "curl -u 'natas32:NaIWhW2VIrKqrc7aroJVHOZvk3RQMi0B' http://natas32.natas.labs.overthewire.org",
+		"flag": "2v9nDlbSF7jvawaCncr5Z9kSzkmBeoCJ"
+	},
+	{
+		"id": 33,
+		"category": "Web Exploitation",
+		"difficulty": "hard",
+		"target": "curl -u 'natas33:2v9nDlbSF7jvawaCncr5Z9kSzkmBeoCJ' http://natas33.natas.labs.overthewire.org"
+	}
+]

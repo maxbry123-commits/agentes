@@ -1,0 +1,10 @@
+id: workflow_engine_v1
+source_type: software
+fingerprint_match:
+  has_workflow: true
+policy_id: workflow_engine
+rules:
+  execution: absorb
+  control: subordinate
+  state: adapt
+  presentation: isolate

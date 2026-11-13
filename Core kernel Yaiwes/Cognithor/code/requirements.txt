@@ -1,0 +1,100 @@
+# Cognithor · Agent OS — Python Dependencies
+# Install with: pip install -r requirements.txt
+# Or better:    pip install ".[all]"  (uses pyproject.toml)
+
+# === Core ===
+pydantic>=2.10,<3              # Data models, validation
+pydantic-settings>=2.7,<3     # Settings management
+pyyaml>=6.0,<7                 # Config parsing
+xxhash>=3.0,<4                 # Fast hashing
+structlog>=25.4,<26            # Structured logging
+httpx>=0.28,<1                 # Async HTTP client (Ollama)
+rich>=13.0,<14                 # CLI output
+prompt-toolkit>=3.0,<4         # CLI input
+anyio>=4.0,<5                  # Async primitives
+python-dotenv>=1.0,<2          # .env file loading
+
+# === Security ===
+cryptography>=46.0.5           # Credential encryption (Fernet)
+
+# === Channels (optional) ===
+# fastapi>=0.115,<1            # Web UI + REST API
+# uvicorn[standard]>=0.34,<1   # ASGI server
+# websockets>=14.0,<15         # WebSocket support
+# python-telegram-bot>=21.0,<22  # Telegram channel
+# discord.py>=2.0              # Discord channel
+# slack-sdk>=3.0               # Slack channel
+# matrix-nio>=0.24             # Matrix channel
+# irc>=20.0                    # IRC channel
+# twitchio>=2.0                # Twitch channel
+# aiohttp>=3.9                 # Signal / WhatsApp / Teams
+# google-auth>=2.0             # Google Chat
+# google-api-core>=2.0         # Google Chat
+
+# === Web Search (optional) ===
+# ddgs>=9.0,<10                # DuckDuckGo search (multi-backend, free)
+# trafilatura>=2.0             # Full-text extraction from HTML
+
+# === Document Export (optional) ===
+# fpdf2>=2.7,<3                # PDF generation
+# python-docx>=1.0,<2          # DOCX generation
+# pymupdf>=1.23                # PDF reading
+# python-pptx>=0.6             # PowerPoint generation
+# openpyxl>=3.1                # Excel generation
+# typst>=0.1                   # Typst document rendering
+
+# === Browser Automation (optional) ===
+# playwright>=1.40             # Headless browser
+#                              # After install: playwright install chromium
+
+# === Voice (optional, GPU system) ===
+# faster-whisper>=1.0          # Speech-to-Text
+# piper-tts>=1.0               # Text-to-Speech
+# sounddevice>=0.5             # Audio I/O
+
+# === Memory ===
+# numpy>=2.0,<3                # Vector operations
+# sqlite-vec>=0.1              # SQLite vector extension
+# beautifulsoup4>=4.12         # HTML parsing
+# faiss-cpu>=1.7               # FAISS vector search
+
+# === Identity (optional) ===
+# chromadb>=1.5.0              # Vector DB for identity memory
+# sentence-transformers>=5.0.0 # Embedding models
+
+# === Desktop Automation (optional) ===
+# pyautogui>=0.9               # Mouse/keyboard automation
+# pywinauto>=0.6.8             # Windows UI automation
+# mss>=9.0                     # Screen capture
+# pyperclip>=1.8               # Clipboard access
+# Pillow>=10.0                 # Image processing
+
+# === Encryption (optional) ===
+# sqlcipher3>=0.6.0            # Encrypted SQLite
+# keyring>=25.0                # OS keyring access
+
+# === Cron (optional) ===
+# apscheduler>=3.10,<4         # Job scheduling
+# croniter>=1.0                # Cron expression parsing
+
+# === MCP (optional) ===
+# mcp>=1.7,<2                  # Model Context Protocol
+
+# === ARC-AGI (optional) ===
+# arc-agi>=0.3.0               # ARC-AGI challenge
+# scipy>=1.14                  # Scientific computing
+
+# === Database (optional) ===
+# psycopg[binary]>=3.1         # PostgreSQL
+# psycopg-pool>=3.1            # PostgreSQL connection pool
+# pgvector>=0.2                # PostgreSQL vector extension
+
+# === ElevenLabs (optional) ===
+# elevenlabs>=1.0              # ElevenLabs TTS API
+
+# === Development ===
+# pytest>=8.0,<9               # Tests
+# pytest-asyncio>=0.24,<1      # Async tests
+# pytest-cov>=6.0,<7           # Coverage
+# ruff>=0.9,<1                 # Linter
+# mypy>=1.14,<2                # Type checker

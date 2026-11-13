@@ -1,0 +1,468 @@
+# =====================================================================
+# PLAN DSL DAG - PARTE 1: LOS 33 NODOS
+# El contrato de ejecucion esta en: PLAN-DSL-DAG-00-CONTRATO.yaml
+# LEER EL CONTRATO PRIMERO. Reglas, gobernanza y gap_ladder viven alli.
+# =====================================================================
+dsl_version: "yaiwes.dag/v1"
+contrato: "Claude notas/PLAN-DSL-DAG-00-CONTRATO.yaml"
+
+# Cada nodo hereda automaticamente:
+#   gobernanza: SHERIFF -> EJECUTOR -> VALIDADOR -> VERIFICADOR ->
+#               SENTINELA -> SUPERVISOR -> JUEZ -> GUARDIAN
+#   on_gap: gap_ladder 1..20
+#   on_flag: continue_next  (nunca parar, nunca escalar)
+#   checkpoint: obligatorio antes de cerrar
+#   max_loc: 500
+
+# =====================================================================
+# DAG OBJETIVO 1 - COMPONENTES + SKILLS A SCHEMA + AGENTES
+# =====================================================================
+dag_objetivo_1:
+  nombre: "Descargar componentes que faltan, skills a schema, incorporar agentes"
+  nodos:
+
+    - id: N-1.1
+      titulo: "Materializar submodules en CI"
+      fuente_director: L475
+      accion: "cablear `git submodule update --init` con sparse-checkout en workflow"
+      motivo: "el gitlink NO trae codigo; sin esto no hay mecanismo que extraer"
+      acceptance:
+        - "un run de CI lista archivos reales de al menos 1 submodule"
+        - "el run no supera 5 min"
+      evidence: [run_id, log_con_listado, sha_workflow]
+      work_surface: BACKEND
+      depends_on: []
+      bloquea: [N-1.2, N-3.1]
+
+    - id: N-1.2
+      titulo: "Inventario forense de agent_sources"
+      fuente_director: L1456_L1526
+      accion: "GET /git/trees por cada una de las 35 entradas; clasificar"
+      clasificacion: [SUBMODULE_REAL, CODIGO_REAL, CARPETA_VACIA, STUB]
+      incluir_tambien: ["kimi_k/ duplicada", "minimax_mcp/ suelta"]
+      acceptance:
+        - "35 entradas clasificadas, cero marcadas como supuesto"
+        - "sha del arbol de cada una registrado"
+      evidence: ["Claude notas/INVENTARIO-FORENSE-agent_sources.md"]
+      work_surface: BACKEND
+      depends_on: [N-1.1]
+
+    - id: N-1.3
+      titulo: "Montar mcode (unico gap de descarga)"
+      fuente_director: L1458_L1464
+      accion: "Git Data API: POST /git/trees mode=160000 type=commit -> commits -> refs"
+      metodo_probado_en: "commit f13f8f9"
+      acceptance: ["GET agent_sources/mcode devuelve html_url a repo externo"]
+      evidence: [commit_sha, respuesta_api]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-1.4
+      titulo: "Subir 5 keys NVIDIA como secrets + test real"
+      fuente_director: L1531_L1580
+      accion: "sellado libsodium via ctypes sobre libsodium.so.23"
+      metodo_probado_en: "memoria.md seccion 11 (las 7 GROQ)"
+      secrets: [NVIDIA_API_KEY_1, NVIDIA_API_KEY_2, NVIDIA_API_KEY_3, NVIDIA_API_KEY_4, NVIDIA_API_KEY_5]
+      base_url: "https://integrate.api.nvidia.com/v1"
+      modelo: "minimaxai/minimax-m2.7"
+      acceptance:
+        - "GET /actions/secrets lista los 5"
+        - "test desde Actions con HTTP 200 y contenido no vacio"
+      nota_critica: "el sandbox de Claude tiene la red bloqueada a NVIDIA (CONNECT 403). Solo Actions."
+      evidence: [lista_secrets, run_id, respuesta_http]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-1.5
+      titulo: "Convertir los 24 skills a schema DSL DAG"
+      fuente_director: L196_L208, L1584_L1693
+      detalle: "Claude notas/PLAN-ANEXO-A-SKILLS-A-SCHEMA.md"
+      regla_director: "cada skills lo transformas en un shema, ya no sera mas skills"
+      orden_obligatorio:
+        1: "skill-creator (meta-schema, genera los demas)"
+        2: "skill-router (punto de entrada)"
+        3: "Clase 2 auditoria (define los oracles)"
+        4: "Clase 1 estetica (define los acceptance)"
+        5: "Clase 3 pipeline (nodos)"
+        6: "Clase 4 motion (8 de HyperFrames)"
+      plantilla_a_reutilizar:
+        - "Core kernel Yaiwes/control-layer/schemas/output_contract.yaml"
+        - "Seals team YAIWES/dag_schema.yaml"
+      acceptance:
+        - "24 archivos skills_schema/*.dag.yaml"
+        - "cada uno valida contra el validador DAG existente"
+        - "1 test por schema"
+        - "cero skills quedan como md decorativo"
+      evidence: [lista_de_24_paths, resultado_validacion, tests]
+      work_surface: MIXED
+      depends_on: [N-2.11]
+      nota: "biblioteca RAG ANTES de generar schema (regla R11)"
+
+    - id: N-1.6
+      titulo: "Notas de tareas pendientes en readme + Crazy Wall"
+      fuente_director: L210_L270
+      accion: "escribir nota de tarea pendiente en readme arquitectura y Crazy Wall de cada repo"
+      lista_jev_rsi_18:
+        destino: "repo router-universal-router-inteligente-"
+        componentes: [TypeSafe-Agent-Skills, Jev-Router, Jev-Agent-Skill-Router,
+          Jev-Review-MCP, Jev-Harness, Fast-Jev-Compaction, System-One-Lite,
+          Open-Jev, Awesome-Jev, OpenRSI, RSIAgent, Skill-RSI, ShinkaEvolve,
+          OpenEvolve, SimpleTES, ThetaEvolve, CodeEvolve, Dream-RSI]
+        nucleo_minimo: [OpenRSI, RSIAgent, Skill-RSI, ShinkaEvolve, SimpleTES]
+        decision: "NO instalar como skills decorativos. Extraer mecanismo -> DSL/DAG contract Python"
+        skills_anthropic_extra: [docx, pdf, pptx, xlsx, artifact-design, artifact-capabilities]
+      acceptance: ["nota presente en readme arquitectura + Crazy Wall de cada repo afectado"]
+      evidence: [paths_editados, sha]
+      work_surface: BACKEND
+      depends_on: []
+
+# =====================================================================
+# DAG OBJETIVO 2 - CERRAR WORDFLOW LOOP CODE YAIWES
+# =====================================================================
+dag_objetivo_2:
+  nombre: "Cerrar wordflow loop code Yaiwes: frontend, agentes, skills schema"
+  nodos:
+
+    - id: N-2.1
+      titulo: "Auditoria forense X-Ray de la doble raiz"
+      fuente_director: L383_L398, L284
+      raiz_1: "wordflow loop code Yaiwes CON emoji, minuscula = kernel Python real"
+      raiz_2: "Wordflow loop code Yaiwes SIN emoji, W mayuscula = big-AGI ajeno"
+      accion: "listar ambas, verificacion cruzada carpeta por carpeta"
+      acceptance: ["tabla de que hay en cada raiz, sin suposiciones"]
+      evidence: ["Claude notas/XRAY-doble-raiz.md"]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-2.2
+      titulo: "Mover los 3 skills frontend a Skills agente"
+      fuente_director: L412_L430
+      skills: [impeccable, frontend-design, skill-creator]
+      origen: "Wordflow loop code Yaiwes/skills/"
+      destino: "Skills agente/"
+      metodo: "motor_3_copy_batches.py sin modificar el motor"
+      regla: "NO borrar el origen"
+      acceptance: ["los 3 accesibles en destino con contenido real"]
+      evidence: [paths, sha256_por_archivo]
+      work_surface: BACKEND
+      depends_on: [N-2.1]
+
+    - id: N-2.3
+      titulo: "Unificar raices duplicadas"
+      fuente_director: L284, L202_L204
+      accion: "fusionar Skills/skills, Conecciones/conectividad, 3 variantes de wordflow"
+      pendiente_director: "renombrar big-AGI requiere OK explicito (FLAG-6)"
+      acceptance: ["una sola raiz por concepto, o FLAG documentado"]
+      evidence: [arbol_antes, arbol_despues]
+      work_surface: BACKEND
+      depends_on: [N-2.2]
+
+    - id: N-2.4
+      titulo: "CheckpointManager durable"
+      prioridad: "NUMERO UNO del analisis"
+      problema: "self._checkpoints={} no sobrevive crash"
+      accion: "persistencia disco/SQLite, quirurgico sobre el archivo existente"
+      acceptance: ["test: matar proceso -> reiniciar -> estado recuperado"]
+      evidence: [test_antes_falla, test_despues_pasa]
+      work_surface: BACKEND
+      depends_on: []
+      bloquea: [N-3.1]
+
+    - id: N-2.5
+      titulo: "Deprecar agent_router.py, autoridad unica AgentFleetAdapter"
+      problema: "sin match real puede seleccionar el primero del registro en vez de fallar cerrado"
+      decision: "tomada hace turnos, NUNCA ejecutada"
+      accion: "deprecar (no borrar) + redirigir a AgentFleetAdapter + agent_fleet_registry.json"
+      acceptance: ["sin match real -> FAIL_CLOSED, nunca seleccion arbitraria"]
+      evidence: [test_fail_closed]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-2.6
+      titulo: "Recovery tipado"
+      estados: [RETRYABLE, DEPENDENCY, AUTH, STUCK, CRASH, IRREVERSIBLE_FAILURE, NO_NODE_SOLUTION]
+      accion: "sustituir ESCALATE_TO_DIRECTOR generico"
+      acceptance: ["cada clase con politica concreta de retry/recovery/block"]
+      evidence: [tests_por_clase]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-2.7
+      titulo: "Stuck detector"
+      regla: "mismo tool + mismos args + mismo error x3 -> BLOCKED_STUCK"
+      acceptance: ["no repetir 20 veces una operacion identica sin evidencia nueva"]
+      evidence: [test_stuck]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-2.8
+      titulo: "Leer los 7 archivos de gobernanza (posibles stubs)"
+      archivos: [sheriff, sentinel, judge, guardian, supervisor, validator, verifier]
+      tamano_actual: "389-804 bytes cada uno"
+      accion: "leer contenido real; si son stubs, cablearlos con la cadena de gobernanza del contrato"
+      acceptance: ["veredicto por archivo REAL o STUB; los stubs quedan cableados"]
+      evidence: [contenido_leido, sha, cambios]
+      work_surface: BACKEND
+      depends_on: []
+      critico: "sin esto la cadena de gobernanza del DSL no tiene implementacion"
+
+    - id: N-2.9
+      titulo: "Llenar contracts/ y evidence/ (hoy VACIAS)"
+      ruta: "wordflow_loop/wordflow_loop/"
+      acceptance: ["ambas con contenido real usado por el runtime"]
+      evidence: [listado, sha]
+      work_surface: BACKEND
+      depends_on: [N-2.8]
+
+    - id: N-2.10
+      titulo: "Resolver 2 Crazy Wall paralelos y duplicado truth_reconciler"
+      accion: "ejecutar el prompt de comparacion ya escrito y nunca ejecutado"
+      duplicado: "source_truth_reconciler.py vs truth_reconciler.py"
+      acceptance: ["un solo Crazy Wall autoritativo; un solo reconciler"]
+      evidence: [comparacion, decision, sha]
+      work_surface: BACKEND
+      depends_on: []
+
+    - id: N-2.11
+      titulo: "Construir la biblioteca RAG (13 subcarpetas VACIAS)"
+      carpetas: "templates / skills / plugins / prompts"
+      regla_asociada: R11
+      acceptance: ["biblioteca consultable antes de generar cualquier schema"]
+      evidence: [listado_plantillas]
+      work_surface: BACKEND
+      depends_on: []
+      bloquea: [N-1.5]
+
+    - id: N-2.12
+      titulo: "Equipo frontend: composicion y loop"
+      fuente_director: L527, L1746_L3200
+      detalle: "PLAN-ANEXO-A + PLAN-ANEXO-B"
+      roles:
+        ESCRITOR: "OpenCode slot 1; mcode y kimi_code como alternativos"
+        REPARADOR: "OpenHands - separado del escritor a proposito"
+        AUDITOR: "Codex - independiente, no escribio"
+        MACRO_LOOP: "meta_muse_code_sdk - goal persistente, session, completion audit"
+        MICRO_LOOP: "muse_glimmer - ToolRegistry, parser ATEM, reason-act-observe-correct"
+        OJOS: "metacua - pixeles, coords 0-1000, screenshot tras cada accion"
+        ENTORNO: "cua_mcp - sandbox aislado, navegador real"
+        NAVEGADOR: "Playwright MCP - reutilizar el adapter que Wordflow YA tiene"
+        TABLERO: "minimax_openroom - estado compartido, Multi-Agent Product Studio"
+        PLANNER: "minimax_coding_plan_mcp"
+        TOOLS_MCP: "minimax_mcp + minimax_mcp_js + 21st magic-mcp"
+        PLUGINS: "minimax_code_plugins -> Enchufe Universal Fables"
+        REFERENCIAS: "kimi_researcher - alimenta el schema Taste con referencias reales"
+        DETERMINISMO: "kimi_agent_rs - diff de screenshots determinista"
+        CONTRATO: "kimi_agent_sdk"
+        CLI: "mmx_cli + kimi_cli + hyperframes-cli"
+        ORACLE: "tests deterministas + schemas Clase 2 (100+ reglas Vercel)"
+      loop:
+        - "GOAL UI"
+        - "READ CRAZY WALL FRESH"
+        - "CLAIM + LEASE"
+        - "READ component tree / routes / state / styles / API contracts"
+        - "PLAN (minimax_coding_plan_mcp)"
+        - "DECIDE (muse_glimmer)"
+        - "SHERIFF"
+        - "EDIT (OpenCode)"
+        - "BUILD"
+        - "START APP"
+        - "OPEN REAL BROWSER (cua_mcp + Playwright)"
+        - "SCREENSHOT (metacua, coords 0-1000)"
+        - "DOM + CONSOLE"
+        - "INTERACT (click/type/drag)"
+        - "SCREENSHOT NUEVO - obligatorio, nunca asumir que el click funciono"
+        - "COMPARE ACCEPTANCE (diff determinista via kimi_agent_rs)"
+        - "GAP? -> FIX (OpenHands) -> REBUILD -> SCREENSHOT -> RETEST"
+        - "MOBILE / TOUCH TEST"
+        - "INTEGRATION TEST"
+        - "EVIDENCE (path + sha256 + screenshots)"
+        - "AUDITOR (Codex)"
+        - "JUEZ -> PASS"
+      reglas_duras:
+        - "1 path = 1 writer + lease"
+        - "screenshot en CADA paso visual, no solo al cierre"
+        - "CODE PASS != FRONTEND PASS: hacen falta CODE + BROWSER + VISUAL"
+        - "tool error vuelve como observation, nunca cierra mision"
+        - "metacua NUNCA tiene autoridad de PASS"
+      acceptance:
+        - "un componente frontend real recorre el loop completo"
+        - "evidencia con screenshots de cada paso visual"
+      evidence: [screenshots, dom, console, test_results, sha256]
+      work_surface: FRONTEND
+      depends_on: [N-1.5, N-2.8]
+
+    - id: N-2.13
+      titulo: "Leer los 4 archivos nunca abiertos"
+      fuente: "LISTA-TRABAJO-4-FRENTES, Frente 1"
+      archivos: [execution_pipeline_dsl.py, execution_pipeline_dsl_-_Copiar.md,
+        PIPELINE_MASTER.md, INPUT_BLOCK.md]
+      pendiente_extra: "identificar el motor de investigacion y deterministico de codigo de opus"
+      acceptance: ["los 4 leidos + veredicto escrito sobre el motor de opus"]
+      evidence: ["Claude notas/VEREDICTO-4-archivos-frente-1.md"]
+      work_surface: BACKEND
+      depends_on: []
+
+# =====================================================================
+# DAG OBJETIVO 3 - TERMINAR SEALS TEAM YAIWES
+# =====================================================================
+dag_objetivo_3:
+  nombre: "Terminar Seals Team YAIWES como micro-worker, NO orquestador"
+  fuente_detalle:
+    - "Claude notas/PLAN-MAESTRO-4-OBJETIVOS.md"
+    - "Claude notas/PLAN-ANEXO-B-SEALS-MECANISMOS.md"
+    - "Claude notas/SEALS-TRAZABILIDAD-COMPONENTES.md"
+    - "Claude notas/HANDOFF-SEALS-TEAM-YAIWES.md"
+  firma_objetivo: "SealsWorker.execute(TaskContract) -> NodeResult"
+  nodos:
+    - {id: S-01, titulo: "Baseline / X-Ray Seals", depends_on: [N-2.4, N-2.8], acceptance: ["baseline con paths+sha; cero supuestos"]}
+    - {id: S-02, titulo: "Contracts + Bootstrap + ExecutionMode + PlanContract", depends_on: [S-01], acceptance: ["TaskContract/NodeResult tipados", "PLAN y EXECUTE explicitos"]}
+    - {id: S-03, titulo: "Loop minimo + StructuredAction + PLAN_MODE", depends_on: [S-02], acceptance: ["PLAN_MODE_MUTATION_DENIED", "EXECUTE_WITHOUT_PLAN_DENIED", "STALE_PLAN_DENIED", "VALID_PLAN_EXECUTES"]}
+    - {id: S-04, titulo: "Policy / Sheriff / safe edit", depends_on: [S-03], acceptance: ["plan_id+action_id obligatorio", "scope escape DENY"]}
+    - {id: S-05, titulo: "Idempotency / replay", depends_on: [S-04], acceptance: ["same input hash replay seguro", "conflict tipado"]}
+    - {id: S-06, titulo: "Oracle + Evidence + Completion Audit", depends_on: [S-05], acceptance: ["NO PASS sin tests+evidence+read-back"]}
+    - {id: S-07, titulo: "Acquisition / integration contract", depends_on: [S-06], acceptance: ["URL+component+TaskContract -> exact commit -> adapt -> test -> evidence"]}
+    - id: S-07A
+      titulo: "Motores canonicos como Native Toolset"
+      depends_on: [S-07]
+      adapters: "wordflow_loop/adapters/seals_motors/"
+      contracts: "wordflow_loop/contracts/seals_motors/"
+      motores: [motor_1_extract_only.py, motor_2_queue_download_extract.py, hf_download_extract_engine.py, motor_3_copy_batches.py, motor_4_move_batches.py, motor_5_zip_root.py]
+      motor5_blob: "2516d85d81f691f86c32a70b90c2599639eb83c6"
+      regla: "FUENTE CANONICA -> blob SHA -> copia exacta -> read-back -> mismo SHA -> schema -> NativeToolRegistry"
+      acceptance: ["schemas traducen StructuredAction <-> inputs reales", "runtime test Motor 5"]
+    - id: S-07B
+      titulo: "Agent Skills + web capabilities"
+      depends_on: [S-07A]
+      source_locks:
+        anthropic_skills: {url: "https://github.com/anthropics/skills", commit: "34040c9c568585f6929bedeaad110ad08f079624"}
+        scrapling: {url: "https://github.com/D4Vinci/Scrapling", commit: "2b160ee18bfee79bb0115e2d9e9c746c8d9bf4c9"}
+        scrapegraph_ai: {url: "https://github.com/ScrapeGraphAI/Scrapegraph-ai", commit: "c75c8084fae2d4f5ba01a8c218bc1168b67e3569"}
+        agent_reach: {url: "https://github.com/Panniantong/Agent-Reach", commit: "a19a171fa980a0785849596492e0af4db800c82f"}
+      acquisition: "DOWNLOAD-EXTRACT-QUEUE.json -> Motor 2 canonico -> VERIFIED_CLOSED"
+      acceptance: ["tools/capabilities, NO subagentes"]
+    - {id: S-08, titulo: "Research capability trazada", depends_on: [S-07B], acceptance: ["ResearchResult tipado", "source real trazado"]}
+    - {id: S-09, titulo: "Frontend/visual capability bajo Sheriff", depends_on: [S-08], acceptance: ["CODE+BROWSER+VISUAL PASS", "ACTION -> screenshot nuevo -> VERIFY"]}
+    - {id: S-10, titulo: "Recovery / regression contra Host Contract", depends_on: [S-09], acceptance: ["claim/lease/crash/wrong_sha/sheriff/stuck tests"]}
+    - {id: S-11, titulo: "Prueba real 3 instancias DESDE Wordflow", depends_on: [S-10], acceptance: ["3 workers aislados", "evidence por worker"]}
+    - {id: S-12, titulo: "Completion Audit Seals", depends_on: [S-11], acceptance: ["SEALS_WORKER_VERIFIED solo con core+host+tests+evidence"]}
+
+# =====================================================================
+# DAG OBJETIVO 4 - ORQUESTADOR / COMMAND CENTER
+# =====================================================================
+dag_objetivo_4:
+  nombre: "Construir Orquestador YAIWES / Command Center"
+  dag_id: "YAIWES-ORCHESTRATOR-COMMAND-CENTER-V1"
+  brain_owner: HERMES
+  authority: {pre_execution: SHERIFF, post_execution: ORACLE}
+  regla_componentes: "conservar capacidades tecnicas; subordinar solo autoridad global"
+  nodos:
+    - {id: O4-00, titulo: "Baseline / X-Ray", depends_on: [], acceptance: ["ruta real demostrada", "inventario clasificado"]}
+    - id: O4-01
+      titulo: "Source Lock + Download Queue"
+      depends_on: [O4-00]
+      urls:
+        Hermes: "https://github.com/NousResearch/hermes-agent"
+        Rowboat: "https://github.com/rowboatlabs/rowboat"
+        MicrosoftAgentFramework: "https://github.com/microsoft/agent-framework"
+        Orca: "https://github.com/araa47/orca"
+        OmniRoute: "https://github.com/diegosouzapw/OmniRoute"
+        DeepSeekHarness: "https://github.com/deepseek-ai/deepseek-harness"
+        MunderDifflin: "https://github.com/chaitanyagiri/munder-difflin"
+        Dagu: "https://github.com/dagucloud/dagu"
+        DBOS: "https://github.com/dbos-inc/dbos-transact-py"
+        Archify: "https://github.com/tt-a1i/archify"
+        MCP: "https://github.com/modelcontextprotocol/modelcontextprotocol"
+        MCPServers: "https://github.com/modelcontextprotocol/servers"
+      acceptance: ["exact URL+commit o GAP", "sin floating latest"]
+    - {id: O4-02, titulo: "Acquire / Materialize faltantes", depends_on: [O4-01], acceptance: ["SOURCE_COMMIT == MATERIALIZED_COMMIT", "read-back"]}
+    - {id: O4-03, titulo: "Capability inventory / Do-not-delete map", depends_on: [O4-02], acceptance: ["KEEP|SUBORDINATE|ADAPT|GAP por capacidad"]}
+    - {id: O4-04, titulo: "Hermes Brain Adapter", depends_on: [O4-03], acceptance: ["solo Hermes crea/replanifica global goal"]}
+    - {id: O4-05, titulo: "Sheriff pre-execution gate", depends_on: [O4-04], acceptance: ["mutation_without_sheriff_denied", "scope/provider deny"]}
+    - {id: O4-06, titulo: "Normalized contracts", depends_on: [O4-04, O4-05], acceptance: ["MissionContract/TaskContract/ResultEnvelope/EvidenceRecord/OracleVerdict"]}
+    - {id: O4-07, titulo: "Rowboat Adapter", depends_on: [O4-06], acceptance: ["context roundtrip", "no global goal mutation"]}
+    - {id: O4-08, titulo: "Microsoft Agent Framework Adapter", depends_on: [O4-06], acceptance: ["sequential/concurrent/handoff/checkpoint_resume"]}
+    - {id: O4-09, titulo: "Orca Adapter", depends_on: [O4-06], acceptance: ["2 workers no collision", "worktree per worker"]}
+    - {id: O4-10, titulo: "OmniRoute Control Plane Adapter", depends_on: [O4-06], acceptance: ["provider/account failover", "routing receipt"]}
+    - {id: O4-11, titulo: "DeepSeek Harness Adapter", depends_on: [O4-06], acceptance: ["plugin execution", "side effects require Sheriff"]}
+    - {id: O4-12, titulo: "Munder Difflin Adapter", depends_on: [O4-06], acceptance: ["local role coordination", "no global replan"]}
+    - {id: O4-13, titulo: "Dagu / DBOS durability", depends_on: [O4-06], acceptance: ["crash_resume", "no duplicate side effect"]}
+    - {id: O4-14, titulo: "MCP capability/context bus", depends_on: [O4-06], acceptance: ["controlled context write", "no authority transfer"]}
+    - {id: O4-15, titulo: "Evidence Ledger", depends_on: [O4-07, O4-08, O4-09, O4-10, O4-11, O4-12, O4-13, O4-14], acceptance: ["hash valid", "tamper/missing evidence detected"]}
+    - {id: O4-16, titulo: "Oracle post-execution gate", depends_on: [O4-15], acceptance: ["PASS|FAIL|INCOMPLETE|BLOCKED", "no PASS without evidence"]}
+    - {id: O4-17, titulo: "Archify / progress projection", depends_on: [O4-15, O4-16], acceptance: ["projection matches ledger", "cannot mutate mission"]}
+    - {id: O4-18, titulo: "Pre-Questions / Input Shark", depends_on: [O4-04, O4-07], acceptance: ["ambiguous goal asks missing fields", "normalized goal hash stable"]}
+    - {id: O4-19, titulo: "End-to-End integration", depends_on: [O4-05, O4-07, O4-08, O4-09, O4-10, O4-11, O4-12, O4-13, O4-14, O4-15, O4-16, O4-17, O4-18], acceptance: ["same mission_id", "Oracle FAIL -> Hermes REPLAN -> PASS", "crash no duplicate"]}
+    - {id: O4-20, titulo: "Completion Audit Orchestrator", depends_on: [O4-19], acceptance: ["all mandatory nodes PASS", "capabilities preserved", "only global authorities subordinated"]}
+
+# =====================================================================
+# ORDEN TOPOLOGICO CANONICO
+# =====================================================================
+orden_ejecucion:
+  objetivo_1:
+    fases: [[N-1.1, N-1.3, N-1.4], [N-1.2], [N-1.5, N-1.6]]
+  objetivo_2:
+    fases: [[N-2.1, N-2.8, N-2.11, N-2.13], [N-2.4, N-2.5, N-2.6, N-2.7, N-2.9, N-2.10], [N-2.2, N-2.3], [N-2.12]]
+  objetivo_3:
+    secuencia: [S-01, S-02, S-03, S-04, S-05, S-06, S-07, S-07A, S-07B, S-08, S-09, S-10, S-11, S-12]
+  objetivo_4:
+    secuencia: [O4-00, O4-01, O4-02, O4-03, O4-04, O4-05, O4-06]
+    paralelo: [O4-07, O4-08, O4-09, O4-10, O4-11, O4-12, O4-13, O4-14]
+    cierre: [O4-15, O4-16, O4-17, O4-18, O4-19, O4-20]
+  prioridad_global: [objetivo_1, objetivo_2, objetivo_3, objetivo_4]
+  regla: "depends_on manda; FLAG no permite saltar dependencia obligatoria"
+
+estado:
+  N-1.1: PENDIENTE
+  N-1.2: PENDIENTE
+  N-1.3: PENDIENTE
+  N-1.4: PENDIENTE
+  N-1.5: PENDIENTE
+  N-1.6: PENDIENTE
+  N-2.1: PENDIENTE
+  N-2.2: PENDIENTE
+  N-2.3: PENDIENTE
+  N-2.4: PENDIENTE
+  N-2.5: PENDIENTE
+  N-2.6: PENDIENTE
+  N-2.7: PENDIENTE
+  N-2.8: PENDIENTE
+  N-2.9: PENDIENTE
+  N-2.10: PENDIENTE
+  N-2.11: PENDIENTE
+  N-2.12: PENDIENTE
+  N-2.13: PENDIENTE
+  S-01: PENDIENTE
+  S-02: PENDIENTE
+  S-03: PENDIENTE
+  S-04: PENDIENTE
+  S-05: PENDIENTE
+  S-06: PENDIENTE
+  S-07: PENDIENTE
+  S-07A: PENDIENTE
+  S-07B: PENDIENTE
+  S-08: PENDIENTE
+  S-09: PENDIENTE
+  S-10: PENDIENTE
+  S-11: PENDIENTE
+  S-12: PENDIENTE
+  O4-00: PENDIENTE
+  O4-01: PENDIENTE
+  O4-02: PENDIENTE
+  O4-03: PENDIENTE
+  O4-04: PENDIENTE
+  O4-05: PENDIENTE
+  O4-06: PENDIENTE
+  O4-07: PENDIENTE
+  O4-08: PENDIENTE
+  O4-09: PENDIENTE
+  O4-10: PENDIENTE
+  O4-11: PENDIENTE
+  O4-12: PENDIENTE
+  O4-13: PENDIENTE
+  O4-14: PENDIENTE
+  O4-15: PENDIENTE
+  O4-16: PENDIENTE
+  O4-17: PENDIENTE
+  O4-18: PENDIENTE
+  O4-19: PENDIENTE
+  O4-20: PENDIENTE

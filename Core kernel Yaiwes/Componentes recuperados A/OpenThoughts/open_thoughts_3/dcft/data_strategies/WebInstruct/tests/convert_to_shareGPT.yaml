@@ -1,0 +1,16 @@
+name: webinstruct_v1_beta_stage_3_filtered_shareGPT_format
+operators:
+  - id: load_webinstruct_v1_beta_stage_3_filtered
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/webinstruct_v1_beta_stage_3_filtered
+      split: train
+      columns: 
+        - instruction
+        - response
+  - id: convert_to_sharegpt
+    input_ids:
+      - load_webinstruct_v1_beta_stage_3_filtered
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.convert_IT_to_ShareGPT_format

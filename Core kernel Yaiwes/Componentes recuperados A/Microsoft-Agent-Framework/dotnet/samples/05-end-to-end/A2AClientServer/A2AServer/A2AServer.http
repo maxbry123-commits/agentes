@@ -1,0 +1,25 @@
+﻿@host = http://localhost:5000
+
+### Query the policy agent card
+GET {{host}}/.well-known/agent-card.json
+
+### Send a message to the policy agent
+POST {{host}}
+Content-Type: application/json
+
+{
+    "id": "1",
+    "jsonrpc": "2.0",
+    "method": "SendMessage",
+    "params": {
+        "message": {
+            "role": "ROLE_USER",
+            "messageId": "msg_1",
+            "parts": [
+                {
+                    "text": "What is the policy for short shipments?"
+                }
+            ]
+        }
+    }
+}

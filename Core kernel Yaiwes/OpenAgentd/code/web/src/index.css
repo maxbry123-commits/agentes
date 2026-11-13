@@ -1,0 +1,1069 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "katex/dist/katex.min.css";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+/* Bundled Nerd Font icons fallback — mobile fix (see nerd-font-icons.css). */
+@import "./assets/fonts/nerd-font-icons.css";
+
+/* ─────────────────────────────────────────────────────────────
+ * OpenAgentd — syntax highlighting (@tanstack/highlight)
+ * The single highlighter for chat fences, the coding file viewer
+ * and the ToolCall shell command. Tokens are theme-aware via
+ * var() references.
+ * ───────────────────────────────────────────────────────────── */
+.th-comment                      { color: var(--color-syn-comment); font-style: italic; }
+.th-keyword,
+.th-tag,
+.th-selector,
+.th-command                      { color: var(--color-syn-keyword); }
+.th-string,
+.th-attr,
+.th-inserted                     { color: var(--color-syn-string); }
+.th-number,
+.th-literal                      { color: var(--color-syn-number); }
+.th-heading,
+.th-property                     { color: var(--color-syn-type); }
+.th-variable,
+.th-function,
+.th-link                         { color: var(--color-syn-function); }
+.th-type,
+.th-operator                     { color: var(--color-syn-operator); }
+.th-meta,
+.th-code-inline                  { color: var(--color-syn-variable); }
+.th-deleted                      { color: var(--color-syn-variable); }
+
+@custom-variant dark (&:is(.dark *));
+
+/* ─────────────────────────────────────────────────────────────
+ * Tailwind @theme — expose design tokens as utilities.
+ * Tokens themselves are defined in :root.dark / :root.light below.
+ * ───────────────────────────────────────────────────────────── */
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', 'Courier New', monospace;
+
+
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-2xl: 20px;
+    --radius-3xl: 24px;
+    --radius-4xl: 28px;
+
+    /* App header — 36 px shared bar. The 70 px inset clears the
+     * macOS traffic-light overlay (x=12 origin + ~58 button group). */
+    --spacing-app-header: 2.25rem;
+    --spacing-mac-traffic-inset: 70px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * OpenAgentd paper tokens — DARK override
+ * Light mode is canonical (defined on :root below).
+ * Theme class is set on <html> before paint (see index.html).
+ * ───────────────────────────────────────────────────────────── */
+:root.dark {
+    color-scheme: dark;
+
+    /* Surfaces */
+    --bg-page:           #15110D;
+    --bg-sidebar:        #1C1813;
+    --bg-card:           #1C1813;
+    --bg-input:          #1C1813;
+    --bg-key:            #2A2219;
+    --bg-send:           #F5EBD8;
+    --color-surface:     #221C16;
+    --color-surface-2:   #2A2219;
+    --color-bg-elevated: #1C1813;
+
+    /* Borders */
+    --border-soft:         #2C231A;
+    --border-card:         #3A2F23;
+    --color-border-subtle: #2C231A;
+    --color-border:        #3A2F23;
+    --color-border-strong: #5C4B36;
+
+    /* Text */
+    --color-text:           #F5EBD8;
+    --color-text-2:         #C5B59A;
+    --color-text-muted:     #9C8A72;
+    --color-text-subtle:    #8E7D66; /* AA-compliant on --bg-page (≥4.5:1) */
+    --color-text-on-accent: #15110D;
+    --fg-primary:           #F5EBD8;
+    --fg-secondary:         #C5B59A;
+    --fg-muted:             #9C8A72;
+
+    /* Accent (UI) */
+    --color-accent:  #F5EBD8;
+    --color-overlay: #00000099;
+
+    /* Agent chips */
+    --accent-blue:        #7CC2F0;
+    --accent-blue-soft:   #1E3A52;
+    --accent-blue-text:   #9DD0F5;
+
+    --accent-green:       #5DC487;
+    --accent-green-soft:  #1F3A2A;
+    --accent-green-text:  #92E0B0;
+
+    --accent-orange:      #FDB75D;
+    --accent-orange-soft: #3D2D14;
+    --accent-orange-text: #FCC780;
+
+    --accent-pink:        #F472B6;
+    --accent-pink-soft:   #3D1F2D;
+
+    --accent-purple:      #A78BFA;
+    --accent-purple-soft: #2D2440;
+
+    --accent-red:         #F87171;
+
+    /* Markers (charts) */
+    --color-marker-blue:   #38BDF8;
+    --color-marker-mint:   #4ADE80;
+    --color-marker-orange: #FCC352;
+    --color-marker-pink:   #F472B6;
+    --color-marker-yellow: #FBBF24;
+    --color-violet:        #A78BFA;
+    --color-tint-mint:     rgba(74, 222, 128, 0.15);
+    --color-tint-orange:   rgba(252, 195, 82, 0.15);
+    --color-tint-violet:   rgba(167, 139, 250, 0.15);
+
+    /* Semantic state (re-use chip palette so the system stays small) */
+    --color-success:        var(--accent-green);
+    --color-success-subtle: var(--accent-green-soft);
+    --color-warning:        var(--accent-orange);
+    --color-warning-subtle: var(--accent-orange-soft);
+    --color-error:          #F87171;
+    --color-error-subtle:   rgba(248, 113, 113, 0.12);
+    --color-info:           var(--accent-blue);
+    --color-info-subtle:    var(--accent-blue-soft);
+    --color-diff-add-bg:    rgba(16, 185, 129, 0.10);
+    --color-diff-add-text:  #86EFAC;
+    --color-diff-del-bg:    rgba(239, 68, 68, 0.10);
+    --color-diff-del-text:  #FCA5A5;
+
+    /* Syntax highlighting */
+    --color-syn-comment:  #9C8A72;
+    --color-syn-keyword:  #A78BFA;
+    --color-syn-function: #38BDF8;
+    --color-syn-variable: #F87171;
+    --color-syn-string:   #4ADE80;
+    --color-syn-number:   #FBBF24;
+    --color-syn-type:     #FCC780;
+    --color-syn-operator: #C5B59A;
+
+    /* Depth & focus
+     * Focus ring uses --accent-blue rather than --color-accent because the
+     * paper accent is near-black (light) / near-white (dark), so a ring
+     * derived from it reads as a hard rectangle. Blue gives the standard
+     * focus affordance while staying inside the brand palette. */
+    --focus-ring:   var(--accent-blue);
+    --shadow-depth: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
+
+    /* Motion — durations */
+    --motion-instant: 80ms;
+    --motion-fast:    150ms;
+    --motion-base:    240ms;
+    --motion-slow:    400ms;
+    --motion-glacial: 800ms;
+
+    /* Motion — easings */
+    --ease-out:           cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out:        cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-spring-soft:   cubic-bezier(0.34, 1.2, 0.64, 1);
+    --ease-spring-snappy: cubic-bezier(0.22, 1.4, 0.36, 1);
+    --ease-linear:        linear;
+
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Light mode — warm paper, canonical default. Applies to bare :root
+ * and to :root.light (explicit user pick).
+ * ───────────────────────────────────────────────────────────── */
+:root,
+:root.light {
+    color-scheme: light;
+
+    /* Surfaces */
+    --bg-page:           #FAF6EC;
+    --bg-sidebar:        #F5EFDD;
+    --bg-card:           #FFFBF1;
+    --bg-input:          #FAF6EC;
+    --bg-key:            #F0E9D4;
+    --bg-send:           #2D241B;
+    --color-surface:     #FFFDF7;
+    --color-surface-2:   #F5EBD8;
+    --color-bg-elevated: #FFFDF7;
+
+    /* Borders */
+    --border-soft:         #E7DCBF;
+    --border-card:         #D9CFA9;
+    --color-border-subtle: #E7DCBF;
+    --color-border:        #D9CFA9;
+    --color-border-strong: #B8A47E;
+
+    /* Text */
+    --color-text:           #1A1714;
+    --color-text-2:         #4B3E32;
+    --color-text-muted:     #6E604F;
+    --color-text-subtle:    #7A6A54; /* AA-compliant on --bg-page (≥4.5:1) */
+    --color-text-on-accent: #FFFDF7;
+    --fg-primary:           #1F1A14;
+    --fg-secondary:         #4B3E32;
+    --fg-muted:             #6E604F;
+
+    /* Accent (UI) */
+    --color-accent:  #3F3429;
+    --color-overlay: rgba(26, 23, 20, 0.40);
+
+    /* Agent chips */
+    --accent-blue:        #5AA8E2;
+    --accent-blue-soft:   #DCEEFB;
+    --accent-blue-text:   #174A73;
+
+    --accent-green:       #3DA66A;
+    --accent-green-soft:  #E2F2E5;
+    --accent-green-text:  #15573D;
+
+    --accent-orange:      #F59E3B;
+    --accent-orange-soft: #FFF1D8;
+    --accent-orange-text: #873E05;
+
+    --accent-pink:        #A21D52;
+    --accent-pink-soft:   #FBE0EB;
+
+    --accent-purple:      #5A34D1;
+    --accent-purple-soft: #E8DEF8;
+
+    --accent-red:         #A71C24;
+
+    /* Markers (charts) */
+    --color-marker-blue:   #0284C7;
+    --color-marker-mint:   #16A34A;
+    --color-marker-orange: #FA8030;
+    --color-marker-pink:   #DB2777;
+    --color-marker-yellow: #B77900;
+    --color-violet:        #7C3AED;
+    --color-tint-mint:     rgba(22, 163, 74, 0.10);
+    --color-tint-orange:   rgba(250, 128, 48, 0.10);
+    --color-tint-violet:   rgba(124, 58, 237, 0.10);
+
+    /* Semantic */
+    --color-success:        var(--accent-green);
+    --color-success-subtle: var(--accent-green-soft);
+    --color-warning:        var(--accent-orange);
+    --color-warning-subtle: var(--accent-orange-soft);
+    --color-error:          #B91C1C;
+    --color-error-subtle:   rgba(185, 28, 28, 0.08);
+    --color-info:           var(--accent-blue);
+    --color-info-subtle:    var(--accent-blue-soft);
+    --color-diff-add-bg:    rgba(22, 163, 74, 0.16);
+    --color-diff-add-text:  #166534;
+    --color-diff-del-bg:    rgba(185, 28, 28, 0.14);
+    --color-diff-del-text:  #991B1B;
+
+    /* Syntax */
+    --color-syn-comment:  #6E604F;
+    --color-syn-keyword:  #7C3AED;
+    --color-syn-function: #026F9E;
+    --color-syn-variable: #B91C1C;
+    --color-syn-string:   #15803D;
+    --color-syn-number:   #A16207;
+    --color-syn-type:     #B45309;
+    --color-syn-operator: #4B3E32;
+
+    /* Focus + depth (see dark-mode comment) */
+    --focus-ring:   var(--accent-blue);
+    --shadow-depth: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+    outline-color: color-mix(in srgb, var(--focus-ring) 50%, transparent);
+    /* Eliminate 300ms tap delay on mobile without blocking scroll */
+    touch-action: manipulation;
+    /* Remove iOS blue tap flash */
+    -webkit-tap-highlight-color: transparent;
+  }
+  html,
+  body {
+    /* Lock the document to the viewport so internal scroll regions
+     * (route shells use h-dvh + overflow-auto) are the sole scrollers.
+     * Without this the Tauri/Safari webview lets the whole document
+     * rubber-band on all four edges — exposing pixels above the
+     * header, below the bottom, and to the left/right of the layout
+     * on hover/scroll/trackpad swipe. */
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  body {
+    background-color: var(--bg-page);
+    color: var(--color-text);
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Safe-area helpers — notch / home-indicator clearance (iOS)
+ * Apply to the outermost layout shells, not every element.
+ * ───────────────────────────────────────────────────────────── */
+.pb-safe { padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px); }
+/* While the soft keyboard is up the home indicator is hidden behind it, so the
+ * safe-area inset would only waste a strip of space above the keyboard. Drop to
+ * a flat 8px so the composer sits flush on the keyboard. */
+html[data-keyboard-open] .pb-safe { padding-bottom: 8px; }
+.pt-safe { padding-top:    env(safe-area-inset-top,    0px); }
+.pl-safe { padding-left:   env(safe-area-inset-left,   0px); }
+.pr-safe { padding-right:  env(safe-area-inset-right,  0px); }
+
+html[data-mobile-shell],
+html[data-mobile-shell] body {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+html[data-mobile-shell] {
+  -webkit-text-size-adjust: 100%;
+  touch-action: pan-x pan-y;
+}
+
+@keyframes blink_input_opacity_to_prevent_scrolling_when_focus {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+html[data-mobile-shell] input:focus,
+html[data-mobile-shell] textarea:focus,
+html[data-mobile-shell] [contenteditable="true"]:focus {
+  animation: blink_input_opacity_to_prevent_scrolling_when_focus 0.01s;
+}
+
+html[data-mobile-shell] body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html[data-mobile-shell] input,
+html[data-mobile-shell] textarea,
+html[data-mobile-shell] [contenteditable="true"],
+html[data-mobile-shell] .selectable-text,
+html[data-mobile-shell] .oa-prose,
+html[data-mobile-shell] .oa-prose *,
+html[data-mobile-shell] pre,
+html[data-mobile-shell] code {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Legibility floor — 11px minimum for tiny utility text on EVERY shell.
+   Previously this only applied inside mobile shells, which left desktop
+   (and iPad-as-desktop) rendering 9–10.5px metadata that fails comfortable-
+   reading guidance and made the same screen differ between platforms. An
+   11px floor keeps desktop dense while guaranteeing a readable minimum. */
+.text-\[8px\],
+.text-\[9px\],
+.text-\[10px\],
+.text-\[10\.5px\] {
+  font-size: 11px;
+}
+
+.mobile-safe-shell {
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.mobile-safe-header {
+  min-height: var(--spacing-app-header);
+}
+
+html[data-mobile-shell] .mobile-safe-header {
+  min-height: calc(var(--spacing-app-header) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.mobile-safe-top {
+  top: calc(var(--spacing-app-header) + env(safe-area-inset-top, 0px));
+}
+
+.mobile-safe-notch-top {
+  top: env(safe-area-inset-top, 0px);
+}
+
+.mobile-safe-overlay {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.mobile-safe-floating {
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  left: max(1rem, env(safe-area-inset-left, 0px));
+}
+
+.mobile-safe-toast {
+  top: max(1rem, env(safe-area-inset-top, 0px));
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  left: max(1rem, env(safe-area-inset-left, 0px));
+}
+
+/* Settings is an app-level overlay, so its bounds must respect both mobile
+   cutouts/home indicators and the desktop shell header / macOS traffic-light
+   region. Keep this geometry in CSS instead of Tailwind arbitrary classes so
+   every platform gets the same safe-area contract. */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * AppOverlay — shared geometry for ALL app overlays except the full-width
+ * Settings sheet (which uses .settings-modal-shell below).
+ *
+ * Two layout variants are set via data attributes written by <AppOverlay>:
+ *   [data-overlay-variant="modal"]  — centred card
+ *   [data-overlay-variant="sheet"]  — edge drawer (side in data-overlay-side)
+ *
+ * Mobile (both variants): edge-to-edge, safe-area insets, tracks soft keyboard.
+ * Desktop (md+): modal → centred card capped by --overlay-max-width CSS var;
+ *                sheet → anchored to the chosen edge.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * AppOverlay CSS — three variants, all position: fixed.
+ *
+ * Platform matrix:
+ *   Mobile web (no data-mobile-shell): env(safe-area-inset-*) clears notch/home bar.
+ *   iOS/Android Tauri (data-mobile-shell): same + transform tracks visual
+ *     viewport offset so the overlay follows the keyboard without a height jump.
+ *   macOS Tauri (data-platform=mac-overlay): desktop path applies; the app
+ *     header (--spacing-app-header) already clears the traffic-light buttons.
+ *   Desktop web/Windows/Linux: standard desktop path, no safe-area needed.
+ *
+ * KEY RULE: framer-motion owns the CSS `transform` property for enter/exit
+ * animations. Never use CSS transform for *layout* (no translateX(-50%)).
+ * Use margin:auto for horizontal centring of fixed elements instead.
+ *
+ * KEY RULE: Do NOT add `mobile-viewport` class to overlays. That class is
+ * only for the main app shell — it sets height:var(--app-vh) which would
+ * fight the top+bottom constraint sizing of these fixed overlays.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── MODAL — centred card ────────────────────────────────────────────────────
+ *
+ * Mobile (< 768px):
+ *   Clears the app header + notch at top, home indicator at bottom.
+ *   Edge-to-edge horizontally with safe-area side clearance.
+ *   height:auto — sized naturally by the top+bottom insets.
+ *   Rounded corners + border so it reads as a floating sheet.
+ *
+ * Desktop (≥ 768px):
+ *   Centred card. Top below app header + 4vh breathing room, bottom 4vh.
+ *   Width capped by --overlay-max-width (passed as inline CSS var by AppOverlay).
+ *   left:0 + right:0 + margin:auto centres a fixed element without transform.
+ *
+ * macOS overlay: no extra rule needed — desktop path already clears the header
+ *   (--spacing-app-header accounts for the traffic-light bar height).
+ *
+ * iOS/Android Tauri (data-mobile-shell):
+ *   transform:translateY(--app-vt) follows the visual viewport offset that
+ *   useMobileViewportGuards writes when the keyboard opens/closes. The overlay
+ *   stays above the keyboard purely through this offset — no height change.
+ * ──────────────────────────────────────────────────────────────────────────── */
+.app-overlay-modal {
+  position: fixed;
+  top: calc(var(--spacing-app-header) + env(safe-area-inset-top, 0px));
+  right: max(0.5rem, env(safe-area-inset-right, 0px));
+  bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  left: max(0.5rem, env(safe-area-inset-left, 0px));
+  height: auto;
+  /* Matches .settings-modal-shell's rounded-lg (--radius-lg) so every
+   * AppOverlay-based panel (Scheduler, Session Settings, Command Palette)
+   * reads as the same family as Settings — the documented visual reference. */
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+@media (min-width: 768px) {
+  .app-overlay-modal {
+    top: calc(var(--spacing-app-header) + 4vh);
+    bottom: 4vh;
+    left: 0;
+    right: 0;
+    width: min(90vw, var(--overlay-max-width, 860px));
+    margin-left: auto;
+    margin-right: auto;
+    max-height: calc(100svh - var(--spacing-app-header) - 8vh);
+  }
+}
+
+html[data-mobile-shell] .app-overlay-modal {
+  transform: translateY(var(--app-vt, 0px));
+}
+
+/* ── PALETTE — compact search card ──────────────────────────────────────────
+ *
+ * Always auto-height (grows with content, never full-screen).
+ *
+ * Mobile: edge-to-edge horizontally just below the app header + safe-area top.
+ * Desktop: centred 480px card, 1.5rem below the app header.
+ * ──────────────────────────────────────────────────────────────────────────── */
+.app-overlay-palette {
+  position: fixed;
+  top: calc(var(--spacing-app-header) + env(safe-area-inset-top, 0px) + 0.5rem);
+  left: max(0.5rem, env(safe-area-inset-left, 0px));
+  right: max(0.5rem, env(safe-area-inset-right, 0px));
+  height: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.app-overlay-palette input:focus,
+.app-overlay-palette input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+@media (min-width: 768px) {
+  .app-overlay-palette {
+    top: calc(var(--spacing-app-header) + 1.5rem);
+    left: 0;
+    right: 0;
+    margin-left: auto;
+    margin-right: auto;
+    width: min(90vw, 600px);
+  }
+}
+
+/* ── Keyboard tracking (iOS/Android Tauri only) ──────────────────────────────
+ * will-change is promoted only while the keyboard is actively moving to avoid
+ * keeping a composited layer alive permanently (wastes GPU memory on iOS).
+ * The transition fires only on keyboard dismiss (data-vp-anim) so the shell
+ * glides back smoothly instead of jumping. Keyboard open stays frame-locked
+ * (no transition) so the overlay rises in lockstep with the keyboard.
+ * ──────────────────────────────────────────────────────────────────────────── */
+html[data-mobile-shell][data-keyboard-open] .app-overlay-modal,
+html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
+  will-change: transform;
+}
+
+html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.settings-modal-shell {
+  position: fixed;
+  top: max(0.5rem, env(safe-area-inset-top, 0px));
+  right: max(0.5rem, env(safe-area-inset-right, 0px));
+  bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  left: max(0.5rem, env(safe-area-inset-left, 0px));
+  height: calc(100vh - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
+}
+
+@supports (height: 100svh) {
+  .settings-modal-shell {
+    height: calc(100svh - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
+  }
+}
+
+html[data-mobile-shell] .settings-modal-shell {
+  height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
+  transform: translateY(var(--app-vt, 0px));
+}
+
+@media (min-width: 768px) {
+  .settings-modal-shell {
+    top: calc(var(--spacing-app-header) + 4vh);
+    right: max(2.5vw, calc((100vw - 76rem) / 2));
+    bottom: 4vh;
+    left: max(2.5vw, calc((100vw - 76rem) / 2));
+    height: auto;
+    max-height: calc(100vh - var(--spacing-app-header) - 8vh);
+    transform: none;
+  }
+}
+
+@supports (height: 100svh) {
+  .mobile-viewport {
+    height: 100svh;
+  }
+}
+
+/* Mobile shell only: bind the app shell to the *visual* viewport so the
+ * whole UI tracks the soft keyboard as one rigid unit. ``--app-vh`` /
+ * ``--app-vt`` are written imperatively by ``useMobileViewportGuards`` from
+ * ``window.visualViewport`` on every keyboard frame. The shell shrinks to the
+ * visible region (composer rides up on the keyboard via flexbox; the scroll
+ * content just gets a shorter scrollport — no content reflow) and translates
+ * to follow ``offsetTop`` for the scrolled/zoomed edge case.
+ *
+ * Guarded behind ``data-mobile-shell`` + a variable-presence check so desktop
+ * and any environment where the hook didn't run keep the ``100svh`` fallback
+ * above. ``transform`` is GPU-composited, so the follow is cheap and smooth. */
+html[data-mobile-shell] .mobile-viewport {
+  height: var(--app-vh, 100svh);
+  transform: translateY(var(--app-vt, 0px));
+}
+
+/* ``will-change`` is only promoted while the keyboard is actually moving.
+ * Leaving it on permanently keeps the entire shell on a composited layer and
+ * wastes memory; any repaint inside it can also flicker on iOS. Scope it to
+ * the keyboard-open / dismiss-glide windows only. */
+html[data-mobile-shell][data-keyboard-open] .mobile-viewport,
+html[data-mobile-shell][data-keyboard-open] .settings-modal-shell,
+html[data-mobile-shell][data-vp-anim] .mobile-viewport,
+html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
+  will-change: height, transform;
+}
+
+/* Keyboard *open* stays frame-locked (no transition) so the composer rises in
+ * lockstep with the keyboard. On *dismiss* we set `data-vp-anim` and write the
+ * full height optimistically, so the shell glides back with a short ease
+ * instead of crawling down with iOS's slow keyboard-retract animation. */
+html[data-mobile-shell][data-vp-anim] .mobile-viewport,
+html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
+  transition:
+    height 0.2s cubic-bezier(0.32, 0.72, 0, 1),
+    transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Scrollbar — minimal, theme-aware
+ * ───────────────────────────────────────────────────────────── */
+@layer base {
+  /* Scrollbars are invisible at rest and only fade in while the element
+   * carrying them is hovered/focused (or, on WebKit, while it is actively
+   * being scrolled). This keeps the UI free of always-on scrollbar chrome
+   * without removing scroll affordance when it's actually needed. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  *:hover,
+  *:focus-within {
+    scrollbar-color: var(--color-border) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: var(--radius-xs);
+    transition: background-color 0.15s ease;
+  }
+  :hover::-webkit-scrollbar-thumb,
+  :focus-within::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-muted);
+  }
+  /* Let internal scrollers chain to their parent when they hit a
+   * top/bottom limit (good UX: cursor/touch over a nested scroll area
+   * keeps scrolling the page once the inner one bottoms out). The
+   * document edge is independently locked via html/body { overflow:
+   * hidden; overscroll-behavior: none } above, so this chaining stops
+   * at the route shell and never rubber-bands the webview edge.
+   * Use `overscroll-contain` explicitly on an element to trap scroll
+   * inside a self-contained overlay (e.g. a dialog/popover). */
+  .overflow-auto,
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-y-scroll,
+  .overflow-scroll {
+    overscroll-behavior: auto;
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Chat transcript scroller
+ * ─────────────────────────────────────────────────────────────
+ * ``overflow-anchor: none`` opts the scroller itself out of scroll
+ * anchoring; a single bottom sentinel ([data-chat-scroll-anchor], set
+ * ``overflow-anchor: auto`` via JS) is the one element the browser may
+ * use to keep the view pinned as streamed content grows. Pinning via the
+ * browser avoids the per-frame ``scrollTop`` assignments that dropped
+ * compositor tiles and left the transcript blank until the next scroll. */
+.oa-chat-scroll {
+  overflow-anchor: none;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Focus ring — :focus-visible only, never on mouse click
+ * ───────────────────────────────────────────────────────────── */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    transition: outline-color var(--motion-fast) var(--ease-out);
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Skip link — visible on first Tab press
+ * ───────────────────────────────────────────────────────────── */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  padding: 8px 16px;
+  background: var(--bg-send);
+  color: var(--color-text-on-accent);
+  z-index: 100;
+  transition: top var(--motion-fast) var(--ease-out);
+}
+.skip-link:focus-visible {
+  top: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Animations — each conveys a specific piece of information.
+ * ───────────────────────────────────────────────────────────── */
+
+/* Thinking dot — one of three; stagger set inline on element. */
+@keyframes thinking-dot {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+.thinking-dot {
+  animation: thinking-dot 1400ms var(--ease-in-out) infinite;
+}
+
+/* Tool-call row — dispatched tool just joined the transcript. */
+@keyframes tool-row-enter {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+.tool-row-enter {
+  animation: tool-row-enter var(--motion-base) var(--ease-spring-soft);
+}
+
+/* Done pulse — server confirmed persistence (opacity only, no color flash). */
+@keyframes done-pulse {
+  from { opacity: 0.6; }
+  to   { opacity: 1; }
+}
+.done-pulse {
+  animation: done-pulse var(--motion-base) var(--ease-out);
+}
+
+/* Running session title/dot — slower breathing emphasis for active work. */
+@keyframes session-title-breathe {
+  0%, 100% { opacity: 0.56; }
+  50%      { opacity: 1; }
+}
+.session-title-breathe {
+  animation: session-title-breathe 2200ms var(--ease-in-out) infinite;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Raised surface — cards, panels, grouped containers.
+ * Both modes use the same shadow+border treatment because the
+ * warm dark palette is too compressed for brightness-only depth.
+ * Apply to elements that sit one layer above `bg-page`.
+ * ───────────────────────────────────────────────────────────── */
+.surface-raised {
+  box-shadow: var(--shadow-depth);
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Font-weight transition — signature interaction.
+ * Apply to buttons, nav items, tabs, menu items. Not prose.
+ * ───────────────────────────────────────────────────────────── */
+.interactive-weight {
+  font-weight: 400;
+  transition: font-weight var(--motion-fast) var(--ease-in-out);
+}
+.interactive-weight:hover  { font-weight: 500; }
+.interactive-weight:active { font-weight: 600; }
+
+/* ─────────────────────────────────────────────────────────────
+ * prefers-reduced-motion — honor system-wide.
+ * Progress bars keep animating (time is literal); everything else snaps.
+ * ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Background UI Throttling
+ * When window/tab is hidden or minimized, freeze CSS animations
+ * to release compositor threads and prevent display link wakeups.
+ * ───────────────────────────────────────────────────────────── */
+html[data-app-hidden="true"] *,
+html[data-app-hidden="true"] *::before,
+html[data-app-hidden="true"] *::after {
+  animation-play-state: paused !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Drag and drop panel styles
+ * ───────────────────────────────────────────────────────────── */
+.panel-dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+.panel-drop-target {
+  outline: 2px dashed color-mix(in srgb, var(--color-accent) 55%, transparent);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--color-accent) 4%, transparent);
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Markdown prose — .oa-prose (theme-aware via tokens)
+ * ───────────────────────────────────────────────────────────── */
+.oa-prose {
+  color: var(--color-text);
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.oa-prose p { margin-bottom: 0.75em; }
+.oa-prose p:last-child { margin-bottom: 0; }
+.oa-prose h1, .oa-prose h2, .oa-prose h3 {
+  font-weight: 600;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+  color: var(--color-text);
+}
+.oa-prose h1 { font-size: 1.2em;  color: var(--color-text); }
+.oa-prose h2 { font-size: 1.08em; color: var(--color-text); }
+.oa-prose h3 { font-size: 1em;    color: var(--color-text-2); }
+.oa-prose ul, .oa-prose ol {
+  padding-left: 1.5em;
+  margin-bottom: 0.75em;
+}
+.oa-prose ol {
+  list-style-type: decimal;
+}
+.oa-prose ul {
+  list-style-type: disc;
+}
+.oa-prose li { margin-bottom: 0.25em; }
+.oa-prose code {
+  background: var(--bg-key);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+  padding: 0.15em 0.4em;
+  font-size: 0.85em;
+  font-family: var(--font-mono);
+  color: var(--color-syn-string);
+}
+.oa-prose pre {
+  overflow-x: auto;
+  margin: 0;
+}
+
+.oa-prose pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: 0.85em;
+  color: var(--color-text);
+}
+
+.oa-prose .oa-mermaid-diagram {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem 0.75rem;
+  display: flex;
+  justify-content: center;
+}
+
+.oa-prose .oa-mermaid-diagram svg {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  margin-inline: auto;
+  font-family: 'Inter Variable', system-ui, -apple-system, sans-serif !important;
+}
+
+.oa-mermaid-diagram .node rect,
+.oa-mermaid-diagram .node circle,
+.oa-mermaid-diagram .node polygon {
+  rx: var(--radius-xs);
+  ry: var(--radius-xs);
+}
+
+.oa-mermaid-diagram text,
+.oa-mermaid-diagram .label {
+  font-family: 'Inter Variable', system-ui, -apple-system, sans-serif !important;
+}
+
+.oa-mermaid-lightbox-content {
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.oa-mermaid-lightbox-content svg {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  display: block;
+  margin-inline: auto;
+}
+
+.oa-prose a {
+  color: var(--color-text);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--color-border-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 120ms ease, color 120ms ease;
+}
+.oa-prose a:hover {
+  color: var(--color-accent);
+  text-decoration-color: currentColor;
+}
+.oa-prose a:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+.oa-prose blockquote {
+  border-left: 2px solid var(--color-border-strong);
+  padding-left: 0.75em;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin: 0.75em 0;
+}
+.oa-prose hr {
+  border-color: var(--color-border);
+  margin: 1em 0;
+}
+.oa-prose .oa-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0.75em 0;
+}
+.oa-prose .oa-table-wrap:last-child {
+  margin-bottom: 0;
+}
+.oa-prose table {
+  border-collapse: collapse;
+  font-size: 0.875em;
+  min-width: max-content;
+  width: 100%;
+}
+.oa-prose th, .oa-prose td {
+  border: 1px solid var(--color-border);
+  padding: 0.5em 0.75em;
+  text-align: left;
+  max-width: 300px;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.oa-prose th {
+  color: var(--color-text-2);
+  background: var(--bg-key);
+}
+
+/* Drag-and-drop overlay animations */
+@keyframes drag-overlay-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.drag-overlay-enter {
+  animation: drag-overlay-enter 150ms var(--ease-out) forwards;
+}
+
+@keyframes drag-card-enter {
+  from { transform: scale(0.95); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+.drag-card-enter {
+  animation: drag-card-enter 200ms var(--ease-spring-soft) forwards;
+}
+.oa-prose strong { color: var(--color-text); font-weight: 600; }
+.oa-prose em     { color: var(--color-text-2); font-style: italic; }
+
+/* ─────────────────────────────────────────────────────────────
+ * Tool description — compact prose inside the settings panel.
+ * Matches the old plain-text style exactly: xs/muted/relaxed.
+ * Only markdown structure (lists, code, bold) gets rendered.
+ * ───────────────────────────────────────────────────────────── */
+.tool-desc .oa-prose {
+  font-size: 0.75rem; /* text-xs */
+  line-height: 1.625; /* leading-relaxed */
+  color: var(--color-text-muted);
+}
+.tool-desc .oa-prose p                    { margin-bottom: 0.4em; }
+.tool-desc .oa-prose p:last-child         { margin-bottom: 0; }
+.tool-desc .oa-prose ul,
+.tool-desc .oa-prose ol                   { padding-left: 1.25em; margin-bottom: 0.4em; }
+.tool-desc .oa-prose li                   { margin-bottom: 0.1em; }
+.tool-desc .oa-prose h1,
+.tool-desc .oa-prose h2,
+.tool-desc .oa-prose h3                   { font-size: 0.75rem; font-weight: 600; margin-top: 0.6em; margin-bottom: 0.2em; color: var(--color-text-muted); }
+.tool-desc .oa-prose strong               { color: var(--color-text-muted); }
+.tool-desc .oa-prose em                   { color: var(--color-text-muted); }
+.tool-desc .oa-prose code                 { font-size: 0.85em; color: var(--color-text-muted); background: var(--bg-key); }
+
+/* Tooltips disabled on mobile / touch devices */
+/* A solid keyboard outline remains visible independently of translucent
+ * decorative rings. Identity blue is unchanged; use its AA text tone. */
+:root {
+  --focus-outline: #174A73;
+}
+:root.dark {
+  --focus-outline: #9DD0F5;
+}
+:where(button, select, a[href], [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-outline);
+  outline-offset: 2px;
+}
+:where(input, textarea):focus,
+:where(input, textarea):focus-visible {
+  outline: none;
+}
+@media (pointer: coarse) {
+  [data-slot="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  [data-slot="tooltip-content"] {
+    display: none !important;
+  }
+}

@@ -1,0 +1,28 @@
+operators:
+  - id: load_taco_train
+    config:
+      type: hf_source
+      dataset: bespokelabs/sky-t1-taco-test-rejection-sampled-shreyas
+      split: train
+  - id: load_taco_test
+    config:
+      type: hf_source
+      dataset: bespokelabs/sky-t1-taco-train-rejection-sampled-shreyas
+      split: train
+  - id: decontaminate 
+    config:
+      type: cpu_function
+      num_cpus: 10
+      function: data_strategies.DeepSeekR1.utils.fuzzy_match_table
+      function_config:
+          column: question
+          eval_datasets:
+            - livecodebench/code_generation_lite
+          eval_columns:
+            - question_content
+          eval_splits:
+            - test
+          similarity_threshold: 95.0
+    input_ids:
+      - load_taco_train
+      - load_taco_test

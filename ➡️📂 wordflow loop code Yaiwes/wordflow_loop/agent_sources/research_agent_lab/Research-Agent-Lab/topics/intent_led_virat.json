@@ -1,0 +1,153 @@
+{
+  "topic_name": "intent_conditioned_led_virat",
+  "domain": {
+    "primary_area": "pedestrian_trajectory_prediction",
+    "secondary_areas": [
+      "Leapfrog Diffusion Model",
+      "VIRAT trajectory prediction",
+      "intention conditioning",
+      "multimodal trajectory forecasting"
+    ]
+  },
+  "research_goal": {
+    "short": "Use the copied LED/VIRAT codebase to explore intention or language-conditioned trajectory prediction on top of the validated baseline.",
+    "long": "Build a controlled multi-agent research workflow around the copied Intent-LED-mul-agent project, preserving the LED VIRAT baseline while planning small, reviewable modifications for intention-conditioned trajectory forecasting."
+  },
+  "current_status": {
+    "baseline_methods": ["LED VIRAT baseline", "Leapfrog Diffusion Model"],
+    "dataset": "VIRAT processed pkl from ../MID-main/processed_data_virat",
+    "known_results": [
+      "debug smoke run completed",
+      "baseline_original trained for 100 epochs",
+      "epoch 100 ADE/FDE logged in work.md"
+    ],
+    "priority": [
+      "preserve baseline_original outputs",
+      "smoke-test every change before full training",
+      "prefer small conditioning changes over broad rewrites"
+    ],
+    "first_strategy": "Plan a minimal intention-conditioning experiment that can be toggled from cfg/virat without changing baseline outputs."
+  },
+  "search_seeds": {
+    "keywords": [
+      "language conditioned pedestrian trajectory prediction",
+      "intention conditioned trajectory prediction",
+      "diffusion pedestrian trajectory forecasting",
+      "Leapfrog diffusion trajectory prediction",
+      "VIRAT pedestrian trajectory forecasting"
+    ]
+  },
+  "paper_schema": {
+    "required_fields": [
+      "task",
+      "input_modalities",
+      "model_architecture",
+      "fusion_strategy",
+      "datasets",
+      "metrics",
+      "limitations",
+      "implementation_difficulty"
+    ],
+    "default_input_modalities": ["trajectory", "intention", "scene"],
+    "default_output": "future trajectory"
+  },
+  "experiment_metrics": ["ADE", "FDE", "miss_rate", "multimodal_diversity"],
+  "codebase": {
+    "experiment_tag": "intention_baseline",
+    "repo_path": "D:/Codes/VS/Intent-LED-mul-agent",
+    "copy_can_modify": true,
+    "exploration_mode": "high",
+    "dry_run_first": true,
+    "backup_required": true,
+    "max_files_per_patch": 8,
+    "protected_files": [
+      "results/checkpoints/*",
+      "results/led_virat/baseline_original/*",
+      "results/fig/*",
+      "../MID-main/*",
+      "data/raw/*",
+      "__pycache__/*"
+    ],
+    "allowed_auto_edit": [
+      "models/*",
+      "trainer/*",
+      "data/dataloader_virat.py",
+      "cfg/virat/*",
+      "utils/*",
+      "main_led_nba.py",
+      "visualize_virat_prediction.py",
+      "work.md"
+    ]
+  },
+  "metadata": {
+    "created_from": "Intent-LED-mul-agent work.md",
+    "version": "v1",
+    "enable_llm": true,
+    "enable_experiments": false,
+    "enable_code_writes": false,
+    "online": false,
+    "literature": {
+      "local_paper_dirs": [
+        "C:/Users/duyul/Desktop/work/Essay/轨迹预测/EPC",
+        "C:/Users/duyul/Desktop/work/Essay/轨迹预测/SPK"
+      ],
+      "include_patterns": ["*.pdf", "*.md", "*.txt"],
+      "max_files": 300,
+      "max_parse_pages": 20,
+      "max_parse_chars": 40000,
+      "chunk_chars": 1800,
+      "prefer_local_first": true,
+      "cache_dir": "data/local_literature/intent_led_virat"
+    },
+    "models": {
+      "policy": "no_current_codex_agent_tasks",
+      "default": {
+        "provider": "offline",
+        "model": "rule_based"
+      },
+      "routes": {
+        "paper_triage": {
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "api_key_env": "DEEPSEEK_API_KEY",
+          "task_difficulty": "simple"
+        },
+        "local_paper_parser": {
+          "provider": "offline",
+          "model": "rule_based",
+          "task_difficulty": "simple"
+        },
+        "synthesis": {
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "api_key_env": "DEEPSEEK_API_KEY",
+          "task_difficulty": "simple"
+        },
+        "method_card_extractor": {
+          "provider": "deepseek",
+          "model": "deepseek-v4-pro",
+          "api_key_env": "DEEPSEEK_API_KEY",
+          "task_difficulty": "hard"
+        },
+        "experiment_planner": {
+          "provider": "deepseek",
+          "model": "deepseek-v4-pro",
+          "api_key_env": "DEEPSEEK_API_KEY",
+          "task_difficulty": "hard"
+        },
+        "reviewer_agent": {
+          "provider": "deepseek",
+          "model": "deepseek-v4-pro",
+          "api_key_env": "DEEPSEEK_API_KEY",
+          "task_difficulty": "hard"
+        },
+        "result_parser": {
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "api_key_env": "DEEPSEEK_API_KEY",
+          "task_difficulty": "simple"
+        }
+      }
+    }
+  }
+}

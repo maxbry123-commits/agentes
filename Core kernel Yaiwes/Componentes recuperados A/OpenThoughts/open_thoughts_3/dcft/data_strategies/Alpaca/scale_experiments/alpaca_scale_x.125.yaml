@@ -1,0 +1,95 @@
+operators:  
+  - id: load_seed_instructions
+    config:
+      type: function
+      function: data_strategies.Alpaca.utils.load_seed_instructions
+      function_config:
+        seed_tasks_path: dcft/data_strategies/Alpaca/resources/seed_tasks.jsonl
+  - id: load_scale_prompt
+    config:
+      type: function
+      function: data_strategies.Alpaca.scale_experiments.scale.generate_icl_example
+    input_ids:
+      - load_seed_instructions
+  - id: generate_tasks
+    config:
+      type: completions
+      map: alpaca_seed
+      map_config:
+        user_message: |
+          {{seed_task_prompt}}
+      model: gpt-4o-mini
+      n_repeat: 2
+      batch: False
+    input_ids:
+      - load_scale_prompt
+  - id: create_alpaca_prompts
+    config:
+      type: function
+      function: data_strategies.Alpaca.utils.create_alpaca_prompts
+      function_config:
+        num_instructions_to_generate: 125_000
+        num_prompt_instructions: 3
+        output_column: alpaca_prompt
+    input_ids:
+      - generate_tasks
+
+  - id: generate_instruction_input_output_tuples
+    config:
+      type: completions
+      map: alpaca
+      map_config:
+        alpaca_prompt_column: alpaca_prompt
+        num_seed_instructions: 3 # NOTE(Ryan) used for Alpaca's parsing code, needs to match the number in the previous step
+        output_instruction_column: instruction
+        output_input_column: input
+        output_output_column: output
+      model: gpt-4o-mini
+      batch: True
+    input_ids:
+      - create_alpaca_prompts
+
+  - id: filter_instructions_by_heuristics
+    config:
+      type: function
+      function: data_strategies.Alpaca.utils.instructions_heuristics
+      function_config:
+        input_instruction_column: instruction
+        output_filtered_reason_column: filtered_reason
+        output_filtered_decision_column: filtered_decision
+    input_ids:
+      - generate_instruction_input_output_tuples
+
+  - id: remove_filtered_instructions
+    config:
+      type: function
+      function: data_strategies.commons.filter_out_truey_values
+      function_config:
+        filter_column: filtered_decision
+    input_ids:
+      - filter_instructions_by_heuristics
+
+  # NOTE(Ryan): This is a departure from the original Alpaca recipe which uses ROUGE and 0.7 threshold, we do this to compute similarity scores faster.
+  # NOTE(Ryan): We also do not include the seed instructions here, we only check the similarity of the generated instructions against each other.
+  - id: filter_instructions_cosine_similarity
+    config:
+      type: function
+      function: data_strategies.Alpaca.utils.filter_instructions_cosine_similarity
+      function_config:
+        similarity_threshold: 0.9
+        input_instruction_column: instruction
+    input_ids:
+      - remove_filtered_instructions
+
+  - id: convert_alpaca_to_sharegpt
+    config:
+      type: function
+      function: data_strategies.commons.convert_alpaca_to_sharegpt
+      function_config:
+        input_instruction_column: instruction
+        input_input_column: input
+        input_output_column: output
+        output_sharegpt_column: conversations
+    input_ids:
+      - filter_instructions_cosine_similarity
+

@@ -1,0 +1,1672 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchWithCache } from '../../../src/cache';
+import logger from '../../../src/logger';
+import { AzureChatCompletionProvider } from '../../../src/providers/azure/chat';
+import { mockProcessEnv } from '../../util/utils';
+
+vi.mock('../../../src/cache', async (importOriginal) => {
+  return {
+    ...(await importOriginal()),
+    fetchWithCache: vi.fn(),
+  };
+});
+
+const setAuthHeaders = (
+  provider: AzureChatCompletionProvider,
+  headers: Record<string, string> = { 'api-key': 'test-key' },
+) => {
+  (provider as any).authHeaders = headers;
+  (provider as any).initialized = true;
+};
+
+const originalOpenAiTemperature = process.env.OPENAI_TEMPERATURE;
+const originalOpenAiMaxTokens = process.env.OPENAI_MAX_TOKENS;
+const originalOpenAiMaxCompletionTokens = process.env.OPENAI_MAX_COMPLETION_TOKENS;
+const originalOpenAiTopP = process.env.OPENAI_TOP_P;
+const originalOpenAiPresencePenalty = process.env.OPENAI_PRESENCE_PENALTY;
+const originalOpenAiFrequencyPenalty = process.env.OPENAI_FREQUENCY_PENALTY;
+
+describe('AzureChatCompletionProvider', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockProcessEnv({ OPENAI_TEMPERATURE: undefined });
+    mockProcessEnv({ OPENAI_MAX_TOKENS: undefined });
+    mockProcessEnv({ OPENAI_MAX_COMPLETION_TOKENS: undefined });
+    mockProcessEnv({ OPENAI_TOP_P: undefined });
+    mockProcessEnv({ OPENAI_PRESENCE_PENALTY: undefined });
+    mockProcessEnv({ OPENAI_FREQUENCY_PENALTY: undefined });
+    vi.spyOn(AzureChatCompletionProvider.prototype as any, 'getAuthHeaders').mockResolvedValue({
+      'api-key': 'test-key',
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (originalOpenAiTemperature === undefined) {
+      mockProcessEnv({ OPENAI_TEMPERATURE: undefined });
+    } else {
+      mockProcessEnv({ OPENAI_TEMPERATURE: originalOpenAiTemperature });
+    }
+    if (originalOpenAiMaxTokens === undefined) {
+      mockProcessEnv({ OPENAI_MAX_TOKENS: undefined });
+    } else {
+      mockProcessEnv({ OPENAI_MAX_TOKENS: originalOpenAiMaxTokens });
+    }
+    if (originalOpenAiMaxCompletionTokens === undefined) {
+      mockProcessEnv({ OPENAI_MAX_COMPLETION_TOKENS: undefined });
+    } else {
+      mockProcessEnv({ OPENAI_MAX_COMPLETION_TOKENS: originalOpenAiMaxCompletionTokens });
+    }
+    if (originalOpenAiTopP === undefined) {
+      mockProcessEnv({ OPENAI_TOP_P: undefined });
+    } else {
+      mockProcessEnv({ OPENAI_TOP_P: originalOpenAiTopP });
+    }
+    if (originalOpenAiPresencePenalty === undefined) {
+      mockProcessEnv({ OPENAI_PRESENCE_PENALTY: undefined });
+    } else {
+      mockProcessEnv({ OPENAI_PRESENCE_PENALTY: originalOpenAiPresencePenalty });
+    }
+    if (originalOpenAiFrequencyPenalty === undefined) {
+      mockProcessEnv({ OPENAI_FREQUENCY_PENALTY: undefined });
+    } else {
+      mockProcessEnv({ OPENAI_FREQUENCY_PENALTY: originalOpenAiFrequencyPenalty });
+    }
+  });
+
+  describe('config merging', () => {
+    let provider: AzureChatCompletionProvider;
+
+    beforeEach(() => {
+      provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+          functions: [{ name: 'provider_func', parameters: {} }],
+          max_tokens: 100,
+          temperature: 0.5,
+        },
+      });
+      setAuthHeaders(provider);
+    });
+
+    it('should use provider config when no prompt config exists', async () => {
+      const context = {
+        prompt: { label: 'test prompt', raw: 'test prompt' },
+        vars: {},
+      };
+      const { body } = await (provider as any).getOpenAiBody('test prompt', context);
+      expect(body).toMatchObject({
+        functions: [{ name: 'provider_func', parameters: {} }],
+        max_tokens: 100,
+        temperature: 0.5,
+      });
+    });
+
+    it('should merge prompt config with provider config', async () => {
+      const context = {
+        prompt: {
+          config: {
+            functions: [{ name: 'prompt_func', parameters: {} }],
+            temperature: 0.7,
+          },
+          label: 'test prompt',
+          raw: 'test prompt',
+        },
+        vars: {},
+      };
+      const { body } = await (provider as any).getOpenAiBody('test prompt', context);
+      expect(body).toMatchObject({
+        functions: [{ name: 'prompt_func', parameters: {} }],
+        max_tokens: 100,
+        temperature: 0.7,
+      });
+    });
+
+    it('should handle undefined prompt config', async () => {
+      const context = {
+        prompt: { config: undefined, label: 'test prompt', raw: 'test prompt' },
+        vars: {},
+      };
+      const { body } = await (provider as any).getOpenAiBody('test prompt', context);
+      expect(body).toMatchObject({
+        functions: [{ name: 'provider_func', parameters: {} }],
+        max_tokens: 100,
+        temperature: 0.5,
+      });
+    });
+
+    it('should handle empty prompt config', async () => {
+      const context = {
+        prompt: { config: {}, label: 'test prompt', raw: 'test prompt' },
+        vars: {},
+      };
+      const { body } = await (provider as any).getOpenAiBody('test prompt', context);
+      expect(body).toMatchObject({
+        functions: [{ name: 'provider_func', parameters: {} }],
+        max_tokens: 100,
+        temperature: 0.5,
+      });
+    });
+
+    it('should handle complex nested config merging', async () => {
+      const context = {
+        prompt: {
+          config: {
+            response_format: { type: 'json_object' },
+            tool_choice: { function: { name: 'test' }, type: 'function' },
+          },
+          label: 'test prompt',
+          raw: 'test prompt',
+        },
+        vars: {},
+      };
+      const { body } = await (provider as any).getOpenAiBody('test prompt', context);
+      expect(body).toMatchObject({
+        functions: [{ name: 'provider_func', parameters: {} }],
+        max_tokens: 100,
+        response_format: { type: 'json_object' },
+        temperature: 0.5,
+        tool_choice: { function: { name: 'test' }, type: 'function' },
+      });
+    });
+
+    it('should handle json_schema response format', async () => {
+      const context = {
+        prompt: {
+          config: {
+            response_format: {
+              type: 'json_schema',
+              json_schema: {
+                name: 'test_schema',
+                strict: true,
+                schema: {
+                  type: 'object',
+                  properties: {
+                    test: { type: 'string' },
+                  },
+                  required: ['test'],
+                  additionalProperties: false,
+                },
+              },
+            },
+          },
+          label: 'test prompt',
+          raw: 'test prompt',
+        },
+        vars: {},
+      };
+      const { body } = await (provider as any).getOpenAiBody('test prompt', context);
+      expect(body.response_format).toMatchObject({
+        type: 'json_schema',
+        json_schema: {
+          name: 'test_schema',
+          strict: true,
+          schema: {
+            type: 'object',
+            properties: {
+              test: { type: 'string' },
+            },
+            required: ['test'],
+            additionalProperties: false,
+          },
+        },
+      });
+    });
+
+    it('should render variables in response format', async () => {
+      const context = {
+        prompt: {
+          config: {
+            response_format: {
+              type: 'json_schema',
+              json_schema: {
+                name: '{{schemaName}}',
+                strict: true,
+                schema: {
+                  type: 'object',
+                  properties: {
+                    test: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          label: 'test prompt',
+          raw: 'test prompt',
+        },
+        vars: {
+          schemaName: 'dynamic_schema',
+        },
+      };
+      const { body } = await (provider as any).getOpenAiBody('test prompt', context);
+      expect(body.response_format.json_schema.name).toBe('dynamic_schema');
+    });
+
+    it('should omit default parameters when omitDefaults is true', async () => {
+      provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+          omitDefaults: true,
+        },
+      });
+      setAuthHeaders(provider);
+
+      const { body } = await (provider as any).getOpenAiBody('test prompt');
+
+      expect(body.max_tokens).toBeUndefined();
+      expect('max_tokens' in body).toBe(false);
+      expect(body.temperature).toBeUndefined();
+      expect('temperature' in body).toBe(false);
+      expect(body.top_p).toBeUndefined();
+      expect('top_p' in body).toBe(false);
+      expect(body.presence_penalty).toBeUndefined();
+      expect('presence_penalty' in body).toBe(false);
+      expect(body.frequency_penalty).toBeUndefined();
+      expect('frequency_penalty' in body).toBe(false);
+    });
+
+    it('should use env defaults with omitDefaults when OPENAI env vars are set', async () => {
+      mockProcessEnv({ OPENAI_TEMPERATURE: '0.5' });
+      mockProcessEnv({ OPENAI_MAX_TOKENS: '2048' });
+      mockProcessEnv({ OPENAI_TOP_P: '0.9' });
+      mockProcessEnv({ OPENAI_PRESENCE_PENALTY: '0.1' });
+      mockProcessEnv({ OPENAI_FREQUENCY_PENALTY: '0.2' });
+
+      provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+          omitDefaults: true,
+        },
+      });
+      setAuthHeaders(provider);
+
+      const { body } = await (provider as any).getOpenAiBody('test prompt');
+
+      expect(body.max_tokens).toBe(2048);
+      expect(body.temperature).toBe(0.5);
+      expect(body.top_p).toBe(0.9);
+      expect(body.presence_penalty).toBe(0.1);
+      expect(body.frequency_penalty).toBe(0.2);
+    });
+  });
+
+  describe('response handling', () => {
+    let provider: AzureChatCompletionProvider;
+
+    beforeEach(() => {
+      provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+        },
+      });
+      setAuthHeaders(provider);
+    });
+
+    afterEach(() => {
+      vi.resetAllMocks();
+    });
+
+    it('uses audio-token pricing from chat completion usage details', async () => {
+      provider = new AzureChatCompletionProvider('gpt-audio-1.5-2026-02-23', {
+        config: { apiHost: 'test.azure.com', apiKey: 'test-key' },
+      });
+      setAuthHeaders(provider);
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: {
+          choices: [
+            { index: 0, message: { role: 'assistant', content: 'hello' }, finish_reason: 'stop' },
+          ],
+          usage: {
+            prompt_tokens: 1_000,
+            prompt_tokens_details: { audio_tokens: 200, cached_tokens: 0 },
+            completion_tokens: 500,
+            completion_tokens_details: { audio_tokens: 100 },
+            total_tokens: 1_500,
+          },
+        },
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result.cost).toBeCloseTo((800 * 2.5 + 200 * 32 + 400 * 10 + 100 * 64) / 1e6, 12);
+    });
+
+    it('reports API prompt-cache usage for a fresh chat response', async () => {
+      provider = new AzureChatCompletionProvider('gpt-5.6', {
+        config: { apiHost: 'test.azure.com', apiKey: 'test-key' },
+      });
+      setAuthHeaders(provider);
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: {
+          choices: [
+            { index: 0, message: { role: 'assistant', content: 'hello' }, finish_reason: 'stop' },
+          ],
+          usage: {
+            prompt_tokens: 2_000,
+            prompt_tokens_details: { cached_tokens: 500 },
+            completion_tokens: 1_000,
+            total_tokens: 3_000,
+          },
+        },
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result.tokenUsage).toMatchObject({ prompt: 2_000, completion: 1_000, cached: 500 });
+      expect(result.cost).toBeCloseTo((1_500 * 5 + 500 * 0.5 + 1_000 * 30) / 1e6, 12);
+    });
+
+    it('should parse JSON response with json_schema format when finish_reason is not content_filter', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        object: 'chat.completion',
+        created: Date.now(),
+        model: 'gpt-4',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({ test: 'value' }),
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      };
+
+      provider.config.response_format = {
+        type: 'json_schema',
+        json_schema: {
+          name: 'test_response',
+          strict: true,
+          schema: {
+            type: 'object',
+            properties: {
+              test: { type: 'string' },
+            },
+            required: ['test'],
+            additionalProperties: false,
+          },
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      vi.spyOn(logger, 'warn');
+
+      const result = await provider.callApi('test prompt');
+      expect(result.output).toEqual({ test: 'value' });
+    });
+
+    it('should handle API errors', async () => {
+      vi.mocked(fetchWithCache).mockRejectedValueOnce(new Error('API Error'));
+
+      const result = await provider.callApi('test prompt');
+      expect(result.error).toBe('API call error: API Error');
+    });
+
+    it('preserves HttpRateLimitError as a structured error with metadata.rateLimitKind', async () => {
+      // Closes the regression where Azure chat's catch block stringified
+      // HttpRateLimitError into "API call error: HttpRateLimitError: ..."
+      // and dropped `kind`, causing the scheduler to retry quota errors.
+      const { HttpRateLimitError } = await import('../../../src/util/fetch/errors');
+      const quota = new HttpRateLimitError({ status: 429, code: 'insufficient_quota' });
+      vi.mocked(fetchWithCache).mockRejectedValueOnce(quota);
+
+      const result = await provider.callApi('test prompt');
+      expect(result.error).toContain('Quota exceeded');
+      expect(result.error).toContain('insufficient_quota');
+      expect(result.error).toContain('Retries will not help');
+      expect(result.metadata?.rateLimitKind).toBe('quota');
+    });
+
+    it('preserves rate-limit kind for per-window 429s', async () => {
+      const { HttpRateLimitError } = await import('../../../src/util/fetch/errors');
+      const rateLimit = new HttpRateLimitError({
+        status: 429,
+        code: 'rate_limit_exceeded',
+        retryAfterMs: 7000,
+      });
+      vi.mocked(fetchWithCache).mockRejectedValueOnce(rateLimit);
+
+      const result = await provider.callApi('test prompt');
+      expect(result.error).toContain('Rate limit exceeded');
+      expect(result.error).toContain('retry after 7s');
+      expect(result.error).not.toContain('Retries will not help');
+      expect(result.metadata?.rateLimitKind).toBe('rate_limit');
+    });
+
+    it('should handle invalid JSON response', async () => {
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: 'invalid json',
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const result = await provider.callApi('test prompt');
+      expect(result.error).toContain('API returned invalid JSON response');
+    });
+
+    it('should handle tool calls in response', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        object: 'chat.completion',
+        created: Date.now(),
+        model: 'gpt-4',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              tool_calls: [
+                {
+                  type: 'function',
+                  function: {
+                    name: 'test',
+                    arguments: '{}',
+                  },
+                },
+              ],
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      vi.spyOn(logger, 'warn');
+
+      const result = await provider.callApi('test prompt');
+      expect(result.output).toEqual([
+        {
+          type: 'function',
+          function: {
+            name: 'test',
+            arguments: '{}',
+          },
+        },
+      ]);
+    });
+
+    it('should pass custom headers from config to fetchWithCache', async () => {
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: {
+          choices: [{ message: { content: 'test' } }],
+          usage: {},
+        },
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const customHeaders = {
+        'X-Test-Header': 'test-value',
+        'Another-Header': 'another-value',
+      };
+
+      const customProvider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+          headers: customHeaders,
+        },
+      });
+      setAuthHeaders(customProvider);
+
+      await customProvider.callApi('test prompt');
+
+      expect(fetchWithCache).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            'api-key': 'test-key',
+            'X-Test-Header': 'test-value',
+            'Another-Header': 'another-value',
+          }),
+        }),
+        expect.any(Number),
+        'json',
+        undefined,
+      );
+    });
+  });
+
+  describe('structured outputs', () => {
+    let provider: AzureChatCompletionProvider;
+
+    beforeEach(() => {
+      provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+        },
+      });
+      setAuthHeaders(provider);
+    });
+
+    afterEach(() => {
+      vi.resetAllMocks();
+    });
+
+    it('should parse JSON response when prompt config specifies json_object format', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        object: 'chat.completion',
+        created: Date.now(),
+        model: 'gpt-4',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: '{"result": 42, "explanation": "test"}',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const result = await provider.callApi('test prompt', {
+        prompt: {
+          config: {
+            response_format: { type: 'json_object' },
+          },
+          label: 'test prompt',
+          raw: 'test prompt',
+        },
+        vars: {},
+      });
+
+      expect(result.output).toEqual({
+        result: 42,
+        explanation: 'test',
+      });
+    });
+
+    it('should handle invalid JSON when response format is specified', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        object: 'chat.completion',
+        created: Date.now(),
+        model: 'gpt-4',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: 'Invalid JSON response',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const result = await provider.callApi('test prompt', {
+        prompt: {
+          config: {
+            response_format: { type: 'json_object' },
+          },
+          label: 'test prompt',
+          raw: 'test prompt',
+        },
+        vars: {},
+      });
+
+      // Should still return the original string if JSON parsing fails
+      expect(result.output).toBe('Invalid JSON response');
+    });
+
+    it('should use correct API URL based on legacy dataSources config from prompt', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'test response',
+            },
+          },
+        ],
+        usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      (provider as any).apiVersion = '2024-custom';
+
+      await provider.callApi('test prompt', {
+        prompt: {
+          config: {
+            dataSources: [{ type: 'test' }],
+            apiVersion: '2024-custom',
+          },
+          label: 'test prompt',
+          raw: 'test prompt',
+        },
+        vars: {},
+      });
+
+      // Verify the URL includes extensions and uses the custom API version
+      expect(vi.mocked(fetchWithCache).mock.calls[0][0]).toContain(
+        '/extensions/chat/completions?api-version=2024-custom',
+      );
+    });
+
+    it('should use correct API URL based on data_sources config from prompt', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'test response',
+            },
+          },
+        ],
+        usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      (provider as any).apiVersion = '2024-custom';
+
+      await provider.callApi('test prompt', {
+        prompt: {
+          config: {
+            data_sources: [{ type: 'test' }],
+            apiVersion: '2024-custom',
+          },
+          label: 'test prompt',
+          raw: 'test prompt',
+        },
+        vars: {},
+      });
+
+      // Verify the URL doesn't include the legacy extensions path
+      expect(vi.mocked(fetchWithCache).mock.calls[0][0]).not.toContain('extensions');
+      expect(vi.mocked(fetchWithCache).mock.calls[0][0]).toContain(
+        '/chat/completions?api-version=2024-custom',
+      );
+    });
+  });
+
+  describe('reasoning models', () => {
+    it('should detect reasoning models with o1 flag', () => {
+      const provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          o1: true,
+        },
+      });
+      expect((provider as any).isReasoningModel()).toBe(true);
+    });
+
+    it('auto-detects Microsoft MAI reasoning models by deployment name', () => {
+      for (const name of ['mai-thinking-1', 'MAI-Thinking-1', 'mai-ds-r1', 'prod-mai-reasoning']) {
+        const provider = new AzureChatCompletionProvider(name, { config: {} });
+        expect((provider as any).isReasoningModel()).toBe(true);
+      }
+      // MAI-Code-* are fast coding models on the standard chat surface, not reasoning models.
+      const code = new AzureChatCompletionProvider('mai-code-1-flash', { config: {} });
+      expect((code as any).isReasoningModel()).toBe(false);
+    });
+
+    it('flags Claude Opus 4.7 and 4.8 as sampling-params-deprecated without treating them as reasoning', () => {
+      // Claude Opus 4.7 and 4.8 use the chat body's standard max_tokens path but
+      // reject `temperature` at the model level. Must NOT flip to the
+      // reasoning-model branch (which would swap max_tokens and send
+      // reasoning_effort).
+      const opus47 = new AzureChatCompletionProvider('claude-opus-4-7', { config: {} });
+      expect((opus47 as any).isReasoningModel()).toBe(false);
+      expect((opus47 as any).isSamplingParamsDeprecatedClaudeModel()).toBe(true);
+
+      const opus48 = new AzureChatCompletionProvider('claude-opus-4-8', { config: {} });
+      expect((opus48 as any).isReasoningModel()).toBe(false);
+      expect((opus48 as any).isSamplingParamsDeprecatedClaudeModel()).toBe(true);
+
+      // Opus 4.6 regression: not matched.
+      const opus46 = new AzureChatCompletionProvider('claude-opus-4-6-20260205', { config: {} });
+      expect((opus46 as any).isReasoningModel()).toBe(false);
+      expect((opus46 as any).isSamplingParamsDeprecatedClaudeModel()).toBe(false);
+
+      // Boundary: hypothetical suffix variants must not be accidentally matched.
+      const opus470 = new AzureChatCompletionProvider('claude-opus-4-70', { config: {} });
+      expect((opus470 as any).isSamplingParamsDeprecatedClaudeModel()).toBe(false);
+      const opus480 = new AzureChatCompletionProvider('claude-opus-4-80', { config: {} });
+      expect((opus480 as any).isSamplingParamsDeprecatedClaudeModel()).toBe(false);
+
+      const fable5 = new AzureChatCompletionProvider('claude-fable-5', { config: {} });
+      expect((fable5 as any).isReasoningModel()).toBe(false);
+      expect((fable5 as any).isSamplingParamsDeprecatedClaudeModel()).toBe(true);
+    });
+
+    it('should detect reasoning models with isReasoningModel flag', () => {
+      const provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          isReasoningModel: true,
+        },
+      });
+      expect((provider as any).isReasoningModel()).toBe(true);
+    });
+
+    it('should detect reasoning models with either flag set', () => {
+      const provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          o1: false,
+          isReasoningModel: true,
+        },
+      });
+      expect((provider as any).isReasoningModel()).toBe(true);
+    });
+
+    it('omits temperature for Claude Opus 4.7 while keeping the standard chat body', async () => {
+      const provider = new AzureChatCompletionProvider('claude-opus-4-7', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+          max_tokens: 512,
+          temperature: 0.5,
+        },
+      });
+      const { body } = await (provider as any).getOpenAiBody('hi');
+      expect(body).toHaveProperty('max_tokens', 512);
+      expect(body).not.toHaveProperty('max_completion_tokens');
+      expect(body).not.toHaveProperty('temperature');
+      expect(body).not.toHaveProperty('reasoning_effort');
+    });
+
+    it('omits temperature and top_p for Claude Opus 4.8 while keeping the standard chat body', async () => {
+      const provider = new AzureChatCompletionProvider('claude-opus-4-8', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+          max_tokens: 512,
+          temperature: 0.5,
+          top_p: 0.9,
+        },
+      });
+      const { body } = await (provider as any).getOpenAiBody('hi');
+      expect(body).toHaveProperty('max_tokens', 512);
+      expect(body).not.toHaveProperty('max_completion_tokens');
+      expect(body).not.toHaveProperty('temperature');
+      expect(body).not.toHaveProperty('top_p');
+      expect(body).not.toHaveProperty('reasoning_effort');
+    });
+
+    it('omits sampling params for Claude Fable 5 while keeping the standard chat body', async () => {
+      const provider = new AzureChatCompletionProvider('claude-fable-5', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+          max_tokens: 512,
+          temperature: 0.5,
+          top_p: 0.9,
+        },
+      });
+      const { body } = await (provider as any).getOpenAiBody('hi');
+      expect(body).toHaveProperty('max_tokens', 512);
+      expect(body).not.toHaveProperty('temperature');
+      expect(body).not.toHaveProperty('top_p');
+      expect(body).not.toHaveProperty('reasoning_effort');
+    });
+
+    it('omits sampling params for a custom Claude deployment when configured explicitly', async () => {
+      const provider = new AzureChatCompletionProvider('prod-claude-deployment', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+          isClaudeOpus47OrLater: true,
+          max_tokens: 512,
+          temperature: 0.5,
+          top_p: 0.9,
+        },
+      });
+      const { body } = await (provider as any).getOpenAiBody('hi');
+      expect(body).toHaveProperty('max_tokens', 512);
+      expect(body).not.toHaveProperty('temperature');
+      expect(body).not.toHaveProperty('top_p');
+    });
+
+    it('keeps temperature and top_p for a custom Claude deployment without isClaudeOpus47OrLater', async () => {
+      // Regression guard: an existing custom-named Claude deployment that has
+      // not opted in via isClaudeOpus47OrLater must keep its sampling params.
+      const provider = new AzureChatCompletionProvider('prod-claude-deployment', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+          max_tokens: 512,
+          temperature: 0.5,
+          top_p: 0.9,
+        },
+      });
+      const { body } = await (provider as any).getOpenAiBody('hi');
+      expect(body).toHaveProperty('max_tokens', 512);
+      expect(body).toHaveProperty('temperature', 0.5);
+      expect(body).toHaveProperty('top_p', 0.9);
+    });
+
+    it.each(['claude-prod-5', 'claude-prod-25', 'claude-team-blue-12', 'claude-prod-20260811'])(
+      'keeps sampling params for custom Claude deployment alias %s',
+      async (deploymentName) => {
+        const provider = new AzureChatCompletionProvider(deploymentName, {
+          config: {
+            apiHost: 'test.azure.com',
+            apiKey: 'test-key',
+            max_tokens: 512,
+            temperature: 0.5,
+            top_p: 0.9,
+          },
+        });
+
+        const { body } = await (provider as any).getOpenAiBody('hi');
+
+        expect(body).toHaveProperty('temperature', 0.5);
+        expect(body).toHaveProperty('top_p', 0.9);
+      },
+    );
+
+    it('omits sampling params for an opus-4-7-named deployment even without the flag', async () => {
+      // Baseline name-match path: deployment name matches opus-4-7, so sampling
+      // params are stripped without setting isClaudeOpus47OrLater.
+      const provider = new AzureChatCompletionProvider('claude-opus-4-7', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+          max_tokens: 512,
+          temperature: 0.5,
+          top_p: 0.9,
+        },
+      });
+      const { body } = await (provider as any).getOpenAiBody('hi');
+      expect(body).toHaveProperty('max_tokens', 512);
+      expect(body).not.toHaveProperty('temperature');
+      expect(body).not.toHaveProperty('top_p');
+    });
+
+    it('omits sampling params for an opus-4-8-named deployment even without the flag', async () => {
+      // Baseline name-match path for the 4.8 variant.
+      const provider = new AzureChatCompletionProvider('claude-opus-4-8', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+          max_tokens: 512,
+          temperature: 0.5,
+          top_p: 0.9,
+        },
+      });
+      const { body } = await (provider as any).getOpenAiBody('hi');
+      expect(body).toHaveProperty('max_tokens', 512);
+      expect(body).not.toHaveProperty('temperature');
+      expect(body).not.toHaveProperty('top_p');
+    });
+
+    it('keeps temperature and top_p for a plain non-Claude deployment', async () => {
+      // Non-Claude deployments (e.g. gpt-4o) must be unaffected by the Opus path.
+      const provider = new AzureChatCompletionProvider('gpt-4o', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+          max_tokens: 512,
+          temperature: 0.5,
+          top_p: 0.9,
+        },
+      });
+      const { body } = await (provider as any).getOpenAiBody('hi');
+      expect(body).toHaveProperty('max_tokens', 512);
+      expect(body).toHaveProperty('temperature', 0.5);
+      expect(body).toHaveProperty('top_p', 0.9);
+    });
+
+    it('should use max_completion_tokens for reasoning models', async () => {
+      const provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          isReasoningModel: true,
+          max_completion_tokens: 2000,
+          max_tokens: 1000,
+        },
+      });
+      const { body } = await (provider as any).getOpenAiBody('test prompt');
+      expect(body).toHaveProperty('max_completion_tokens', 2000);
+      expect(body).not.toHaveProperty('max_tokens');
+    });
+
+    it('should omit default max_completion_tokens when omitDefaults is true for reasoning models', async () => {
+      const provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          isReasoningModel: true,
+          omitDefaults: true,
+        },
+      });
+      const { body } = await (provider as any).getOpenAiBody('test prompt');
+      expect(body.max_completion_tokens).toBeUndefined();
+      expect('max_completion_tokens' in body).toBe(false);
+    });
+
+    it('should prefer OPENAI_MAX_COMPLETION_TOKENS over OPENAI_MAX_TOKENS for reasoning models', async () => {
+      mockProcessEnv({ OPENAI_MAX_COMPLETION_TOKENS: '4096' });
+      mockProcessEnv({ OPENAI_MAX_TOKENS: '2048' });
+
+      const provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          isReasoningModel: true,
+          omitDefaults: true,
+        },
+      });
+
+      const { body } = await (provider as any).getOpenAiBody('test prompt');
+
+      expect(body).toHaveProperty('max_completion_tokens', 4096);
+      expect(body).not.toHaveProperty('max_tokens');
+    });
+
+    it('should fall back to OPENAI_MAX_TOKENS for reasoning models when OPENAI_MAX_COMPLETION_TOKENS is unset', async () => {
+      mockProcessEnv({ OPENAI_MAX_TOKENS: '2048' });
+
+      const provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          isReasoningModel: true,
+          omitDefaults: true,
+        },
+      });
+
+      const { body } = await (provider as any).getOpenAiBody('test prompt');
+
+      expect(body).toHaveProperty('max_completion_tokens', 2048);
+      expect(body).not.toHaveProperty('max_tokens');
+    });
+
+    it('should use reasoning_effort for reasoning models', async () => {
+      const provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          isReasoningModel: true,
+          reasoning_effort: 'high',
+        },
+      });
+      const { body } = await (provider as any).getOpenAiBody('test prompt');
+      expect(body).toHaveProperty('reasoning_effort', 'high');
+    });
+
+    it('should omit default reasoning_effort when omitDefaults is true for reasoning models', async () => {
+      const provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          isReasoningModel: true,
+          omitDefaults: true,
+        },
+      });
+
+      const { body } = await (provider as any).getOpenAiBody('test prompt');
+
+      expect(body.reasoning_effort).toBeUndefined();
+      expect('reasoning_effort' in body).toBe(false);
+    });
+
+    it('should not include temperature for reasoning models', async () => {
+      const provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          isReasoningModel: true,
+          temperature: 0.7,
+        },
+      });
+      const { body } = await (provider as any).getOpenAiBody('test prompt');
+      expect(body).not.toHaveProperty('temperature');
+    });
+
+    it('should support variable rendering in reasoning_effort', async () => {
+      const provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          isReasoningModel: true,
+          reasoning_effort: '{{effort}}' as any,
+          apiHost: 'test.azure.com',
+        },
+      });
+      const context = {
+        prompt: { label: 'test prompt', raw: 'test prompt' },
+        vars: { effort: 'high' as const },
+      };
+      const { body } = await (provider as any).getOpenAiBody('test prompt', context);
+      expect(body).toHaveProperty('reasoning_effort', 'high');
+    });
+  });
+
+  describe('guardrails and content filtering', () => {
+    let provider: AzureChatCompletionProvider;
+
+    beforeEach(() => {
+      provider = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          apiHost: 'test.azure.com',
+          apiKey: 'test-key',
+        },
+      });
+    });
+
+    afterEach(() => {
+      vi.resetAllMocks();
+    });
+
+    it('should detect output content filtering', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        object: 'chat.completion',
+        created: Date.now(),
+        model: 'gpt-4',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: 'Some content',
+            },
+            finish_reason: 'content_filter',
+            content_filter_results: {
+              hate: {
+                filtered: false,
+                severity: 'safe',
+              },
+              jailbreak: {
+                filtered: false,
+                detected: false,
+              },
+              self_harm: {
+                filtered: false,
+                severity: 'safe',
+              },
+              sexual: {
+                filtered: false,
+                severity: 'safe',
+              },
+              violence: {
+                filtered: true,
+                severity: 'medium',
+              },
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      vi.spyOn(logger, 'warn');
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result.guardrails).toEqual({
+        flagged: true,
+        flaggedInput: false,
+        flaggedOutput: true,
+      });
+      expect(result.finishReason).toBe('content_filter');
+    });
+
+    it('does not crash when the API returns an empty choices array', async () => {
+      // An empty `choices` array (e.g. when every candidate is filtered) makes
+      // `choices[0]` undefined. The rest of the parser optional-chains `choice`,
+      // but the logProbs read dereferenced `data.choices[0]` directly and threw a
+      // TypeError, which surfaced as an opaque "API response error" instead of a
+      // normal empty result.
+      const mockResponse = {
+        id: 'mock-id',
+        object: 'chat.completion',
+        created: Date.now(),
+        model: 'gpt-4',
+        choices: [],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 0,
+          total_tokens: 10,
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result.error).toBeUndefined();
+      expect(result.logProbs).toBeUndefined();
+      // The nullish output is what routes the row to the evaluator's canonical
+      // "No output" outcome; token usage still reflects the billed prompt.
+      expect(result.output).toBeUndefined();
+      expect(result.tokenUsage).toMatchObject({ total: 10, prompt: 10, completion: 0 });
+    });
+
+    it('does not crash when the API response has no choices field at all', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        object: 'chat.completion',
+        created: Date.now(),
+        model: 'gpt-4',
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 0,
+          total_tokens: 10,
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result.error).toBeUndefined();
+      expect(result.logProbs).toBeUndefined();
+      expect(result.output).toBeUndefined();
+      expect(result.tokenUsage).toMatchObject({ total: 10, prompt: 10, completion: 0 });
+    });
+
+    it('should detect input content filtering', async () => {
+      const mockResponse = {
+        error: {
+          message:
+            "The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=2198766",
+          type: null,
+          param: 'prompt',
+          code: 'content_filter',
+          status: 400,
+          innererror: {
+            code: 'ResponsibleAIPolicyViolation',
+            content_filter_result: {
+              hate: {
+                filtered: false,
+                severity: 'safe',
+              },
+              jailbreak: {
+                filtered: false,
+                detected: false,
+              },
+              self_harm: {
+                filtered: false,
+                severity: 'safe',
+              },
+              sexual: {
+                filtered: false,
+                severity: 'safe',
+              },
+              violence: {
+                filtered: true,
+                severity: 'medium',
+              },
+            },
+          },
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 400,
+        statusText: 'OK',
+      });
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result.guardrails).toEqual({
+        flagged: true,
+        flaggedInput: true,
+        flaggedOutput: false,
+      });
+      expect(result.output).toBe(
+        "The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=2198766",
+      );
+      expect(result.finishReason).toBe('content_filter');
+    });
+
+    it('should handle content filtering system errors', async () => {
+      const mockResponse = {
+        choices: [
+          {
+            content_filter_results: {
+              error: {
+                code: 'content_filter_error',
+                message: 'The contents are not filtered',
+              },
+            },
+            finish_reason: 'stop',
+            index: 0,
+            logprobs: null,
+            message: {
+              annotations: [],
+              content: 'generated text',
+              refusal: null,
+              role: 'assistant',
+            },
+          },
+        ],
+        created: 1752095779,
+        id: 'chatcmpl-BrWRHfgUxlkb7lRw5ESPuCcmCxFEa',
+        model: 'gpt-4.1-nano-2025-04-14',
+        object: 'chat.completion',
+        prompt_filter_results: [
+          {
+            prompt_index: 0,
+            content_filter_results: {
+              hate: {
+                filtered: false,
+                severity: 'safe',
+              },
+              jailbreak: {
+                filtered: false,
+                detected: false,
+              },
+              self_harm: {
+                filtered: false,
+                severity: 'safe',
+              },
+              sexual: {
+                filtered: false,
+                severity: 'safe',
+              },
+              violence: {
+                filtered: false,
+                severity: 'safe',
+              },
+            },
+          },
+        ],
+        system_fingerprint: 'fp_68472df8fd',
+        usage: {
+          completion_tokens: 37,
+          completion_tokens_details: {
+            accepted_prediction_tokens: 0,
+            audio_tokens: 0,
+            reasoning_tokens: 0,
+            rejected_prediction_tokens: 0,
+          },
+          prompt_tokens: 19,
+          prompt_tokens_details: {
+            audio_tokens: 0,
+            cached_tokens: 0,
+          },
+          total_tokens: 56,
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const warnSpy = vi.spyOn(logger, 'warn');
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result.guardrails).toEqual({
+        flagged: false,
+        flaggedInput: false,
+        flaggedOutput: false,
+      });
+      expect(result.output).toBe('generated text');
+      expect(result.finishReason).toBe('stop');
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Content filtering system is down or otherwise unable to complete the request in time: content_filter_error The contents are not filtered',
+      );
+    });
+
+    it('should not flag when no content filtering is triggered', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        object: 'chat.completion',
+        created: Date.now(),
+        model: 'gpt-4',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: 'Some content',
+            },
+            finish_reason: 'stop',
+            content_filter_results: {
+              hate: { filtered: false, severity: 'safe' },
+              sexual: { filtered: false, severity: 'safe' },
+              violence: { filtered: false, severity: 'safe' },
+              self_harm: { filtered: false, severity: 'safe' },
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const result = await provider.callApi('test prompt');
+
+      expect(result.finishReason).toBe('stop');
+    });
+  });
+
+  describe('Function Tool Callbacks', () => {
+    it('should execute function callbacks and return the result', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        object: 'chat.completion',
+        created: Date.now(),
+        model: 'gpt-4',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: {
+                    name: 'addNumbers',
+                    arguments: '{"a": 5, "b": 6}',
+                  },
+                },
+              ],
+            },
+            finish_reason: 'tool_calls',
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const providerWithCallbacks = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          functionToolCallbacks: {
+            addNumbers: async (args: string) => {
+              const { a, b } = JSON.parse(args);
+              return JSON.stringify(a + b);
+            },
+          },
+        },
+      });
+
+      const result = await providerWithCallbacks.callApi('Add 5 and 6');
+
+      expect(result.error).toBeUndefined();
+      expect(result.output).toBe('11');
+    });
+
+    it('should handle multiple function callbacks', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        object: 'chat.completion',
+        created: Date.now(),
+        model: 'gpt-4',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: {
+                    name: 'addNumbers',
+                    arguments: '{"a": 5, "b": 6}',
+                  },
+                },
+                {
+                  id: 'call_456',
+                  type: 'function',
+                  function: {
+                    name: 'multiplyNumbers',
+                    arguments: '{"a": 3, "b": 4}',
+                  },
+                },
+              ],
+            },
+            finish_reason: 'tool_calls',
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const providerWithCallbacks = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          functionToolCallbacks: {
+            addNumbers: async (args: string) => {
+              const { a, b } = JSON.parse(args);
+              return JSON.stringify(a + b);
+            },
+            multiplyNumbers: async (args: string) => {
+              const { a, b } = JSON.parse(args);
+              return JSON.stringify(a * b);
+            },
+          },
+        },
+      });
+
+      const result = await providerWithCallbacks.callApi('Add 5 and 6, then multiply 3 and 4');
+
+      expect(result.error).toBeUndefined();
+      expect(result.output).toBe('11\n12');
+    });
+
+    it('should fall back to raw function call when callback fails', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        object: 'chat.completion',
+        created: Date.now(),
+        model: 'gpt-4',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: null,
+              function_call: {
+                name: 'addNumbers',
+                arguments: 'invalid json',
+              },
+            },
+            finish_reason: 'function_call',
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const providerWithCallbacks = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          functionToolCallbacks: {
+            addNumbers: async (args: string) => {
+              const { a, b } = JSON.parse(args); // This will throw
+              return JSON.stringify(a + b);
+            },
+          },
+        },
+      });
+
+      const result = await providerWithCallbacks.callApi('Add numbers with invalid JSON');
+
+      expect(result.error).toBeUndefined();
+      // When callback fails, it returns the stringified function call
+      expect(result.output).toBe('{"name":"addNumbers","arguments":"invalid json"}');
+    });
+
+    it('should handle legacy function_call format', async () => {
+      const mockResponse = {
+        id: 'mock-id',
+        object: 'chat.completion',
+        created: Date.now(),
+        model: 'gpt-4',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: null,
+              function_call: {
+                name: 'calculateSum',
+                arguments: '{"numbers": [1, 2, 3, 4, 5]}',
+              },
+            },
+            finish_reason: 'function_call',
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValueOnce({
+        data: mockResponse,
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      const providerWithCallbacks = new AzureChatCompletionProvider('test-deployment', {
+        config: {
+          apiKey: 'test-key',
+          apiHost: 'test.azure.com',
+          functionToolCallbacks: {
+            calculateSum: async (args: string) => {
+              const { numbers } = JSON.parse(args);
+              const sum = numbers.reduce((a: number, b: number) => a + b, 0);
+              return JSON.stringify(sum);
+            },
+          },
+        },
+      });
+
+      const result = await providerWithCallbacks.callApi('Calculate sum of [1, 2, 3, 4, 5]');
+
+      expect(result.error).toBeUndefined();
+      expect(result.output).toBe('15');
+    });
+  });
+});

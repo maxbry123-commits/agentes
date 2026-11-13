@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!--
+    Renderer CSP. Defense-in-depth: the only attacker model we care about
+    here is a compromised third-party page rendered inside a webview/iframe
+    breaking out into the host renderer. Real production isolation comes
+    from contextIsolation + sandbox in main.js, not this meta — but a CSP
+    silences Electron's "no CSP" dev warning AND blocks <object>/<embed>,
+    base-tag injection, and arbitrary cross-origin script tags as a cheap
+    extra layer. 'unsafe-eval' stays in script-src so webpack-dev-server's
+    HMR keeps working; the packaged build doesn't need it but it's harmless
+    given the bundle origins are 'self' + file:.
+  -->
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="
+      default-src 'self' file: data: blob: http://localhost:* http://127.0.0.1:* https://*.openswarm.com https://api.openswarm.com;
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' file: http://localhost:* http://127.0.0.1:*;
+      style-src 'self' 'unsafe-inline' file: http://localhost:* http://127.0.0.1:* https://fonts.googleapis.com;
+      font-src 'self' data: file: https://fonts.gstatic.com;
+      img-src 'self' data: blob: file: http: https:;
+      media-src 'self' data: blob: http: https:;
+      connect-src 'self' file: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https://api.openswarm.com https://*.openswarm.com https://openswarm.com https://api.github.com;
+      frame-src 'self' file: http: https: http://localhost:* http://127.0.0.1:*;
+      worker-src 'self' blob:;
+      object-src 'none';
+      base-uri 'self';
+    "
+  />
+  <title>Open Swarm</title>
+  <link rel="icon" href="./favicon.ico?v=2" sizes="16x16 32x32 48x48" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+  <!-- Warm sockets to the few external endpoints we hit on first paint. -->
+  <link rel="preconnect" href="https://api.openswarm.com" crossorigin />
+  <link rel="dns-prefetch" href="https://api.openswarm.com" />
+  <link rel="dns-prefetch" href="https://api.github.com" />
+  <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+</head>
+<body>
+  <script>
+    // Pre-React boot paint: last session's wash gradient (or the stock one) on the root element,
+    // so a reload never flashes a flat white frame while the bundle boots. Stock stops mirror
+    // DEFAULT_WASH_STOPS in shared/styles/washBackground.ts; keep them in sync by hand.
+    (function () {
+      try {
+        var mode = localStorage.getItem('self-swarm-theme-mode') === 'dark' ? 'dark' : 'light';
+        var g = null;
+        try { g = JSON.parse(localStorage.getItem('self-swarm-theme-gradient') || 'null'); } catch (e) {}
+        var accent = localStorage.getItem('self-swarm-theme-accent');
+        var stops = Array.isArray(g) && g.length > 1 ? g : (accent ? [accent, accent] : ['#DACEDA']);
+        if (stops.length === 1) stops = [stops[0], stops[0]];
+        var alpha = parseFloat(localStorage.getItem('self-swarm-theme-wash-opacity') || '');
+        if (!isFinite(alpha) || alpha < 0 || alpha > 1) alpha = 0.17;
+        var a = Math.round(alpha * 255).toString(16);
+        if (a.length < 2) a = '0' + a;
+        var css = stops.map(function (hex, i) { return hex + a + ' ' + Math.round((i / (stops.length - 1)) * 100) + '%'; }).join(', ');
+        var base = mode === 'dark' ? '#3D3D3A' : '#F5F4ED';
+        document.documentElement.style.background = 'linear-gradient(115deg, ' + css + ') fixed, ' + base;
+      } catch (e) { /* boot paint is cosmetic; never block boot */ }
+    })();
+  </script>
+  <div id="root"></div>
+</body>
+</html>

@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=../../.jsonschema/SchemaTestCase.schema.json
+---
+description: Bad string field and missing required int field
+schemaRefs:
+  principalSchema:
+    ref: cerbos:///complex_object.json
+  resourceSchema:
+    ref: cerbos:///complex_object.json
+checkInput:
+  actions: ["view:public"]
+  principal:
+    id: "john"
+    policyVersion: "20210210"
+    roles: ["employee"]
+    attr: &myAttr
+      stringField: 1
+      nestedObject:
+        key1:
+          float_field: 0.1
+  resource:
+    kind: "leave_request"
+    policyVersion: "20210210"
+    id: "XX125"
+    attr: *myAttr
+wantValidationErrors:
+  - path: "/stringField"
+    message: "expected string, but got number"
+    source: SOURCE_PRINCIPAL
+
+  - path: "/"
+    message: "missing properties: 'intField'"
+    source: SOURCE_PRINCIPAL
+
+  - path: "/nestedObject/key1"
+    message: "missing properties: 'stringField'"
+    source: SOURCE_PRINCIPAL
+
+  - path: "/stringField"
+    message: "expected string, but got number"
+    source: SOURCE_RESOURCE
+
+  - path: "/"
+    message: "missing properties: 'intField'"
+    source: SOURCE_RESOURCE
+
+  - path: "/nestedObject/key1"
+    message: "missing properties: 'stringField'"
+    source: SOURCE_RESOURCE

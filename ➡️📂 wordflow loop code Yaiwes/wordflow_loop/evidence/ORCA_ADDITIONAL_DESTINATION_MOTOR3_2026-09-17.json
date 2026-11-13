@@ -1,0 +1,18 @@
+{
+  "schema": "yaiwes.motor3.orca-wordflow-copy/v1",
+  "timestamp": "2026-09-17T19:58:16-05:00",
+  "source": "Core kernel Yaiwes/orca",
+  "destination": "➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/orca",
+  "motor": "motor_3_copy_batches",
+  "motor_blob_sha": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
+  "hf_job_id": "6aac8c48b1dc2b62dc58fe1f",
+  "source_tree_sha": "4a70b119890500c638cdc5e5115bc13a97fee974",
+  "target_tree_sha": "4a70b119890500c638cdc5e5115bc13a97fee974",
+  "files": 27324,
+  "failed": 0,
+  "pending": 0,
+  "motor_verdict": "VERIFIED_CLOSED",
+  "publish_commit": "50b657b4a914f6fcc4452f1cb74cc08ff08146c6",
+  "readback": "PASS_TREE_SHA_MATCH",
+  "operations_ledger": "PENDING_CONNECTOR_WRITE"
+}

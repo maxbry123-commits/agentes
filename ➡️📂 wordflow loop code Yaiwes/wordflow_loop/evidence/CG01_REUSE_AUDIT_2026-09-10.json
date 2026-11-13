@@ -1,0 +1,47 @@
+{
+  "schema":"yaiwes.wordflow.reuse-audit.v1",
+  "contract":"tel.workflow/v4",
+  "mode":"FAIL_CLOSED_EXECUTION_LOOP",
+  "authorized_write_root":"➡️📂 Wordflow LOOP Yaiwes/",
+  "node":"CG01_REUSE_AUDIT",
+  "date":"2026-09-10",
+  "findings":{
+    "chat_a_b":{
+      "status":"PARTIAL_FOUND",
+      "found":[
+        "runtime/docs/T001_CHAT_B_CONTRACT.md",
+        "runtime/docs/T007_CHAT_B_CONTRACT.md",
+        "runtime/docs/T011_CHAT_B_CONTRACT.md"
+      ],
+      "chat_a_artifact":"NOT_FOUND_IN_CURRENT_RUNTIME_TREE",
+      "decision":"G-016 remains GAP_IN_RESEARCH; reuse Chat-B contracts but do not claim bidirectional conversion until Chat-A source/process is located or NOT_FOUND is proven across project sources."
+    },
+    "sandbox":{
+      "status":"LOGICAL_DESCRIPTOR_ONLY",
+      "path":"runtime/src/uek/sandbox_manager.py",
+      "blob_sha":"e26d955331d5a9df8c7408377bab9924d308abef",
+      "evidence":"acquire_sandbox returns a dict containing sandbox_id/type/network_policy/memory_limit/status READY; no container/process/filesystem/network isolation is instantiated; release_sandbox always returns true",
+      "decision":"G-022 remains open; status READY is not isolation evidence."
+    },
+    "deployment_installation":{
+      "status":"STATIC_PASS_GAP",
+      "path":"runtime/src/install/installation_engine.py",
+      "blob_sha":"af525da2cf3409a30fe2633c934d8ccb45cbda50",
+      "evidence":"run_installation advances the FSM but emits valid=true, invariants_passed=36, fixed environment_hash and health_check PASS without executing real health/invariant checks",
+      "decision":"G-017 remains open; static PASS fields are rejected as deployment evidence."
+    },
+    "canonical_motors_inside_loop":{
+      "status":"NOT_LOCATED_AT_ROOT_OR_WORDFLOW_LOOP_TOP_LEVEL",
+      "decision":"G-011 remains open; do not claim motors available inside LOOP until exact canonical files and blob SHAs are read back."
+    },
+    "agent_memory":{
+      "status":"NOT_LOCATED_BY_EXACT_NAME",
+      "query":"agente-readme-memoria",
+      "decision":"G-014 remains open."
+    },
+    "G-010":"CLOSED_VERIFIED",
+    "G-020":"CLOSED_VERIFIED"
+  },
+  "external_auth":"AUTH_PROVIDER_TEST_PENDING",
+  "next_node":"CG01_REUSE_AUDIT_CONTINUE_FABLES_AND_SOURCE_MAP"
+}

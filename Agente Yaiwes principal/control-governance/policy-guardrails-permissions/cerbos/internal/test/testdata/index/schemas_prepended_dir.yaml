@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=../.jsonschema/IndexBuilderTestCase.schema.json
+---
+files:
+  "bar_schemas/resource.yaml": |-
+    ---
+    apiVersion: api.cerbos.dev/v1
+    resourcePolicy:
+      resource: leave_request
+      rules:
+      - actions: ['*']
+        effect: EFFECT_ALLOW
+        roles:
+        - admin
+      version: "20210210"

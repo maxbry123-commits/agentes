@@ -1,0 +1,179 @@
+# Boolean CLI Options
+
+We have seen some examples of *CLI options* with `bool`, and how **Typer** creates `--something` and `--no-something` automatically.
+
+But we can customize those names.
+
+## Only `--force`
+
+Let's say that we want a `--force` *CLI option* only, we want to discard `--no-force`.
+
+We can do that by specifying the exact name we want:
+
+{* docs_src/parameter_types/bool/tutorial001_an_py310.py hl[9] *}
+
+Now there's only a `--force` *CLI option*:
+
+<div class="termy">
+
+```console
+// Check the help
+$ uv run python main.py --help
+
+// Notice there's only --force, we no longer have --no-force
+Usage: main.py [OPTIONS]
+
+Options:
+  --force
+  --help                Show this message and exit.
+
+// Try it:
+$ uv run python main.py
+
+Not forcing
+
+// Now add --force
+$ uv run python main.py --force
+
+Forcing operation
+
+// And --no-force no longer exists ⛔️
+$ uv run python main.py --no-force
+
+Usage: main.py [OPTIONS]
+Try "main.py --help" for help.
+
+Error: No such option: --no-force
+```
+
+</div>
+
+## Alternative names
+
+Now let's imagine we have a *CLI option* `--accept`.
+
+And we want to allow setting `--accept` or the contrary, but `--no-accept` looks ugly.
+
+We might want to instead have `--accept` and `--reject`.
+
+We can do that by passing a single `str` with the 2 names for the `bool` *CLI option* separated by `/`:
+
+{* docs_src/parameter_types/bool/tutorial002_an_py310.py hl[9] *}
+
+Check it:
+
+<div class="termy">
+
+```console
+// Check the help
+$ uv run python main.py --help
+
+// Notice the --accept / --reject
+Usage: main.py [OPTIONS]
+
+Options:
+  --accept / --reject
+  --help                Show this message and exit.
+
+// Try it
+$ uv run python main.py
+
+I don't know what you want yet
+
+// Now pass --accept
+$ uv run python main.py --accept
+
+Accepting!
+
+// And --reject
+$ uv run python main.py --reject
+
+Rejecting!
+```
+
+</div>
+
+## Short names
+
+The same way, you can declare short versions of the names for these *CLI options*.
+
+For example, let's say we want `-f` for `--force` and `-F` for `--no-force`:
+
+{* docs_src/parameter_types/bool/tutorial003_an_py310.py hl[9] *}
+
+Check it:
+
+<div class="termy">
+
+```console
+// Check the help
+$ uv run python main.py --help
+
+// Notice the -f, --force / -F, --no-force
+Usage: main.py [OPTIONS]
+
+Options:
+  -f, --force / -F, --no-force  [default: no-force]
+  --help                        Show this message and exit.
+
+// Try with the short name -f
+$ uv run python main.py -f
+
+Forcing operation
+
+// Try with the short name -F
+$ uv run python main.py -F
+
+Not forcing
+```
+
+</div>
+
+## Only names for `False`
+
+If you want to (although it might not be a good idea), you can declare only *CLI option* names to set the `False` value.
+
+To do that, use a space and a single `/` and pass the negative name after:
+
+{* docs_src/parameter_types/bool/tutorial004_an_py310.py hl[9] *}
+
+/// tip
+
+Have in mind that it's a string with a preceding space and then a `/`.
+
+So, it's `" /-S"` not `"/-S"`.
+
+///
+
+Check it:
+
+<div class="termy">
+
+```console
+// Check the help
+$ uv run python main.py --help
+
+// Notice the / -d, --demo
+Usage: main.py [OPTIONS]
+
+Options:
+   / -d, --demo         [default: True]
+  --help                Show this message and exit.
+
+// Try it
+$ uv run python main.py
+
+Running in production
+
+// Now pass --demo
+$ uv run python main.py --demo
+
+Running demo
+
+// And the short version
+$ uv run python main.py -d
+
+Running demo
+```
+
+</div>

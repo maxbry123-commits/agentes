@@ -1,0 +1,31 @@
+schedulers:
+  periodic:
+    infer_every: "1m"
+    fit_every: "1000d" # bootstrap-only schedule; use a finite cadence if accumulated state must be reset
+    fit_window: "2w"
+
+models:
+  temporal_envelope:
+    class: "temporal_envelope"
+    queries: "all"
+    schedulers: "all"
+    seasonalities: ["hod_smooth", "dow_smooth"]
+    alpha: 0.005
+    loss_reactivity: 5
+    iqr_threshold: 2
+
+reader:
+  datasource_url: "http://victoriametrics:8428/"
+  sampling_period: "60s"
+  queries:
+    node_cpu_rate:
+      expr: "sum(rate(node_cpu_seconds_total[5m])) by (mode, instance, job)"
+
+writer:
+  datasource_url: "http://victoriametrics:8428/"
+
+
+monitoring:
+  pull: # Enable /metrics endpoint.
+    addr: "0.0.0.0"
+    port: 8490

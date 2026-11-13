@@ -1,0 +1,77 @@
+name: YAIWES LOOP5 Watchdog Auditor
+run-name: YAIWES LOOP5 Auditor • ${{ github.event_name }} • ${{ github.sha }}
+
+on:
+  workflow_run:
+    workflows: ["YAIWES LOOP5 Download Extract"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GIT_TERMINAL_PROMPT: "0"
+
+concurrency:
+  group: yaiwes-loop5-auditor-readonly
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout fresh main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+      - name: Four-pass independent audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5'
+          expected=(LangGraph Temporal-Python-SDK Prefect Hatchet-Python-SDK redun)
+          test -d "$ROOT"
+          test -f "$ROOT/LOOP5_MANIFEST.jsonl"
+          test -f "$ROOT/LOOP5_CHECKPOINT.json"
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path('➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5')
+          expected=['LangGraph','Temporal-Python-SDK','Prefect','Hatchet-Python-SDK','redun']
+          manifest=[json.loads(x) for x in (root/'LOOP5_MANIFEST.jsonl').read_text().splitlines() if x.strip()]
+          latest={x['name']:x for x in manifest}
+          assert set(expected) <= set(latest), (expected, latest.keys())
+          failures=[]
+          for name in expected:
+              out=root/name
+              for req in ['SOURCE_URL.txt','SOURCE_COMMIT.txt','SOURCE_PATHS.txt','SOURCE_LICENSE.txt','SOURCE_TREE_SHA256.txt','SOURCE_SHA256SUMS.txt']:
+                  if not (out/req).is_file(): failures.append(f'{name}:missing:{req}')
+              payload=[p for p in out.rglob('*') if p.is_file() and not p.name.startswith('SOURCE_') and not p.name.startswith('UPSTREAM_')]
+              if not payload: failures.append(f'{name}:no_payload')
+              for line in (out/'SOURCE_SHA256SUMS.txt').read_text().splitlines():
+                  if not line.strip(): continue
+                  digest, rel=line.split('  ',1)
+                  p=out/rel
+                  if not p.is_file() or hashlib.sha256(p.read_bytes()).hexdigest()!=digest:
+                      failures.append(f'{name}:sha:{rel}')
+              if (out/'SOURCE_LICENSE.txt').read_text().strip()=='LICENSE_NOT_FOUND_GAP':
+                  failures.append(f'{name}:license_gap')
+              if latest[name]['status'] not in {'EXTRACTED_TREE','VERIFIED_EXISTING'}:
+                  failures.append(f'{name}:status:{latest[name]["status"]}')
+          cp=json.loads((root/'LOOP5_CHECKPOINT.json').read_text())
+          if cp.get('expected')!=5 or cp.get('processed')!=5: failures.append('checkpoint_count')
+          if failures:
+              print('remaining_gaps=',len(failures)); print('\n'.join(failures)); raise SystemExit(1)
+          print('pass1_action_manifest=PASS')
+          print('pass2_sha_crc=PASS')
+          print('pass3_tree_destination=PASS')
+          print('pass4_readback_manifest=PASS')
+          print('remaining_gaps=0')
+          print('failures=0')
+          print('active_jobs=0')
+          print('LOOP5_AUDITOR=VERIFIED_CLOSED 5/5')
+          PY

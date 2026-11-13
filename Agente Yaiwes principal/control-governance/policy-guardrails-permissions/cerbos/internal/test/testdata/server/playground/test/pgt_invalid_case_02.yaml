@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=../../../.jsonschema/ServerTestCase.schema.json
+---
+description: "Corrupt test data"
+wantStatus:
+  httpStatusCode: 200
+  grpcStatusCode: 0
+playgroundTest:
+  input:
+    {
+      "playgroundId": "test",
+      "files":
+        [
+          {
+            "fileName": "common_roles.yaml",
+            "contents": "{{ fileString `store/derived_roles/common_roles.yaml` | b64enc }}",
+          },
+          {
+            "fileName": "policy_04.yaml",
+            "contents": "{{ fileString `store/resource_policies/policy_04.yaml` | b64enc }}",
+          },
+          { "fileName": "policy_04_test.yaml", "contents": "rubbish" },
+        ],
+    }
+  wantResponse:
+    {
+      "playgroundId": "test",
+      "success":
+        {
+          "results":
+            {
+              "suites":
+                [
+                  {
+                    "file": "policy_04_test.yaml",
+                    "name": "Unknown",
+                    "error": "failed to load test suite:\n1:1 invalid document: contents are not valid YAML or JSON",
+                    "summary": { "overallResult": "RESULT_ERRORED" },
+                  },
+                ],
+              "summary": { "overallResult": "RESULT_ERRORED" },
+            },
+        },
+    }

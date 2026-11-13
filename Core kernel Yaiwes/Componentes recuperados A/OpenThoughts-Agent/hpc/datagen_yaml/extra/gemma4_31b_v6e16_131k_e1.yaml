@@ -1,0 +1,39 @@
+env_vars:
+  MODEL_IMPL_TYPE: auto
+engine:
+  type: vllm_local
+  model: google/gemma-4-31B-it
+  max_output_tokens: 4096
+  healthcheck_interval: 1800
+  vllm_local: {}
+backend:
+  type: ray
+  wait_for_endpoint: true
+vllm_server:
+  model_path: google/gemma-4-31B-it
+  num_replicas: 1
+  tensor_parallel_size: 8
+  pipeline_parallel_size: 1
+  data_parallel_size: 2
+  time_limit: '48:00:00'
+  max_model_len: 131072
+  max_num_seqs: 2
+  gpu_memory_utilization: 0.85
+  enable_expert_parallel: false
+  enable_auto_tool_choice: true
+  tool_call_parser: hermes
+  reasoning_parser: gemma4
+  trust_remote_code: false
+  extra_args:
+  - --dtype
+  - bfloat16
+  - --block-size
+  - '64'
+  - --max-num-partial-prefills
+  - '1'
+  - --limit-mm-per-prompt
+  - '{"image":0,"video":0}'
+  - --max-num-batched-tokens
+  - '131072'
+  - --kv-cache-dtype
+  - fp8

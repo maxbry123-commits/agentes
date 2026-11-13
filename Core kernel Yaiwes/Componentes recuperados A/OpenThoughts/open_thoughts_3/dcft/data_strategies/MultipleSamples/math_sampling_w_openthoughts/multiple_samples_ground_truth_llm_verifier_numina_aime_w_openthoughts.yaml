@@ -1,0 +1,24 @@
+operators: 
+- id: add_openthoughts
+  config:
+    type: load_preexisting 
+    framework_name: 32b_add_verified_extra_unverified
+- id: load_preexisting 
+  config:
+    type: load_preexisting 
+    framework_name: multiple_samples_ground_truth_numina_aime_llm_verifier
+- id: keep_only
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:
+        - conversations
+  input_ids:
+  - load_preexisting
+- id: mix
+  config:
+    type: mix
+  input_ids:
+  - add_openthoughts
+  - keep_only

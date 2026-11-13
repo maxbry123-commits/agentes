@@ -1,0 +1,266 @@
+// Side-effect: registers the CDP hog-function approval-card previews (cdp-functions-partial-update diff)
+// into the shared PostHog AI tool registry. Imported here so it's registered whenever the config scene loads.
+import './registerHogFunctionToolPreviews'
+
+import clsx from 'clsx'
+import { BindLogic, useActions, useValues } from 'kea'
+import { Form } from 'kea-forms'
+
+import {
+    LemonBanner,
+    LemonButton,
+    LemonDropdown,
+    LemonLabel,
+    LemonSwitch,
+    LemonTag,
+    SpinnerOverlay,
+} from '@posthog/lemon-ui'
+
+import { NotFound } from 'lib/components/NotFound'
+import { LemonField } from 'lib/lemon-ui/LemonField'
+import { hogFunctionConfigurationLogic } from 'scenes/hog-functions/configuration/hogFunctionConfigurationLogic'
+import { HogFunctionFilters } from 'scenes/hog-functions/filters/HogFunctionFilters'
+import { HogFunctionMappings } from 'scenes/hog-functions/mapping/HogFunctionMappings'
+import { HogFunctionEventEstimates } from 'scenes/hog-functions/metrics/HogFunctionEventEstimates'
+import { SurveyResponseKeysReference } from 'scenes/surveys/components/SurveyResponseKeysReference'
+
+import { useAttachedContext, useToolStreamListener } from 'products/posthog_ai/frontend/api/logics'
+import { resolveToolCall } from 'products/posthog_ai/frontend/api/tools'
+
+import { humanizeHogFunctionType } from '../hog-function-utils'
+import { HogFunctionStatusIndicator } from '../misc/HogFunctionStatusIndicator'
+import { HogFunctionStatusTag } from '../misc/HogFunctionStatusTag'
+import { HogFunctionCode } from './components/HogFunctionCode'
+import {
+    HogFunctionConfigurationClearChangesButton,
+    HogFunctionConfigurationSaveButton,
+} from './components/HogFunctionConfigurationButtons'
+import { HogFunctionInputs } from './components/HogFunctionInputs'
+import { HogFunctionSourceWebhookInfo } from './components/HogFunctionSourceWebhookInfo'
+import { HogFunctionSourceWebhookTest } from './components/HogFunctionSourceWebhookTest'
+import { HogFunctionTemplateOptions } from './components/HogFunctionTemplateOptions'
+import { HogFunctionTest } from './HogFunctionTest'
+
+export interface HogFunctionConfigurationProps {
+    templateId?: string | null
+    subTemplateId?: string | null
+    id?: string | null
+    logicKey?: string
+}
+
+export function HogFunctionConfiguration({
+    templateId,
+    subTemplateId,
+    id,
+    logicKey,
+}: HogFunctionConfigurationProps): JSX.Element {
+    const logicProps = { templateId, subTemplateId, id, logicKey }
+    const logic = hogFunctionConfigurationLogic(logicProps)
+    const {
+        loading,
+        loaded,
+        hogFunction,
+        template,
+        templateHasChanged,
+        type,
+        mightDropEvents,
+        showFilters,
+        showExpectedVolume,
+        canEditSource,
+        showTesting,
+        survey,
+    } = useValues(logic)
+    const { loadHogFunction } = useActions(logic)
+
+    // The section components attach the config blobs (code, inputs, filters) as unkeyed values; only a
+    // keyed item renders its id into the context line, and the agent needs the id for cdp-functions-partial-update.
+    useAttachedContext(
+        hogFunction?.id
+            ? [
+                  {
+                      type: 'hog_function',
+                      key: hogFunction.id,
+                      label: `Current ${humanizeHogFunctionType(type)}: ${hogFunction.name}`,
+                  },
+              ]
+            : null
+    )
+
+    // An approved `cdp-functions-partial-update` mutates the function server-side while this form keeps
+    // pre-update state, so the scene (and the approval-card diff for any later proposal, e.g. a revert)
+    // would show stale values. Refetch on completion — `loadHogFunctionSuccess` resets the form, which
+    // also discards unsaved manual edits; tool results land in the open scene. A plain tool-stream
+    // listener, not `useMcpToolApplyBack`: the refetch is idempotent, so it must not be dropped by the
+    // apply-back claim gating (claims snapshot the targets mounted at prompt-send and release each turn).
+    useToolStreamListener({
+        tools: ['cdp-functions-partial-update'],
+        onEvent: (event) => {
+            if (event.phase !== 'completed' || !hogFunction?.id) {
+                return
+            }
+            // A parseable payload targeting a different function is not ours to absorb; an unparseable
+            // one may still be ours, and a same-data refetch is harmless, so reload in that case.
+            const innerInput = resolveToolCall(event.invocation).innerInput
+            const targetId = typeof innerInput?.id === 'string' ? innerInput.id : null
+            if (targetId && targetId !== hogFunction.id) {
+                return
+            }
+            loadHogFunction()
+        },
+    })
+
+    if (loading && !loaded) {
+        return <SpinnerOverlay />
+    }
+
+    if (!loaded) {
+        return <NotFound object="Hog function" />
+    }
+
+    const templateInfo =
+        hogFunction?.template?.code_language === 'hog' &&
+        hogFunction?.template &&
+        !hogFunction.template.id.startsWith('template-blank-') ? (
+            <LemonDropdown showArrow overlay={<HogFunctionTemplateOptions />}>
+                <LemonButton type="tertiary" size="small" className="border border-dashed" fullWidth>
+                    <span className="flex flex-wrap flex-1 gap-1 items-center">
+                        Built from template:
+                        <span className="font-semibold">{hogFunction?.template.name}</span>
+                        <HogFunctionStatusTag status={hogFunction.template.status} />
+                        <div className="flex-1" />
+                        {templateHasChanged ? <LemonTag type="success">Modified</LemonTag> : null}
+                    </span>
+                </LemonButton>
+            </LemonDropdown>
+        ) : null
+
+    return (
+        <div className="deprecated-space-y-3">
+            <BindLogic logic={hogFunctionConfigurationLogic} props={logicProps}>
+                {hogFunction?.filters?.bytecode_error ? (
+                    <div>
+                        <LemonBanner type="error">
+                            <b>Error saving filters:</b> {hogFunction.filters.bytecode_error}
+                        </LemonBanner>
+                    </div>
+                ) : [
+                      'template-google-ads',
+                      'template-meta-ads',
+                      'template-tiktok-ads',
+                      'template-snapchat-ads',
+                      'template-linkedin-ads',
+                      'template-reddit-pixel',
+                      'template-tiktok-pixel',
+                      'template-snapchat-pixel',
+                      'template-reddit-conversions-api',
+                  ].includes(templateId ?? hogFunction?.template?.id ?? '') ||
+                  template?.status === 'alpha' ||
+                  hogFunction?.template?.status === 'alpha' ? (
+                    <div>
+                        <LemonBanner type="warning">
+                            <p>
+                                This {humanizeHogFunctionType(type)} is currently in an experimental state. For many
+                                cases this will work just fine but for others there may be unexpected issues and we do
+                                not offer official customer support for it in these cases.
+                            </p>
+                            {['template-reddit-conversions-api', 'template-snapchat-ads'].includes(
+                                templateId ?? hogFunction?.template?.id ?? ''
+                            ) ? (
+                                <span className="mt-2">
+                                    The receiving destination imposes a rate limit of 10 events per second. Exceeding
+                                    this limit may result in some events failing to be delivered.
+                                </span>
+                            ) : null}
+                            {['site_destination'].includes(template?.type ?? hogFunction?.template?.type ?? '') ? (
+                                <span className="mt-2">
+                                    Make sure to enable the `opt_in_site_apps` flag in your `posthog.init` config.
+                                </span>
+                            ) : null}
+                        </LemonBanner>
+                    </div>
+                ) : null}
+
+                <Form
+                    logic={hogFunctionConfigurationLogic}
+                    props={logicProps}
+                    formKey="configuration"
+                    className="deprecated-space-y-3"
+                >
+                    <div className="flex flex-wrap gap-4 items-start">
+                        <div className="flex flex-col flex-1 gap-4 min-w-100">
+                            <div className={clsx('p-3 rounded border deprecated-space-y-2 bg-surface-primary')}>
+                                <div className="flex items-center justify-between">
+                                    <LemonLabel>Status</LemonLabel>
+                                    {hogFunction && <HogFunctionStatusIndicator hogFunction={hogFunction} />}
+                                </div>
+                                <LemonField name="enabled">
+                                    {({ value, onChange }) => (
+                                        <LemonSwitch
+                                            onChange={() => onChange(!value)}
+                                            checked={value}
+                                            disabled={loading}
+                                            bordered
+                                            fullWidth
+                                            label={type === 'transformation_log' ? 'Enable' : 'Enable destination'}
+                                            tooltip={
+                                                <>
+                                                    {type === 'transformation_log'
+                                                        ? value
+                                                            ? 'Enabled. Log records will be processed.'
+                                                            : 'Disabled. Log records will not be processed.'
+                                                        : value
+                                                          ? 'Enabled. Events will be processed.'
+                                                          : 'Disabled. Events will not be processed.'}
+                                                </>
+                                            }
+                                        />
+                                    )}
+                                </LemonField>
+
+                                {templateInfo}
+                            </div>
+
+                            {type === 'source_webhook' && <HogFunctionSourceWebhookInfo />}
+                            {showFilters && <HogFunctionFilters />}
+                            {survey && <SurveyResponseKeysReference questions={survey.questions} />}
+                            {showExpectedVolume ? <HogFunctionEventEstimates /> : null}
+                        </div>
+
+                        <div className="deprecated-space-y-4 flex-2 min-w-100">
+                            {mightDropEvents && (
+                                <div>
+                                    <LemonBanner type="info">
+                                        {type === 'transformation_log' ? (
+                                            <>
+                                                <b>Warning:</b> This transformation can drop log records irreversibly
+                                                (any record it returns null for is discarded). Double check your code
+                                                before enabling.
+                                            </>
+                                        ) : (
+                                            <>
+                                                <b>Warning:</b> This transformation can filter out events, dropping them
+                                                irreversibly. Make sure to double check your configuration, and use
+                                                filters to limit the events that this transformation is applied to.
+                                            </>
+                                        )}
+                                    </LemonBanner>
+                                </div>
+                            )}
+                            <HogFunctionInputs />
+
+                            <HogFunctionMappings />
+
+                            {canEditSource && <HogFunctionCode />}
+                            {showTesting ? <HogFunctionTest /> : null}
+                            {type === 'source_webhook' && <HogFunctionSourceWebhookTest />}
+                            <div className="flex gap-2 justify-end">
+                                <HogFunctionConfigurationClearChangesButton />
+                                <HogFunctionConfigurationSaveButton />
+                            </div>
+                        </div>
+                    </div>
+                </Form>
+            </BindLogic>
+        </div>
+    )
+}

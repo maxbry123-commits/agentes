@@ -1,0 +1,75 @@
+[tool.black]
+extend-exclude = '(dcft/data_strategies/Alpaca/resources/seed_tasks.jsonl)'
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dcft"
+version = "0.1.0"
+description = "DCFT Training Package"
+authors = [
+    { name = "Your Name", email = "your.email@example.com" },
+]
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/dcft"
+Repository = "https://github.com/yourusername/dcft.git"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "isort",
+    "flake8",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["dcft", "database"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[project.scripts]
+# DCFT scripts
+dcft-train = "dcft.train.llamafactory.src.train:main"
+
+# Database scripts
+db-model-register = "database.cli:model_register_cli"
+db-model-get-uuid = "database.cli:model_get_uuid_cli"
+db-model-get-metadata = "database.cli:model_get_metadata_cli"
+db-dataset-register = "database.cli:dataset_get_uuid_cli"
+db-dataset-get-uuid = "database.cli:dataset_get_uuid_cli"
+db-dataset-get-metadata = "database.cli:dataset_get_metadata_cli"
+
+[tool.setuptools]
+packages = ["dcft"]
+
+[tool.setuptools.package-dir]
+dcft = "dcft"
+
+[tool.setuptools.package-data]
+dcft = [
+    "external_repositories/code2flow/**/*",
+    "external_repositories/airoboros/**/*",
+]

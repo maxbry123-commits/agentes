@@ -1,0 +1,36 @@
+{
+  "schema": "yaiwes.kernel.catalog20.download-queue/v1",
+  "source_document": "✅YAIWES_AUDITORIA_5_PASADAS_COMPONENTES_OPEN_SOURCE.md",
+  "destination_root": "Core kernel Yaiwes",
+  "total_components": 20,
+  "reuse_verified": [
+    {
+      "name": "Celery",
+      "source_repo": "celery/celery",
+      "destination": "Core kernel Yaiwes/Celery",
+      "source_commit": "de0806b701e51425186a5f49dd1827dc531722df",
+      "status": "REUSE_VERIFIED_EXISTING"
+    }
+  ],
+  "queue": [
+    {"id":"01-temporal","source_repo":"temporalio/sdk-python","source_ref":"HEAD","slug":"Temporal","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"02-langgraph","source_repo":"langchain-ai/langgraph","source_ref":"HEAD","slug":"LangGraph","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"03-prefect","source_repo":"PrefectHQ/prefect","source_ref":"HEAD","slug":"Prefect","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"04-networkx","source_repo":"networkx/networkx","source_ref":"HEAD","slug":"NetworkX","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"05-airflow","source_repo":"apache/airflow","source_ref":"HEAD","slug":"Apache-Airflow","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"06-dagster","source_repo":"dagster-io/dagster","source_ref":"HEAD","slug":"Dagster","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"07-litellm","source_repo":"BerriAI/litellm","source_ref":"HEAD","slug":"LiteLLM","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"08-routellm","source_repo":"lm-sys/RouteLLM","source_ref":"HEAD","slug":"RouteLLM","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"09-tensorzero","source_repo":"tensorzero/tensorzero","source_ref":"HEAD","slug":"TensorZero","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"10-ray","source_repo":"ray-project/ray","source_ref":"HEAD","slug":"Ray","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"11-dask","source_repo":"dask/distributed","source_ref":"HEAD","slug":"Dask-Distributed","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"13-agentscope","source_repo":"agentscope-ai/agentscope","source_ref":"HEAD","slug":"AgentScope","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"14-camel","source_repo":"camel-ai/camel","source_ref":"HEAD","slug":"CAMEL","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"15-autogen","source_repo":"microsoft/autogen","source_ref":"HEAD","slug":"AutoGen-Core","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"16-gymnasium","source_repo":"Farama-Foundation/Gymnasium","source_ref":"HEAD","slug":"Gymnasium","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"17-pettingzoo","source_repo":"Farama-Foundation/PettingZoo","source_ref":"HEAD","slug":"PettingZoo","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"18-mesa","source_repo":"mesa/mesa","source_ref":"HEAD","slug":"Mesa","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"19-graphiti","source_repo":"getzep/graphiti","source_ref":"HEAD","slug":"Graphiti","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"20-letta","source_repo":"letta-ai/letta","source_ref":"HEAD","slug":"Letta","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true}
+  ]
+}

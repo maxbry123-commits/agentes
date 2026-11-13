@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "github_publisher.publish.v1",
+  "title": "GitHubPublish",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "token_ref",
+    "repository",
+    "branch",
+    "files",
+    "commit_message"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "token_ref": { "type": "string", "minLength": 1 },
+    "repository": {
+      "type": "string",
+      "pattern": "^[\\w.-]+/[\\w.-]+$"
+    },
+    "branch": { "type": "string", "default": "main" },
+    "path_prefix": { "type": "string" },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["source", "destination"],
+        "properties": {
+          "source": { "type": "string" },
+          "destination": { "type": "string" },
+          "content": { "type": "string" }
+        }
+      }
+    },
+    "commit_message": { "type": "string", "minLength": 1 }
+  }
+}

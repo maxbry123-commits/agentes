@@ -1,0 +1,4 @@
+# tb2 priority-1 re-fire (TIMEOUT/incomplete legacy legs) — 2026-07-12 driver sweep
+# r370 (Leo 49168215 TIMEOUT), r389 (Leo 49171667 TIMEOUT) — both warm-resume the incomplete partials
+DCAgent/a1-stack_dockerfile
+DCAgent/a1-unitsyn_python

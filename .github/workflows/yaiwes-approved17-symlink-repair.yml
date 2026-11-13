@@ -1,0 +1,53 @@
+name: YAIWES approved17 symlink repair
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Core kernel Yaiwes/Download code Yaiwes/APPROVED17-SYMLINK-REPAIR-20260914.json'
+permissions:
+  contents: write
+concurrency:
+  group: yaiwes-approved17-symlink-repair
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      QUEUE_FILE: Core kernel Yaiwes/Download code Yaiwes/APPROVED17-SYMLINK-REPAIR-20260914.json
+      MOTOR2: Motores/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py
+      ENGINE_PATH: ${{ github.workspace }}/Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+      STATE_FILE: /tmp/yaiwes-approved17-symlink-state.json
+      INDEX_PATH: /tmp/yaiwes-approved17-symlink-index.md
+      DEST_ROOT: Core kernel Yaiwes
+      MAX_RETRIES: '2'
+      LOOP_SLEEP_SECONDS: '2'
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.symlinks
+      GIT_CONFIG_VALUE_0: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Motores/📂Motor descarga de componentes y extracción de zip/motor_2_queue_download_extract.py
+            /Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py
+            /Core kernel Yaiwes/Download code Yaiwes/APPROVED17-SYMLINK-REPAIR-20260914.json
+      - name: Verify immutable canonical motors
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$MOTOR2")" = '84d566e2ee4e98e42eb3a864026d067d48caabd9'
+          test "$(git hash-object "$ENGINE_PATH")" = '91e6e4486692eab314be5c7130d8310d3c855397'
+      - name: Repair using canonical motor with symlink materialization only
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 "$MOTOR2" | tee /tmp/yaiwes-approved17-symlink-result.jsonl
+          tail -n 1 /tmp/yaiwes-approved17-symlink-result.jsonl

@@ -1,0 +1,1769 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+//! Module containing code to compute the transitive closure of a graph.
+//! This is a generic utility, and not specific to Cedar.
+
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display};
+use std::hash::Hash;
+
+mod err;
+pub use err::*;
+use itertools::Itertools;
+
+/// Trait used to generalize transitive closure computation. This trait should
+/// be implemented for types representing a node in the hierarchy (e.g., the
+/// entity hierarchy) where we need to compute the transitive closure of the
+/// hierarchy starting from only direct adjacencies. This trait is parametrized
+/// by a type `K` which represents a unique identifier for graph nodes.
+pub trait TCNode<K> {
+    /// Extract a unique identifier for the node.
+    fn get_key(&self) -> K;
+
+    /// Add an edge out off this node to the node with key `k`.
+    fn add_edge_to(&mut self, k: K);
+
+    /// Retrieve an iterator for the edges out of this node.
+    fn out_edges(&self) -> Box<dyn Iterator<Item = &K> + '_>;
+
+    /// Return true when their is an edge between this node and the node with
+    /// key `k`.
+    fn has_edge_to(&self, k: &K) -> bool;
+
+    /// Resets edges to base
+    fn reset_edges(&mut self);
+
+    /// Retrieves an iterator for direct edges out of this node.
+    fn direct_edges(&self) -> Box<dyn Iterator<Item = &K> + '_> {
+        self.out_edges()
+    }
+}
+
+/// Given Graph as a map from keys with type `K` to implementations of `TCNode`
+/// with type `V`, compute the transitive closure of the hierarchy. In case of
+/// error, the result contains an error structure `Err<K>` which contains the
+/// keys (with type `K`) for the nodes in the graph which caused the error.
+/// If `enforce_dag` then also check that the hierarchy is a DAG
+pub fn compute_tc<K, V>(nodes: &mut HashMap<K, V>, enforce_dag: bool) -> Result<(), K>
+where
+    K: Clone + Eq + Hash + Debug + Display,
+    V: TCNode<K>,
+{
+    // Always use the SCC-based algorithm which correctly handles cycles.
+    // The single-pass algorithm is only correct for DAGs and produces
+    // incomplete results when the graph contains cycles of length >= 3.
+    cyclic_tc(nodes);
+    if enforce_dag {
+        return enforce_dag_from_tc(nodes);
+    }
+    Ok(())
+}
+
+/// Given Graph as a map from keys with type `K` to implementations of `TCNode`
+/// with type `V`, repair the transitive closure of the hierarchy. The below code
+/// will assume that for each `node` in `nodes` except the nodes appearing in
+/// `nodes_to_fix`, the out-going edges of `node` will contain all ancestors of `node`.
+/// That is we may assume the transitive closure for all such nodes is correct while
+/// computing the transitive closure of each node appearing in `nodes_to_fix`.
+/// In case of error, the result contains an error structure `Err<K>` which contains
+/// the keys (with type `K`) for the nodes in the graph which caused the error.
+/// If `enforce_dag` then also check that the heirarchy is a DAG
+pub fn repair_tc<K, V>(
+    nodes_to_fix: &HashSet<K>,
+    nodes: &mut HashMap<K, V>,
+    enforce_dag: bool,
+) -> Result<(), K>
+where
+    K: Clone + Eq + Hash + Debug + Display,
+    V: TCNode<K>,
+{
+    let seen: HashSet<K> = nodes
+        .keys()
+        .filter(|x| !nodes_to_fix.contains(x))
+        .cloned()
+        .collect();
+
+    // If the caller does not want to check that the graph is a DAG,
+    // we assume that the graph is acyclic during the below call.
+    // This allows the below call to do a single scan of each node
+    // rather than two scans of each node.
+    compute_tc_internal::<K, V>(nodes_to_fix.iter().cloned(), nodes, seen, enforce_dag);
+
+    if enforce_dag {
+        // TC is correct by construction (same as compute_tc). Only need to
+        // check for self-loops, and only on nodes whose edges were modified.
+        return enforce_dag_from_tc_for(nodes_to_fix, nodes);
+    }
+    Ok(())
+}
+
+/// Saturate the out-going edges of each node in `node_ids` to include
+/// all reachable ancestors within the graph represnted by `nodes`.
+/// Assume that all nodes appearing in `seen` already satisfy this property.
+/// If `detect_cyles` is false, we assume the the graph represented by `nodes`
+/// is a DAG so that we may perform a single scan over the graph. Otherwise,
+/// we scan each node twice. This is sufficient for detecting cycles and for computing
+/// the exact TC for graphs containing simple cycles. For more complex cyclic graphs,
+/// the below code computes enough of the transtive closure to ensure that if one
+/// calls `enforce_dag_from_tc` on `nodes` after this function returns then it will
+/// correctly detect any cycles (simple or complex).
+fn compute_tc_internal<K, V>(
+    node_ids: impl Iterator<Item = K>,
+    nodes: &mut HashMap<K, V>,
+    mut seen: HashSet<K>,
+    detect_cyles: bool,
+) where
+    K: Clone + Eq + Hash,
+    V: TCNode<K>,
+{
+    for node_id in node_ids {
+        // When detect_cycles is false, skip nodes already in `seen` (single visit).
+        // When detect_cycles is true, always visit — the second pass propagates
+        // enough TC edges for self-loop detection on cyclic graphs.
+        if detect_cyles || seen.insert(node_id.clone()) {
+            add_ancestors(&node_id, nodes, &mut seen);
+        }
+    }
+}
+
+fn cyclic_tc<K, V>(nodes: &mut HashMap<K, V>)
+where
+    K: Clone + Eq + Hash + Debug,
+    V: TCNode<K>,
+{
+    let node_ids = nodes.keys().map(K::clone).collect::<Vec<K>>();
+    let mut order_visited = HashMap::new();
+    let mut root = HashMap::new();
+    let mut vstack = Vec::new();
+    let mut cstack = Vec::new();
+    let mut component = HashMap::new();
+    let mut comp_succ = Vec::new();
+    let mut comp_elts = Vec::new();
+    for node_id in node_ids {
+        if !order_visited.contains_key(&node_id) {
+            cyclic_tc_internal(
+                &node_id,
+                nodes,
+                &mut order_visited,
+                &mut root,
+                &mut vstack,
+                &mut cstack,
+                &mut component,
+                &mut comp_succ,
+                &mut comp_elts,
+            );
+        }
+    }
+    // component_tc => nodes_tc
+    for comp_id in 0..comp_elts.len() {
+        let mut elt_succ = HashSet::new();
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "`comp_succ` and `comp_elts` must have the same length, thus `comp_id` is a valid index to `comp_succ`."
+        )]
+        for comp_parent_id in comp_succ[comp_id].iter() {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "`comp_parent_id` must be a valid component id to be inserted into `comp_succ` therefore must exist within `comp_elts`."
+            )]
+            for node_id in comp_elts[*comp_parent_id].iter() {
+                // not fine to consume here
+                elt_succ.insert(node_id.clone());
+            }
+        }
+
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "`comp_id` in [0, |`comp_elts`|) is a valid index into `comp_elts`."
+        )]
+        for node_id in comp_elts[comp_id].iter() {
+            let node = match nodes.get_mut(node_id) {
+                Some(node) => node,
+                None => continue,
+            };
+            for parent_id in elt_succ.iter() {
+                node.add_edge_to(parent_id.clone());
+            }
+        }
+    }
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "internal function in complex algorithm"
+)]
+fn cyclic_tc_internal<K, V>(
+    node_id: &K,
+    nodes: &HashMap<K, V>,
+    order_visited: &mut HashMap<K, usize>,
+    root: &mut HashMap<K, K>,
+    vstack: &mut Vec<K>,
+    cstack: &mut Vec<usize>,
+    component: &mut HashMap<K, usize>,
+    comp_succ: &mut Vec<HashSet<usize>>,
+    comp_elts: &mut Vec<HashSet<K>>,
+) where
+    K: Clone + Eq + Hash + Debug,
+    V: TCNode<K>,
+{
+    let node_order = order_visited.len();
+    // when was the root of this node's component visited?
+    // initially the root of this node's component is this node itself
+    // keeping track in auxillary function to avoid re-fetching in a loop
+    let mut root_order = node_order;
+    order_visited.insert(node_id.clone(), node_order);
+    root.insert(node_id.clone(), node_id.clone());
+    vstack.push(node_id.clone());
+    let height = cstack.len();
+    let mut self_loop = false;
+    let out_edges = match nodes.get(node_id) {
+        Some(node) => node.out_edges().collect(),
+        None => Vec::new(),
+    };
+    for parent_id in out_edges {
+        if node_id == parent_id {
+            self_loop = true;
+        } else {
+            // The edge from node_id to parent_id is a forward edge iff
+            // node_id is visited before parent_id and we do not visit
+            // parent_id from node_id (i.e., we do not recursively call
+            // cyclic_tc_internal on parent_id from this call).
+            let mut maybe_forward_edge = true;
+            if !order_visited.contains_key(parent_id) {
+                maybe_forward_edge = false;
+                cyclic_tc_internal(
+                    parent_id,
+                    nodes,
+                    order_visited,
+                    root,
+                    vstack,
+                    cstack,
+                    component,
+                    comp_succ,
+                    comp_elts,
+                );
+            }
+            match component.get(parent_id) {
+                None => {
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "`parent_id` must have been visited either by a previous call or just above"
+                    )]
+                    let parent_root = root
+                        .get(parent_id)
+                        .expect("Parent has been visited so it must have a root.");
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "in order for `parent_root` to be the parent of `parent_id` it must have been visited."
+                    )]
+                    let parent_root_order = order_visited
+                        .get(parent_root)
+                        .expect("The parent's root must have been visited.");
+                    if *parent_root_order < root_order {
+                        root_order = *parent_root_order;
+                        root.insert(node_id.clone(), parent_root.clone());
+                    }
+                }
+                Some(parent_component) => {
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "`parent_id` must have been visited either by a previous call or just above"
+                    )]
+                    let parent_order = order_visited
+                        .get(parent_id)
+                        .expect("The parent must have been traversed by this point.");
+                    // if not a forward edge
+                    if !(maybe_forward_edge && &node_order < parent_order) {
+                        cstack.push(*parent_component);
+                    }
+                }
+            }
+        }
+    } // end for loop over parents
+    #[expect(
+        clippy::expect_used,
+        reason = "`node_id` must have a root. It was inserted at the begining of this function"
+    )]
+    let node_root = root
+        .get(node_id)
+        .expect("Node must have a root by this point.");
+    // if this node is the root of its connected component
+    if node_id == node_root {
+        let component_id = comp_elts.len();
+        let mut succ = HashSet::new();
+        let mut elmts = HashSet::new();
+        #[expect(
+            clippy::expect_used,
+            reason = " The vertex stack must not be empty because at least node_id must be on the stack!"
+        )]
+        if self_loop || vstack.last().expect("vertex stack must be non-empty") != node_id {
+            succ.insert(component_id);
+        }
+        let mut cstack_tail = cstack.split_off(height);
+        // sort by topological order of the components, which should be equivalent to the reverse order of their ids
+        // cstack_tail are all of the components reachable (1 step) from any node within this component
+        cstack_tail.sort_by(|a, b| b.cmp(a));
+        // iterate through components in topological order
+        for i in 0..cstack_tail.len() {
+            // update this component's successors with next component avoiding duplicate components
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "both `i` and `i - 1` are guaranteed to be valid indices into `cstack_tail`."
+            )]
+            if i == 0 || cstack_tail[i - 1] != cstack_tail[i] {
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "`i` is a valid index into `cstack_tail`."
+                )]
+                let tail_elt = cstack_tail[i];
+                if succ.insert(tail_elt) {
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "`tail_elt` is a component id created by a previous call to `cyclic_tc_internal` and thus must be a valid index to `comp_succ`."
+                    )]
+                    succ.extend(comp_succ[tail_elt].clone());
+                }
+            }
+        }
+        loop {
+            #[expect(
+                clippy::expect_used,
+                reason = "The vertex stack `vstack` must contain at least `node_id`"
+            )]
+            let ancestor_id = vstack.pop().expect("Vetex stack must be non-empty");
+            component.insert(ancestor_id.clone(), component_id);
+            elmts.insert(ancestor_id.clone());
+            if *node_id == ancestor_id {
+                break;
+            }
+        }
+        comp_succ.push(succ);
+        comp_elts.push(elmts);
+    }
+}
+
+/// Saturate the out-going edges of the node identified by `node_id` within the graph
+/// represented by `nodes` assuming that each node appearing in `seen` already satisfies
+/// this property. The process works by performing a depth-first search over the ancestors
+/// of `node_id` (and stopping if any ancestor is already in the `seen` set).
+fn add_ancestors<K, V>(node_id: &K, nodes: &mut HashMap<K, V>, seen: &mut HashSet<K>)
+where
+    K: Clone + Eq + Hash,
+    V: TCNode<K>,
+{
+    let mut ancestors: HashSet<K> = HashSet::new();
+    // Track which ancestors we have already read out_edges from, to avoid
+    // redundant work. This is distinct from `ancestors` because an ancestor_id
+    // may appear in `ancestors` (added via some other node's out_edges) before
+    // we have actually read *its* out_edges.
+    let mut explored: HashSet<K> = HashSet::new();
+    let out_edges: Vec<K> = match nodes.get(node_id) {
+        Some(node) => node.out_edges().map(K::clone).collect(),
+        None => return,
+    };
+    for ancestor_id in out_edges {
+        if seen.insert(ancestor_id.clone()) {
+            add_ancestors(&ancestor_id, nodes, seen);
+        }
+        // Only skip reading out_edges if we already explored this exact
+        // ancestor in a previous iteration of this loop.
+        if explored.insert(ancestor_id.clone()) {
+            let ancestor = match nodes.get(&ancestor_id) {
+                Some(ancestor) => ancestor,
+                None => continue,
+            };
+            for grand_ancestor_id in ancestor.out_edges() {
+                ancestors.insert(grand_ancestor_id.clone());
+            }
+        }
+    }
+    #[expect(
+        clippy::expect_used,
+        reason = "this node should always exist because of the check to get `out_edges`"
+    )]
+    let node = nodes
+        .get_mut(node_id)
+        .expect("This node should always exist.");
+    // Do the actual saturation of out-going edges of `node` here to avoid
+    // issues with rust's borrow checker.
+    for ancestor_id in ancestors {
+        node.add_edge_to(ancestor_id);
+    }
+}
+
+/// Given a graph (as a map from keys to `TCNode`), enforce that
+/// all transitive edges are included, ie, the transitive closure has already
+/// been computed and that it is a DAG. If this is not the case, return an appropriate
+/// `TCEnforcementError`.
+pub fn enforce_tc_and_dag<K, V>(entities: &HashMap<K, V>) -> Result<(), K>
+where
+    K: Clone + Eq + Hash + Debug + Display,
+    V: TCNode<K>,
+{
+    let res = enforce_tc(entities);
+    if res.is_ok() {
+        return enforce_dag_from_tc(entities);
+    }
+    res
+}
+
+/// Given a DAG (as a map from keys to `TCNode`), enforce that
+/// all transitive edges are included, i.e., the transitive closure has already
+/// been computed. If this is not the case, return an appropriate
+/// `MissingTcEdge` error.
+fn enforce_tc<K, V>(entities: &HashMap<K, V>) -> Result<(), K>
+where
+    K: Clone + Eq + Hash + Debug + Display,
+    V: TCNode<K>,
+{
+    for entity in entities.values() {
+        for parent_uid in entity.out_edges() {
+            // check that `entity` is also a child of all of this parent's parents
+            if let Some(parent) = entities.get(parent_uid) {
+                for grandparent in parent.out_edges() {
+                    if !entity.has_edge_to(grandparent) {
+                        return Err(TcError::missing_tc_edge(
+                            entity.get_key(),
+                            parent_uid.clone(),
+                            grandparent.clone(),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Once the transitive closure (as defined above) is computed/enforced for the graph, we have:
+/// \forall u,v,w \in Vertices . (u,v) \in Edges /\ (v,w) \in Edges -> (u,w) \in Edges
+///
+/// Then the graph has a cycle if
+/// \exists v \in Vertices. (v,v) \in Edges
+fn enforce_dag_from_tc<K, V>(entities: &HashMap<K, V>) -> Result<(), K>
+where
+    K: Clone + Eq + Hash + Debug + Display,
+    V: TCNode<K>,
+{
+    for entity in entities.values() {
+        let key = entity.get_key();
+        if entity.out_edges().contains(&key) {
+            return Err(TcError::has_cycle(key));
+        }
+    }
+    Ok(())
+}
+
+/// Like [`enforce_dag_from_tc`] but only checks nodes in `nodes_to_check`.
+/// This is sound after `repair_tc` because only nodes whose edges were modified
+/// could have gained a self-loop.
+fn enforce_dag_from_tc_for<K, V>(
+    nodes_to_check: &HashSet<K>,
+    entities: &HashMap<K, V>,
+) -> Result<(), K>
+where
+    K: Clone + Eq + Hash + Debug + Display,
+    V: TCNode<K>,
+{
+    for key in nodes_to_check {
+        if let Some(entity) = entities.get(key) {
+            if entity.has_edge_to(key) {
+                return Err(TcError::has_cycle(key.clone()));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[expect(clippy::panic, clippy::indexing_slicing, reason = "test code")]
+mod tests {
+    use crate::ast::{Entity, EntityUID};
+
+    use super::*;
+
+    #[test]
+    fn basic() {
+        // start with A -> B -> C
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        compute_tc(&mut entities, false).expect("Failed to compute transitive closure");
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let c = &entities[&EntityUID::with_eid("C")];
+        // should have added the A -> C edge
+        assert!(a.is_descendant_of(&EntityUID::with_eid("C")));
+        // but we shouldn't have added other edges, like B -> A or C -> A
+        assert!(!b.is_descendant_of(&EntityUID::with_eid("A")));
+        assert!(!c.is_descendant_of(&EntityUID::with_eid("A")));
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // passes cycle check after TC enforcement
+        assert!(enforce_dag_from_tc(&entities).is_ok());
+    }
+
+    #[test]
+    fn reversed() {
+        // same as basic(), but we put the entities in the map in the reverse
+        // order, which shouldn't make a difference
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut entities = HashMap::from([
+            (c.uid().clone(), c),
+            (b.uid().clone(), b),
+            (a.uid().clone(), a),
+        ]);
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        compute_tc(&mut entities, false).expect("Failed to compute transitive closure");
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let c = &entities[&EntityUID::with_eid("C")];
+        // should have added the A -> C edge
+        assert!(a.is_descendant_of(&EntityUID::with_eid("C")));
+        // but we shouldn't have added other edges, like B -> A or C -> A
+        assert!(!b.is_descendant_of(&EntityUID::with_eid("A")));
+        assert!(!c.is_descendant_of(&EntityUID::with_eid("A")));
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // passes cycle check after TC enforcement
+        assert!(enforce_dag_from_tc(&entities).is_ok());
+    }
+
+    #[test]
+    fn deeper() {
+        // start with A -> B -> C -> D -> E
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+        c.add_parent(EntityUID::with_eid("D"));
+        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        d.add_parent(EntityUID::with_eid("E"));
+        let e = Entity::with_uid(EntityUID::with_eid("E"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+        ]);
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        compute_tc(&mut entities, false).expect("Failed to compute transitive closure");
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let c = &entities[&EntityUID::with_eid("C")];
+        // should have added many edges which we check for
+        assert!(a.is_descendant_of(&EntityUID::with_eid("C")));
+        assert!(a.is_descendant_of(&EntityUID::with_eid("D")));
+        assert!(a.is_descendant_of(&EntityUID::with_eid("E")));
+        assert!(b.is_descendant_of(&EntityUID::with_eid("D")));
+        assert!(b.is_descendant_of(&EntityUID::with_eid("E")));
+        assert!(c.is_descendant_of(&EntityUID::with_eid("E")));
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // passes cycle check after TC enforcement
+        assert!(enforce_dag_from_tc(&entities).is_ok());
+    }
+
+    #[test]
+    fn not_alphabetized() {
+        // same as deeper(), but the entities' parent relations don't follow
+        // alphabetical order. (In case we end up iterating through the map
+        // in alphabetical order, this test will ensure that everything works
+        // even when we aren't processing the entities in hierarchy order.)
+        // start with foo -> bar -> baz -> ham -> eggs
+        let mut foo = Entity::with_uid(EntityUID::with_eid("foo"));
+        foo.add_parent(EntityUID::with_eid("bar"));
+        let mut bar = Entity::with_uid(EntityUID::with_eid("bar"));
+        bar.add_parent(EntityUID::with_eid("baz"));
+        let mut baz = Entity::with_uid(EntityUID::with_eid("baz"));
+        baz.add_parent(EntityUID::with_eid("ham"));
+        let mut ham = Entity::with_uid(EntityUID::with_eid("ham"));
+        ham.add_parent(EntityUID::with_eid("eggs"));
+        let eggs = Entity::with_uid(EntityUID::with_eid("eggs"));
+        let mut entities = HashMap::from([
+            (ham.uid().clone(), ham),
+            (bar.uid().clone(), bar),
+            (foo.uid().clone(), foo),
+            (eggs.uid().clone(), eggs),
+            (baz.uid().clone(), baz),
+        ]);
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        compute_tc(&mut entities, false).expect("Failed to compute transitive closure");
+        let foo = &entities[&EntityUID::with_eid("foo")];
+        let bar = &entities[&EntityUID::with_eid("bar")];
+        let baz = &entities[&EntityUID::with_eid("baz")];
+        // should have added many edges which we check for
+        assert!(foo.is_descendant_of(&EntityUID::with_eid("baz")));
+        assert!(foo.is_descendant_of(&EntityUID::with_eid("ham")));
+        assert!(foo.is_descendant_of(&EntityUID::with_eid("eggs")));
+        assert!(bar.is_descendant_of(&EntityUID::with_eid("ham")));
+        assert!(bar.is_descendant_of(&EntityUID::with_eid("eggs")));
+        assert!(baz.is_descendant_of(&EntityUID::with_eid("eggs")));
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // passes cycle check after TC enforcement
+        assert!(enforce_dag_from_tc(&entities).is_ok());
+    }
+
+    #[test]
+    fn multi_parents() {
+        // start with this:
+        //     B -> C
+        //   /
+        // A
+        //   \
+        //     D -> E
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("D"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        d.add_parent(EntityUID::with_eid("E"));
+        let e = Entity::with_uid(EntityUID::with_eid("E"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+        ]);
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        compute_tc(&mut entities, false).expect("Failed to compute transitive closure");
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let d = &entities[&EntityUID::with_eid("D")];
+        // should have added the A -> C edge and the A -> E edge
+        assert!(a.is_descendant_of(&EntityUID::with_eid("C")));
+        assert!(a.is_descendant_of(&EntityUID::with_eid("E")));
+        // but it shouldn't have added these other edges
+        assert!(!b.is_descendant_of(&EntityUID::with_eid("D")));
+        assert!(!b.is_descendant_of(&EntityUID::with_eid("E")));
+        assert!(!d.is_descendant_of(&EntityUID::with_eid("B")));
+        assert!(!d.is_descendant_of(&EntityUID::with_eid("C")));
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // passes cycle check after TC enforcement
+        assert!(enforce_dag_from_tc(&entities).is_ok());
+    }
+
+    #[test]
+    fn dag() {
+        // start with this:
+        //     B -> C
+        //   /  \
+        // A      D -> E -> H
+        //   \        /
+        //     F -> G
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("F"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        b.add_parent(EntityUID::with_eid("D"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        d.add_parent(EntityUID::with_eid("E"));
+        let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+        e.add_parent(EntityUID::with_eid("H"));
+        let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+        f.add_parent(EntityUID::with_eid("G"));
+        let mut g = Entity::with_uid(EntityUID::with_eid("G"));
+        g.add_parent(EntityUID::with_eid("E"));
+        let h = Entity::with_uid(EntityUID::with_eid("H"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
+            (g.uid().clone(), g),
+            (h.uid().clone(), h),
+        ]);
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        compute_tc(&mut entities, false).expect("Failed to compute transitive closure");
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let f = &entities[&EntityUID::with_eid("F")];
+        // should have added many edges which we check for
+        assert!(a.is_descendant_of(&EntityUID::with_eid("C")));
+        assert!(a.is_descendant_of(&EntityUID::with_eid("D")));
+        assert!(a.is_descendant_of(&EntityUID::with_eid("E")));
+        assert!(a.is_descendant_of(&EntityUID::with_eid("F")));
+        assert!(a.is_descendant_of(&EntityUID::with_eid("G")));
+        assert!(a.is_descendant_of(&EntityUID::with_eid("H")));
+        assert!(b.is_descendant_of(&EntityUID::with_eid("E")));
+        assert!(b.is_descendant_of(&EntityUID::with_eid("H")));
+        assert!(f.is_descendant_of(&EntityUID::with_eid("E")));
+        assert!(f.is_descendant_of(&EntityUID::with_eid("H")));
+        // but it shouldn't have added these other edges
+        assert!(!b.is_descendant_of(&EntityUID::with_eid("F")));
+        assert!(!b.is_descendant_of(&EntityUID::with_eid("G")));
+        assert!(!f.is_descendant_of(&EntityUID::with_eid("C")));
+        assert!(!f.is_descendant_of(&EntityUID::with_eid("D")));
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // passes cycle check after TC enforcement
+        assert!(enforce_dag_from_tc(&entities).is_ok());
+    }
+
+    #[test]
+    fn already_edges() {
+        // start with this, which already includes some (but not all) transitive
+        // edges
+        //     B --> E
+        //   /  \   /
+        // A ---> C
+        //   \   /
+        //     D --> F
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("C"));
+        a.add_parent(EntityUID::with_eid("D"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        b.add_parent(EntityUID::with_eid("E"));
+        let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+        c.add_parent(EntityUID::with_eid("E"));
+        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        d.add_parent(EntityUID::with_eid("C"));
+        d.add_parent(EntityUID::with_eid("F"));
+        let e = Entity::with_uid(EntityUID::with_eid("E"));
+        let f = Entity::with_uid(EntityUID::with_eid("F"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
+        ]);
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        compute_tc(&mut entities, false).expect("Failed to compute transitive closure");
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let c = &entities[&EntityUID::with_eid("C")];
+        let d = &entities[&EntityUID::with_eid("D")];
+        // should have added many edges which we check for
+        assert!(a.is_descendant_of(&EntityUID::with_eid("E")));
+        assert!(a.is_descendant_of(&EntityUID::with_eid("F")));
+        assert!(d.is_descendant_of(&EntityUID::with_eid("E")));
+        // but it shouldn't have added these other edges
+        assert!(!b.is_descendant_of(&EntityUID::with_eid("F")));
+        assert!(!c.is_descendant_of(&EntityUID::with_eid("F")));
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // passes cycle check after TC enforcement
+        assert!(enforce_dag_from_tc(&entities).is_ok());
+    }
+
+    #[test]
+    fn disjoint_dag() {
+        // graph with disconnected components:
+        //     B -> C
+        //
+        // A      D -> E -> H
+        //   \
+        //     F -> G
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("F"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        d.add_parent(EntityUID::with_eid("E"));
+        let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+        e.add_parent(EntityUID::with_eid("H"));
+        let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+        f.add_parent(EntityUID::with_eid("G"));
+        let g = Entity::with_uid(EntityUID::with_eid("G"));
+        let h = Entity::with_uid(EntityUID::with_eid("H"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
+            (g.uid().clone(), g),
+            (h.uid().clone(), h),
+        ]);
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        compute_tc(&mut entities, false).expect("Failed to compute transitive closure");
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let d = &entities[&EntityUID::with_eid("D")];
+        let f = &entities[&EntityUID::with_eid("F")];
+        // should have added two edges
+        assert!(a.is_descendant_of(&EntityUID::with_eid("G")));
+        assert!(d.is_descendant_of(&EntityUID::with_eid("H")));
+        // but it shouldn't have added these other edges
+        assert!(!a.is_descendant_of(&EntityUID::with_eid("C")));
+        assert!(!a.is_descendant_of(&EntityUID::with_eid("D")));
+        assert!(!a.is_descendant_of(&EntityUID::with_eid("E")));
+        assert!(!a.is_descendant_of(&EntityUID::with_eid("H")));
+        assert!(!b.is_descendant_of(&EntityUID::with_eid("E")));
+        assert!(!b.is_descendant_of(&EntityUID::with_eid("H")));
+        assert!(!f.is_descendant_of(&EntityUID::with_eid("E")));
+        assert!(!f.is_descendant_of(&EntityUID::with_eid("H")));
+        assert!(!b.is_descendant_of(&EntityUID::with_eid("F")));
+        assert!(!b.is_descendant_of(&EntityUID::with_eid("G")));
+        assert!(!f.is_descendant_of(&EntityUID::with_eid("C")));
+        assert!(!f.is_descendant_of(&EntityUID::with_eid("D")));
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // passes cycle check after TC enforcement
+        assert!(enforce_dag_from_tc(&entities).is_ok());
+    }
+
+    #[test]
+    fn trivial_cycle() {
+        // this graph is invalid, but we want to still have some reasonable behavior
+        // if we encounter it (and definitely not panic, infinitely recurse, etc)
+        //
+        // A -> B -> B
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("B"));
+        let mut entities = HashMap::from([(a.uid().clone(), a), (b.uid().clone(), b)]);
+        // computing TC should succeed without panicking, infinitely recursing, etc
+        compute_tc(&mut entities, false).expect("Failed to compute transitive closure");
+        // fails cycle check
+        match enforce_dag_from_tc(&entities) {
+            Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
+            Err(TcError::HasCycle(err)) => {
+                assert!(err.vertex_with_loop() == &EntityUID::with_eid("B"));
+            }
+            Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
+        }
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        // we check that the A -> B edge still exists
+        assert!(a.is_descendant_of(&EntityUID::with_eid("B")));
+        // but it shouldn't have added a B -> A edge
+        assert!(!b.is_descendant_of(&EntityUID::with_eid("A")));
+        // we also check that, whatever compute_tc did with this invalid input, the
+        // final result still passes enforce_tc
+        assert!(enforce_tc(&entities).is_ok());
+        // still fails cycle check
+        match enforce_dag_from_tc(&entities) {
+            Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
+            Err(TcError::HasCycle(err)) => {
+                assert!(err.vertex_with_loop() == &EntityUID::with_eid("B"));
+            }
+            Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
+        }
+    }
+
+    #[test]
+    fn nontrivial_cycle() {
+        // this graph is invalid, but we want to still have some reasonable behavior
+        // if we encounter it (and definitely not panic, infinitely recurse, etc)
+        //
+        //          D
+        //        /
+        // A -> B -> C -> A
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        b.add_parent(EntityUID::with_eid("D"));
+        let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+        c.add_parent(EntityUID::with_eid("A"));
+        let d = Entity::with_uid(EntityUID::with_eid("D"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+        ]);
+        // computing TC should succeed without panicking, infinitely recursing, etc
+        compute_tc_internal(
+            entities
+                .keys()
+                .map(EntityUID::clone)
+                .collect::<Vec<EntityUID>>()
+                .into_iter(),
+            &mut entities,
+            HashSet::new(),
+            true,
+        );
+        // fails cycle check
+        match enforce_dag_from_tc(&entities) {
+            Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
+            Err(TcError::HasCycle(err)) => {
+                assert!(
+                    err.vertex_with_loop() == &EntityUID::with_eid("A")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("B")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("C")
+                );
+            }
+            Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
+        }
+        //TC tests
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        // we should have added A -> C and A -> D edges, at least
+        assert!(a.is_descendant_of(&EntityUID::with_eid("C")));
+        assert!(a.is_descendant_of(&EntityUID::with_eid("D")));
+        // and we should also have added a B -> A edge
+        assert!(b.is_descendant_of(&EntityUID::with_eid("A")));
+        // we also check that, whatever compute_tc did with this invalid input, the
+        // final result still passes enforce_tc
+        assert!(enforce_tc(&entities).is_ok());
+        // still fails cycle check
+        match enforce_dag_from_tc(&entities) {
+            Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
+            Err(TcError::HasCycle(err)) => {
+                assert!(
+                    err.vertex_with_loop() == &EntityUID::with_eid("A")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("B")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("C")
+                );
+            }
+            Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
+        }
+    }
+
+    #[test]
+    fn disjoint_cycles() {
+        // graph with disconnected components including cycles:
+        //     B -> C -> B
+        //
+        // A      D -> E -> H -> D
+        //   \
+        //     F -> G
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("F"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let mut c: Entity = Entity::with_uid(EntityUID::with_eid("C"));
+        c.add_parent(EntityUID::with_eid("B"));
+        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        d.add_parent(EntityUID::with_eid("E"));
+        let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+        e.add_parent(EntityUID::with_eid("H"));
+        let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+        f.add_parent(EntityUID::with_eid("G"));
+        let g = Entity::with_uid(EntityUID::with_eid("G"));
+        let mut h = Entity::with_uid(EntityUID::with_eid("H"));
+        h.add_parent(EntityUID::with_eid("D"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
+            (g.uid().clone(), g),
+            (h.uid().clone(), h),
+        ]);
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        compute_tc_internal(
+            entities
+                .keys()
+                .map(EntityUID::clone)
+                .collect::<Vec<EntityUID>>()
+                .into_iter(),
+            &mut entities,
+            HashSet::new(),
+            true,
+        );
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // still fails cycle check
+        match enforce_dag_from_tc(&entities) {
+            Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
+            Err(TcError::HasCycle(err)) => {
+                // two possible cycles
+                assert!(
+                    err.vertex_with_loop() == &EntityUID::with_eid("B")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("C")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("D")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("E")
+                        || err.vertex_with_loop() == &EntityUID::with_eid("H")
+                );
+            }
+            Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
+        }
+    }
+
+    #[test]
+    fn intersecting_cycles() {
+        // graph with two intersecting cycles:
+        //  A -> B -> C -> E -
+        //  ^    ^         ^  |
+        //  |    |         |  |
+        //  |    |        /   |
+        //   \  /        /    |
+        //    D ------>F      |
+        //    ^               |
+        //    |___------------
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+        c.add_parent(EntityUID::with_eid("E"));
+        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        d.add_parent(EntityUID::with_eid("A"));
+        d.add_parent(EntityUID::with_eid("B"));
+        d.add_parent(EntityUID::with_eid("F"));
+        let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+        e.add_parent(EntityUID::with_eid("D"));
+        let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+        f.add_parent(EntityUID::with_eid("E"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
+        ]);
+        // fails TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        cyclic_tc(&mut entities);
+        assert!(enforce_tc(&entities).is_ok());
+        // the graph may or may not pass the TC check but it will always fail cycle check
+        match enforce_dag_from_tc(&entities) {
+            Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
+            Err(TcError::HasCycle(_)) => (), // Every vertex is in a cycle
+            Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
+        }
+    }
+
+    #[test]
+    fn updated() {
+        // start with A -> B -> C
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        let all_ids: Vec<_> = entities.keys().cloned().collect();
+        compute_tc_internal(all_ids.into_iter(), &mut entities, HashSet::new(), false);
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let c = &entities[&EntityUID::with_eid("C")];
+        // should have added the A -> C edge
+        assert!(a.has_edge_to(&EntityUID::with_eid("C")));
+        // but we shouldn't have added other edges, like B -> A or C -> A
+        assert!(!b.has_edge_to(&EntityUID::with_eid("A")));
+        assert!(!c.has_edge_to(&EntityUID::with_eid("A")));
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // passes cycle check after TC enforcement
+        assert!(enforce_dag_from_tc(&entities).is_ok());
+        // D doesn't exist yet
+        assert!(!a.has_edge_to(&EntityUID::with_eid("D")));
+
+        // change from B -> C to B -> D
+        // Recreate A with only its original parent (B) to clear stale TC edges
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("D"));
+        let d = Entity::with_uid(EntityUID::with_eid("D"));
+        entities.insert(a.uid().clone(), a);
+        entities.insert(b.uid().clone(), b);
+        entities.insert(d.uid().clone(), d);
+
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        let all_ids: Vec<_> = entities.keys().cloned().collect();
+        compute_tc_internal(all_ids.into_iter(), &mut entities, HashSet::new(), false);
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let c = &entities[&EntityUID::with_eid("C")];
+        let d = &entities[&EntityUID::with_eid("D")];
+        // should have added the A -> D edge
+        assert!(a.has_edge_to(&EntityUID::with_eid("D")));
+        // should not have the A -> C edge
+        assert!(!a.has_edge_to(&EntityUID::with_eid("C")));
+        assert!(!b.has_edge_to(&EntityUID::with_eid("C")));
+        // but we shouldn't have added other edges, like B -> A or C -> A
+        assert!(!b.has_edge_to(&EntityUID::with_eid("A")));
+        assert!(!c.has_edge_to(&EntityUID::with_eid("A")));
+        assert!(!d.has_edge_to(&EntityUID::with_eid("A")));
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // passes cycle check after TC enforcement
+        assert!(enforce_dag_from_tc(&entities).is_ok());
+    }
+
+    /// Helper: collect the out-edge set for every node
+    fn snapshot(entities: &HashMap<EntityUID, Entity>) -> HashMap<EntityUID, HashSet<EntityUID>> {
+        entities
+            .iter()
+            .map(|(k, v)| (k.clone(), v.out_edges().cloned().collect()))
+            .collect()
+    }
+
+    /// Build a fresh copy of the entity map with only direct parent edges
+    fn fresh_copy(entities: &HashMap<EntityUID, Entity>) -> HashMap<EntityUID, Entity> {
+        entities
+            .values()
+            .map(|e| {
+                let mut fresh = Entity::with_uid(e.uid().clone());
+                for p in e.parents() {
+                    fresh.add_parent(p.clone());
+                }
+                (fresh.uid().clone(), fresh)
+            })
+            .collect()
+    }
+
+    /// Use `cyclic_tc` as a test oracle: verify that `cyclic_tc` produces
+    /// identical results to `compute_tc` on DAGs.
+    #[test]
+    fn cyclic_tc_oracle_on_dags() {
+        for (name, base) in &dag_test_graphs() {
+            let mut via_compute = fresh_copy(base);
+            compute_tc(&mut via_compute, false).expect("compute_tc failed");
+
+            let mut via_cyclic = fresh_copy(base);
+            cyclic_tc(&mut via_cyclic);
+
+            assert_eq!(
+                snapshot(&via_compute),
+                snapshot(&via_cyclic),
+                "TC mismatch on DAG '{name}'"
+            );
+        }
+    }
+
+    /// Use `cyclic_tc` as a test oracle on cyclic graphs: verify exact TC
+    /// and that enforce_tc passes afterwards.
+    #[test]
+    fn cyclic_tc_oracle_on_cycles() {
+        for (name, base) in &cyclic_test_graphs() {
+            let mut entities = fresh_copy(base);
+            cyclic_tc(&mut entities);
+
+            assert!(
+                enforce_tc(&entities).is_ok(),
+                "enforce_tc failed after cyclic_tc on '{name}'"
+            );
+            // All cyclic test graphs contain cycles, so DAG check must fail
+            assert!(
+                enforce_dag_from_tc(&entities).is_err(),
+                "expected cycle detection on '{name}'"
+            );
+        }
+    }
+
+    /// Verify that `compute_tc(..., false)` produces the same result as
+    /// `cyclic_tc` on cyclic graphs (regression: the old single-pass algorithm
+    /// produced incomplete closures for cycles of length >= 3).
+    #[test]
+    fn compute_tc_no_dag_matches_cyclic_tc_on_cycles() {
+        for (name, base) in &cyclic_test_graphs() {
+            let mut via_compute = fresh_copy(base);
+            compute_tc(&mut via_compute, false)
+                .unwrap_or_else(|_| panic!("compute_tc failed on '{name}'"));
+
+            let mut via_cyclic = fresh_copy(base);
+            cyclic_tc(&mut via_cyclic);
+
+            let snap_compute = snapshot(&via_compute);
+            let snap_cyclic = snapshot(&via_cyclic);
+            assert_eq!(
+                snap_compute, snap_cyclic,
+                "compute_tc(false) differs from cyclic_tc on '{name}'"
+            );
+        }
+    }
+
+    #[test]
+    fn self_loop_with_grandchild() {
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
+        compute_tc(&mut entities, false).expect("compute_tc failed");
+        assert!(entities[&EntityUID::with_eid("A")].has_edge_to(&EntityUID::with_eid("C")));
+        assert!(enforce_tc(&entities).is_ok());
+    }
+
+    fn dag_test_graphs() -> Vec<(&'static str, HashMap<EntityUID, Entity>)> {
+        vec![
+            ("A->B->C", {
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                let c = Entity::with_uid(EntityUID::with_eid("C"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                ])
+            }),
+            ("A->B->C->D->E", {
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+                c.add_parent(EntityUID::with_eid("D"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("E"));
+                let e = Entity::with_uid(EntityUID::with_eid("E"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                ])
+            }),
+            ("multi_parents", {
+                //     B -> C
+                //   /
+                // A
+                //   \
+                //     D -> E
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                a.add_parent(EntityUID::with_eid("D"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                let c = Entity::with_uid(EntityUID::with_eid("C"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("E"));
+                let e = Entity::with_uid(EntityUID::with_eid("E"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                ])
+            }),
+            ("diamond", {
+                // A -> B -> D
+                // A -> C -> D
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                a.add_parent(EntityUID::with_eid("C"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("D"));
+                let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+                c.add_parent(EntityUID::with_eid("D"));
+                let d = Entity::with_uid(EntityUID::with_eid("D"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                ])
+            }),
+            ("dag_with_join", {
+                //     B -> C
+                //   /  \
+                // A      D -> E -> H
+                //   \        /
+                //     F -> G
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                a.add_parent(EntityUID::with_eid("F"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                b.add_parent(EntityUID::with_eid("D"));
+                let c = Entity::with_uid(EntityUID::with_eid("C"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("E"));
+                let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+                e.add_parent(EntityUID::with_eid("H"));
+                let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+                f.add_parent(EntityUID::with_eid("G"));
+                let mut g = Entity::with_uid(EntityUID::with_eid("G"));
+                g.add_parent(EntityUID::with_eid("E"));
+                let h = Entity::with_uid(EntityUID::with_eid("H"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                    (f.uid().clone(), f),
+                    (g.uid().clone(), g),
+                    (h.uid().clone(), h),
+                ])
+            }),
+            ("already_edges", {
+                //     B --> E
+                //   /  \   /
+                // A ---> C
+                //   \   /
+                //     D --> F
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                a.add_parent(EntityUID::with_eid("C"));
+                a.add_parent(EntityUID::with_eid("D"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                b.add_parent(EntityUID::with_eid("E"));
+                let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+                c.add_parent(EntityUID::with_eid("E"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("C"));
+                d.add_parent(EntityUID::with_eid("F"));
+                let e = Entity::with_uid(EntityUID::with_eid("E"));
+                let f = Entity::with_uid(EntityUID::with_eid("F"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                    (f.uid().clone(), f),
+                ])
+            }),
+            ("disjoint", {
+                //     B -> C
+                //
+                // A      D -> E -> H
+                //   \
+                //     F -> G
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("F"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                let c = Entity::with_uid(EntityUID::with_eid("C"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("E"));
+                let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+                e.add_parent(EntityUID::with_eid("H"));
+                let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+                f.add_parent(EntityUID::with_eid("G"));
+                let g = Entity::with_uid(EntityUID::with_eid("G"));
+                let h = Entity::with_uid(EntityUID::with_eid("H"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                    (f.uid().clone(), f),
+                    (g.uid().clone(), g),
+                    (h.uid().clone(), h),
+                ])
+            }),
+        ]
+    }
+
+    fn cyclic_test_graphs() -> Vec<(&'static str, HashMap<EntityUID, Entity>)> {
+        vec![
+            ("trivial_cycle", {
+                // A -> B -> B
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("B"));
+                HashMap::from([(a.uid().clone(), a), (b.uid().clone(), b)])
+            }),
+            ("simple_cycle", {
+                // A -> B -> C -> A, B -> D
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                b.add_parent(EntityUID::with_eid("D"));
+                let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+                c.add_parent(EntityUID::with_eid("A"));
+                let d = Entity::with_uid(EntityUID::with_eid("D"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                ])
+            }),
+            ("disjoint_cycles", {
+                // B -> C -> B,  D -> E -> H -> D
+                // A -> F -> G
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("F"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+                c.add_parent(EntityUID::with_eid("B"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("E"));
+                let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+                e.add_parent(EntityUID::with_eid("H"));
+                let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+                f.add_parent(EntityUID::with_eid("G"));
+                let g = Entity::with_uid(EntityUID::with_eid("G"));
+                let mut h = Entity::with_uid(EntityUID::with_eid("H"));
+                h.add_parent(EntityUID::with_eid("D"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                    (f.uid().clone(), f),
+                    (g.uid().clone(), g),
+                    (h.uid().clone(), h),
+                ])
+            }),
+            ("intersecting_cycles", {
+                //  A -> B -> C -> E -> D -> A
+                //  D -> B, D -> F -> E
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+                c.add_parent(EntityUID::with_eid("E"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("A"));
+                d.add_parent(EntityUID::with_eid("B"));
+                d.add_parent(EntityUID::with_eid("F"));
+                let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+                e.add_parent(EntityUID::with_eid("D"));
+                let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+                f.add_parent(EntityUID::with_eid("E"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                    (f.uid().clone(), f),
+                ])
+            }),
+        ]
+    }
+
+    #[test]
+    fn add_ancestors_dangling_parent_adds_transitive() {
+        // Setup A -> B -> C and A -> X
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("X"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
+        compute_tc(&mut entities, false).expect("compute_tc failed");
+
+        // Entity `X` is not in the map. This previously made `add_ancestors`
+        // return early, without adding transitive ancestors, so we lost the
+        // transitive edge A -> C
+        let a = entities.get(&EntityUID::with_eid("A")).unwrap();
+        assert!(a.is_descendant_of(&EntityUID::with_eid("C")),);
+    }
+
+    #[test]
+    fn repair_tc_no_dag_computes_tc() {
+        // Setup A -> B and B -> C
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
+        compute_tc(&mut entities, false).expect("initial compute_tc failed");
+
+        // Add D -> B and repair TC
+        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        d.add_parent(EntityUID::with_eid("B"));
+        entities.insert(d.uid().clone(), d);
+        let nodes_to_fix = HashSet::from([EntityUID::with_eid("D")]);
+        repair_tc(&nodes_to_fix, &mut entities, false).expect("repair_tc failed");
+
+        // D should get an edge to C
+        let d = entities.get(&EntityUID::with_eid("D")).unwrap();
+        assert!(d.is_descendant_of(&EntityUID::with_eid("C")));
+    }
+
+    /// Each test case: (name, initial edges, new edges, nodes to fix).
+    /// The test builds the initial graph, computes TC, then resets the
+    /// nodes_to_fix, re-adds all their direct edges (initial + new), calls
+    /// `repair_tc`, and asserts the result matches a full `compute_tc` on
+    /// the combined edge set.
+    fn repair_tc_test_cases() -> Vec<(
+        &'static str,
+        Vec<(&'static str, &'static str)>,
+        Vec<(&'static str, &'static str)>,
+        Vec<&'static str>,
+    )> {
+        vec![
+            (
+                "add_leaf_node",
+                // Initial: A -> B -> C
+                vec![("A", "B"), ("B", "C")],
+                // Add: D -> C
+                vec![("D", "C")],
+                // Fix: D
+                vec!["D"],
+            ),
+            (
+                "add_intermediate_edge",
+                // Initial: A -> B -> C -> D
+                vec![("A", "B"), ("B", "C"), ("C", "D")],
+                // Add: A -> C (shortcut)
+                vec![("A", "C")],
+                // Fix: A
+                vec!["A"],
+            ),
+            (
+                "diamond_new_entry",
+                // Initial: A -> B -> D, A -> C -> D
+                vec![("A", "B"), ("A", "C"), ("B", "D"), ("C", "D")],
+                // Add: E -> B
+                vec![("E", "B")],
+                // Fix: E
+                vec!["E"],
+            ),
+            (
+                "multiple_new_nodes",
+                // Initial: A -> B -> C
+                vec![("A", "B"), ("B", "C")],
+                // Add: D -> A, E -> A
+                vec![("D", "A"), ("E", "A")],
+                // Fix: D, E
+                vec!["D", "E"],
+            ),
+            (
+                "deep_chain_extension",
+                // Initial: A -> B -> C -> D -> E
+                vec![("A", "B"), ("B", "C"), ("C", "D"), ("D", "E")],
+                // Add: F -> A
+                vec![("F", "A")],
+                // Fix: F
+                vec!["F"],
+            ),
+            (
+                "wide_fan_in",
+                // Initial: B -> D, C -> D
+                vec![("B", "D"), ("C", "D")],
+                // Add: A -> B, A -> C
+                vec![("A", "B"), ("A", "C")],
+                // Fix: A
+                vec!["A"],
+            ),
+            (
+                "bridge_disjoint_components",
+                // Initial: A -> B, C -> D
+                vec![("A", "B"), ("C", "D")],
+                // Add: E -> B, E -> D
+                vec![("E", "B"), ("E", "D")],
+                // Fix: E
+                vec!["E"],
+            ),
+            (
+                "node_gains_second_parent",
+                // Initial: A -> B -> C -> D
+                vec![("A", "B"), ("B", "C"), ("C", "D")],
+                // Add: B -> E, E -> D (B gets second path to D)
+                vec![("B", "E"), ("E", "D")],
+                // Fix: A, B, E
+                // Must fix A too since it depends on B.
+                // In entities.rs, this is correctly done: entities_touched is expanded
+                // when any entitity has one of the touched nodes as an ancestor
+                // See the corresponding test with same name in that file.
+                vec!["A", "B", "E"],
+            ),
+        ]
+    }
+
+    /// Regression test: `compute_tc` with `enforce_dag=false` on a cycle of
+    /// length >= 3 must produce a complete transitive closure (every node in
+    /// the cycle can reach every other node). Before the fix, the single-pass
+    /// DFS algorithm produced incomplete, non-deterministic results for such
+    /// cycles.
+    #[test]
+    fn cycle_length_3_enforce_dag_false() {
+        // A -> B -> C -> A (cycle of length 3)
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+        c.add_parent(EntityUID::with_eid("A"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
+        // With enforce_dag=false, compute_tc must not error (cycles allowed)
+        compute_tc(&mut entities, false).expect("compute_tc should succeed with enforce_dag=false");
+        // Every node in the cycle must be able to reach every other node
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let c = &entities[&EntityUID::with_eid("C")];
+        assert!(a.is_descendant_of(&EntityUID::with_eid("B")));
+        assert!(a.is_descendant_of(&EntityUID::with_eid("C")));
+        assert!(b.is_descendant_of(&EntityUID::with_eid("A")));
+        assert!(b.is_descendant_of(&EntityUID::with_eid("C")));
+        assert!(c.is_descendant_of(&EntityUID::with_eid("A")));
+        assert!(c.is_descendant_of(&EntityUID::with_eid("B")));
+        // enforce_tc must pass (TC is complete)
+        assert!(enforce_tc(&entities).is_ok());
+    }
+
+    /// Runs all `repair_tc` test cases, comparing repair result against a
+    /// full `compute_tc` on the same final graph.
+    #[test]
+    fn repair_tc_cases() {
+        for (name, edges, new_edges, nodes_to_fix) in &repair_tc_test_cases() {
+            // Collect all node ids
+            let mut ids: HashSet<&str> = HashSet::new();
+            for (s, d) in edges.iter().chain(new_edges.iter()) {
+                ids.insert(s);
+                ids.insert(d);
+            }
+
+            // Build initial graph
+            let mut entities: HashMap<EntityUID, Entity> = ids
+                .iter()
+                .map(|id| {
+                    let e = Entity::with_uid(EntityUID::with_eid(id));
+                    (e.uid().clone(), e)
+                })
+                .collect();
+            for (src, dst) in edges {
+                entities
+                    .get_mut(&EntityUID::with_eid(src))
+                    .unwrap()
+                    .add_parent(EntityUID::with_eid(dst));
+            }
+
+            // Compute initial TC
+            compute_tc(&mut entities, false).expect("initial compute_tc failed");
+
+            // Reset nodes_to_fix and re-add their direct edges (initial + new)
+            let fix_ids: HashSet<&str> = nodes_to_fix.iter().copied().collect();
+            for id in &fix_ids {
+                entities
+                    .get_mut(&EntityUID::with_eid(id))
+                    .unwrap()
+                    .reset_edges();
+            }
+            for (src, dst) in edges.iter().chain(new_edges.iter()) {
+                if fix_ids.contains(src) {
+                    entities
+                        .get_mut(&EntityUID::with_eid(src))
+                        .unwrap()
+                        .add_parent(EntityUID::with_eid(dst));
+                }
+            }
+            // Insert any brand-new nodes that weren't in the initial graph
+            for id in &fix_ids {
+                entities
+                    .entry(EntityUID::with_eid(id))
+                    .or_insert_with(|| Entity::with_uid(EntityUID::with_eid(id)));
+            }
+
+            // Repair TC
+            let fix_set: HashSet<EntityUID> = nodes_to_fix
+                .iter()
+                .map(|id| EntityUID::with_eid(id))
+                .collect();
+            repair_tc(&fix_set, &mut entities, false)
+                .unwrap_or_else(|_| panic!("repair_tc failed on '{name}'"));
+            let repaired = snapshot(&entities);
+
+            // Build expected: full TC from scratch on the combined edge set
+            let mut expected_entities: HashMap<EntityUID, Entity> = ids
+                .iter()
+                .map(|id| {
+                    let e = Entity::with_uid(EntityUID::with_eid(id));
+                    (e.uid().clone(), e)
+                })
+                .collect();
+            for (src, dst) in edges.iter().chain(new_edges.iter()) {
+                expected_entities
+                    .get_mut(&EntityUID::with_eid(src))
+                    .unwrap()
+                    .add_parent(EntityUID::with_eid(dst));
+            }
+            compute_tc(&mut expected_entities, false).expect("expected compute_tc failed");
+            let expected = snapshot(&expected_entities);
+
+            assert_eq!(
+                repaired, expected,
+                "repair_tc result differs from full compute_tc on '{name}'"
+            );
+        }
+    }
+}

@@ -1,0 +1,61 @@
+# LaTeX generated files
+*.aux
+*.log
+*.bbl
+*.blg
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.nav
+*.snm
+*.vrb
+comment.cut
+# PDF output (only compiled LaTeX, keep figure PDFs)
+paper/main.pdf
+
+# Editor files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Data files (traces)
+data/
+
+# Linux kernel source/build (too large for GitHub)
+memcg/linux/
+
+# BPF loader build artifacts
+memcg/multi_tenant_test/bpf_loader/vmlinux.h
+memcg/multi_tenant_test/bpf_loader/*.bpf.o
+memcg/multi_tenant_test/bpf_loader/*.bpf.skel.h
+memcg/multi_tenant_test/bpf_loader/memcg_priority
+memcg/multi_tenant_test/bpf_loader/bpf/
+
+# scx_flatcg build artifacts
+scx_flatcg/scx_flatcg
+scx_flatcg/*.bpf.o
+scx_flatcg/*.bpf.skel.h
+
+# agentcg build artifacts
+agentcg/scheduler/scx_flatcg
+agentcg/scheduler/*.bpf.o
+agentcg/scheduler/*.bpf.skel.h
+agentcg/memcg/memcg_priority
+agentcg/memcg/*.bpf.o
+agentcg/memcg/*.bpf.skel.h
+agentcg/memcg/vmlinux.h
+agentcg/process/process
+agentcg/process/*.bpf.o
+agentcg/process/*.bpf.o.tmp
+agentcg/process/*.skel.h
+agentcg/process/vmlinux.h

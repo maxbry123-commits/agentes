@@ -1,0 +1,58 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "gap_id": "G-016",
+  "owner": "ASTRA_GPT_LOOP",
+  "verdict": "VERIFIED_CLOSED_LOCAL_SOURCE_PROOF",
+  "tested_ref": "2ef190286fd06ad9b3c4cab7e2d4436391ccf0a2",
+  "claim_commit": "2ef190286fd06ad9b3c4cab7e2d4436391ccf0a2",
+  "authorized_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "source_scan": {
+    "method": "GitHub recursive tree API",
+    "tree_sha": "fbfcc3beea2290139c3d38f2ca6e59b0754aa366",
+    "truncated": false
+  },
+  "chat_a": {
+    "path": "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/PROMPT_MAESTRO_CHAT_A_CHAT_B_VERSION_MADURA.md",
+    "blob": "a9606ed0154ad5e7a72b6ffbe43d225e2ea448a3",
+    "result": "LOCATED"
+  },
+  "chat_b": [
+    {
+      "path": "➡️📂 Wordflow LOOP Yaiwes/runtime/docs/T001_CHAT_B_CONTRACT.md",
+      "blob": "e641ad5a4dff4f952e2986ec511738588c7066e8"
+    },
+    {
+      "path": "➡️📂 Wordflow LOOP Yaiwes/runtime/docs/T007_CHAT_B_CONTRACT.md",
+      "blob": "e1ae85b550c1097b9cc00a64f9c8834f54ec30aa"
+    },
+    {
+      "path": "➡️📂 Wordflow LOOP Yaiwes/runtime/docs/T011_CHAT_B_CONTRACT.md",
+      "blob": "ac8b01451d72144a896b8694fa531ca443d06c10"
+    }
+  ],
+  "executable_validation": {
+    "runtime": "tool JavaScript assertions over GitHub read-back",
+    "result": "PASS_12_OF_12",
+    "checks": [
+      "all files fetched",
+      "Chat A role",
+      "Chat B role",
+      "task LOC limit",
+      "code block LOC limit",
+      "traceability mandatory",
+      "REUSE>PATCH>ADAPT>GENERATE",
+      "T001 identity",
+      "T007 identity",
+      "T011 identity",
+      "Chat B output contracts",
+      "authorized-root containment"
+    ]
+  },
+  "closure_basis": "G-016 criterion allows closure when the Chat-A artifact is located; exact source and three Chat-B contracts were read back and validated.",
+  "code_change": "NONE_REQUIRED",
+  "exclusions": [
+    "No claim of remote runtime execution",
+    "No modification of G-013 or G-018",
+    "STATE/CHECKPOINT left to G-013 owner to avoid concurrent source-of-truth mutation"
+  ]
+}

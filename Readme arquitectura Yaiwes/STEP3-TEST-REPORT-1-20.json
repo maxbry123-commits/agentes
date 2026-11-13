@@ -1,0 +1,126 @@
+{
+  "run_id": "34537194559",
+  "actor": "➡️ sol osquestador plan",
+  "results": [
+    {
+      "n": 1,
+      "name": "APScheduler",
+      "status": "PASS",
+      "detail": "adapter-real-surface + FABLES"
+    },
+    {
+      "n": 2,
+      "name": "AWS-Step-Functions-DS-SDK",
+      "status": "PASS",
+      "detail": "adapter-real-surface + FABLES"
+    },
+    {
+      "n": 3,
+      "name": "Ajv",
+      "status": "PASS",
+      "detail": "adapter-real-surface + FABLES"
+    },
+    {
+      "n": 4,
+      "name": "Apache-APISIX",
+      "status": "PASS",
+      "detail": "adapter-real-surface + FABLES"
+    },
+    {
+      "n": 5,
+      "name": "Apache-Airflow",
+      "status": "PASS",
+      "detail": "runtime:/usr/bin/python3 -m compileall -q /home/runner/work/agentes/agentes/Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/task-sdk/src/airflow/sdk/definitions + FABLES"
+    },
+    {
+      "n": 6,
+      "name": "Argo-Workflows",
+      "status": "PASS",
+      "detail": "runtime:go test ./workflow/validate -run ^$ + FABLES"
+    },
+    {
+      "n": 7,
+      "name": "Azure-Durable-Functions",
+      "status": "PASS",
+      "detail": "runtime:dotnet msbuild src/WebJobs.Extensions.DurableTask/WebJobs.Extensions.DurableTask.csproj -getProperty:TargetFrameworks -getProperty:AssemblyName -verbosity:quiet + FABLES"
+    },
+    {
+      "n": 8,
+      "name": "BAML",
+      "status": "PASS",
+      "detail": "runtime:cargo metadata --manifest-path BAML/engine/Cargo.toml --no-deps --format-version 1 + FABLES"
+    },
+    {
+      "n": 9,
+      "name": "Burr",
+      "status": "PASS",
+      "detail": "runtime:python -m compileall -q burr + FABLES"
+    },
+    {
+      "n": 10,
+      "name": "Caddy",
+      "status": "PASS",
+      "detail": "runtime:go test ./caddyconfig/... -run ^$ + FABLES"
+    },
+    {
+      "n": 11,
+      "name": "Camunda",
+      "status": "PASS",
+      "detail": "runtime:mvn -q -N help:evaluate -Dexpression=project.artifactId -DforceStdout + FABLES"
+    },
+    {
+      "n": 12,
+      "name": "Cedar",
+      "status": "PASS",
+      "detail": "runtime:cargo check -q -p cedar-policy --lib + FABLES"
+    },
+    {
+      "n": 13,
+      "name": "Celery",
+      "status": "PASS",
+      "detail": "runtime:python -m compileall -q celery + FABLES"
+    },
+    {
+      "n": 14,
+      "name": "Cerberus",
+      "status": "PASS",
+      "detail": "runtime:python -c from cerberus import Validator; v=Validator({'name':{'type':'string'}}); assert v.validate({'name':'ok'}); assert not v.validate({'name':1}) + FABLES"
+    },
+    {
+      "n": 15,
+      "name": "Cerbos",
+      "status": "PASS",
+      "detail": "runtime:go test ./internal/validator + FABLES"
+    },
+    {
+      "n": 16,
+      "name": "Chroma",
+      "status": "PASS",
+      "detail": "runtime:python -m compileall -q chromadb + FABLES"
+    },
+    {
+      "n": 17,
+      "name": "ClawHub",
+      "status": "PASS",
+      "detail": "runtime:node scripts/extract-changelog-release.mjs --help + FABLES"
+    },
+    {
+      "n": 18,
+      "name": "Cloudflare-Workers-SDK",
+      "status": "PASS",
+      "detail": "runtime:node --check packages/wrangler/bin/wrangler.js + FABLES"
+    },
+    {
+      "n": 19,
+      "name": "Coconut",
+      "status": "PASS",
+      "detail": "runtime:python -m compileall -q Coconut + FABLES"
+    },
+    {
+      "n": 20,
+      "name": "CodeUltraFeedback",
+      "status": "PASS",
+      "detail": "runtime:python -m compileall -q src evalplus + FABLES"
+    }
+  ]
+}

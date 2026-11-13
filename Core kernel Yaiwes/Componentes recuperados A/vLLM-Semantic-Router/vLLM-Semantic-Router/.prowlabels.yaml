@@ -1,0 +1,16 @@
+priority:
+  - P0
+  - P1
+  - P2
+
+wg:
+  - mom-routing
+  - router-models-inference-runtime
+  - data-plane-networking
+  - enterprise-environment
+  - agentic-context
+  - developer-experience-ecosystem
+  - evaluation-quality
+
+owner:
+  - maintainers

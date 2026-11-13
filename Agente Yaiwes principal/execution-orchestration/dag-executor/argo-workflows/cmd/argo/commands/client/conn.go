@@ -1,0 +1,131 @@
+package client
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"os"
+
+	"github.com/spf13/cobra"
+	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/argoproj/argo-workflows/v4"
+	"github.com/argoproj/argo-workflows/v4/pkg/apiclient"
+	"github.com/argoproj/argo-workflows/v4/util/kubeconfig"
+	"github.com/argoproj/argo-workflows/v4/util/logging"
+)
+
+var (
+	ArgoServerOpts = apiclient.ArgoServerOpts{}
+	instanceID     string
+)
+
+var overrides = clientcmd.ConfigOverrides{}
+
+var (
+	explicitPath string
+	Offline      bool
+	OfflineFiles []string
+)
+
+func AddKubectlFlagsToCmd(cmd *cobra.Command) {
+	kflags := clientcmd.RecommendedConfigOverrideFlags("")
+	cmd.PersistentFlags().StringVar(&explicitPath, "kubeconfig", "", "Path to a kube config. Only required if out-of-cluster")
+	clientcmd.BindOverrideFlags(&overrides, cmd.PersistentFlags(), kflags)
+}
+
+func GetConfig() clientcmd.ClientConfig {
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
+	loadingRules.ExplicitPath = explicitPath
+	return clientcmd.NewInteractiveDeferredLoadingClientConfig(loadingRules, &overrides, os.Stdin)
+}
+
+func AddAPIClientFlagsToCmd(cmd *cobra.Command) {
+	cmd.PersistentFlags().StringVar(&instanceID, "instanceid", os.Getenv("ARGO_INSTANCEID"), "submit with a specific controller's instance id label. Default to the ARGO_INSTANCEID environment variable.")
+	// "-s" like kubectl
+	cmd.PersistentFlags().StringVarP(&ArgoServerOpts.URL, "argo-server", "s", os.Getenv("ARGO_SERVER"), "API server `host:port`. e.g. localhost:2746. Defaults to the ARGO_SERVER environment variable.")
+	cmd.PersistentFlags().StringVar(&ArgoServerOpts.Path, "argo-base-href", os.Getenv("ARGO_BASE_HREF"), "Path to use with HTTP client due to Base HREF. Defaults to the ARGO_BASE_HREF environment variable.")
+	cmd.PersistentFlags().BoolVar(&ArgoServerOpts.HTTP1, "argo-http1", os.Getenv("ARGO_HTTP1") == "true", "If true, use the HTTP client. Defaults to the ARGO_HTTP1 environment variable.")
+	cmd.PersistentFlags().StringSliceVarP(&ArgoServerOpts.Headers, "header", "H", []string{}, "Sets additional header to all requests made by Argo CLI. (Can be repeated multiple times to add multiple headers, also supports comma separated headers) Used only when either ARGO_HTTP1 or --argo-http1 is set to true.")
+	// "-e" for encrypted - like zip
+	cmd.PersistentFlags().BoolVarP(&ArgoServerOpts.Secure, "secure", "e", os.Getenv("ARGO_SECURE") != "false", "Whether or not the server is using TLS with the Argo Server. Defaults to the ARGO_SECURE environment variable.")
+	// "-k" like curl
+	cmd.PersistentFlags().BoolVarP(&ArgoServerOpts.InsecureSkipVerify, "insecure-skip-verify", "k", os.Getenv("ARGO_INSECURE_SKIP_VERIFY") == "true", "If true, the Argo Server's certificate will not be checked for validity. This will make your HTTPS connections insecure. Defaults to the ARGO_INSECURE_SKIP_VERIFY environment variable.")
+}
+
+func NewAPIClient(ctx context.Context) (context.Context, apiclient.Client, error) {
+	// Reuse the explicit kubectl client certificate flags in server mode.
+	ArgoServerOpts.ClientCert = overrides.AuthInfo.ClientCertificate
+	ArgoServerOpts.ClientKey = overrides.AuthInfo.ClientKey
+	ArgoServerOpts.CACert = overrides.ClusterInfo.CertificateAuthority
+	if (ArgoServerOpts.ClientCert == "") != (ArgoServerOpts.ClientKey == "") {
+		return nil, nil, errors.New("--client-certificate and --client-key must be provided together")
+	}
+
+	var proxy func(*http.Request) (*url.URL, error)
+	if overrides.ClusterInfo.ProxyURL != "" {
+		proxyURL, err := url.Parse(overrides.ClusterInfo.ProxyURL)
+		if err != nil {
+			return nil, nil, err
+		}
+		proxy = http.ProxyURL(proxyURL)
+	}
+	return apiclient.NewClientFromOptsWithContext(ctx,
+		apiclient.Opts{
+			ArgoServerOpts: ArgoServerOpts,
+			InstanceID:     instanceID,
+			AuthSupplier: func() string {
+				authString, err := GetAuthString(ctx)
+				if err != nil {
+					logger := logging.RequireLoggerFromContext(ctx)
+					logger.WithFatal().WithError(err).Error(ctx, "Failed to get auth string")
+				}
+				return authString
+			},
+			ClientConfigSupplier: GetConfig,
+			Offline:              Offline,
+			OfflineFiles:         OfflineFiles,
+			Proxy:                proxy,
+		})
+}
+
+func Namespace(ctx context.Context) string {
+	if Offline {
+		return ""
+	}
+	if overrides.Context.Namespace != "" {
+		return overrides.Context.Namespace
+	}
+	namespace, ok := os.LookupEnv("ARGO_NAMESPACE")
+	if ok {
+		return namespace
+	}
+	namespace, _, err := GetConfig().Namespace()
+	if err != nil {
+		logger := logging.RequireLoggerFromContext(ctx)
+		logger.WithFatal().WithError(err).Error(ctx, "Failed to get namespace")
+	}
+	return namespace
+}
+
+func GetAuthString(ctx context.Context) (string, error) {
+	token, ok := os.LookupEnv("ARGO_TOKEN")
+	if ok {
+		return token, nil
+	}
+	restConfig, err := GetConfig().ClientConfig()
+	if err != nil {
+		return "", err
+	}
+	version := argo.GetVersion()
+	restConfig = restclient.AddUserAgent(restConfig, fmt.Sprintf("argo-workflows/%s argo-cli", version.Version))
+	authString, err := kubeconfig.GetAuthString(ctx, restConfig, explicitPath)
+	if err != nil {
+		return "", err
+	}
+	return authString, nil
+}

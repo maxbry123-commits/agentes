@@ -1,0 +1,650 @@
+// Global Bootstrap overrides that respect dark/light modes
+
+// region Typography
+
+a,
+.btn-link {
+  color: var(--accent-a11);
+  text-decoration-color: var(--accent-a5);
+
+  &:hover {
+    color: var(--accent-a10);
+    text-decoration: underline;
+  }
+}
+
+.text-dark,
+a.text-dark:hover,
+a.text-dark:focus {
+  color: var(--text-dark) !important;
+}
+
+pre {
+  color: var(--text-color-main);
+}
+
+.text-muted {
+  color: var(--text-color-muted) !important;
+}
+
+.text-decoration-line-through {
+  text-decoration: line-through;
+}
+
+// endregion Typography
+
+// region Forms
+
+.form-control,
+.form-control:focus {
+  background-color: var(--color-surface);
+  color: var(--text-color-main);
+}
+
+.form-control {
+  border-color: var(--border-color-200);
+  padding-left: 8px;
+  padding-right: 8px;
+
+  &[readonly],
+  &:disabled {
+    background-color: var(--surface-background-color-alt);
+  }
+}
+
+.input-group-text {
+  background-color: var(--gray-a2);
+  border-color: var(--gray-a7);
+  color: var(--form-input-group-color);
+  font-size: var(--font-size-2);
+}
+
+.input-group--sm .input-group-text {
+  height: 28px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  font-size: var(--font-size-1);
+  border-radius: var(--radius-2);
+}
+.input-group--md .input-group-text {
+  height: 32px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  border-radius: var(--radius-2);
+}
+.input-group--legacy .input-group-text {
+  height: 36px;
+  border-radius: var(--radius-2);
+}
+.input-group--lg .input-group-text {
+  height: 40px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  font-size: var(--font-size-3);
+  border-radius: var(--radius-3);
+}
+
+// endregion Forms
+
+// region Tables
+
+.table {
+  color: var(--text-color-table);
+}
+
+.table thead th,
+.table th,
+.table td {
+  border-color: var(--border-color-100);
+}
+
+.table-hover tbody tr:hover {
+  color: var(--text-color-main);
+}
+
+.table-hover tbody tr:hover {
+  background-color: var(--slate-a2);
+}
+
+.table tbody + tbody {
+  border-top: 2px solid var(--border-color-100);
+}
+
+// endregion Tables
+
+// region Surfaces
+
+.card {
+  background-color: var(--surface-background-color);
+  border-color: var(--border-color-200);
+}
+.dark-theme {
+  .card {
+    .card-header {
+      background-color: var(--surface-background-color-alt);
+      border-color: var(--border-color-200);
+    }
+  }
+}
+
+.bg-white {
+  background-color: var(--surface-background-color) !important;
+}
+
+.bg-light {
+  background-color: var(
+    --slate-a2
+  ) !important; //--surface-background-color-alt) !important;
+}
+
+/* Importants here are necessary to override Bootstrap's default (which also have !important) */
+.border {
+  border-color: var(--border-color-200) !important;
+}
+
+.border-bottom {
+  border-bottom-color: var(--border-color-200) !important;
+}
+
+.border-top {
+  border-top-color: var(--border-color-200) !important;
+}
+
+.border-left {
+  border-left-color: var(--border-color-200) !important;
+}
+
+.border-right {
+  border-right-color: var(--border-color-200) !important;
+}
+
+.border-warning {
+  border-color: var(--amber-8) !important;
+}
+
+// region Alerts
+
+.alert-info {
+  background-color: var(--alert-info-background);
+  border-color: var(--alert-info-border-color);
+  color: var(--alert-info-color);
+
+  .alert-link {
+    color: var(--text-color-main);
+  }
+}
+
+.alert-info-gb-purple {
+  background-color: var(--alert-info-purple-background);
+  border-color: var(--alert-info-purple-border-color);
+  color: var(--alert-info-purple-color);
+
+  .alert-link {
+    color: var(--text-color-main);
+  }
+}
+
+.alert-danger {
+  background-color: var(--alert-danger-background);
+  border-color: var(--alert-danger-border-color);
+  color: var(--alert-danger-color);
+
+  .alert-link {
+    color: var(--text-color-main);
+  }
+}
+
+.alert-warning {
+  background-color: var(--alert-warn-background);
+  border-color: var(--alert-warn-border-color);
+  color: var(--alert-warn-color);
+
+  .alert-link {
+    color: var(--text-color-main);
+  }
+}
+
+.alert-success {
+  background-color: var(--alert-success-background);
+  border-color: var(--alert-success-border-color);
+  color: var(--alert-success-color);
+
+  .alert-link {
+    color: var(--text-color-main);
+  }
+}
+
+// endregion Alerts
+
+// region Lists
+
+.list-group-item {
+  background-color: var(--surface-background-color);
+  color: var(--form-input-group-color);
+
+  &.active {
+    background-color: var(--text-link-color);
+    border-color: var(--text-link-color);
+    color: var(--text-color-on-bright);
+  }
+}
+
+.list-group-item-action {
+  &:hover {
+    background-color: var(--surface-background-color-alt);
+    color: var(--form-input-group-color);
+  }
+}
+
+// endregion Lists
+
+// endregion Surfaces
+
+// region Drop down
+
+.dropdown-toggle {
+  display: flex;
+  align-items: center;
+}
+.dropdown-menu {
+  background-color: var(--color-panel-solid);
+  color: var(--text-color-main);
+  border-color: var(--border-color-300);
+}
+
+.dropdown-item {
+  color: var(--text-color-main);
+
+  &:hover {
+    color: var(--text-color-main);
+    background-color: var(--slate-a3); //var(--surface-background-color-alt);
+  }
+  > svg,
+  > span > svg {
+    min-width: 20px;
+  }
+}
+
+.dropdown-divider {
+  border-color: var(--border-color-200);
+}
+
+// endregion Drop down
+
+// region Modals
+
+.modal {
+  .close {
+    color: inherit;
+  }
+}
+
+.modal-header {
+  border-color: var(--slate-a3);
+
+  .modal-borderless-header & {
+    border-color: transparent;
+  }
+}
+
+.modal-content {
+  background-color: var(--color-panel-solid);
+  color: var(--text-color-main);
+  border-color: var(--slate-a4);
+}
+
+.modal-footer {
+  border-color: var(--slate-a3);
+
+  .modal-borderless-footer & {
+    border-color: transparent;
+  }
+}
+
+// endregion Modals
+
+// region Pagination
+
+.pagination {
+  .page-link {
+    background-color: var(--slate-a3);
+  }
+}
+.page-item.disabled .page-link {
+  background-color: var(--slate-a3);
+}
+
+// endregion Pagination
+
+// region Tabs
+
+.nav-tabs {
+  border-color: var(--border-color-200);
+}
+.nav-tabs .nav-link.active,
+.nav-tabs .nav-item.show .nav-link {
+  color: var(--text-color-muted);
+  background-color: var(--surface-background-color);
+  border-color: var(--border-color-200) var(--border-color-200)
+    var(--surface-background-color);
+}
+
+.nav-tabs .nav-link:hover,
+.nav-tabs .nav-link:focus {
+  border-color: var(--border-color-200) var(--border-color-200)
+    var(--surface-background-color);
+}
+
+// endregion Tabs
+
+// region Diff Viewer
+
+.diff-wrapper {
+  [class*="-gutter"] {
+    background-color: var(--surface-background-color);
+  }
+
+  [class*="-code-fold"] {
+    background-color: var(--surface-background-color);
+  }
+
+  [class*="-diff-container"] {
+    background-color: var(--surface-background-color);
+  }
+
+  [class$="-empty-line"] {
+    background-color: var(--surface-background-color);
+    color: var(--text-color-main);
+  }
+
+  [class$="-diff-removed"] {
+    background-color: var(--diff-removed-background);
+    color: var(--text-color-main);
+  }
+
+  [class$="-word-removed"] {
+    background-color: var(--diff-removed-background-highlight);
+    color: var(--text-color-main);
+  }
+
+  [class*="-gutter"][class*="-removed"] {
+    background-color: var(--diff-removed-background-highlight);
+    //color: var(--text-color-main);
+  }
+
+  [class*="-line-number"] {
+    color: var(--text-color-main) !important;
+  }
+
+  pre {
+    color: var(--text-color-main) !important;
+  }
+
+  [class$="-diff-added"] {
+    background-color: var(--diff-added-background);
+    color: var(--text-color-main);
+  }
+
+  [class$="-word-added"] {
+    background-color: var(--diff-added-background-highlight);
+    color: var(--text-color-main);
+  }
+
+  [class*="-gutter"][class*="-added"] {
+    background-color: var(--diff-added-background-highlight);
+    color: var(--text-color-main);
+  }
+}
+
+// region d2h differ / Diff Viewer
+
+// d2h loads CSS at the end of the document so we need to do all these !important
+
+.d2h-file-diff .d2h-del.d2h-change {
+  background-color: var(--diff-removed-background) !important;
+}
+
+.d2h-code-line del,
+.d2h-code-side-line del {
+  background-color: var(--diff-removed-background-highlight) !important;
+}
+
+.d2h-file-diff .d2h-ins.d2h-change {
+  background-color: var(--diff-added-background) !important;
+}
+
+.d2h-code-line ins,
+.d2h-code-side-line ins {
+  background-color: var(--diff-added-background-highlight) !important;
+}
+
+.d2h-ins {
+  background-color: var(--diff-added-background) !important;
+}
+
+.d2h-del {
+  background-color: var(--diff-removed-background) !important;
+}
+
+.d2h-code-linenumber {
+  background-color: var(--surface-background-color-alt) !important;
+  color: var(--text-color-muted) !important;
+}
+
+.d2h-file-header {
+  background-color: var(--surface-background-color) !important;
+  border-bottom: 1px solid var(--border-color-300) !important;
+}
+
+.d2h-file-wrapper {
+  border: 1px solid var(--border-color-300) !important;
+}
+
+.d2h-info {
+  color: var(--text-color-main) !important;
+  background-color: var(--surface-background-color-alt) !important;
+}
+
+.d2h-tag {
+  background-color: var(--surface-background-color-alt) !important;
+}
+
+.diff-wrapper td {
+  padding: 0 10px !important;
+  vertical-align: top !important;
+}
+
+// Comment anchors on diffs (see diffCommentRefs.ts). The renderGutter host
+// cell IS the carved-out icon column: the icon button renders in-flow inside
+// it and the column auto-sizes to the icon's width — react-diff-viewer-
+// continued uses `table-layout: auto`, so external width/min-width on the
+// <td> aren't reliably honored (it collapses to its widest content), but
+// the icon itself is real in-flow content and pegs the column at its size.
+// Existing comment markers stay visible; the add affordance appears on
+// gutter or cell hover (and stays while the composer popover is open).
+.diff-wrapper td.gb-diff-comment-cell {
+  width: 20px;
+  min-width: 20px;
+  padding: 0;
+  border: none;
+  position: relative;
+}
+
+// Match the adjacent line-number gutter's diff tint so the icon column reads
+// as part of the same band; context rows are intentionally unshaded so the
+// column visually disappears between changes. The preceding sibling is
+// always a gutter <td> (the library always renders one before renderGutter).
+[class*="-diff-added"] + .gb-diff-comment-cell {
+  background: var(--diff-added-background-highlight);
+}
+[class*="-diff-removed"] + .gb-diff-comment-cell {
+  background: var(--diff-removed-background-highlight);
+}
+
+.gb-diff-comment-trigger {
+  // Absolutely centered inside the host cell — the in-flow icon was forcing
+  // the cell wider than its 28px placeholder and bleeding the column into
+  // adjacent ones. Absolute positioning + translate(-50%, -50%) lets the
+  // cell hold its declared width while the icon (and its drop-shadow halo)
+  // floats over the center without affecting layout.
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-60%, -10%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  padding: 0;
+  line-height: 1;
+  font-size: 20px;
+  cursor: pointer;
+  // Filled white chat-bubble glyph; the knock-out interior (chat lines)
+  // shows whatever's behind (the cell's red/green tint or background).
+  // Stacked drop-shadows give the glyph a thin dark edge for legibility on
+  // light backgrounds plus a softer ambient lift.
+  background: transparent;
+  color: #fff;
+  filter: drop-shadow(0 0 0.5px #000) drop-shadow(0 0 0.5px #000)
+    drop-shadow(0 2px 1px rgba(0, 0, 0, 0.6));
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+
+  // Existing comments and an open popover are always shown; the add
+  // affordance fades in on hover (rule below) — identical styling either way.
+  &.has-comment,
+  &.is-open {
+    opacity: 1;
+  }
+}
+
+// Reveal the add affordance on hover of the icon cell, the adjacent
+// line-number gutter, or the icon itself.
+[class*="-gutter"]:hover + .gb-diff-comment-cell .gb-diff-comment-trigger,
+.gb-diff-comment-cell:hover .gb-diff-comment-trigger,
+.gb-diff-comment-trigger:hover {
+  opacity: 1;
+}
+
+// The whole line-number gutter is a click target for comment anchors
+// (onLineNumberClick); advertise it. Empty gutters (the blank side of an
+// add/remove pair) have no handler and keep the default cursor.
+.gb-diff-commentable
+  [class*="-gutter"]:not([class*="-empty-gutter"]):not(.gb-diff-comment-cell) {
+  cursor: pointer;
+}
+
+// Flash highlight when a timeline diff-ref widget scrolls a diff row into
+// view (scrollToDiffRef adds/removes the class on the <tr>).
+@keyframes gb-diff-ref-flash {
+  0%,
+  55% {
+    box-shadow: inset 0 0 0 999px rgba(255, 200, 60, 0.3);
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+tr.gb-diff-ref-flash > td {
+  animation: gb-diff-ref-flash 1.8s ease-out;
+}
+
+// Flash highlight when a gutter comment marker jumps to its timeline entry
+// (scrollToRevisionLogEntry adds/removes the class).
+@keyframes gb-log-entry-flash {
+  0%,
+  55% {
+    background: rgba(255, 200, 60, 0.25);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.gb-log-entry-flash {
+  border-radius: 6px;
+  animation: gb-log-entry-flash 1.8s ease-out;
+}
+
+// Boxed rendering of a diff-ref block inside a timeline comment: header with
+// the referenced section + side/line, then the snapshot lines captured when
+// the comment was written (anchored line highlighted). The whole widget is a
+// button that scrolls back to the referenced diff line.
+.gb-diff-ref-widget {
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+  padding: 0;
+  text-align: left;
+  background: var(--color-panel);
+  border: 1px solid var(--gray-5);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--violet-7);
+
+    .gb-diff-ref-jump {
+      color: var(--violet-11);
+    }
+  }
+
+  .gb-diff-ref-widget-header {
+    padding: 4px 10px;
+    background: var(--gray-2);
+    border-bottom: 1px solid var(--gray-4);
+  }
+
+  .gb-diff-ref-jump {
+    color: var(--gray-10);
+    font-size: 12px;
+  }
+
+  .gb-diff-ref-widget-body {
+    padding: 4px 0;
+    font-family: var(--code-font-family, monospace);
+    font-size: 11px;
+    line-height: 1.6;
+    overflow-x: auto;
+    color: var(--gray-11);
+
+    .gb-diff-ref-line {
+      white-space: pre;
+      padding: 0 10px;
+    }
+
+    .gb-diff-ref-op {
+      display: inline-block;
+      width: 14px;
+      user-select: none;
+      opacity: 0.7;
+    }
+
+    // Mini before/after coloring matching the full diff viewer's palette.
+    .gb-diff-ref-del {
+      background: rgba(232, 88, 88, 0.12);
+      color: var(--red-11);
+    }
+
+    .gb-diff-ref-add {
+      background: rgba(70, 180, 100, 0.12);
+      color: var(--green-11);
+    }
+
+    .gb-diff-ref-anchor {
+      font-weight: 900;
+    }
+  }
+}
+
+.diff-wrapper-compact {
+  pre,
+  td {
+    font-size: 11px !important;
+    line-height: 1.5 !important;
+  }
+}
+
+// endregion d2h differ / Diff Viewer

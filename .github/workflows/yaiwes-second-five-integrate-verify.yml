@@ -1,0 +1,145 @@
+name: YAIWES Second Five Integrate Verify
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-second-five-integrate-verify.yml'
+      - '.github/scripts/yaiwes_integrate_second_five.py'
+      - '.github/scripts/yaiwes_integrate_second_five_v2.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-second-five-integrate
+  cancel-in-progress: false
+
+jobs:
+  integrate-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: |
+            .github/scripts/yaiwes_integrate_second_five.py
+            .github/scripts/yaiwes_integrate_second_five_v2.py
+            .github/workflows/yaiwes-second-five-integrate-verify.yml
+            Core kernel Yaiwes/Componentes recuperados A/Argo-Workflows
+            Core kernel Yaiwes/Componentes recuperados A/Azure-Durable-Functions
+            Core kernel Yaiwes/Componentes recuperados A/BAML
+            Core kernel Yaiwes/Componentes recuperados A/Burr
+            Core kernel Yaiwes/Componentes recuperados A/Caddy
+            Core kernel Yaiwes/Crack wall bitácora stated JSON
+            Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus
+            Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows
+            Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions
+            Agente Yaiwes principal/definition-registry/domain-specific-contracts
+            Agente Yaiwes principal/execution-orchestration/state-machine-executor
+            Agente Yaiwes principal/mesh-routing-collaboration
+            Readme arquitectura Yaiwes/README.md
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Prepare MOVE in working tree
+        run: python .github/scripts/yaiwes_integrate_second_five_v2.py prepare
+
+      - name: Runtime probe Argo Workflows
+        working-directory: Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows
+        run: go test ./workflow/validate -run '^$'
+
+      - name: Runtime probe Azure Durable Functions
+        working-directory: Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions
+        run: dotnet build src/WebJobs.Extensions.DurableTask/WebJobs.Extensions.DurableTask.csproj -f net10.0 -p:EnableSourceControlManagerQueries=false -p:EnableSourceLink=false -p:ContinuousIntegrationBuild=false -p:SignAssembly=false -p:GeneratePackageOnBuild=false
+
+      - name: Runtime probe BAML
+        run: |
+          cargo metadata --manifest-path 'Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml/engine/Cargo.toml' --no-deps --format-version 1 >/tmp/baml-metadata.json
+          cargo check --manifest-path 'Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml/engine/Cargo.toml' -p baml-runtime --locked
+
+      - name: Runtime probe Burr
+        run: |
+          python -m pip install -q -e 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr'
+          python -c "from burr.core import State, GraphBuilder; s=State({'x':1}); assert s['x']==1; assert GraphBuilder() is not None; print('BURR_RUNTIME_OK')"
+
+      - name: Runtime probe Caddy
+        working-directory: Agente Yaiwes principal/mesh-routing-collaboration/caddy-gateway
+        run: go test . -run '^$'
+
+      - name: Mount all five through canonical UniversalPluginBus ten times
+        run: |
+          python -m pip install -q pytest
+          for i in $(seq 1 10); do
+            echo "SECOND_FIVE_PLUGIN_BUS_PASS_${i}/10"
+            python -m pytest -q 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/verification/test_yaiwes_second_five_mounts.py'
+          done
+
+      - name: Persist verified state and architecture delta
+        run: python .github/scripts/yaiwes_integrate_second_five_v2.py persist
+
+      - name: Commit verified integration from frozen payload
+        env:
+          YAIWES_REMOTE_BRANCH: main
+        run: |
+          set -euxo pipefail
+          git config user.name 'YAIWES LOOP'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+
+          # Canonical skill: preserve acquired/vendor bytes; do not run
+          # git diff --check over the moved payload. Safety is enforced by
+          # staged-index LFS and Git blob-size gates below.
+          PAYLOAD="$RUNNER_TEMP/yaiwes-second-five.payload.patch"
+          FINAL="$RUNNER_TEMP/yaiwes-second-five-final"
+          git diff --cached --binary > "$PAYLOAD"
+          test -s "$PAYLOAD"
+
+          git fetch origin "$YAIWES_REMOTE_BRANCH"
+          rm -rf "$FINAL"
+          git worktree add --detach "$FINAL" "origin/$YAIWES_REMOTE_BRANCH"
+          git -C "$FINAL" apply --index --binary "$PAYLOAD"
+
+          while IFS= read -r -d '' p; do
+            head -c 200 "$FINAL/$p" 2>/dev/null | grep -q 'version https://git-lfs.github.com/spec/v1' && {
+              echo "LFS_POINTER_FORBIDDEN: $p" >&2
+              exit 41
+            } || true
+            size=$(git -C "$FINAL" cat-file -s ":$p")
+            if [ "$size" -ge 100000000 ]; then
+              echo "GIT_BLOB_GE_100_MIB: $p size=$size" >&2
+              exit 42
+            fi
+          done < <(git -C "$FINAL" diff --cached --name-only -z --diff-filter=ACMR)
+
+          git -C "$FINAL" config user.name 'YAIWES LOOP'
+          git -C "$FINAL" config user.email 'actions@users.noreply.github.com'
+          git -C "$FINAL" commit -m 'feat(yaiwes): MOVE and verify components 6-10 via universal bus'
+          FINAL_SHA=$(git -C "$FINAL" rev-parse HEAD)
+          git -C "$FINAL" push origin "HEAD:$YAIWES_REMOTE_BRANCH"
+          echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+
+      - name: Independent remote read-back
+        env:
+          YAIWES_REMOTE_BRANCH: main
+        run: |
+          set -euo pipefail
+          READBACK="$RUNNER_TEMP/yaiwes-second-five-readback"
+          rm -rf "$READBACK"
+          git clone --filter=blob:none --no-checkout "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "$READBACK"
+          git -C "$READBACK" fetch origin "$YAIWES_REMOTE_BRANCH"
+          REMOTE_SHA=$(git -C "$READBACK" rev-parse "origin/$YAIWES_REMOTE_BRANCH")
+          test "$REMOTE_SHA" = "$FINAL_SHA"
+          echo "READ_BACK_PASS sha=$REMOTE_SHA"
+
+# reconciliation trigger: revalidate physical evidence for canonical components 6-10

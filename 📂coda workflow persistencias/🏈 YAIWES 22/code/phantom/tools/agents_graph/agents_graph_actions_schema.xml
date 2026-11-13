@@ -1,0 +1,143 @@
+<tools>
+  <tool name="agent_finish">
+    <description>Mark subagent task complete. Subagents only; root uses finish_scan.</description>
+    <parameters>
+      <parameter name="result_summary" type="string" required="true">
+        <description>What was accomplished.</description>
+      </parameter>
+      <parameter name="findings" type="array" required="false">
+        <description>JSON array of findings.</description>
+      </parameter>
+      <parameter name="success" type="boolean" required="false">
+        <description>Task succeeded.</description>
+      </parameter>
+      <parameter name="report_to_parent" type="boolean" required="false">
+        <description>Send results to parent.</description>
+      </parameter>
+      <parameter name="final_recommendations" type="array" required="false">
+        <description>JSON array of next steps.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>agent_completed, parent_notified, completion_summary.</description>
+    </returns>
+    <examples>
+      <function=agent_finish>
+        <parameter=result_summary>Found SQLi in /api/login.</parameter>
+        <parameter=findings>["SQLi in username param"]</parameter>
+        <parameter=success>true</parameter>
+        <parameter=report_to_parent>true</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="create_agent">
+    <description>Spawn a subagent for a specific subtask.</description>
+    <parameters>
+      <parameter name="task" type="string" required="true">
+        <description>Subtask objective.</description>
+      </parameter>
+      <parameter name="name" type="string" required="true">
+        <description>Agent name.</description>
+      </parameter>
+      <parameter name="inherit_context" type="boolean" required="false">
+        <description>Inherit parent context.</description>
+      </parameter>
+      <parameter name="skills" type="string" required="false">
+        <description>Comma-separated skills (max 5).</description>
+      </parameter>
+      <parameter name="context_summary" type="string" required="false">
+        <description>Scan state summary (100+ chars).</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>agent_id, success, message, agent_info.</description>
+    </returns>
+    <examples>
+      <function=create_agent>
+        <parameter=task>Test JWT auth.</parameter>
+        <parameter=name>Auth Agent</parameter>
+        <parameter=skills>authentication_jwt</parameter>
+        <parameter=context_summary>Login has SQLi. Need to test auth areas for IDOR.</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="send_message_to_agent">
+    <description>Send message to another agent.</description>
+    <parameters>
+      <parameter name="target_agent_id" type="string" required="true">
+        <description>Target agent ID.</description>
+      </parameter>
+      <parameter name="message" type="string" required="true">
+        <description>Message content.</description>
+      </parameter>
+      <parameter name="message_type" type="string" required="false">
+        <description>query, instruction, or information.</description>
+      </parameter>
+      <parameter name="priority" type="string" required="false">
+        <description>Priority level.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>success, message_id, delivery_status.</description>
+    </returns>
+    <examples>
+      <function=send_message_to_agent>
+        <parameter=target_agent_id>agent_abc123</parameter>
+        <parameter=message>Found SQLi in /api/login.</parameter>
+        <parameter=message_type>information</parameter>
+        <parameter=priority>high</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="view_agent_graph">
+    <description>View agent graph and status.</description>
+    <returns type="Dict[str, Any]">
+      <description>graph_structure, summary statistics.</description>
+    </returns>
+    <examples>
+      <function=view_agent_graph>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="wait_for_message">
+    <description>Pause until message from another agent. Only if child agents running.</description>
+    <parameters>
+      <parameter name="reason" type="string" required="false">
+        <description>Why waiting.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>success, status, reason, agent_info, resume_conditions.</description>
+    </returns>
+    <examples>
+      <function=wait_for_message>
+        <parameter=reason>Waiting for SQLi validation.</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="wait_for_agents">
+    <description>Wait for agents to finish.</description>
+    <parameters>
+      <parameter name="agent_ids" type="array" required="true">
+        <description>Agent IDs to wait on.</description>
+      </parameter>
+      <parameter name="timeout_seconds" type="integer" required="false">
+        <description>Max seconds to wait.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Completion status, per-agent results.</description>
+    </returns>
+    <examples>
+      <function=wait_for_agents>
+        <parameter=agent_ids>["agent_001", "agent_002"]</parameter>
+        <parameter=timeout_seconds>30</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

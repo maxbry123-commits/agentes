@@ -1,0 +1,11 @@
+{
+  "plugin_id": "yaiwes.openclaw.route",
+  "version": "1.0.0",
+  "type": "route",
+  "entrypoint": "agente-yaiwes/execution-engine-pool/auxiliary-role-agents/openclaw_route.py",
+  "source_component": "wordflow_kernel.engines.openclaw_stub.OpenClawEngine",
+  "adapter": "wordflow_kernel.gateway.openclaw_http.OpenClawHTTPGateway",
+  "contract": "EnginePort.reason -> IntelligenceGateway.execute",
+  "destination": "OpenClaw Gateway /v1/chat/completions",
+  "immutable_component": true
+}

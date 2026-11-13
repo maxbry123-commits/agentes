@@ -1,0 +1,107 @@
+name: License Compliance Check
+
+on:
+  pull_request:
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/license-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/license-check.yml'
+  workflow_dispatch:
+
+jobs:
+  license-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      
+      - uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5.2.0
+        with:
+          go-version-file: 'go.mod'
+      
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@latest
+      
+      - name: Check licenses
+        run: |
+          echo "Checking dependency licenses for compliance..."
+          go-licenses check --disallowed_types=forbidden,reciprocal,restricted,unknown ./...
+      
+      - name: Generate license report
+        if: always()
+        run: |
+          echo "Generating license report..."
+          go-licenses csv ./... > licenses.csv 2>&1 || true
+          
+      - name: Upload license report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.0
+        with:
+          name: license-report
+          path: licenses.csv
+
+  summarize-timing:
+    name: Summarize workflow timing
+    needs: [license-check]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: Summarize job and step durations
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const fs = require('fs');
+
+            const formatDuration = (startedAt, completedAt) => {
+              if (!startedAt || !completedAt) return 'n/a';
+              const milliseconds = new Date(completedAt) - new Date(startedAt);
+              if (!Number.isFinite(milliseconds) || milliseconds < 0) return 'n/a';
+              const totalSeconds = Math.round(milliseconds / 1000);
+              const hours = Math.floor(totalSeconds / 3600);
+              const minutes = Math.floor((totalSeconds % 3600) / 60);
+              const seconds = totalSeconds % 60;
+              if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+              if (minutes > 0) return `${minutes}m ${seconds}s`;
+              return `${seconds}s`;
+            };
+
+            const cell = (value) => String(value ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+              per_page: 100,
+            });
+
+            const rows = [];
+            for (const job of jobs) {
+              if (job.name === 'Summarize workflow timing' || job.name === 'summarize-timing') continue;
+              rows.push(`| [${cell(job.name)}](${job.html_url}) | job | ${cell(job.conclusion || job.status)} | ${formatDuration(job.started_at, job.completed_at)} |`);
+              for (const step of job.steps || []) {
+                rows.push(`| ${cell(`- ${step.name}`)} | step | ${cell(step.conclusion || step.status)} | ${formatDuration(step.started_at, step.completed_at)} |`);
+              }
+            }
+
+            const summary = [
+              '## Workflow timing summary',
+              '',
+              'Step-level timing collected from the GitHub Actions API for this run.',
+              '',
+              '| Name | Type | Result | Duration |',
+              '| --- | --- | --- | --- |',
+              ...rows,
+              '',
+            ].join('\n');
+
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);

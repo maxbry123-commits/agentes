@@ -1,0 +1,18 @@
+# C52 — L6 Evolution. B5 SALIDA4
+id: C52
+layer: L6
+name: evolution_simulate
+implementado: true
+critical: false
+description: "Simulación antes de aplicar evolución"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C52 aplica en capa L6 evolution"
+  - "sin simulación previa → DENY en C53"
+checks:
+  - evolution_simulate_check
+evidence:
+  type: evolution_simulate_marker
+  required: true

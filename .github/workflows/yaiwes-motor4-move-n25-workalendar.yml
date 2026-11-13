@@ -1,0 +1,90 @@
+name: YAIWES Motor4 MOVE N25 Workalendar
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-motor4-n25-workalendar
+  cancel-in-progress: false
+
+jobs:
+  move_n25:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Motor4 + Workalendar surfaces
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-motor4-move-n25-workalendar.yml
+            /➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py
+            /Core kernel Yaiwes/Workalendar/
+            /Agente Yaiwes principal/execution-orchestration/classifier-scheduler/
+
+      - name: Verify Motor4 immutable SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          MOTOR='➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
+          test -f "$MOTOR"
+          test "$(git hash-object "$MOTOR")" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'
+          echo MOTOR4_SHA_VERIFIED
+
+      - name: Execute Motor4 MOVE N25 Workalendar
+        shell: bash
+        run: |
+          set -euo pipefail
+          MOTOR='➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
+          SRC='Core kernel Yaiwes/Workalendar'
+          DST='Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar'
+          test -d "$SRC"
+          mkdir -p "$DST"
+          export SOURCE_DIR="$SRC"
+          export DEST_DIR="$DST"
+          export STATE_FILE="/tmp/yaiwes-motor4-n25.json"
+          export BATCH_SIZE=100
+          export COLLISION_POLICY=fail
+          python3 "$MOTOR"
+
+      - name: Publish N25 MOVE to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- 'Core kernel Yaiwes/Workalendar' 'Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar'
+          if git diff --cached --quiet; then
+            echo MOVE_ALREADY_CANONICAL_NO_DELTA
+          else
+            git commit -m 'move(yaiwes): Motor4 MOVE N25 Workalendar to classifier-scheduler/workalendar'
+            ok=0
+            for attempt in 1 2 3 4; do
+              git fetch origin main
+              if git rebase origin/main && git push origin HEAD:main; then
+                ok=1
+                break
+              fi
+              git rebase --abort || true
+              sleep $((attempt * 3))
+            done
+            test "$ok" -eq 1
+            echo "MOVE_COMMIT=$(git rev-parse HEAD)"
+          fi
+
+      - name: Read-back dest N25
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          DST='Agente Yaiwes principal/execution-orchestration/classifier-scheduler/workalendar'
+          test -d "$DST"
+          find "$DST" -type f -print -quit | grep -q .
+          echo READBACK_OK "$DST"

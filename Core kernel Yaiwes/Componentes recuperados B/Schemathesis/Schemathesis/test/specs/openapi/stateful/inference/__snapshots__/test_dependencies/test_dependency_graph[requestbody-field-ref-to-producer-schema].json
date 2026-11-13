@@ -1,0 +1,76 @@
+{
+  "operations": {
+    "POST /devices": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "recipient_id",
+          "resource": "Recipient",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Device",
+          "status_code": "201"
+        }
+      ]
+    },
+    "POST /recipients": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Recipient",
+          "status_code": "201"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Device": {
+      "fields": [
+        "id",
+        "name",
+        "recipient_id"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "recipient_id",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Recipient"
+        }
+      ],
+      "types": {
+        "id": [
+          "string"
+        ],
+        "name": [
+          "string"
+        ],
+        "recipient_id": [
+          "string"
+        ]
+      }
+    },
+    "Recipient": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    }
+  }
+}

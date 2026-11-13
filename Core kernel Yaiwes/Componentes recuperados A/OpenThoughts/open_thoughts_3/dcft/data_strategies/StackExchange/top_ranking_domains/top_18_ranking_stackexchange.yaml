@@ -1,0 +1,95 @@
+operators:
+- id: load_stackexchange_codegolf
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_code_golf_reorg_cache
+- id: load_stackexchange_dsp
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_dsp
+- id: load_stackexchange_physics
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_physics
+- id: load_stackexchange_cs
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_cs
+- id: load_stackexchange_philosophy
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_philosophy
+- id: load_stackexchange_puzzling
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_puzzling
+- id: load_stackexchange_biology
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_biology
+- id: load_stackexchange_math
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_math
+- id: load_stackexchange_stats
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_stats
+- id: load_stackexchange_softwareengineering
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_softwareengineering
+- id: load_stackexchange_music
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_music
+- id: load_stackexchange_gamedev
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_gamedev
+- id: load_stackexchange_stackoverflow
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_stackoverflow
+- id: load_stackexchange_security
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_security
+- id: load_stackexchange_graphicdesign
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_graphicdesign
+- id: load_stackexchange_robotics
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_robotics
+- id: load_stackexchange_scicomp
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_scicomp
+- id: load_stackexchange_crypto
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_crypto
+- id: top_18_ranking_stackexchange
+  config:
+    type: mix
+  input_ids:
+  - load_stackexchange_codegolf
+  - load_stackexchange_dsp
+  - load_stackexchange_physics
+  - load_stackexchange_cs
+  - load_stackexchange_philosophy
+  - load_stackexchange_puzzling
+  - load_stackexchange_biology
+  - load_stackexchange_math
+  - load_stackexchange_stats
+  - load_stackexchange_softwareengineering
+  - load_stackexchange_music
+  - load_stackexchange_gamedev
+  - load_stackexchange_stackoverflow
+  - load_stackexchange_security
+  - load_stackexchange_graphicdesign
+  - load_stackexchange_robotics
+  - load_stackexchange_scicomp
+  - load_stackexchange_crypto

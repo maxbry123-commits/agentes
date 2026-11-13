@@ -1,0 +1,373 @@
+package verifyfirstworkflowtaskscheduled
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
+	commonpb "go.temporal.io/api/common/v1"
+	enumspb "go.temporal.io/api/enums/v1"
+	historypb "go.temporal.io/api/history/v1"
+	"go.temporal.io/api/serviceerror"
+	taskqueuepb "go.temporal.io/api/taskqueue/v1"
+	"go.temporal.io/api/workflowservice/v1"
+	enumsspb "go.temporal.io/server/api/enums/v1"
+	"go.temporal.io/server/api/historyservice/v1"
+	persistencespb "go.temporal.io/server/api/persistence/v1"
+	workflowspb "go.temporal.io/server/api/workflow/v1"
+	"go.temporal.io/server/common"
+	"go.temporal.io/server/common/cluster"
+	"go.temporal.io/server/common/definition"
+	"go.temporal.io/server/common/log"
+	"go.temporal.io/server/common/metrics"
+	"go.temporal.io/server/common/metrics/metricstest"
+	"go.temporal.io/server/common/payloads"
+	"go.temporal.io/server/common/persistence"
+	"go.temporal.io/server/common/primitives"
+	"go.temporal.io/server/common/testing/testhooks"
+	"go.temporal.io/server/service/history/api"
+	"go.temporal.io/server/service/history/api/workflowresend"
+	"go.temporal.io/server/service/history/events"
+	"go.temporal.io/server/service/history/hsm"
+	historyi "go.temporal.io/server/service/history/interfaces"
+	"go.temporal.io/server/service/history/shard"
+	"go.temporal.io/server/service/history/tests"
+	"go.temporal.io/server/service/history/workflow"
+	wcache "go.temporal.io/server/service/history/workflow/cache"
+	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/types/known/durationpb"
+)
+
+var defaultWorkflowTaskCompletionLimits = historyi.WorkflowTaskCompletionLimits{MaxResetPoints: primitives.DefaultHistoryMaxAutoResetPoints, MaxSearchAttributeValueSize: 2048}
+
+type (
+	VerifyFirstWorkflowTaskScheduledSuite struct {
+		*require.Assertions
+		suite.Suite
+
+		controller                 *gomock.Controller
+		mockEventsCache            *events.MockCache
+		mockExecutionMgr           *persistence.MockExecutionManager
+		shardContext               *shard.ContextTest
+		workflowConsistencyChecker api.WorkflowConsistencyChecker
+		resendScheduler            *workflowresend.BoundedWorkflowScheduler
+
+		logger log.Logger
+	}
+)
+
+func TestVerifyFirstWorkflowTaskScheduledSuite(t *testing.T) {
+	suite.Run(t, new(VerifyFirstWorkflowTaskScheduledSuite))
+}
+
+func (s *VerifyFirstWorkflowTaskScheduledSuite) SetupTest() {
+	s.Assertions = require.New(s.T())
+	s.controller = gomock.NewController(s.T())
+
+	config := tests.NewDynamicConfig()
+	config.WorkflowResendHostMaxInFlight = func() int { return 1 }
+	s.resendScheduler = workflowresend.NewBoundedWorkflowScheduler(
+		config.WorkflowResendHostMaxInFlight,
+		log.NewNoopLogger(),
+		metrics.NoopMetricsHandler,
+	)
+	s.shardContext = shard.NewTestContext(
+		s.controller,
+		&persistencespb.ShardInfo{
+			ShardId: 1,
+			RangeId: 1,
+		},
+		config,
+	)
+
+	reg := hsm.NewRegistry()
+	err := workflow.RegisterStateMachine(reg)
+	s.NoError(err)
+	s.shardContext.SetStateMachineRegistry(reg)
+
+	mockNamespaceCache := s.shardContext.Resource.NamespaceCache
+	mockNamespaceCache.EXPECT().GetNamespaceByID(tests.NamespaceID).Return(tests.LocalNamespaceEntry, nil).AnyTimes()
+	s.mockExecutionMgr = s.shardContext.Resource.ExecutionMgr
+	mockClusterMetadata := s.shardContext.Resource.ClusterMetadata
+	mockClusterMetadata.EXPECT().GetClusterID().Return(int64(1)).AnyTimes()
+	mockClusterMetadata.EXPECT().GetCurrentClusterName().Return(cluster.TestCurrentClusterName).AnyTimes()
+	mockClusterMetadata.EXPECT().ClusterNameForFailoverVersion(false, common.EmptyVersion).Return(cluster.TestCurrentClusterName).AnyTimes()
+	mockClusterMetadata.EXPECT().ClusterNameForFailoverVersion(true, tests.Version).Return(cluster.TestCurrentClusterName).AnyTimes()
+
+	s.workflowConsistencyChecker = api.NewWorkflowConsistencyChecker(
+		s.shardContext,
+		wcache.NewHostLevelCache(s.shardContext.GetConfig(), s.shardContext.GetLogger(), metrics.NoopMetricsHandler, testhooks.TestHooks{}))
+	s.mockEventsCache = s.shardContext.MockEventsCache
+	s.mockEventsCache.EXPECT().PutEvent(gomock.Any(), gomock.Any()).AnyTimes()
+	s.logger = s.shardContext.GetLogger()
+}
+
+func (s *VerifyFirstWorkflowTaskScheduledSuite) TearDownTest() {
+	s.resendScheduler.InitiateShutdown()
+	s.resendScheduler.WaitShutdown()
+	s.controller.Finish()
+}
+
+func (s *VerifyFirstWorkflowTaskScheduledSuite) TestVerifyFirstWorkflowTaskScheduled_WorkflowNotFound_ResendDisabled() {
+	request := &historyservice.VerifyFirstWorkflowTaskScheduledRequest{
+		NamespaceId: tests.NamespaceID.String(),
+		WorkflowExecution: &commonpb.WorkflowExecution{
+			WorkflowId: tests.WorkflowID,
+			RunId:      tests.RunID,
+		},
+		ResendChild: true,
+	}
+
+	s.mockExecutionMgr.EXPECT().GetWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil, &serviceerror.NotFound{})
+
+	err := Invoke(s.T().Context(), request, s.workflowConsistencyChecker, s.shardContext, s.resendScheduler)
+	s.IsType(&serviceerror.NotFound{}, err)
+}
+
+func (s *VerifyFirstWorkflowTaskScheduledSuite) TestVerifyFirstWorkflowTaskScheduled_DoesNotResendUnrelatedWorkflowNotReady() {
+	s.shardContext.GetConfig().EnableChildWorkflowResend = func() bool { return true }
+	request := &historyservice.VerifyFirstWorkflowTaskScheduledRequest{
+		NamespaceId: tests.NamespaceID.String(),
+		WorkflowExecution: &commonpb.WorkflowExecution{
+			WorkflowId: tests.WorkflowID,
+			RunId:      tests.RunID,
+		},
+		ResendChild: true,
+	}
+	workflowNotReadyErr := serviceerror.NewWorkflowNotReady("unrelated workflow state")
+	workflowConsistencyChecker := api.NewMockWorkflowConsistencyChecker(s.controller)
+	workflowConsistencyChecker.EXPECT().GetWorkflowLease(
+		gomock.Any(),
+		gomock.Any(),
+		definition.NewWorkflowKey(tests.NamespaceID.String(), tests.WorkflowID, tests.RunID),
+		gomock.Any(),
+	).Return(nil, workflowNotReadyErr)
+
+	err := Invoke(s.T().Context(), request, workflowConsistencyChecker, s.shardContext, s.resendScheduler)
+	s.Same(workflowNotReadyErr, err)
+}
+
+func (s *VerifyFirstWorkflowTaskScheduledSuite) TestVerifyFirstWorkflowTaskScheduled_HostAtCapacity() {
+	s.shardContext.GetConfig().EnableChildWorkflowResend = func() bool { return true }
+	metricsHandler := metricstest.NewCaptureHandler()
+	capture := metricsHandler.StartCapture()
+	defer metricsHandler.StopCapture(capture)
+	s.shardContext.SetMetricsHandler(metricsHandler)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	s.Require().Equal(workflowresend.SubmitResultAccepted, s.resendScheduler.TrySubmit(
+		s.T().Context(),
+		definition.NewWorkflowKey("blocker namespace", "blocker workflow", "blocker run"),
+		time.Minute,
+		func(ctx context.Context) {
+			close(started)
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+		},
+	))
+	waitCtx, cancel := context.WithTimeout(s.T().Context(), 5*time.Second)
+	defer cancel()
+	select {
+	case <-started:
+	case <-waitCtx.Done():
+		s.T().Fatal("timed out waiting for host scheduler worker")
+	}
+
+	request := &historyservice.VerifyFirstWorkflowTaskScheduledRequest{
+		NamespaceId: tests.NamespaceID.String(),
+		WorkflowExecution: &commonpb.WorkflowExecution{
+			WorkflowId: tests.WorkflowID,
+			RunId:      tests.RunID,
+		},
+		ResendChild: true,
+	}
+	s.mockExecutionMgr.EXPECT().GetWorkflowExecution(gomock.Any(), gomock.Any()).Return(nil, &serviceerror.NotFound{})
+
+	err := Invoke(s.T().Context(), request, s.workflowConsistencyChecker, s.shardContext, s.resendScheduler)
+	s.Require().ErrorAs(err, new(*serviceerror.NotFound))
+	s.Require().Len(capture.Snapshot()[metrics.ChildWorkflowResendLimited.Name()], 1)
+}
+
+func (s *VerifyFirstWorkflowTaskScheduledSuite) TestVerifyFirstWorkflowTaskScheduled_WorkflowCompleted() {
+	request := &historyservice.VerifyFirstWorkflowTaskScheduledRequest{
+		NamespaceId: tests.NamespaceID.String(),
+		WorkflowExecution: &commonpb.WorkflowExecution{
+			WorkflowId: tests.WorkflowID,
+			RunId:      tests.RunID,
+		},
+	}
+
+	ms := workflow.TestGlobalMutableState(s.shardContext, s.mockEventsCache, s.logger, tests.Version, tests.WorkflowID, tests.RunID)
+
+	addWorkflowExecutionStartedEventWithParent(ms,
+		&commonpb.WorkflowExecution{
+			WorkflowId: tests.WorkflowID,
+			RunId:      tests.RunID,
+		}, "wType", "testTaskQueue", payloads.EncodeString("input"),
+		25*time.Second, 20*time.Second, 200*time.Second, nil, "identity")
+
+	_, err := ms.AddTimeoutWorkflowEvent(
+		enumspb.RETRY_STATE_RETRY_POLICY_NOT_SET,
+		uuid.NewString(),
+	)
+	s.NoError(err)
+
+	wfMs := workflow.TestCloneToProto(s.T().Context(), ms)
+	gwmsResponse := &persistence.GetWorkflowExecutionResponse{State: wfMs}
+	s.mockExecutionMgr.EXPECT().GetWorkflowExecution(gomock.Any(), gomock.Any()).Return(gwmsResponse, nil)
+
+	err = Invoke(s.T().Context(), request, s.workflowConsistencyChecker, s.shardContext, s.resendScheduler)
+	s.NoError(err)
+}
+
+func (s *VerifyFirstWorkflowTaskScheduledSuite) TestVerifyFirstWorkflowTaskScheduled_WorkflowZombie() {
+	request := &historyservice.VerifyFirstWorkflowTaskScheduledRequest{
+		NamespaceId: tests.NamespaceID.String(),
+		WorkflowExecution: &commonpb.WorkflowExecution{
+			WorkflowId: tests.WorkflowID,
+			RunId:      tests.RunID,
+		},
+	}
+
+	ms := workflow.TestGlobalMutableState(s.shardContext, s.mockEventsCache, s.logger, tests.Version, tests.WorkflowID, tests.RunID)
+
+	addWorkflowExecutionStartedEventWithParent(ms,
+		&commonpb.WorkflowExecution{
+			WorkflowId: tests.WorkflowID,
+			RunId:      tests.RunID,
+		}, "wType", "testTaskQueue", payloads.EncodeString("input"),
+		25*time.Second, 20*time.Second, 200*time.Second, nil, "identity")
+
+	// zombie state should be treated as open
+	_, err := ms.UpdateWorkflowStateStatus(
+		enumsspb.WORKFLOW_EXECUTION_STATE_ZOMBIE,
+		enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING,
+	)
+	s.NoError(err)
+
+	wfMs := workflow.TestCloneToProto(s.T().Context(), ms)
+	gwmsResponse := &persistence.GetWorkflowExecutionResponse{State: wfMs}
+	s.mockExecutionMgr.EXPECT().GetWorkflowExecution(gomock.Any(), gomock.Any()).Return(gwmsResponse, nil)
+
+	err = Invoke(s.T().Context(), request, s.workflowConsistencyChecker, s.shardContext, s.resendScheduler)
+	s.IsType(&serviceerror.WorkflowNotReady{}, err)
+}
+
+func (s *VerifyFirstWorkflowTaskScheduledSuite) TestVerifyFirstWorkflowTaskScheduled_WorkflowRunning_TaskPending() {
+	request := &historyservice.VerifyFirstWorkflowTaskScheduledRequest{
+		NamespaceId: tests.NamespaceID.String(),
+		WorkflowExecution: &commonpb.WorkflowExecution{
+			WorkflowId: tests.WorkflowID,
+			RunId:      tests.RunID,
+		},
+	}
+
+	ms := workflow.TestGlobalMutableState(s.shardContext, s.mockEventsCache, s.logger, tests.Version, tests.WorkflowID, tests.RunID)
+
+	addWorkflowExecutionStartedEventWithParent(ms,
+		&commonpb.WorkflowExecution{
+			WorkflowId: tests.WorkflowID,
+			RunId:      tests.RunID,
+		}, "wType", "testTaskQueue", payloads.EncodeString("input"),
+		25*time.Second, 20*time.Second, 200*time.Second, nil, "identity")
+	_, _ = ms.AddWorkflowTaskScheduledEvent(false, enumsspb.WORKFLOW_TASK_TYPE_NORMAL)
+
+	wfMs := workflow.TestCloneToProto(s.T().Context(), ms)
+	gwmsResponse := &persistence.GetWorkflowExecutionResponse{State: wfMs}
+	s.mockExecutionMgr.EXPECT().GetWorkflowExecution(gomock.Any(), gomock.Any()).Return(gwmsResponse, nil)
+
+	err := Invoke(s.T().Context(), request, s.workflowConsistencyChecker, s.shardContext, s.resendScheduler)
+	s.NoError(err)
+}
+
+func (s *VerifyFirstWorkflowTaskScheduledSuite) TestVerifyFirstWorkflowTaskScheduled_WorkflowRunning_TaskProcessed() {
+	request := &historyservice.VerifyFirstWorkflowTaskScheduledRequest{
+		NamespaceId: tests.NamespaceID.String(),
+		WorkflowExecution: &commonpb.WorkflowExecution{
+			WorkflowId: tests.WorkflowID,
+			RunId:      tests.RunID,
+		},
+	}
+
+	ms := workflow.TestGlobalMutableState(s.shardContext, s.mockEventsCache, s.logger, tests.Version, tests.WorkflowID, tests.RunID)
+
+	addWorkflowExecutionStartedEventWithParent(ms,
+		&commonpb.WorkflowExecution{
+			WorkflowId: tests.WorkflowID,
+			RunId:      tests.RunID,
+		}, "wType", "testTaskQueue", payloads.EncodeString("input"),
+		25*time.Second, 20*time.Second, 200*time.Second, nil, "identity")
+
+	// Schedule WFT
+	wt, _ := ms.AddWorkflowTaskScheduledEvent(false, enumsspb.WORKFLOW_TASK_TYPE_NORMAL)
+
+	// Start WFT
+	workflowTasksStartEvent, _, _ := ms.AddWorkflowTaskStartedEvent(
+		wt.ScheduledEventID,
+		tests.RunID,
+		&taskqueuepb.TaskQueue{Name: "testTaskQueue"},
+		uuid.NewString(),
+		nil,
+		nil,
+		nil,
+		false,
+		nil,
+		0,
+	)
+	wt.StartedEventID = workflowTasksStartEvent.GetEventId()
+
+	// Complete WFT
+	workflowTask := ms.GetWorkflowTaskByID(wt.ScheduledEventID)
+	s.NotNil(workflowTask)
+	s.Equal(wt.StartedEventID, workflowTask.StartedEventID)
+	_, _ = ms.AddWorkflowTaskCompletedEvent(workflowTask,
+		&workflowservice.RespondWorkflowTaskCompletedRequest{Identity: "some random identity"}, defaultWorkflowTaskCompletionLimits)
+	ms.FlushBufferedEvents()
+
+	wfMs := workflow.TestCloneToProto(s.T().Context(), ms)
+	gwmsResponse := &persistence.GetWorkflowExecutionResponse{State: wfMs}
+	s.mockExecutionMgr.EXPECT().GetWorkflowExecution(gomock.Any(), gomock.Any()).Return(gwmsResponse, nil)
+
+	err := Invoke(s.T().Context(), request, s.workflowConsistencyChecker, s.shardContext, s.resendScheduler)
+	s.NoError(err)
+}
+
+func addWorkflowExecutionStartedEventWithParent(
+	ms historyi.MutableState,
+	workflowExecution *commonpb.WorkflowExecution,
+	workflowType, taskQueue string,
+	input *commonpb.Payloads,
+	executionTimeout, runTimeout, taskTimeout time.Duration,
+	parentInfo *workflowspb.ParentExecutionInfo,
+	identity string,
+) *historypb.HistoryEvent {
+	startRequest := &workflowservice.StartWorkflowExecutionRequest{
+		WorkflowId:               workflowExecution.WorkflowId,
+		WorkflowType:             &commonpb.WorkflowType{Name: workflowType},
+		TaskQueue:                &taskqueuepb.TaskQueue{Name: taskQueue},
+		Input:                    input,
+		WorkflowExecutionTimeout: durationpb.New(executionTimeout),
+		WorkflowRunTimeout:       durationpb.New(runTimeout),
+		WorkflowTaskTimeout:      durationpb.New(taskTimeout),
+		Identity:                 identity,
+	}
+
+	event, _ := ms.AddWorkflowExecutionStartedEvent(
+		workflowExecution,
+		&historyservice.StartWorkflowExecutionRequest{
+			Attempt:             1,
+			NamespaceId:         tests.NamespaceID.String(),
+			StartRequest:        startRequest,
+			ParentExecutionInfo: parentInfo,
+		},
+	)
+
+	return event
+}

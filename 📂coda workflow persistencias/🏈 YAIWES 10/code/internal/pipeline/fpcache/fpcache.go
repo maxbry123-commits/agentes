@@ -1,0 +1,150 @@
+// Package fpcache persists a researcher's "this was a false positive"
+// marks so future scans can suppress the same pattern automatically.
+//
+// Storage is a line-delimited JSON file (default ~/.pentestswarm/fp-cache.jsonl).
+// Append-only; each Mark writes one line. The cache is loaded once per
+// scan into memory; MatchAny is O(n) over the in-memory patterns.
+//
+// Phase 4.3.4 of Wave 4. The "one-click mark as FP" link in H1/Bugcrowd
+// report templates (Phase 4.4) drives this.
+package fpcache
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/pipeline"
+)
+
+// Pattern is one stored FP mark. A finding matches when Target + Category
+// + Title all match (case-insensitive substring on Title for fuzziness).
+type Pattern struct {
+	Target         string `json:"target"`
+	AttackCategory string `json:"attack_category"`
+	TitleContains  string `json:"title_contains"`
+	Reason         string `json:"reason,omitempty"`
+}
+
+// Store is the in-memory + on-disk FP pattern cache.
+type Store struct {
+	path     string
+	patterns []Pattern
+	mu       sync.RWMutex
+}
+
+// DefaultPath returns ~/.pentestswarm/fp-cache.jsonl (best-effort; falls
+// back to ./fp-cache.jsonl if HOME isn't set, which only really happens
+// in weirdly-configured CI).
+func DefaultPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "fp-cache.jsonl"
+	}
+	return filepath.Join(home, ".pentestswarm", "fp-cache.jsonl")
+}
+
+// Open loads the cache at path. Missing file = empty cache.
+func Open(path string) (*Store, error) {
+	s := &Store{path: path}
+	if path == "" {
+		return s, nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return s, nil
+		}
+		return nil, fmt.Errorf("open fp cache: %w", err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	// Allow large lines (up to 1 MB) to survive long reason strings.
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	for scanner.Scan() {
+		var p Pattern
+		if err := json.Unmarshal(scanner.Bytes(), &p); err != nil {
+			continue // skip malformed lines rather than failing the whole cache
+		}
+		s.patterns = append(s.patterns, p)
+	}
+	return s, nil
+}
+
+// Mark appends a new pattern built from a classified finding.
+func (s *Store) Mark(f pipeline.ClassifiedFinding, reason string) error {
+	p := Pattern{
+		Target:         f.Target,
+		AttackCategory: f.AttackCategory,
+		TitleContains:  f.Title,
+		Reason:         reason,
+	}
+	s.mu.Lock()
+	s.patterns = append(s.patterns, p)
+	s.mu.Unlock()
+	if s.path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(s.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("open fp cache for append: %w", err)
+	}
+	defer file.Close()
+	line, _ := json.Marshal(p)
+	_, err = file.Write(append(line, '\n'))
+	return err
+}
+
+// MatchAny returns true when the finding matches a stored FP pattern.
+func (s *Store) MatchAny(f pipeline.ClassifiedFinding) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, p := range s.patterns {
+		if match(p, f) {
+			return true
+		}
+	}
+	return false
+}
+
+// Len returns the number of loaded patterns — useful for logging.
+func (s *Store) Len() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.patterns)
+}
+
+// Filter drops any finding whose pattern is cached. Order preserved.
+func (s *Store) Filter(findings []pipeline.ClassifiedFinding) []pipeline.ClassifiedFinding {
+	out := findings[:0]
+	for _, f := range findings {
+		if !s.MatchAny(f) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// match: case-insensitive exact on Target + AttackCategory, substring
+// on TitleContains. Either Target or Category may be "" to act as a
+// wildcard (useful when marking whole categories as FP on a target).
+func match(p Pattern, f pipeline.ClassifiedFinding) bool {
+	if p.Target != "" && !strings.EqualFold(p.Target, f.Target) {
+		return false
+	}
+	if p.AttackCategory != "" && !strings.EqualFold(p.AttackCategory, f.AttackCategory) {
+		return false
+	}
+	if p.TitleContains != "" && !strings.Contains(strings.ToLower(f.Title), strings.ToLower(p.TitleContains)) {
+		return false
+	}
+	return true
+}

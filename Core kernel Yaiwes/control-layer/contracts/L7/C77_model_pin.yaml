@@ -1,0 +1,17 @@
+# C77 — L7. B6 SALIDA4
+id: C77
+layer: L7
+name: model_pin
+implementado: true
+critical: false
+description: "Pin de modelo"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C77 aplica en capa L7"
+checks:
+  - model_pin_check
+evidence:
+  type: model_pin_marker
+  required: false

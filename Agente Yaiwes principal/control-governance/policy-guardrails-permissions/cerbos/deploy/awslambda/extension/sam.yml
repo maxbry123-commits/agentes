@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Cerbos server
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: "cerbos-lambda-extension"
+    Description: "Cerbos is an authorization layer that evolves with your product. This Lambda function has an extension containing Cerbos PDP. The layer can be attached to your Lambda function. This is similar to a sidecar deployment pattern."
+    Author: "Cerbos"
+    SpdxLicenseId: Apache-2.0
+    LicenseUrl: ../../../LICENSE
+    ReadmeUrl: ../../../README.md
+    Labels: 
+      - authorization
+      - access-control
+      - RBAC
+      - ABAC
+      - PBAC
+      - policy
+      - security
+      - sidecar
+    HomePageUrl: https://cerbos.dev
+    SourceCodeUrl: https://github.com/cerbos/cerbos
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 5
+
+Resources:
+  CerbosExtensionLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: cerbos-extension
+      Description: Cerbos extension layer
+      ContentUri: ./layer
+      CompatibleRuntimes:
+        - provided.al2
+        - provided.al2023
+      CompatibleArchitectures:
+        - arm64
+
+  CerbosServerFunctionWithExt:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: provided.al2
+      CodeUri: dist/
+      Handler: bootstrap
+      Architectures:
+        - arm64
+      Layers:
+        - !Ref CerbosExtensionLayer
+      MemorySize: 1024
+      Events:
+        CatchAll:
+          Type: HttpApi # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          CERBOS_LOG_LEVEL: info
+          XDG_CACHE_HOME: /tmp
+          CERBOS_CONFIG: /var/task/.cerbos.yaml
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  CerbosServerFunctionAPI:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  CerbosServerFunctionWithExt:
+    Description: "Cerbos Server Function ARN"
+    Value: !GetAtt CerbosServerFunctionWithExt.Arn
+  CerbosFunctionIamRole:
+    Description: "IAM Role created for the Cerbos Server function"
+    Value: !GetAtt CerbosServerFunctionWithExtRole.Arn
+  CerbosExtensionLayerArn:
+    Description: "Cerbos Extension Layer ARN"
+    Value: !Ref CerbosExtensionLayer

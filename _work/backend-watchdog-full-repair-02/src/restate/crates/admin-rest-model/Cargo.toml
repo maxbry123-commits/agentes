@@ -1,0 +1,41 @@
+[package]
+name = "restate-admin-rest-model"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+schema = [
+    "dep:utoipa",
+    "restate-limiter/schema",
+    "restate-serde-util/utoipa-schema",
+    "restate-types/utoipa-schema",
+]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-limiter = { workspace = true, features = ["rule-book", "serde"] }
+restate-types = { workspace = true }
+restate-serde-util = { workspace = true }
+restate-util-time = { workspace = true, features = ["serde_with"] }
+restate-util-string = { workspace = true }
+
+bytes = { workspace = true }
+bytestring = { workspace = true }
+derive_more = { workspace = true, features = ["try_from"] }
+http = { workspace = true }
+http-serde = { workspace = true }
+humantime = { workspace = true }
+utoipa = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_with = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

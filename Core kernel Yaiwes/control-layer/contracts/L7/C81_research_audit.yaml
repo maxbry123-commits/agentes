@@ -1,0 +1,17 @@
+# C81 — L7. B6 SALIDA4
+id: C81
+layer: L7
+name: research_audit
+implementado: true
+critical: false
+description: "Auditoría research"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C81 aplica en capa L7"
+checks:
+  - research_audit_check
+evidence:
+  type: research_audit_marker
+  required: false

@@ -1,0 +1,569 @@
+import compression from 'compression';
+import cors from 'cors';
+import dotenv from 'dotenv';
+
+dotenv.config({ quiet: true });
+
+import fs from 'node:fs';
+import http from 'node:http';
+import path from 'node:path';
+
+import express from 'express';
+import { Server as SocketIOServer } from 'socket.io';
+import { getDefaultPort, VERSION } from '../constants';
+import {
+  hasDeleteComponent,
+  hasUnscopedUpdate,
+  isAllEvalsDeleted,
+  readSignalFile,
+  setupSignalWatcher,
+  updateEvalIds,
+} from '../database/signal';
+import { getDirectory } from '../esm';
+import { cloudConfig } from '../globalConfig/cloud';
+import logger from '../logger';
+import { runDbMigrations } from '../migrate';
+import Eval, { getEvalSummaries } from '../models/eval';
+import { invalidateEvaluationCache, invalidateEvaluationCaches } from '../models/evalMutation';
+import { getRemoteHealthUrl } from '../redteam/remoteGeneration';
+import { createShareableUrl, determineShareDomain, stripAuthFromUrl } from '../share';
+import telemetry from '../telemetry';
+import { synthesizeFromTestSuite } from '../testCase/synthesis';
+import { ServerSchemas } from '../types/api/server';
+import { checkRemoteHealth } from '../util/apiHealth';
+import {
+  getPromptsForTestCasesHash,
+  getStandaloneEvals,
+  getTestCases,
+  readResult,
+} from '../util/database';
+import { redactAzureBlobSasTokens } from '../util/sanitizer';
+import { BrowserBehavior, BrowserBehaviorNames, openBrowser } from '../util/server';
+import { csrfProtection } from './middleware/csrfProtection';
+import { blobsRouter } from './routes/blobs';
+import { configsRouter } from './routes/configs';
+import { evalRouter } from './routes/eval';
+import { mediaRouter } from './routes/media';
+import { modelAuditRouter } from './routes/modelAudit';
+import { providersRouter } from './routes/providers';
+import { redteamRouter } from './routes/redteam';
+import { tracesRouter } from './routes/traces';
+import { userRouter } from './routes/user';
+import versionRouter from './routes/version';
+import { promptCacheService } from './services/promptCacheService';
+import { replyValidationError, sendError } from './utils/errors';
+import type { Request, Response } from 'express';
+
+import type { Prompt, TestCase, TestSuite } from '../types/index';
+
+// JavaScript file extensions that need proper MIME type
+const JS_EXTENSIONS = new Set(['.js', '.mjs', '.cjs']);
+
+// Express middleware limits
+const REQUEST_SIZE_LIMIT = '100mb';
+
+/**
+ * Middleware to set proper MIME types for JavaScript files.
+ * This is necessary because some browsers (especially Arc) enforce strict MIME type checking
+ * and will refuse to execute scripts with incorrect MIME types for security reasons.
+ */
+export function setJavaScriptMimeType(
+  req: Request,
+  res: Response,
+  next: express.NextFunction,
+): void {
+  const ext = path.extname(req.path);
+  if (JS_EXTENSIONS.has(ext)) {
+    res.setHeader('Content-Type', 'application/javascript');
+  }
+  next();
+}
+
+import { ServerError, type ServerErrorPhase } from './errors';
+
+export function handleServerError(
+  error: NodeJS.ErrnoException,
+  port: number,
+  phase: ServerErrorPhase = 'startup',
+): ServerError {
+  const serverError = new ServerError(error, port, phase);
+  logger.error(serverError.message);
+  return serverError;
+}
+
+/**
+ * Finds the static directory containing the web app.
+ *
+ * When running in development (tsx), getDirectory() returns src/ and the app is at src/app/.
+ * When bundled into dist/src/server/index.js, getDirectory() returns dist/src/server/
+ * but the app is at dist/src/app/, so we need to check the parent directory.
+ */
+export function findStaticDir(): string {
+  const baseDir = getDirectory();
+
+  // Try the standard location first (works in development)
+  const standardPath = path.join(baseDir, 'app');
+  if (fs.existsSync(path.join(standardPath, 'index.html'))) {
+    return standardPath;
+  }
+
+  // When bundled, the server is at dist/src/server/ but app is at dist/src/app/
+  const parentPath = path.resolve(baseDir, '..', 'app');
+  if (fs.existsSync(path.join(parentPath, 'index.html'))) {
+    logger.debug(`Static directory resolved to parent: ${parentPath}`);
+    return parentPath;
+  }
+
+  // Fall back to standard path even if it doesn't exist (will fail gracefully later)
+  logger.warn(`Static directory not found at ${standardPath} or ${parentPath}`);
+  return standardPath;
+}
+
+export function createApp() {
+  const app = express();
+
+  const staticDir = findStaticDir();
+
+  app.use(cors());
+  app.use(csrfProtection);
+  app.use(compression());
+  app.use(express.json({ limit: REQUEST_SIZE_LIMIT }));
+  app.use(express.urlencoded({ limit: REQUEST_SIZE_LIMIT, extended: true }));
+  app.get('/health', (_req, res) => {
+    // Health probes must never 500 from a self-imposed schema check.
+    res.status(200).json({ status: 'OK', version: VERSION });
+  });
+
+  app.get('/api/remote-health', async (_req: Request, res: Response): Promise<void> => {
+    const apiUrl = getRemoteHealthUrl();
+
+    if (apiUrl === null) {
+      res.json(
+        ServerSchemas.RemoteHealth.Response.parse({
+          status: 'DISABLED',
+          message: 'remote generation and grading are disabled',
+        }),
+      );
+      return;
+    }
+
+    const result = await checkRemoteHealth(apiUrl);
+    res.json(ServerSchemas.RemoteHealth.Response.parse(result));
+  });
+
+  /**
+   * Fetches summaries of all evals, optionally for a given dataset.
+   */
+  app.get(
+    '/api/results',
+    async (
+      req: Request<
+        {},
+        {},
+        {},
+        { datasetId?: string; type?: 'redteam' | 'eval'; includeProviders?: boolean }
+      >,
+      res: Response,
+    ): Promise<void> => {
+      const queryResult = ServerSchemas.ResultList.Query.safeParse(req.query);
+      if (!queryResult.success) {
+        replyValidationError(res, queryResult.error);
+        return;
+      }
+      const previousResults = await getEvalSummaries(
+        queryResult.data.datasetId,
+        queryResult.data.type,
+        queryResult.data.includeProviders,
+      );
+      res.json(ServerSchemas.ResultList.Response.parse({ data: previousResults }));
+    },
+  );
+
+  app.get('/api/results/:id', async (req: Request, res: Response): Promise<void> => {
+    const paramsResult = ServerSchemas.Result.Params.safeParse(req.params);
+    if (!paramsResult.success) {
+      replyValidationError(res, paramsResult.error);
+      return;
+    }
+    const { id } = paramsResult.data;
+    const file = await readResult(id);
+    if (!file) {
+      res.status(404).json({ error: 'Result not found' });
+      return;
+    }
+    res.json(
+      ServerSchemas.Result.Response.parse({
+        data: {
+          ...file.result,
+          config: redactAzureBlobSasTokens(file.result.config),
+        },
+      }),
+    );
+  });
+
+  app.get('/api/prompts', async (_req: Request, res: Response): Promise<void> => {
+    res.json(ServerSchemas.Prompts.Response.parse({ data: await promptCacheService.getAll() }));
+  });
+
+  app.get('/api/history', async (req: Request, res: Response): Promise<void> => {
+    const queryResult = ServerSchemas.History.Query.safeParse(req.query);
+    if (!queryResult.success) {
+      replyValidationError(res, queryResult.error);
+      return;
+    }
+    const { tagName, tagValue, description } = queryResult.data;
+    const tag = tagName && tagValue ? { key: tagName, value: tagValue } : undefined;
+    const results = await getStandaloneEvals({
+      tag,
+      description,
+    });
+    res.json(ServerSchemas.History.Response.parse({ data: results }));
+  });
+
+  app.get('/api/prompts/:sha256hash', async (req: Request, res: Response): Promise<void> => {
+    const paramsResult = ServerSchemas.Prompt.Params.safeParse(req.params);
+    if (!paramsResult.success) {
+      replyValidationError(res, paramsResult.error);
+      return;
+    }
+    const { sha256hash } = paramsResult.data;
+    const prompts = await getPromptsForTestCasesHash(sha256hash);
+    res.json(ServerSchemas.Prompt.Response.parse({ data: prompts }));
+  });
+
+  app.get('/api/datasets', async (_req: Request, res: Response): Promise<void> => {
+    res.json(
+      ServerSchemas.Datasets.Response.parse({
+        data: redactAzureBlobSasTokens(await getTestCases()),
+      }),
+    );
+  });
+
+  app.get('/api/results/share/check-domain', async (req: Request, res: Response): Promise<void> => {
+    const queryResult = ServerSchemas.ShareCheckDomain.Query.safeParse(req.query);
+    if (!queryResult.success) {
+      logger.warn('Missing or invalid id parameter on share check-domain', {
+        method: req.method,
+        path: req.path,
+      });
+      replyValidationError(res, queryResult.error);
+      return;
+    }
+    const { id } = queryResult.data;
+
+    const eval_ = await Eval.findById(id);
+    if (!eval_) {
+      logger.warn('Eval not found for share check-domain', { id });
+      res.status(404).json({ error: 'Eval not found' });
+      return;
+    }
+
+    const { domain } = determineShareDomain(eval_);
+    const isCloudEnabled = cloudConfig.isEnabled();
+    res.json(ServerSchemas.ShareCheckDomain.Response.parse({ domain, isCloudEnabled }));
+  });
+
+  // Share URL creation is intentionally unthrottled for local-server workflows. UI and CLI
+  // actions can legitimately burst through this route, and a per-IP limiter would block the
+  // operator without changing the local trust boundary. See src/server/AGENTS.md for the
+  // codified policy; CodeQL js/missing-rate-limiting is an accepted exception here.
+  app.post('/api/results/share', async (req: Request, res: Response): Promise<void> => {
+    const bodyResult = ServerSchemas.Share.Request.safeParse(req.body);
+    if (!bodyResult.success) {
+      replyValidationError(res, bodyResult.error);
+      return;
+    }
+    const { id } = bodyResult.data;
+    logger.debug('Share request for eval ID', { id, method: req.method, path: req.path });
+
+    // `Eval.findById` returns `undefined` only for a missing row and otherwise
+    // throws on real DB errors (lock contention, schema drift, etc.). Branch
+    // on the throw to distinguish 500 from 404 — `readResult` cannot serve
+    // that role because it catches its own exceptions and also returns
+    // `undefined` (`src/util/database.ts`), which would silently classify
+    // every load failure as "not found". A separate preflight via
+    // `readResult` would also double the per-request DB load.
+    let eval_: Awaited<ReturnType<typeof Eval.findById>>;
+    try {
+      eval_ = await Eval.findById(id);
+    } catch (error) {
+      sendError(res, 500, 'Failed to load eval for share', error);
+      return;
+    }
+    if (!eval_) {
+      logger.warn('Eval not found for share request', { id });
+      res.status(404).json({ error: 'Eval not found' });
+      return;
+    }
+
+    try {
+      const url = await createShareableUrl(eval_, { showAuth: true });
+      logger.debug('Generated share URL for eval', { id, url: stripAuthFromUrl(url || '') });
+      res.json(ServerSchemas.Share.Response.parse({ url }));
+    } catch (error) {
+      sendError(res, 500, 'Failed to generate share URL', error);
+    }
+  });
+
+  app.post('/api/dataset/generate', async (req: Request, res: Response): Promise<void> => {
+    const bodyResult = ServerSchemas.DatasetGenerate.Request.safeParse(req.body);
+    if (!bodyResult.success) {
+      replyValidationError(res, bodyResult.error);
+      return;
+    }
+    const prompts = bodyResult.data.prompts.map((prompt): Prompt => {
+      if (typeof prompt === 'string') {
+        return { raw: prompt, label: prompt };
+      }
+      return { ...prompt, label: prompt.label ?? prompt.raw };
+    });
+    const testSuite: TestSuite = {
+      prompts,
+      tests: bodyResult.data.tests as TestCase[],
+      providers: [],
+    };
+    const results = await synthesizeFromTestSuite(testSuite, {});
+    res.json(ServerSchemas.DatasetGenerate.Response.parse({ results }));
+  });
+
+  app.use('/api/eval', evalRouter);
+  app.use('/api/media', mediaRouter);
+  app.use('/api/blobs', blobsRouter);
+  app.use('/api/providers', providersRouter);
+  app.use('/api/redteam', redteamRouter);
+  app.use('/api/user', userRouter);
+  app.use('/api/configs', configsRouter);
+  app.use('/api/model-audit', modelAuditRouter);
+  app.use('/api/traces', tracesRouter);
+  app.use('/api/version', versionRouter);
+
+  app.post('/api/telemetry', async (req: Request, res: Response): Promise<void> => {
+    const result = ServerSchemas.Telemetry.Request.safeParse(req.body);
+
+    if (!result.success) {
+      replyValidationError(res, result.error);
+      return;
+    }
+
+    try {
+      const { event, properties } = result.data;
+      await telemetry.record(event, properties);
+      res.status(200).json(ServerSchemas.Telemetry.Response.parse({ success: true }));
+    } catch (error) {
+      sendError(res, 500, 'Failed to process telemetry request', error);
+    }
+  });
+
+  // Must come after the above routes (particularly /api/config) so it doesn't
+  // overwrite dynamic routes.
+
+  // Configure proper MIME types for JavaScript files
+  app.use(setJavaScriptMimeType);
+
+  app.use(express.static(staticDir, { dotfiles: 'allow' }));
+
+  // Handle client routing, return all requests to the app
+  app.get('/*splat', (_req: Request, res: Response): void => {
+    res.sendFile('index.html', { root: staticDir, dotfiles: 'allow' });
+  });
+  return app;
+}
+
+export async function startServer(
+  port = getDefaultPort(),
+  browserBehavior: BrowserBehavior = BrowserBehavior.ASK,
+): Promise<void> {
+  const app = createApp();
+
+  const httpServer = http.createServer(app);
+  const io = new SocketIOServer(httpServer, {
+    cors: {
+      origin: '*',
+    },
+  });
+
+  await runDbMigrations();
+
+  const watcher = setupSignalWatcher(() => {
+    const handleSignalUpdate = async () => {
+      // A new eval signal can change /api/prompts output. Invalidate first — before this handler
+      // awaits any DB lookups and regardless of which emit branches below run — so every signal
+      // drops the cache and the next /api/prompts request re-reads it from the DB.
+      promptCacheService.invalidate();
+
+      const signal = readSignalFile();
+      // A coalesced signal can carry several scoped updates (back-to-back eval saves in the
+      // debounce window), an unscoped "refresh latest" component, and a delete component.
+      const scopedUpdateIds = updateEvalIds(signal);
+
+      // Mutations can happen in a separate CLI process, so clear this server's process-local caches
+      // before serving the next request. A delete-all or an unscoped update (whose latest eval is
+      // not known here) can touch any eval's cached count, so clear them all; otherwise scope the
+      // clear to exactly the evals this signal updates and/or deletes.
+      if (
+        (hasDeleteComponent(signal) && isAllEvalsDeleted(signal.deletedEvalIds)) ||
+        hasUnscopedUpdate(signal)
+      ) {
+        invalidateEvaluationCache();
+      } else {
+        invalidateEvaluationCaches([...scopedUpdateIds, ...(signal.deletedEvalIds ?? [])]);
+      }
+
+      // Emit each component independently (not else-if) so no coalesced refresh is lost.
+      if (hasDeleteComponent(signal)) {
+        io.emit('update', { deletedEvalIds: signal.deletedEvalIds ?? [] });
+      }
+
+      // Emit one refresh per surviving scoped eval so a client pinned to any of them updates.
+      if (scopedUpdateIds.length > 0) {
+        const updatedEvals = await Promise.all(scopedUpdateIds.map((id) => Eval.findById(id)));
+        for (const updatedEval of updatedEvals) {
+          if (updatedEval) {
+            logger.debug(
+              `Emitting update for eval: ${updatedEval.config?.description || updatedEval.id}`,
+            );
+            io.emit('update', { evalId: updatedEval.id });
+          }
+          // Else: a scoped update whose eval no longer exists (e.g. it won the debounce race
+          // against its own delete). Emit nothing — clients reconcile on the next signal.
+        }
+      }
+
+      // An unscoped update follows the latest eval, so refresh a root `/eval` view to it (or clear
+      // the view when none remain). Emitted after any scoped updates — and possibly alongside them
+      // when coalesced — so the root view ends on the latest eval.
+      if (hasUnscopedUpdate(signal)) {
+        const latestEval = await Eval.latest();
+        io.emit('update', latestEval ? { evalId: latestEval.id } : null);
+      }
+    };
+
+    // Fire-and-forget: the body awaits DB lookups (Eval.findById/latest) that can reject on a
+    // transient libsql error. Catch here so a rejection is logged rather than becoming an
+    // unhandledRejection that would tear down the long-running view server.
+    void handleSignalUpdate().catch((err) => {
+      logger.warn(
+        `Failed to handle eval signal update: ${err instanceof Error ? err.message : err}`,
+      );
+    });
+  });
+
+  io.on('connection', async (socket) => {
+    const latestEval = await Eval.latest();
+    socket.emit('init', latestEval ? { evalId: latestEval.id } : null);
+  });
+
+  // Return a Promise that only resolves when the server shuts down
+  // This keeps long-running commands (like `view`) running until SIGINT/SIGTERM
+  return new Promise<void>((resolve, reject) => {
+    const removeShutdownHandlers = () => {
+      process.removeListener('SIGINT', shutdown);
+      process.removeListener('SIGTERM', shutdown);
+    };
+
+    const safeCloseWatcher = () => {
+      try {
+        watcher.close();
+      } catch (err) {
+        // watcher.close() can throw on double-close or partially-failed FSWatchers.
+        // Surface it but never let it deadlock the lifecycle promise.
+        logger.warn(`Error closing file watcher: ${err instanceof Error ? err.message : err}`);
+      }
+    };
+
+    const closeRunningServer = (onClose: (timedOut: boolean) => void) => {
+      safeCloseWatcher();
+
+      // Set a timeout in case connections don't close gracefully
+      const SHUTDOWN_TIMEOUT_MS = 5000;
+      let settled = false;
+      const settle = (timedOut: boolean) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(forceCloseTimeout);
+        onClose(timedOut);
+      };
+      const forceCloseTimeout = setTimeout(() => {
+        logger.warn('Server close timeout - forcing shutdown');
+        settle(true);
+      }, SHUTDOWN_TIMEOUT_MS);
+
+      // Close Socket.io connections (this also closes the underlying HTTP server)
+      io.close(() => {
+        // Socket.io's close() already closes the HTTP server, so check if it's still listening
+        // before attempting to close it again to avoid "Server is not running" errors
+        if (!httpServer.listening) {
+          logger.info('Server closed');
+          settle(false);
+          return;
+        }
+
+        httpServer.close((err) => {
+          if (err) {
+            logger.warn(`Error closing server: ${err.message}`);
+          }
+          logger.info('Server closed');
+          settle(false);
+        });
+      });
+    };
+
+    // Register shutdown handlers to gracefully close the server
+    // Use once() to prevent handler accumulation if startServer is called multiple times
+    const shutdown = () => {
+      logger.info('Shutting down server...');
+      removeShutdownHandlers();
+      httpServer.removeListener('error', handleRuntimeError);
+      closeRunningServer((timedOut) => {
+        if (timedOut) {
+          // A force-close means open handles were left dangling. Reject so the
+          // caller (CLI or library) decides exit-code policy — startServer is
+          // publicly importable, so silently poisoning process.exitCode would
+          // hurt library embedders.
+          reject(
+            new ServerError(
+              Object.assign(new Error('Shutdown timeout'), { code: 'ESHUTDOWN' }),
+              port,
+              'runtime',
+            ),
+          );
+          return;
+        }
+        resolve();
+      });
+    };
+
+    const handleStartupError = (error: NodeJS.ErrnoException) => {
+      safeCloseWatcher();
+      removeShutdownHandlers();
+      reject(handleServerError(error, port));
+    };
+
+    const handleRuntimeError = (error: NodeJS.ErrnoException) => {
+      const runtimeError = handleServerError(error, port, 'runtime');
+      removeShutdownHandlers();
+      httpServer.removeListener('error', handleRuntimeError);
+      closeRunningServer(() => reject(runtimeError));
+    };
+
+    httpServer.once('error', handleStartupError);
+    httpServer.listen(port, () => {
+      httpServer.removeListener('error', handleStartupError);
+      httpServer.on('error', handleRuntimeError);
+
+      const url = `http://localhost:${port}`;
+      logger.info(`Server running at ${url} and monitoring for new evals.`);
+      openBrowser(browserBehavior, port).catch((error) => {
+        logger.error(
+          `Failed to handle browser behavior (${BrowserBehaviorNames[browserBehavior]}): ${error instanceof Error ? error.message : error}`,
+        );
+      });
+      // Don't resolve - server runs until shutdown signal
+    });
+
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+  });
+}

@@ -1,0 +1,133 @@
+package agent
+
+import (
+	"context"
+	"crypto/tls"
+	"os"
+	"path/filepath"
+	"sync"
+
+	"github.com/k3s-io/k3s/pkg/agent"
+	"github.com/k3s-io/k3s/pkg/agent/https"
+	"github.com/k3s-io/k3s/pkg/cli/cmds"
+	"github.com/k3s-io/k3s/pkg/daemons/config"
+	"github.com/k3s-io/k3s/pkg/datadir"
+	k3smetrics "github.com/k3s-io/k3s/pkg/metrics"
+	"github.com/k3s-io/k3s/pkg/proctitle"
+	"github.com/k3s-io/k3s/pkg/profile"
+	"github.com/k3s-io/k3s/pkg/signals"
+	"github.com/k3s-io/k3s/pkg/spegel"
+	"github.com/k3s-io/k3s/pkg/util"
+	"github.com/k3s-io/k3s/pkg/util/errors"
+	"github.com/k3s-io/k3s/pkg/util/logger"
+	"github.com/k3s-io/k3s/pkg/util/mux"
+	"github.com/k3s-io/k3s/pkg/util/permissions"
+	"github.com/k3s-io/k3s/pkg/version"
+	"github.com/sirupsen/logrus"
+	"github.com/urfave/cli/v2"
+	"k8s.io/klog/v2"
+)
+
+func Run(clx *cli.Context) (rerr error) {
+	// hide process arguments from ps output, since they may contain
+	// database credentials or other secrets.
+	proctitle.SetProcTitle(os.Args[0] + " agent")
+
+	// Evacuate cgroup v2 before doing anything else that may fork.
+	if err := cmds.EvacuateCgroup2(); err != nil {
+		return err
+	}
+
+	// Initialize logging, and subprocess reaping if necessary.
+	// Log output redirection and subprocess reaping both require forking.
+	if err := cmds.InitLogging(); err != nil {
+		return err
+	}
+
+	klog.EnableContextualLogging(true)
+	ctx := logger.NewContext(signals.SetupSignalContext(), version.Program)
+	wg := &sync.WaitGroup{}
+
+	// If exiting due to an error, ensure that contexts are cancelled so that the
+	// WaitGroup exits.  Otherwise, wait for something else to initiate shutdown.
+	defer func() {
+		if rerr != nil {
+			// do not need to pass the error in here, it will be reported by the CLI error handler
+			signals.RequestShutdown(nil)
+		} else {
+			<-ctx.Done()
+			rerr = ctx.Err()
+		}
+		wg.Wait()
+	}()
+
+	if !cmds.AgentConfig.Rootless {
+		if err := permissions.IsPrivileged(); err != nil {
+			return errors.WithMessage(err, "agent requires additional privilege if not run with --rootless")
+		}
+	}
+
+	if cmds.AgentConfig.TokenFile != "" {
+		token, err := util.ReadFile(ctx, cmds.AgentConfig.TokenFile)
+		if err != nil {
+			return err
+		}
+		cmds.AgentConfig.Token = token
+	}
+
+	clientKubeletCert := filepath.Join(cmds.AgentConfig.DataDir, "agent", "client-kubelet.crt")
+	clientKubeletKey := filepath.Join(cmds.AgentConfig.DataDir, "agent", "client-kubelet.key")
+	_, err := tls.LoadX509KeyPair(clientKubeletCert, clientKubeletKey)
+
+	if err != nil && cmds.AgentConfig.Token == "" {
+		return errors.New("--token is required")
+	}
+
+	if cmds.AgentConfig.ServerURL == "" {
+		return errors.New("--server is required")
+	}
+
+	if cmds.AgentConfig.FlannelIface != "" && len(cmds.AgentConfig.NodeIP.Value()) == 0 {
+		ip, err := util.GetIPFromInterface(cmds.AgentConfig.FlannelIface)
+		if err != nil {
+			return err
+		}
+		cmds.AgentConfig.NodeIP.Set(ip)
+	}
+
+	logrus.Info("Starting " + version.Program + " agent " + clx.App.Version)
+
+	dataDir, err := datadir.LocalHome(cmds.AgentConfig.DataDir, cmds.AgentConfig.Rootless)
+	if err != nil {
+		return err
+	}
+
+	cfg := cmds.AgentConfig
+	cfg.Debug = clx.Bool("debug")
+	cfg.DataDir = dataDir
+
+	go cmds.WriteCoverage(ctx)
+
+	// Until the agent is run and retrieves config from the server, we won't know
+	// if the embedded registry is enabled. If it is not enabled, these are not
+	// used as the registry is never started.
+	registry := spegel.DefaultRegistry
+	registry.Bootstrapper = spegel.NewAgentBootstrapper(cfg.ServerURL, cfg.Token, cfg.DataDir)
+	registry.Router = func(ctx context.Context, nodeConfig *config.Node) (*mux.Router, error) {
+		return https.Start(ctx, nodeConfig, nil)
+	}
+
+	// same deal for metrics - these are not used if the extra metrics listener is not enabled.
+	metrics := k3smetrics.DefaultMetrics
+	metrics.Router = func(ctx context.Context, nodeConfig *config.Node) (*mux.Router, error) {
+		return https.Start(ctx, nodeConfig, nil)
+	}
+
+	// and for pprof as well
+	pprof := profile.DefaultProfiler
+	pprof.Router = func(ctx context.Context, nodeConfig *config.Node) (*mux.Router, error) {
+		return https.Start(ctx, nodeConfig, nil)
+	}
+
+	return agent.Run(ctx, wg, cfg)
+}

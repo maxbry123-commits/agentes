@@ -1,0 +1,86 @@
+{
+  "$id": "https://api.cerbos.dev/cerbos/policy/v1/TestResults/Failure.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "cerbos.effect.v1.Effect": {
+      "type": "string",
+      "enum": [
+        "EFFECT_UNSPECIFIED",
+        "EFFECT_ALLOW",
+        "EFFECT_DENY",
+        "EFFECT_NO_MATCH"
+      ]
+    },
+    "cerbos.policy.v1.TestResults.OutputFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "errored": {
+          "$ref": "#/definitions/cerbos.policy.v1.TestResults.OutputFailure.EvaluationError"
+        },
+        "mismatched": {
+          "$ref": "#/definitions/cerbos.policy.v1.TestResults.OutputFailure.MismatchedValue"
+        },
+        "missing": {
+          "$ref": "#/definitions/cerbos.policy.v1.TestResults.OutputFailure.MissingValue"
+        },
+        "src": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.policy.v1.TestResults.OutputFailure.EvaluationError": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "expected": {
+          "$ref": "#/definitions/google.protobuf.Value"
+        }
+      }
+    },
+    "cerbos.policy.v1.TestResults.OutputFailure.MismatchedValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actual": {
+          "$ref": "#/definitions/google.protobuf.Value"
+        },
+        "expected": {
+          "$ref": "#/definitions/google.protobuf.Value"
+        }
+      }
+    },
+    "cerbos.policy.v1.TestResults.OutputFailure.MissingValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expected": {
+          "$ref": "#/definitions/google.protobuf.Value"
+        }
+      }
+    },
+    "google.protobuf.Value": {
+      "title": "Value",
+      "description": "A dynamically-typed value."
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "actual": {
+      "$ref": "#/definitions/cerbos.effect.v1.Effect"
+    },
+    "expected": {
+      "$ref": "#/definitions/cerbos.effect.v1.Effect"
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/cerbos.policy.v1.TestResults.OutputFailure"
+      }
+    }
+  }
+}

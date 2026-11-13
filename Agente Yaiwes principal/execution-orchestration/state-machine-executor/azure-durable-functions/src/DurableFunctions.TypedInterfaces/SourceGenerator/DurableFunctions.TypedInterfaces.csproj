@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+    <Version>0.1.0-preview</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="All">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all"/>
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.AspNetCore.Server.Kestrel.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <AdditionalFiles Include="..\..\..\.stylecop\stylecop.json" />
+    <Compile Include="..\..\..\.stylecop\GlobalSuppressions.cs" Link="GlobalSuppressions.cs" />
+  </ItemGroup>
+
+  <!-- NuGet Publishing Metadata -->
+  <PropertyGroup>
+    <Title>Durable Functions Typed Interfaces</Title>
+    <Authors>Microsoft</Authors>
+    <Description>Provides new code-generated interfaces for Durable Functions for a typed experience of calling activities and orchestrations.</Description>
+    <PackageReleaseNotes>https://github.com/Azure/azure-functions-durable-extension/releases/</PackageReleaseNotes>
+    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
+    <PackageTags>Microsoft;Azure;WebJobs;Durable;Extension;Orchestration;Workflow;Functions</PackageTags>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Azure/azure-functions-durable-extension</PackageProjectUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <IncludeReferenceProjects>true</IncludeReferenceProjects>
+    <RepositoryUrl>https://github.com/Azure/azure-functions-durable-extension/</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+  </PropertyGroup>
+
+</Project>

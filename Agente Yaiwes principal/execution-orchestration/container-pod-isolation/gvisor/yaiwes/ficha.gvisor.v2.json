@@ -1,0 +1,95 @@
+{
+  "artifact_id": "yaiwes.isolation.gvisor",
+  "version": "1.0.0",
+  "estado": "active",
+  "contract_hash": "sha256:7649f3ddcd6144662d6b80559e714eaca223c468f9d559cebe6739ab28912591",
+  "tribunal_case_id": "YAIWES-N26-GVISOR-STEP3",
+  "contrato": {
+    "rol": "service",
+    "consume": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    },
+    "expone": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    }
+  },
+  "ejecucion": {
+    "kind": "code",
+    "transport": "stdio",
+    "runtime_type": "compute",
+    "entry_point": "Agente Yaiwes principal/execution-orchestration/container-pod-isolation/gvisor/yaiwes/gvisor_adapter.py:run_microtest",
+    "idempotente": true
+  },
+  "seguridad": {
+    "sandbox": "process",
+    "limites": {
+      "timeout_ms": 600000,
+      "deadline_ms": 600000
+    }
+  },
+  "firma": {
+    "gpg_key_id": "YAIWES-N26"
+  },
+  "categoria": "pipeline",
+  "etapa": "P",
+  "perfiles": {
+    "n0": {
+      "habilitada": true,
+      "iteraciones": 1,
+      "simulaciones": 0,
+      "criticas": 0,
+      "muestras_k": 1
+    }
+  },
+  "repeticion": {
+    "max": 1,
+    "condicion": "nunca"
+  },
+  "repite_en": [],
+  "activacion": {
+    "eventos": [
+      "kernel.v2.plugin.enchufed"
+    ],
+    "wake_words": [],
+    "condicion": ""
+  },
+  "presupuesto": {
+    "n0": {
+      "max_tokens": 1,
+      "max_ms": 600000,
+      "max_costo_usd": 0.0
+    }
+  },
+  "telemetria": {
+    "metricas": [
+      "tiempo",
+      "errores",
+      "health"
+    ],
+    "span_otel": true
+  },
+  "evidencia": {
+    "produce": [
+      "L2_build",
+      "L3_runtime",
+      "L4_feature"
+    ],
+    "destino": "Agente Yaiwes principal/execution-orchestration/container-pod-isolation/gvisor/yaiwes/"
+  },
+  "failover": {
+    "sustituible_por": [],
+    "compensacion": "fail_closed"
+  },
+  "salud": {
+    "metodo": "exec",
+    "heartbeat_interval_s": 30
+  }
+}

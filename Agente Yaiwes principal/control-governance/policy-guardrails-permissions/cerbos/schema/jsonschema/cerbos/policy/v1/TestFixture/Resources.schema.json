@@ -1,0 +1,83 @@
+{
+  "$id": "https://api.cerbos.dev/cerbos/policy/v1/TestFixture/Resources.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "cerbos.engine.v1.Resource": {
+      "type": "object",
+      "required": [
+        "kind",
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "attr": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/google.protobuf.Value"
+          },
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policyVersion": {
+          "type": "string",
+          "pattern": "^[0-9A-Z_a-z]*$"
+        },
+        "scope": {
+          "type": "string",
+          "pattern": "^(^$|\\.|[0-9A-Za-z][\\-0-9A-Z_a-z]*(\\.[0-9A-Z_a-z][\\-0-9A-Z_a-z]*)*)$"
+        }
+      }
+    },
+    "cerbos.policy.v1.TestFixtureGroup.Resources": {
+      "type": "object",
+      "required": [
+        "resources"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "google.protobuf.Value": {
+      "title": "Value",
+      "description": "A dynamically-typed value."
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "resourceGroups": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/cerbos.policy.v1.TestFixtureGroup.Resources"
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/cerbos.engine.v1.Resource"
+      }
+    }
+  }
+}

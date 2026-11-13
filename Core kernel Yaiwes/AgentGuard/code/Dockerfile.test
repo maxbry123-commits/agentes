@@ -1,0 +1,53 @@
+# AgentGuard Integration Test Container
+# This container provides a safe, isolated environment to test dangerous commands
+
+FROM node:18-slim
+
+# Install useful tools for testing
+RUN apt-get update && apt-get install -y \
+    bash \
+    coreutils \
+    git \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user for some tests
+RUN useradd -m -s /bin/bash testuser
+
+# Set up working directory
+WORKDIR /app
+
+# Copy package files first (for better layer caching)
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Build TypeScript (also makes binaries executable)
+RUN npm run build
+
+# Create wrapper scripts so 'agentguard' command works without .js extension
+RUN mkdir -p /usr/local/bin && \
+    echo '#!/bin/sh' > /usr/local/bin/agentguard && \
+    echo 'exec node /app/dist/bin/agentguard.js "$@"' >> /usr/local/bin/agentguard && \
+    chmod +x /usr/local/bin/agentguard && \
+    echo '#!/bin/sh' > /usr/local/bin/agentguard-shell && \
+    echo 'exec node /app/dist/bin/agentguard-shell.js "$@"' >> /usr/local/bin/agentguard-shell && \
+    chmod +x /usr/local/bin/agentguard-shell
+
+# Copy bash wrappers to a directory we can prepend to PATH
+RUN mkdir -p /app/dist/bin/wrappers && \
+    cp /app/src/bin/wrappers/* /app/dist/bin/wrappers/ && \
+    chmod +x /app/dist/bin/wrappers/*
+
+# Create test directories that can be safely destroyed
+RUN mkdir -p /test-sandbox/safe-to-delete \
+    && mkdir -p /test-sandbox/protected \
+    && echo "safe file" > /test-sandbox/safe-to-delete/file.txt \
+    && echo "protected" > /test-sandbox/protected/important.txt
+
+# Default command runs integration tests
+CMD ["npm", "run", "test:integration"]

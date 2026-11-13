@@ -1,0 +1,28 @@
+{
+  "operations": {
+    "GET /users/{id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "id",
+          "resource": "User",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": []
+    },
+    "POST /users": {
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  "resources": {
+    "User": {
+      "fields": [
+        "id"
+      ],
+      "types": {}
+    }
+  }
+}

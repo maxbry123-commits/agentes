@@ -1,0 +1,45 @@
+{
+  "operations": {
+    "GET /geo/adminDivisions": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "PopulatedPlaceSummary",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "PopulatedPlaceSummary": {
+      "fields": [
+        "country",
+        "id",
+        "latitude",
+        "longitude",
+        "name"
+      ],
+      "types": {
+        "country": [
+          "string"
+        ],
+        "id": [
+          "integer"
+        ],
+        "latitude": [
+          "number"
+        ],
+        "longitude": [
+          "number"
+        ],
+        "name": [
+          "string"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+# C03 — L1 Interface. SALIDA 4
+id: C03
+layer: L1
+name: input_schema
+implementado: true
+critical: false
+description: "Schema de entrada válido"
+requires:
+  - C00
+forbids: []
+rules:
+  - "validar antes de ejecutar"
+checks:
+  - schema_present
+evidence:
+  type: l1_marker
+  required: true

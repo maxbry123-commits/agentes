@@ -1,0 +1,69 @@
+@use "src/styles/variables" as *;
+
+.vm-mobile-option {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: $padding-global;
+  padding: $padding-global $padding-small;
+  width: 100%;
+  user-select: none;
+
+  &__arrow,
+  &__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__icon {
+    position: relative;
+    display: flex;
+    width: 40px;
+    height: 40px;
+    color: $color-primary;
+
+    &:after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.1;
+      background-color: currentColor;
+      border-radius: $border-radius-medium;
+    }
+
+    svg {
+      width: 21px;
+      height: auto;
+    }
+  }
+
+  &__arrow {
+    width: 20px;
+    height: 20px;
+    transform: rotate(-90deg);
+    color: $color-primary;
+  }
+
+  &-text {
+    display: grid;
+    align-items: center;
+    height: 100%;
+    gap: calc($padding-small / 2);
+    flex-grow: 1;
+    text-align: left;
+
+    &__label {
+      font-weight: 600;
+    }
+
+    &__value {
+      color: $color-text-secondary;
+      font-size: $font-size-small;
+    }
+  }
+}

@@ -1,0 +1,134 @@
+﻿// Copyright (c) Microsoft. All rights reserved.
+
+using System.Text.Json;
+using AGUI.Client;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
+
+string serverUrl = Environment.GetEnvironmentVariable("AGUI_SERVER_URL") ?? "http://localhost:5100";
+
+// Connect to the AG-UI server
+using HttpClient httpClient = new()
+{
+    Timeout = TimeSpan.FromSeconds(60)
+};
+
+AGUIChatClient chatClient = new(new(httpClient, serverUrl));
+
+// Create agent. No custom approval agent is required: the loop below handles the approval interrupt
+// directly, and AGUIChatClient transports the decision back to the server via the AG-UI resume mechanism.
+AIAgent agent = chatClient.AsAIAgent(
+    name: "AGUIAssistant",
+    instructions: "You are a helpful assistant.");
+
+List<ChatMessage> messages = [];
+AgentSession? session = null;
+
+Console.ForegroundColor = ConsoleColor.White;
+Console.WriteLine("Ask a question (or type 'exit' to quit):");
+Console.ResetColor();
+
+string? input;
+while ((input = Console.ReadLine()) != null && !input.Equals("exit", StringComparison.OrdinalIgnoreCase))
+{
+    if (string.IsNullOrWhiteSpace(input))
+    {
+        continue;
+    }
+
+    messages.Add(new ChatMessage(ChatRole.User, input));
+    Console.WriteLine();
+
+    List<AIContent> approvalResponses = [];
+
+    do
+    {
+        approvalResponses.Clear();
+
+        List<AgentResponseUpdate> chatResponseUpdates = [];
+        await foreach (AgentResponseUpdate update in agent.RunStreamingAsync(messages, session, cancellationToken: default))
+        {
+            chatResponseUpdates.Add(update);
+            foreach (AIContent content in update.Contents)
+            {
+                switch (content)
+                {
+                    case ToolApprovalRequestContent approvalRequest when approvalRequest.ToolCall is FunctionCallContent fcc:
+                        DisplayApprovalRequest(approvalRequest, fcc);
+
+                        Console.Write($"\nApprove '{fcc.Name}'? (yes/no): ");
+                        string? userInput = Console.ReadLine();
+                        bool approved = userInput?.ToUpperInvariant() is "YES" or "Y";
+
+                        ToolApprovalResponseContent approvalResponse = approvalRequest.CreateResponse(approved);
+
+                        approvalResponses.Add(approvalResponse);
+                        break;
+
+                    case TextContent textContent:
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        Console.Write(textContent.Text);
+                        Console.ResetColor();
+                        break;
+
+                    case FunctionCallContent functionCall:
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"[Tool Call - Name: {functionCall.Name}]");
+                        if (functionCall.Arguments is { } arguments)
+                        {
+                            Console.WriteLine($"  Parameters: {JsonSerializer.Serialize(arguments)}");
+                        }
+                        Console.ResetColor();
+                        break;
+
+                    case FunctionResultContent functionResult:
+                        Console.ForegroundColor = ConsoleColor.Magenta;
+                        Console.WriteLine($"[Tool Result: {functionResult.Result}]");
+                        Console.ResetColor();
+                        break;
+
+                    case ErrorContent error:
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"[Error: {error.Message}]");
+                        Console.ResetColor();
+                        break;
+                }
+            }
+        }
+
+        AgentResponse response = chatResponseUpdates.ToAgentResponse();
+        messages.AddRange(response.Messages);
+        foreach (AIContent approvalResponse in approvalResponses)
+        {
+            messages.Add(new ChatMessage(ChatRole.User, [approvalResponse]));
+        }
+    }
+    while (approvalResponses.Count > 0);
+
+    Console.WriteLine("\n");
+    Console.ForegroundColor = ConsoleColor.White;
+    Console.WriteLine("Ask another question (or type 'exit' to quit):");
+    Console.ResetColor();
+}
+
+static void DisplayApprovalRequest(ToolApprovalRequestContent approvalRequest, FunctionCallContent fcc)
+{
+    Console.ForegroundColor = ConsoleColor.Yellow;
+    Console.WriteLine();
+    Console.WriteLine("============================================================");
+    Console.WriteLine("APPROVAL REQUIRED");
+    Console.WriteLine("============================================================");
+    Console.WriteLine($"Function: {fcc.Name}");
+
+    if (fcc.Arguments != null)
+    {
+        Console.WriteLine("Arguments:");
+        foreach (var arg in fcc.Arguments)
+        {
+            Console.WriteLine($"  {arg.Key} = {arg.Value}");
+        }
+    }
+
+    Console.WriteLine("============================================================");
+    Console.ResetColor();
+}

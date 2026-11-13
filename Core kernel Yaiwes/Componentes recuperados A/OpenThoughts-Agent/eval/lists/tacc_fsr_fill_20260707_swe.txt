@@ -1,0 +1,6 @@
+# TACC flawed_summ reeval fill 2026-07-07 — swebench preset — RESET-queue legs (grid-row priority)
+# r184 explore-tis-temp12-75-8B swe · r187 explore-tis-minp-40-8B swe · r193 explore-tis-untrunc-45-8B swe · r196 ablation-pymethods2test-seqmean-arm0-15-8B swe
+laion/explore-tis-temp12-75-8B
+laion/explore-tis-minp-40-8B
+laion/explore-tis-untrunc-45-8B
+laion/ablation-pymethods2test-seqmean-arm0-15-8B

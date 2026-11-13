@@ -1,0 +1,1010 @@
+---
+source: crates/zizmor/tests/integration/e2e/crater.rs
+expression: "zizmor().offline(NetworkMode::AssertOnline).output(OutputMode::Both).args([\"--persona=pedantic\"]).input(\"pyca/cryptography@43eb178ee3aae8d0060221118437b03c23570a41\").run()?"
+---
+ INFO zizmor: 🌈 zizmor v@@VERSION@@
+ INFO collect_inputs: zizmor::registry::input: collected 15 inputs from pyca/cryptography
+ INFO audit: zizmor: 🌈 completed .github/actions/cache/action.yml
+ INFO audit: zizmor: 🌈 completed .github/actions/fetch-vectors/action.yml
+ INFO audit: zizmor: 🌈 completed .github/actions/upload-coverage/action.yml
+ INFO audit: zizmor: 🌈 completed .github/actions/wheel-smoketest/action.yml
+ INFO audit: zizmor: 🌈 completed .github/dependabot.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/auto-close-stale.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/benchmark.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/boring-open-awslc-bump.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/ci.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/downstream-version-bump.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/linkcheck.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/lock.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/pypi-publish.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/wheel-builder.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/x509-limbo-version-bump.yml
+error[template-injection]: code injection via template expansion
+  --> .github/actions/wheel-smoketest/action.yml:23:22
+   |
+22 |       run: |
+   |       --- this run block
+23 |         if [ -n "${{ inputs.python-path }}" ]; then
+   |                      ^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+   = note: this finding has an auto-fix
+
+error[template-injection]: code injection via template expansion
+  --> .github/actions/wheel-smoketest/action.yml:24:33
+   |
+22 |       run: |
+   |       --- this run block
+23 |         if [ -n "${{ inputs.python-path }}" ]; then
+24 |           uv venv --python="${{ inputs.python-path }}"
+   |                                 ^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+   = note: this finding has an auto-fix
+
+error[template-injection]: code injection via template expansion
+  --> .github/actions/wheel-smoketest/action.yml:31:52
+   |
+31 |       run: uv pip install --require-hashes -r "${{ inputs.build-requirements-path }}"
+   |       --- this run block                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+   = note: this finding has an auto-fix
+
+error[template-injection]: code injection via template expansion
+  --> .github/actions/wheel-smoketest/action.yml:56:22
+   |
+55 |       run: |
+   |       --- this run block
+56 |         if [ -n "${{ inputs.python-path }}" ]; then
+   |                      ^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+   = note: this finding has an auto-fix
+
+error[template-injection]: code injection via template expansion
+  --> .github/actions/wheel-smoketest/action.yml:57:16
+   |
+55 |       run: |
+   |       --- this run block
+56 |         if [ -n "${{ inputs.python-path }}" ]; then
+57 |           "${{ inputs.python-path }}" -m venv .venv-pip-test
+   |                ^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+   = note: this finding has an auto-fix
+
+error[template-injection]: code injection via template expansion
+  --> .github/actions/wheel-smoketest/action.yml:65:68
+   |
+65 |       run: .venv-pip-test/bin/pip install --require-hashes -r "${{ inputs.build-requirements-path }}"
+   |       --- this run block                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+   = note: this finding has an auto-fix
+
+warning[excessive-permissions]: overly broad permissions
+  --> .github/workflows/auto-close-stale.yml:1:1
+   |
+ 1 | / name: Auto-close stale issues
+ 2 | | on:
+ 3 | |   workflow_dispatch:
+ 4 | |   schedule:
+...  |
+22 | |           close-issue-message: "This issue has not received a reporter response and has been auto-closed. If the issue is still re...
+23 | |           close-issue-reason: completed
+   | |________________________________________^ default permissions used due to no permissions: block
+   |
+   = note: audit confidence → Medium
+
+help[undocumented-permissions]: permissions without explanatory comments
+  --> .github/workflows/auto-close-stale.yml:12:7
+   |
+12 |       issues: "write"
+   |       ^^^^^^^^^^^^^^^ needs an explanatory comment
+13 |       pull-requests: "write"
+   |       ^^^^^^^^^^^^^^^^^^^^^^ needs an explanatory comment
+   |
+   = note: audit confidence → High
+
+info[anonymous-definition]: workflow or action definition without a name
+ --> .github/workflows/auto-close-stale.yml:8:3
+  |
+8 |   auto-close:
+  |   ^^^^^^^^^^ this job
+  |
+  = note: audit confidence → High
+  = tip: use 'name: ...' to give this job a name
+
+help[concurrency-limits]: insufficient job-level concurrency limits
+ --> .github/workflows/auto-close-stale.yml:2:1
+  |
+2 | / on:
+3 | |   workflow_dispatch:
+4 | |   schedule:
+5 | |     - cron: '0 0 * * *'
+  | |_______________________^ workflow is missing concurrency setting
+...
+8 |     auto-close:
+  |     ---------- job affected by missing workflow concurrency
+  |
+  = note: audit confidence → High
+
+info[anonymous-definition]: workflow or action definition without a name
+  --> .github/workflows/benchmark.yml:21:3
+   |
+21 |   benchmark:
+   |   ^^^^^^^^^ this job
+   |
+   = note: audit confidence → High
+   = tip: use 'name: ...' to give this job a name
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+  --> .github/workflows/benchmark.yml:39:15
+   |
+37 |       - name: Clone test vectors
+   |         ------------------------ this step
+38 |         timeout-minutes: 2
+39 |         uses: ./cryptography-base/.github/actions/fetch-vectors
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+   |
+   = note: audit confidence → High
+   = note: this finding has an auto-fix
+
+info[anonymous-definition]: workflow or action definition without a name
+  --> .github/workflows/boring-open-awslc-bump.yml:12:3
+   |
+12 |   bump:
+   |   ^^^^ this job
+   |
+   = note: audit confidence → High
+   = tip: use 'name: ...' to give this job a name
+
+help[concurrency-limits]: insufficient job-level concurrency limits
+  --> .github/workflows/boring-open-awslc-bump.yml:5:1
+   |
+ 5 | / on:
+ 6 | |   workflow_dispatch:
+ 7 | |   schedule:
+ 8 | |     # Run daily
+ 9 | |     - cron: "0 10 * * *"
+   | |________________________^ workflow is missing concurrency setting
+...
+12 |     bump:
+   |     ---- job affected by missing workflow concurrency
+   |
+   = note: audit confidence → High
+
+warning[archived-uses]: action or reusable workflow from archived repository
+  --> .github/workflows/boring-open-awslc-bump.yml:46:15
+   |
+46 |       - uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2.1.0
+   |               ^^^^^^^^^^^^^^^^^^^^^^^ repository is archived
+47 |         id: generate-token
+   |         ------------------ this step
+   |
+   = note: audit confidence → High
+
+info[superfluous-actions]: action functionality is already included by the runner
+  --> .github/workflows/boring-open-awslc-bump.yml:53:15
+   |
+52 |       - name: Create Pull Request
+   |         ------------------------- this step
+53 |         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use `gh pr create` in a script step
+   |
+   = note: audit confidence → Low
+
+help[template-injection]: code injection via template expansion
+  --> .github/workflows/ci.yml:90:36
+   |
+87 | ...   run: |
+   |       --- this run block
+...
+90 | ...     OPENSSL_HASH=$(echo "${{ matrix.PYTHON.OPENSSL.TYPE }}-${{ matrix.PYTHON.OPENSSL.VERSION }}-$CONFIG_FLAGS" | sha1sum | sed '...
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+  --> .github/workflows/ci.yml:90:70
+   |
+87 |         run: |
+   |         --- this run block
+...
+90 |           OPENSSL_HASH=$(echo "${{ matrix.PYTHON.OPENSSL.TYPE }}-${{ matrix.PYTHON.OPENSSL.VERSION }}-$CONFIG_FLAGS" | sha1sum | sed...
+   |                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+  --> .github/workflows/ci.yml:93:31
+   |
+87 |         run: |
+   |         --- this run block
+...
+93 |           echo "OSSL_INFO=${{ matrix.PYTHON.OPENSSL.TYPE }}-${{ matrix.PYTHON.OPENSSL.VERSION }}-${CONFIG_FLAGS}" >> $GITHUB_ENV
+   |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+  --> .github/workflows/ci.yml:93:65
+   |
+87 |         run: |
+   |         --- this run block
+...
+93 |           echo "OSSL_INFO=${{ matrix.PYTHON.OPENSSL.TYPE }}-${{ matrix.PYTHON.OPENSSL.VERSION }}-${CONFIG_FLAGS}" >> $GITHUB_ENV
+   |                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+  --> .github/workflows/ci.yml:94:31
+   |
+87 | ...   run: |
+   |       --- this run block
+...
+94 | ...     echo "OSSL_PATH=${{ github.workspace }}/osslcache/${{ matrix.PYTHON.OPENSSL.TYPE }}-${{ matrix.PYTHON.OPENSSL.VERSION }}-${O...
+   |                             ^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+  --> .github/workflows/ci.yml:94:65
+   |
+87 |         run: |
+   |         --- this run block
+...
+94 |           echo "OSSL_PATH=${{ github.workspace }}/osslcache/${{ matrix.PYTHON.OPENSSL.TYPE }}-${{ matrix.PYTHON.OPENSSL.VERSION }}-$...
+   |                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+  --> .github/workflows/ci.yml:94:99
+   |
+87 | ...   run: |
+   |       --- this run block
+...
+94 | ...     echo "OSSL_PATH=${{ github.workspace }}/osslcache/${{ matrix.PYTHON.OPENSSL.TYPE }}-${{ matrix.PYTHON.OPENSSL.VERSION }}-${O...
+   |                                                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+   |
+   = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/ci.yml:142:108
+    |
+141 |         run: |
+    |         --- this run block
+142 |             nox --no-install --  --color=yes --wycheproof-root=wycheproof --x509-limbo-root=x509-limbo ${{ matrix.PYTHON.NOXARGS }}
+    |                                                                                                            ^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/ci.yml:390:46
+    |
+389 |         run: |
+    |         --- this run block
+390 |             echo "OPENSSL_DIR=C:/openssl-${{ matrix.WINDOWS.WINDOWS }}" >> $GITHUB_ENV
+    |                                              ^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/ci.yml:498:70
+    |
+498 |       - run: source .venv/bin/activate && ./.github/downstream.d/${{ matrix.DOWNSTREAM }}.sh install
+    |         --- this run block                                           ^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/ci.yml:519:70
+    |
+519 |       - run: source .venv/bin/activate && ./.github/downstream.d/${{ matrix.DOWNSTREAM }}.sh run
+    |         --- this run block                                           ^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[stale-action-refs]: commit hash does not point to a Git tag
+  --> .github/workflows/ci.yml:74:15
+   |
+74 |         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this step
+   |
+   = note: audit confidence → High
+
+error[unpinned-images]: unpinned image references
+   --> .github/workflows/ci.yml:152:5
+    |
+152 |     container: ghcr.io/pyca/cryptography-runner-${{ matrix.IMAGE.IMAGE }}
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ container image is unpinned
+    |
+    = note: audit confidence → High
+
+error[unpinned-images]: unpinned image references
+   --> .github/workflows/ci.yml:215:7
+    |
+215 |       image: ghcr.io/pyca/cryptography-runner-${{ matrix.IMAGE.IMAGE }}
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ container image is unpinned
+    |
+    = note: audit confidence → High
+
+info[anonymous-definition]: workflow or action definition without a name
+  --> .github/workflows/ci.yml:20:3
+   |
+20 |   linux:
+   |   ^^^^^ this job
+   |
+   = note: audit confidence → High
+   = tip: use 'name: ...' to give this job a name
+
+info[anonymous-definition]: workflow or action definition without a name
+   --> .github/workflows/ci.yml:150:3
+    |
+150 |   distros:
+    |   ^^^^^^^ this job
+    |
+    = note: audit confidence → High
+    = tip: use 'name: ...' to give this job a name
+
+info[anonymous-definition]: workflow or action definition without a name
+   --> .github/workflows/ci.yml:212:3
+    |
+212 |   alpine:
+    |   ^^^^^^ this job
+    |
+    = note: audit confidence → High
+    = tip: use 'name: ...' to give this job a name
+
+info[anonymous-definition]: workflow or action definition without a name
+   --> .github/workflows/ci.yml:275:3
+    |
+275 |   macos:
+    |   ^^^^^ this job
+    |
+    = note: audit confidence → High
+    = tip: use 'name: ...' to give this job a name
+
+info[anonymous-definition]: workflow or action definition without a name
+   --> .github/workflows/ci.yml:344:3
+    |
+344 |   windows:
+    |   ^^^^^^^ this job
+    |
+    = note: audit confidence → High
+    = tip: use 'name: ...' to give this job a name
+
+info[anonymous-definition]: workflow or action definition without a name
+   --> .github/workflows/ci.yml:521:3
+    |
+521 |   all-green:
+    |   ^^^^^^^^^ this job
+    |
+    = note: audit confidence → High
+    = tip: use 'name: ...' to give this job a name
+
+info[superfluous-actions]: action functionality is already included by the runner
+  --> .github/workflows/ci.yml:74:15
+   |
+73 |       - name: Setup rust
+   |         ---------------- this step
+74 |         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use `rustup` and/or `cargo` in a script step
+   |
+   = note: audit confidence → Medium
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+  --> .github/workflows/ci.yml:84:15
+   |
+82 |       - name: Clone test vectors
+   |         ------------------------ this step
+83 |         timeout-minutes: 2
+84 |         uses: ./.github/actions/fetch-vectors
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+   |
+   = note: audit confidence → High
+   = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:124:15
+    |
+123 |       - name: Cache rust and pip
+    |         ------------------------ this step
+124 |         uses: ./.github/actions/cache
+    |               ^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:148:15
+    |
+148 |       - uses: ./.github/actions/upload-coverage
+    |         ------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |         |     |
+    |         |     use '$/...' instead of './...'
+    |         this step
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:184:15
+    |
+183 |       - name: Cache rust and pip
+    |         ------------------------ this step
+184 |         uses: ./.github/actions/cache
+    |               ^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:190:15
+    |
+188 |       - name: Clone test vectors
+    |         ------------------------ this step
+189 |         timeout-minutes: 2
+190 |         uses: ./.github/actions/fetch-vectors
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:210:15
+    |
+210 |       - uses: ./.github/actions/upload-coverage
+    |         ------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |         |     |
+    |         |     use '$/...' instead of './...'
+    |         this step
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:247:15
+    |
+246 |       - name: Cache rust and pip
+    |         ------------------------ this step
+247 |         uses: ./.github/actions/cache
+    |               ^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:253:15
+    |
+251 |       - name: Clone test vectors
+    |         ------------------------ this step
+252 |         timeout-minutes: 2
+253 |         uses: ./.github/actions/fetch-vectors
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:273:15
+    |
+273 |       - uses: ./.github/actions/upload-coverage
+    |         ------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |         |     |
+    |         |     use '$/...' instead of './...'
+    |         this step
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:298:15
+    |
+297 |       - name: Cache rust and pip
+    |         ------------------------ this step
+298 |         uses: ./.github/actions/cache
+    |               ^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:316:15
+    |
+314 |       - name: Clone test vectors
+    |         ------------------------ this step
+315 |         timeout-minutes: 2
+316 |         uses: ./.github/actions/fetch-vectors
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:342:15
+    |
+342 |       - uses: ./.github/actions/upload-coverage
+    |         ------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |         |     |
+    |         |     use '$/...' instead of './...'
+    |         this step
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:373:15
+    |
+372 |       - name: Cache rust and pip
+    |         ------------------------ this step
+373 |         uses: ./.github/actions/cache
+    |               ^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:395:15
+    |
+393 |       - name: Clone test vectors
+    |         ------------------------ this step
+394 |         timeout-minutes: 2
+395 |         uses: ./.github/actions/fetch-vectors
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:407:15
+    |
+407 |       - uses: ./.github/actions/upload-coverage
+    |         ------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |         |     |
+    |         |     use '$/...' instead of './...'
+    |         this step
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/ci.yml:486:15
+    |
+485 |       - name: Cache rust and pip
+    |         ------------------------ this step
+486 |         uses: ./.github/actions/cache
+    |               ^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+info[anonymous-definition]: workflow or action definition without a name
+  --> .github/workflows/downstream-version-bump.yml:12:3
+   |
+12 |   bump:
+   |   ^^^^ this job
+   |
+   = note: audit confidence → High
+   = tip: use 'name: ...' to give this job a name
+
+help[concurrency-limits]: insufficient job-level concurrency limits
+  --> .github/workflows/downstream-version-bump.yml:5:1
+   |
+ 5 | / on:
+ 6 | |   workflow_dispatch:
+ 7 | |   schedule:
+ 8 | |     # Run daily
+ 9 | |     - cron: "0 10 * * *"
+   | |________________________^ workflow is missing concurrency setting
+...
+12 |     bump:
+   |     ---- job affected by missing workflow concurrency
+   |
+   = note: audit confidence → High
+
+warning[archived-uses]: action or reusable workflow from archived repository
+  --> .github/workflows/downstream-version-bump.yml:23:15
+   |
+23 |       - uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2.1.0
+   |               ^^^^^^^^^^^^^^^^^^^^^^^ repository is archived
+24 |         id: generate-token
+   |         ------------------ this step
+   |
+   = note: audit confidence → High
+
+info[superfluous-actions]: action functionality is already included by the runner
+  --> .github/workflows/downstream-version-bump.yml:30:15
+   |
+29 |       - name: Create Pull Request
+   |         ------------------------- this step
+30 |         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use `gh pr create` in a script step
+   |
+   = note: audit confidence → Low
+
+help[concurrency-limits]: insufficient job-level concurrency limits
+  --> .github/workflows/linkcheck.yml:2:1
+   |
+ 2 | / on:
+ 3 | |   pull_request:
+ 4 | |     paths:
+ 5 | |       - docs/conf.py
+...  |
+ 8 | |     # Run once a week on Fridays
+ 9 | |     - cron: "0 0 * * FRI"
+   | |_________________________^ workflow is missing concurrency setting
+...
+20 |       name: "linkcheck"
+   |       ----------------- job affected by missing workflow concurrency
+   |
+   = note: audit confidence → High
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+  --> .github/workflows/linkcheck.yml:32:15
+   |
+31 |       - name: Cache rust and pip
+   |         ------------------------ this step
+32 |         uses: ./.github/actions/cache
+   |               ^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+   |
+   = note: audit confidence → High
+   = note: this finding has an auto-fix
+
+warning[excessive-permissions]: overly broad permissions
+  --> .github/workflows/lock.yml:1:1
+   |
+ 1 | / name: Lock Issues
+ 2 | | on:
+ 3 | |   workflow_dispatch:
+ 4 | |   schedule:
+...  |
+18 | |           issue-inactive-days: 90
+19 | |           pr-inactive-days: 90
+   | |_______________________________^ default permissions used due to no permissions: block
+   |
+   = note: audit confidence → Medium
+
+help[undocumented-permissions]: permissions without explanatory comments
+  --> .github/workflows/lock.yml:12:7
+   |
+12 |       issues: "write"
+   |       ^^^^^^^^^^^^^^^ needs an explanatory comment
+   |
+   = note: audit confidence → High
+
+info[anonymous-definition]: workflow or action definition without a name
+ --> .github/workflows/lock.yml:8:3
+  |
+8 |   lock:
+  |   ^^^^ this job
+  |
+  = note: audit confidence → High
+  = tip: use 'name: ...' to give this job a name
+
+help[concurrency-limits]: insufficient job-level concurrency limits
+ --> .github/workflows/lock.yml:2:1
+  |
+2 | / on:
+3 | |   workflow_dispatch:
+4 | |   schedule:
+5 | |     - cron: '0 3 * * *'
+  | |_______________________^ workflow is missing concurrency setting
+...
+8 |     lock:
+  |     ---- job affected by missing workflow concurrency
+  |
+  = note: audit confidence → High
+
+error[dangerous-triggers]: use of fundamentally insecure workflow trigger
+  --> .github/workflows/pypi-publish.yml:3:1
+   |
+ 3 | / on:
+ 4 | |   workflow_dispatch:
+ 5 | |     inputs:
+ 6 | |       run_id:
+...  |
+15 | |     workflows: ["Wheel Builder"]
+16 | |     types: [completed]
+   | |______________________^ workflow_run is almost always used insecurely
+   |
+   = note: audit confidence → Medium
+
+help[undocumented-permissions]: permissions without explanatory comments
+  --> .github/workflows/pypi-publish.yml:32:7
+   |
+32 |       id-token: "write"
+   |       ^^^^^^^^^^^^^^^^^ needs an explanatory comment
+33 |       attestations: "write"
+   |       ^^^^^^^^^^^^^^^^^^^^^ needs an explanatory comment
+   |
+   = note: audit confidence → High
+
+info[anonymous-definition]: workflow or action definition without a name
+  --> .github/workflows/pypi-publish.yml:25:3
+   |
+25 |   publish:
+   |   ^^^^^^^ this job
+   |
+   = note: audit confidence → High
+   = tip: use 'name: ...' to give this job a name
+
+help[concurrency-limits]: insufficient job-level concurrency limits
+  --> .github/workflows/pypi-publish.yml:3:1
+   |
+ 3 | / on:
+ 4 | |   workflow_dispatch:
+ 5 | |     inputs:
+ 6 | |       run_id:
+...  |
+15 | |     workflows: ["Wheel Builder"]
+16 | |     types: [completed]
+   | |______________________^ workflow is missing concurrency setting
+...
+25 |     publish:
+   |     ------- job affected by missing workflow concurrency
+   |
+   = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/wheel-builder.yml:143:24
+    |
+142 |         run: |
+    |         --- this run block
+143 |           if [ -n "${{ matrix.PYTHON.ABI_VERSION }}" ]; then
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/wheel-builder.yml:144:85
+    |
+142 |         run: |
+    |         --- this run block
+143 |           if [ -n "${{ matrix.PYTHON.ABI_VERSION }}" ]; then
+144 |               PY_LIMITED_API="--config-settings=build-args=--features=pyo3/abi3-${{ matrix.PYTHON.ABI_VERSION }}"
+    |                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/wheel-builder.yml:152:70
+    |
+142 |         run: |
+    |         --- this run block
+...
+152 |               manylinux-entrypoint uv build --python=/opt/python/${{ matrix.PYTHON.VERSION }}/bin/python --wheel --require-hashes -...
+    |                                                                      ^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/wheel-builder.yml:155:43
+    |
+155 |       - run: auditwheel repair --plat ${{ matrix.MANYLINUX.NAME }} tmpwheelhouse/cryptography*.whl -w wheelhouse/
+    |         --- this run block                ^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/wheel-builder.yml:275:18
+    |
+275 |       - run: ${{ matrix.PYTHON.BIN_PATH }} -m pip install -r "${UV_REQUIREMENTS_PATH}"
+    |         ---      ^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |         |
+    |         this run block
+    |
+    = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/wheel-builder.yml:285:24
+    |
+284 |         run: |
+    |         --- this run block
+285 |           if [ -n "${{ matrix.PYTHON.ABI_VERSION }}" ]; then
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/wheel-builder.yml:286:85
+    |
+284 |         run: |
+    |         --- this run block
+285 |           if [ -n "${{ matrix.PYTHON.ABI_VERSION }}" ]; then
+286 |               PY_LIMITED_API="--config-settings=build-args=--features=pyo3/abi3-${{ matrix.PYTHON.ABI_VERSION }}"
+    |                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/wheel-builder.yml:367:46
+    |
+366 |         run: |
+    |         --- this run block
+367 |             echo "OPENSSL_DIR=C:/openssl-${{ matrix.WINDOWS.WINDOWS }}" >> $GITHUB_ENV
+    |                                              ^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/wheel-builder.yml:375:24
+    |
+374 |       - run: |
+    |         --- this run block
+375 |           if [ -n "${{ matrix.PYTHON.ABI_VERSION }}" ]; then
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[template-injection]: code injection via template expansion
+   --> .github/workflows/wheel-builder.yml:376:85
+    |
+374 |       - run: |
+    |         --- this run block
+375 |           if [ -n "${{ matrix.PYTHON.ABI_VERSION }}" ]; then
+376 |               PY_LIMITED_API="--config-settings=build-args=--features=pyo3/abi3-${{ matrix.PYTHON.ABI_VERSION }}"
+    |                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+    |
+    = note: audit confidence → High
+
+help[stale-action-refs]: commit hash does not point to a Git tag
+   --> .github/workflows/wheel-builder.yml:266:15
+    |
+266 |       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this step
+    |
+    = note: audit confidence → High
+
+help[stale-action-refs]: commit hash does not point to a Git tag
+   --> .github/workflows/wheel-builder.yml:351:15
+    |
+351 |       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this step
+    |
+    = note: audit confidence → High
+
+error[unpinned-images]: unpinned image references
+  --> .github/workflows/wheel-builder.yml:60:7
+   |
+60 |       image: ghcr.io/pyca/${{ matrix.MANYLINUX.CONTAINER }}
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ container image is unpinned
+   |
+   = note: audit confidence → High
+
+help[concurrency-limits]: insufficient job-level concurrency limits
+   --> .github/workflows/wheel-builder.yml:4:1
+    |
+  4 | / on:
+  5 | |   workflow_dispatch:
+  6 | |     inputs:
+  7 | |       version:
+...   |
+ 19 | |       - pyproject.toml
+ 20 | |       - vectors/pyproject.toml
+    | |______________________________^ workflow is missing concurrency setting
+...
+ 29 |       name: sdists
+    |       ------------ job affected by missing workflow concurrency
+...
+112 |       name: "${{ matrix.PYTHON.VERSION }} for ${{ matrix.MANYLINUX.NAME }}"
+    |       --------------------------------------------------------------------- job affected by missing workflow concurrency
+...
+224 |       name: "${{ matrix.PYTHON.VERSION }} ABI ${{ matrix.PYTHON.ABI_VERSION }} macOS ${{ matrix.PYTHON.ARCHFLAGS }}"
+    |       -------------------------------------------------------------------------------------------------------------- job affected by missing workflow concurrency
+...
+327 |       name: "${{ matrix.PYTHON.VERSION }} ${{ matrix.WINDOWS.WINDOWS }} ${{ matrix.PYTHON.ABI_VERSION }}"
+    |       --------------------------------------------------------------------------------------------------- job affected by missing workflow concurrency
+    |
+    = note: audit confidence → High
+
+info[superfluous-actions]: action functionality is already included by the runner
+   --> .github/workflows/wheel-builder.yml:266:15
+    |
+266 |         - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+    |           -     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use `rustup` and/or `cargo` in a script step
+    |  _________|
+    | |
+267 | |         with:
+268 | |           toolchain: stable
+269 | |           # Add the x86-64 target in addition to the native arch (arm64)
+270 | |           target: x86_64-apple-darwin
+    | |_____________________________________- this step
+    |
+    = note: audit confidence → Medium
+
+info[superfluous-actions]: action functionality is already included by the runner
+   --> .github/workflows/wheel-builder.yml:351:15
+    |
+351 |         - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+    |           -     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use `rustup` and/or `cargo` in a script step
+    |  _________|
+    | |
+352 | |         with:
+353 | |           toolchain: stable
+354 | |           target: ${{ matrix.WINDOWS.RUST_TRIPLE }}
+    | |___________________________________________________- this step
+    |
+    = note: audit confidence → Medium
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/wheel-builder.yml:167:15
+    |
+166 |       - name: Smoketest
+    |         --------------- this step
+167 |         uses: ./.github/actions/wheel-smoketest
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/wheel-builder.yml:298:15
+    |
+297 |       - name: Smoketest
+    |         --------------- this step
+298 |         uses: ./.github/actions/wheel-smoketest
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+help[self-repository]: use GitHub's dedicated self-repository syntax
+   --> .github/workflows/wheel-builder.yml:383:15
+    |
+382 |       - name: Smoketest
+    |         --------------- this step
+383 |         uses: ./.github/actions/wheel-smoketest
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use '$/...' instead of './...'
+    |
+    = note: audit confidence → High
+    = note: this finding has an auto-fix
+
+info[anonymous-definition]: workflow or action definition without a name
+  --> .github/workflows/x509-limbo-version-bump.yml:12:3
+   |
+12 |   bump:
+   |   ^^^^ this job
+   |
+   = note: audit confidence → High
+   = tip: use 'name: ...' to give this job a name
+
+help[concurrency-limits]: insufficient job-level concurrency limits
+  --> .github/workflows/x509-limbo-version-bump.yml:5:1
+   |
+ 5 | / on:
+ 6 | |   workflow_dispatch:
+ 7 | |   schedule:
+ 8 | |     # Run daily
+ 9 | |     - cron: "0 10 * * *"
+   | |________________________^ workflow is missing concurrency setting
+...
+12 |     bump:
+   |     ---- job affected by missing workflow concurrency
+   |
+   = note: audit confidence → High
+
+warning[archived-uses]: action or reusable workflow from archived repository
+  --> .github/workflows/x509-limbo-version-bump.yml:42:15
+   |
+42 |       - uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2.1.0
+   |               ^^^^^^^^^^^^^^^^^^^^^^^ repository is archived
+43 |         id: generate-token
+   |         ------------------ this step
+   |
+   = note: audit confidence → High
+
+info[superfluous-actions]: action functionality is already included by the runner
+  --> .github/workflows/x509-limbo-version-bump.yml:49:15
+   |
+48 |       - name: Create Pull Request
+   |         ------------------------- this step
+49 |         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use `gh pr create` in a script step
+   |
+   = note: audit confidence → Low
+
+99 findings (9 suppressed): 19 informational, 56 low, 5 medium, 10 high

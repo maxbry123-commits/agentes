@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+set -ex
+
+echo "About to publish $GITHUB_REF to gh-pages..."
+rm -rf ../gh-pages
+
+npm install vuepress@1
+npm install @vuepress/shared-utils@1
+npm run docs:build
+
+git config --global user.name "$GIT_USER_NAME"
+git config --global user.email "$GIT_USER_EMAIL"
+git clone -b gh-pages --single-branch https://x-access-token:"${GITHUB_TOKEN}"@github.com/ajv-validator/ajv.git ../gh-pages
+
+rsync -a ./docs/.vuepress/dist/ ../gh-pages
+
+cd ../gh-pages
+
+if [[ $(git status --porcelain) ]]; then
+  echo "Changes detected. Updating gh-pages branch..."
+  git add -A
+  git commit -m "updated by ajv workflow https://github.com/ajv-validator/ajv/actions/runs/$GITHUB_RUN_ID"
+  git push --quiet origin gh-pages > /dev/null 2>&1
+fi
+
+echo "Done"

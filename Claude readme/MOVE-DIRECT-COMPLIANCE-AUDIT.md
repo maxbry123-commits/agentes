@@ -1,0 +1,189 @@
+# MOVE-DIRECT-TO-FINAL — auditoría real de cumplimiento
+
+- Generado: `2026-09-14T14:10:44Z`
+- HEAD: `7c1db18048b75276fca1f6b6f16dec1b95b97c76`
+- Inventario declarado: **179**
+- Fuentes todavía presentes en Core: **179**
+- Componentes con cierre Crazy Wall: **6**
+- Fuentes presentes sin cierre: **173**
+- Sin ningún nodo Crazy Wall: **173**
+- Con nodo abierto: **0**
+- Cierres con target inexistente: **0**
+- Cierres sin SOURCE_URL+COMMIT+SHA256: **6**
+- Veredicto: **GAP**
+
+## Pendientes reales
+
+- `AgentScope` | `Core kernel Yaiwes/AgentScope` | source_object `38b8233d9b107af64dfac51ebf2be6ee8dddd6ec` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Aider` | `Core kernel Yaiwes/Componentes recuperados B/Aider` | source_object `fef96172e2c0a32dc81dcac40be99b5f3837c9f6` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `AlphaCodium` | `Core kernel Yaiwes/Componentes recuperados B/AlphaCodium` | source_object `c25362b6d2dfdea5569aea032093bbca31e1cd52` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `autogen` | `Core kernel Yaiwes/Componentes recuperados A/autogen` | source_object `9f0c3aa5129d82e9322cd160eaa4f6f9d5985217` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Backend watchdog workflow adaptativo` | `Core kernel Yaiwes/Backend watchdog workflow adaptativo` | source_object `fabe227ac78847785c7e67802f0a77497ee92f2e` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `backoff` | `Core kernel Yaiwes/Componentes recuperados B/backoff` | source_object `651acdb40ba82802b0deb5a19cb61e17d8eb23df` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `business-rules` | `Core kernel Yaiwes/Componentes recuperados A/business-rules` | source_object `4d45ac082322ec48ad2654ea3b48e5f34e6307e9` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Cadence` | `Core kernel Yaiwes/Componentes recuperados B/Cadence` | source_object `ee4bdcf5d8f1ded4b6e1381b1157b52ed8def2af` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `CAMEL` | `Core kernel Yaiwes/CAMEL` | source_object `0184d76781e4c164c4057840ad997c80b11d2e96` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Click` | `Core kernel Yaiwes/Componentes recuperados B/Click` | source_object `ed172a1fa9e1d063d40fcafdac78e70774d8a9f4` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Cognee` | `Core kernel Yaiwes/Componentes recuperados A/Cognee` | source_object `5c185c706e83c215382dbef551f06f19b5fea3c9` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `CPython` | `Core kernel Yaiwes/Componentes recuperados B/CPython` | source_object `1b0fd31f3570d73872cdc221e39da29871c57715` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `crewAI` | `Core kernel Yaiwes/Componentes recuperados A/crewAI` | source_object `d27147a1326373f23d60e294d873d5a902767dd1` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `CRITIC` | `Core kernel Yaiwes/Componentes recuperados B/CRITIC` | source_object `cace5b0908cca0b1a4cc6573a94b15d2b179fcc6` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Cronie` | `Core kernel Yaiwes/Componentes recuperados B/Cronie` | source_object `bf2a4bb20dc49af2eb7ee259754a0504add4274f` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `CycloneDX-Python` | `Core kernel Yaiwes/Componentes recuperados B/CycloneDX-Python` | source_object `c5270da1ee0f41a2288b91bb580f529e311d3db8` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Dagster` | `Core kernel Yaiwes/Dagster` | source_object `1558cd640be148180c3cfee7fef2d4543fcc1a56` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Dapr` | `Core kernel Yaiwes/Componentes recuperados A/Dapr` | source_object `ebe0ba8a6aa1ac9ad02de68b54027b56819cfe68` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Dask-Distributed` | `Core kernel Yaiwes/Dask-Distributed` | source_object `0cb93b76fae7f8cbc1fcf1677b9cb39f920ecc63` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `datamodel-code-generator` | `Core kernel Yaiwes/Componentes recuperados B/datamodel-code-generator` | source_object `77a8a2731102ca352af1881161d48eba5c7c0ff5` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `DeepEval` | `Core kernel Yaiwes/Componentes recuperados A/DeepEval` | source_object `e61eea71e7fc755712672a8d0d28121aca49a5fd` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Dramatiq` | `Core kernel Yaiwes/Componentes recuperados A/Dramatiq` | source_object `1b6714f5a0a87035acdc16d2bb5091c1d1d516c1` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `dspy` | `Core kernel Yaiwes/Componentes recuperados A/dspy` | source_object `30e7846a4482a23c4ed75c3454b5f10e70330609` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `durable_rules` | `Core kernel Yaiwes/Componentes recuperados B/durable_rules` | source_object `843a929c8c941c15d8eb1ab94fbfbfb0c7922297` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `E2B` | `Core kernel Yaiwes/Componentes recuperados A/E2B` | source_object `a3aaf98f4dbd4d8b4bdf1b8f615605a91489767b` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Envoy` | `Core kernel Yaiwes/Componentes recuperados A/Envoy` | source_object `e4fb72ad0974c0e0bb2afa40b42b465523c613fd` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Erlang-OTP` | `Core kernel Yaiwes/Componentes recuperados B/Erlang-OTP` | source_object `f371984727b58902f6f0fd09a8466ec1df526513` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `etcd` | `Core kernel Yaiwes/Componentes recuperados B/etcd` | source_object `9ecafac468354421c2f2ece4e32dadf9e5bc2bae` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `FastMCP` | `Core kernel Yaiwes/Componentes recuperados A/FastMCP` | source_object `7e725bdd961bc50020dad25be636f2eaacc84829` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Firecracker` | `Core kernel Yaiwes/Componentes recuperados B/Firecracker` | source_object `0b119313f9c8bb2eca7b6375e6024c6554c3aa8c` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Flagsmith` | `Core kernel Yaiwes/Componentes recuperados A/Flagsmith` | source_object `2d1a2665cd6bd46d33ec9d7226477e4b587e3595` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Flowable` | `Core kernel Yaiwes/Componentes recuperados A/Flowable` | source_object `73bb51cfa70a9e45fea9754c444fa8d271890ec7` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Git` | `Core kernel Yaiwes/Componentes recuperados A/Git` | source_object `fae31c1c4b3f2f1578655fe2e0cc1cbf5c1078b9` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Grafana` | `Core kernel Yaiwes/Componentes recuperados A/Grafana` | source_object `23750dc71c63c945637205b7b7f859f8d70e95c6` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Graph-of-Thoughts` | `Core kernel Yaiwes/Componentes recuperados A/Graph-of-Thoughts` | source_object `ffad1fe2e67d07afbd7ee836c0c8dd23ae5ff07d` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Graphiti` | `Core kernel Yaiwes/Graphiti` | source_object `96cfbbd78b4abab50d79f13717ac2e4d0eb6c384` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `GrowthBook` | `Core kernel Yaiwes/Componentes recuperados B/GrowthBook` | source_object `d3b47fc9300bf2ecce7950cf5f294f713f5b2c5a` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Guardrails-AI` | `Core kernel Yaiwes/Componentes recuperados A/Guardrails-AI` | source_object `0b5856bb28d5c7130c0e5a57784fd1cf20962381` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Guidance` | `Core kernel Yaiwes/Componentes recuperados A/Guidance` | source_object `b99d337acc712220328e2d0a00fd0861c6bb27bb` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Gymnasium` | `Core kernel Yaiwes/Gymnasium` | source_object `a61decdf929e2b1ff1ccf62a26c9c0b54f5824b4` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Haystack` | `Core kernel Yaiwes/Componentes recuperados A/Haystack` | source_object `c7f34721b549dad11bee2fa368271980581c98bd` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Helicone` | `Core kernel Yaiwes/Componentes recuperados B/Helicone` | source_object `6aff56f1e97a6047317ba8d17af9443e5695b7db` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `HelpSteer2` | `Core kernel Yaiwes/Componentes recuperados A/HelpSteer2` | source_object `57b92ff2be4326680daa3c671d62fd187c756a97` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Hermes-Agent` | `Core kernel Yaiwes/Componentes recuperados B/Hermes-Agent` | source_object `ee15d8b654b41c913f2be55c75d0cf04d71395ea` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Huey` | `Core kernel Yaiwes/Componentes recuperados A/Huey` | source_object `1c87f9a853b92f9e55f6f364e872c1960b8aee40` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Hugging-Face-Skills` | `Core kernel Yaiwes/Componentes recuperados A/Hugging-Face-Skills` | source_object `730024038fa23cbcc77a38928c9e079831124e50` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Huginn` | `Core kernel Yaiwes/Componentes recuperados A/Huginn` | source_object `407d9ff62687510b413fd0b54afa9f873371f7e1` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Hypothesis` | `Core kernel Yaiwes/Componentes recuperados A/Hypothesis` | source_object `c96a9a9559fd3adf2d68682c6d1a04c345a75853` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Inngest` | `Core kernel Yaiwes/Componentes recuperados A/Inngest` | source_object `a4c5e9c8eab208fcd7fb1a4d004342ff40f4c85a` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Inspect-AI` | `Core kernel Yaiwes/Componentes recuperados A/Inspect-AI` | source_object `22ffe2a6db983015bd6f49526a761ebf0ad48dee` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Instructor` | `Core kernel Yaiwes/Componentes recuperados A/Instructor` | source_object `85073fea9a411a5a17e5ee727435903eafda51cc` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `json-logic-py` | `Core kernel Yaiwes/Componentes recuperados A/json-logic-py` | source_object `490eb8dd862be66c7635f86eaded298fed565843` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `JSON-Schema` | `Core kernel Yaiwes/Componentes recuperados B/JSON-Schema` | source_object `029a56d0b989870875063af6f074c56cd5705421` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `k3s` | `Core kernel Yaiwes/Componentes recuperados B/k3s` | source_object `8fdaf4a9d6efa48efd10c53ba5a3f128addf45bd` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Kata-Containers` | `Core kernel Yaiwes/Componentes recuperados A/Kata-Containers` | source_object `488196445b99d14120476194aa2702a85918f594` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Kestra` | `Core kernel Yaiwes/Componentes recuperados B/Kestra` | source_object `1e61c5e003b1b8fd591495b0a439b164d1ba790e` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Kong` | `Core kernel Yaiwes/Componentes recuperados A/Kong` | source_object `116df6c1032b7113e7b084363d4f5c9e73e73519` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Kubernetes` | `Core kernel Yaiwes/Componentes recuperados B/Kubernetes` | source_object `4f500ece71d21637d115e0226e3e9a8e14d070fd` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `LangChain` | `Core kernel Yaiwes/Componentes recuperados A/LangChain` | source_object `efe45a5ebe2d7e9df11647150455308b3573c934` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Langfuse` | `Core kernel Yaiwes/Componentes recuperados A/Langfuse` | source_object `484c27f68d58b9fe0a0ded8c1d983781b46d80f0` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `LangGraph` | `Core kernel Yaiwes/LangGraph` | source_object `42f939a61a8c4cd3592ef51fbc912f674f6d8adf` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Lean4` | `Core kernel Yaiwes/Componentes recuperados A/Lean4` | source_object `7e7e473fe2e25bef57402ee1620a23ca40f7df62` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Letta` | `Core kernel Yaiwes/Letta` | source_object `f83e03cfcdcd22f44ba8e274360a935b18401ce4` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `LiteLLM` | `Core kernel Yaiwes/LiteLLM` | source_object `14317e4d312aef6b32b8fdbbd904c226ecf9137b` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `LlamaIndex` | `Core kernel Yaiwes/Componentes recuperados A/LlamaIndex` | source_object `b4f7c0f4f7f8e872e8a7c72aa7441369356cf892` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `LM-Evaluation-Harness` | `Core kernel Yaiwes/Componentes recuperados A/LM-Evaluation-Harness` | source_object `1be1970e77b735e4360fe91fb2f5ba6021f29ced` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `LMQL` | `Core kernel Yaiwes/Componentes recuperados B/LMQL` | source_object `04ffb645664ac659df05141a5b022b2e5b427c9e` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Luigi` | `Core kernel Yaiwes/Componentes recuperados A/Luigi` | source_object `52c9443e82b8a46a2176f178bd8acc2b8865c113` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Marshmallow` | `Core kernel Yaiwes/Componentes recuperados A/Marshmallow` | source_object `c97c45958406fd0de58241d422497d410c9affc4` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Math-Shepherd` | `Core kernel Yaiwes/Componentes recuperados A/Math-Shepherd` | source_object `34a4fa4fd48e710cf6e22a70f9a183abd6a3e88f` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `MCP` | `Core kernel Yaiwes/Componentes recuperados B/MCP` | source_object `4a188f6731f324a7227b4838333b621a1f344703` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `MCP-Go` | `Core kernel Yaiwes/Componentes recuperados A/MCP-Go` | source_object `67971e3a30dd181c2589f3a9c633e8f1e296661f` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `MCP-Python-SDK` | `Core kernel Yaiwes/Componentes recuperados A/MCP-Python-SDK` | source_object `fb7d109b686c14d9c1e321bcce6af081c4c23de8` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `MCP-Servers` | `Core kernel Yaiwes/Componentes recuperados B/MCP-Servers` | source_object `4759b83477d82c919b68fdb09fa5075558e5ed34` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `MCP-TypeScript-SDK` | `Core kernel Yaiwes/Componentes recuperados B/MCP-TypeScript-SDK` | source_object `919133c3baed7e7b640f741f267c3192e8f7ffed` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Mem0` | `Core kernel Yaiwes/Componentes recuperados A/Mem0` | source_object `62c58eec518a85dc7c59632d89d3a00b6fe167fd` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Mesa` | `Core kernel Yaiwes/Mesa` | source_object `8f384afd05060591955706902a3282c6465c6523` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Meta-Agent-Cookbook-2026` | `Core kernel Yaiwes/Meta-Agent-Cookbook-2026` | source_object `b595720e00b202854a5c020dc4297ff5fde1610b` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Meta-Muse-Code-SDK-2026` | `Core kernel Yaiwes/Meta-Muse-Code-SDK-2026` | source_object `e3042c4a28ad62c9d59f76c2877ab07893d902eb` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Meta-Muse-Glimmer-Agent-2026` | `Core kernel Yaiwes/Meta-Muse-Glimmer-Agent-2026` | source_object `a3cd2b19a6c79b517b1017c314508ddafaf74762` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Microsoft-Agent-Framework` | `Core kernel Yaiwes/Componentes recuperados A/Microsoft-Agent-Framework` | source_object `e7b87a116708c46ec00f6116ec2d88a93a1e2669` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Microsoft-AutoGen` | `Core kernel Yaiwes/Componentes recuperados B/Microsoft-AutoGen` | source_object `1e06f20720d5655f0e8fab84cd533b13bec86828` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Microsoft-Presidio` | `Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio` | source_object `5bb00360321b7ea8e81fb496aed7dd3c1e536564` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `MINIX3` | `Core kernel Yaiwes/Componentes recuperados B/MINIX3` | source_object `858005cdca5475b9d0fcbdff63c308f189cc6875` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Mixture-of-Agents` | `Core kernel Yaiwes/Componentes recuperados B/Mixture-of-Agents` | source_object `739c1edfa627f90dd4c21089adfdf90d58b59296` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `mypy` | `Core kernel Yaiwes/Componentes recuperados B/mypy` | source_object `c8f566641f9c1c4673ccaead20d4789be5c1a4ef` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `n8n` | `Core kernel Yaiwes/Componentes recuperados B/n8n` | source_object `3f336d00a244465ad7d6c38dd68355ac7255a547` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `NeMo-Guardrails` | `Core kernel Yaiwes/Componentes recuperados A/NeMo-Guardrails` | source_object `e758178d317b608f5327aa2fd9093585d4019273` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `NetworkX` | `Core kernel Yaiwes/NetworkX` | source_object `e1f30f7281068b967cf80ba5615c99cd2ae8a76c` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Nomad` | `Core kernel Yaiwes/Componentes recuperados B/Nomad` | source_object `021f4a2bba280bbdad1874408ea3359e9161694f` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `nsjail` | `Core kernel Yaiwes/Componentes recuperados A/nsjail` | source_object `63961e1741288da1106c0cbe858a2d39dee98a87` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `NVIDIA-Garak` | `Core kernel Yaiwes/Componentes recuperados A/NVIDIA-Garak` | source_object `6dbe048ac47adf3d65fabd5ffeb92f1acfebccad` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Open-Policy-Agent` | `Core kernel Yaiwes/Componentes recuperados A/Open-Policy-Agent` | source_object `de70bac5900affd1f2d5526a9ed441de937e4adc` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenAI-Evals` | `Core kernel Yaiwes/Componentes recuperados A/OpenAI-Evals` | source_object `c1fbc3617b9a2b376d5dd8080021fcb98b7440b6` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenAI-Guardrails` | `Core kernel Yaiwes/Componentes recuperados B/OpenAI-Guardrails` | source_object `ac1f4a051d0adb71340e1ab0acf5042c6ae8d218` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenAI-Skills` | `Core kernel Yaiwes/Componentes recuperados A/OpenAI-Skills` | source_object `7acb79c38e860e0e167c7dc4ccee2ffa1ecb4a1a` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenClaw` | `Core kernel Yaiwes/Componentes recuperados A/OpenClaw` | source_object `8d94a7c48c6d95690f21fe023d9259fbaf9f36c4` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenCoconut` | `Core kernel Yaiwes/Componentes recuperados A/OpenCoconut` | source_object `eb6379ec58cbe0acc3221072875a3267707fd78b` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenHands` | `Core kernel Yaiwes/Componentes recuperados A/OpenHands` | source_object `2072f55b49e88019d212cc1692d6cda738dd2b49` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenLLMetry` | `Core kernel Yaiwes/Componentes recuperados A/OpenLLMetry` | source_object `7885b2d6dbf1d2b309d10940cbf685dc1d1f6968` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenMythos` | `Core kernel Yaiwes/Componentes recuperados A/OpenMythos` | source_object `e360623b4d887000dc11230efe6fd4e9b26ff8b6` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenR` | `Core kernel Yaiwes/Componentes recuperados A/OpenR` | source_object `2a33961505d661b2a8df9cb239e00b80e92282a0` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenTelemetry-Collector` | `Core kernel Yaiwes/Componentes recuperados A/OpenTelemetry-Collector` | source_object `5b4ab607cc2be58ba577a29180c9807e63acf24d` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenTelemetry-Python` | `Core kernel Yaiwes/Componentes recuperados B/OpenTelemetry-Python` | source_object `7b4d55c66602d14cc49201f9a80b8fed468bc7e6` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenThoughts` | `Core kernel Yaiwes/Componentes recuperados A/OpenThoughts` | source_object `cdfe7f4c8e40b044024f286f9cb9ab9974d89dc6` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `OpenThoughts-Agent` | `Core kernel Yaiwes/Componentes recuperados A/OpenThoughts-Agent` | source_object `d15328f2f5681b1c2548df0eaf2d38cdd5c1b35c` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Ouroboros` | `Core kernel Yaiwes/Componentes recuperados A/Ouroboros` | source_object `7187b68e2967a77768bb14004c0323de1e987feb` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Outlines` | `Core kernel Yaiwes/Componentes recuperados A/Outlines` | source_object `3687f877f272e60e8552e7d39b49e2ad8aaefe39` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Pact-Python` | `Core kernel Yaiwes/Componentes recuperados B/Pact-Python` | source_object `aabf8db1c4d35791d8668341401fc64aab4d0831` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Pact-Specification` | `Core kernel Yaiwes/Componentes recuperados B/Pact-Specification` | source_object `5516edacd80c47d2e598cae29a26deca968d8307` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `PettingZoo` | `Core kernel Yaiwes/PettingZoo` | source_object `394b4bd863430b552a6509ac8f424e42a290dd62` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Phoenix` | `Core kernel Yaiwes/Componentes recuperados A/Phoenix` | source_object `45494ba10739ef52584831d93d847c05bebbaa6b` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Portkey-AI-Gateway` | `Core kernel Yaiwes/Componentes recuperados A/Portkey-AI-Gateway` | source_object `fd3741b3cb4242929477849a26d1469b109b4149` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `PostHog` | `Core kernel Yaiwes/Componentes recuperados A/PostHog` | source_object `1c752ec3ba66f8d76e91656daf8b10091dfcaad3` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Prefect` | `Core kernel Yaiwes/Prefect` | source_object `c13d8896d8d19edac62827e6a48970006ba20faa` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `PRM800K` | `Core kernel Yaiwes/Componentes recuperados A/PRM800K` | source_object `50ba404491685660404a5aa12d4071baac1ca581` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `ProcessBench` | `Core kernel Yaiwes/Componentes recuperados A/ProcessBench` | source_object `9094ed76fc92e299883d349232335c31c0138422` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Prometheus` | `Core kernel Yaiwes/Componentes recuperados A/Prometheus` | source_object `03a4ecee4a7ec346305de56be7bb2095b4692d96` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Prometheus-Eval` | `Core kernel Yaiwes/Componentes recuperados B/Prometheus-Eval` | source_object `8ce0a360d6252e28ee1a73fc0ea3c8e0fe725ca6` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Prometheus-Evaluator-LM` | `Core kernel Yaiwes/Componentes recuperados B/Prometheus-Evaluator-LM` | source_object `21bb06a6556ca1d0b2fcd96b8c8e7788354ce861` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Promptfoo` | `Core kernel Yaiwes/Componentes recuperados A/Promptfoo` | source_object `c4df4e51ffb22a8962e4fc4b8c613678433b628b` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `PurpleLlama` | `Core kernel Yaiwes/Componentes recuperados B/PurpleLlama` | source_object `d6e553680bcf2dc78805c70583069bd94b6d41c1` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Pydantic` | `Core kernel Yaiwes/Componentes recuperados A/Pydantic` | source_object `b5d3ca8205f42479b2a7f6cf5bfe8a0312492208` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `PydanticAI` | `Core kernel Yaiwes/Componentes recuperados B/PydanticAI` | source_object `8b48dc143db2324909485c3d77ceb52b77b3b646` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `pymerkle` | `Core kernel Yaiwes/Componentes recuperados B/pymerkle` | source_object `4e27d252427d05cc6d742d4bc593475f42c355ce` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Pyright` | `Core kernel Yaiwes/Componentes recuperados B/Pyright` | source_object `9155b82705e647a5b25e4ccb48e7c2b3b211d261` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `pytest` | `Core kernel Yaiwes/Componentes recuperados B/pytest` | source_object `7e6a2cca4c3d790892bfc315061df219cd464965` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Python-jsonschema` | `Core kernel Yaiwes/Componentes recuperados A/Python-jsonschema` | source_object `370fb5ab20767abf95e2323d4f5d005688473204` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Ragas` | `Core kernel Yaiwes/Componentes recuperados B/Ragas` | source_object `de5155a5fa44008113db8b26c0881c042dd27c33` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Ray` | `Core kernel Yaiwes/Ray` | source_object `b55e1f5d019cb4eadda7ab99e7876383a6eb69fb` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Reflexion` | `Core kernel Yaiwes/Componentes recuperados B/Reflexion` | source_object `f8005c1fbb24188be15c1fec8f3b7488bae33833` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Restate` | `Core kernel Yaiwes/Componentes recuperados A/Restate` | source_object `063ab1819a51de2881c0efe7ed216dd963787668` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `RouteLLM` | `Core kernel Yaiwes/RouteLLM` | source_object `4378a5f918a2bcc27dc751580ca0fc3368be79bb` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `RQ` | `Core kernel Yaiwes/Componentes recuperados A/RQ` | source_object `527ad9dcdc42ec13297094b9ea33743397d3d24d` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Schemathesis` | `Core kernel Yaiwes/Componentes recuperados B/Schemathesis` | source_object `d553e8f702c3ed4bac1cc7e46d334c827db5d30f` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `seL4` | `Core kernel Yaiwes/Componentes recuperados B/seL4` | source_object `5876368e62ac87d918354eadac35cc601964b0ef` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Self-Refine` | `Core kernel Yaiwes/Componentes recuperados A/Self-Refine` | source_object `ede79ff519ab72ac0063f7d83794d9b0a677bbae` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Semantic-Kernel` | `Core kernel Yaiwes/Componentes recuperados A/Semantic-Kernel` | source_object `ff83fed0d5fa0bff818d4e5cecd8dbcca116f630` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Semantic-Router` | `Core kernel Yaiwes/Componentes recuperados A/Semantic-Router` | source_object `ca72d9fd8de40deae1200873acd2abd4fa58c85a` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `SOUL-md` | `Core kernel Yaiwes/Componentes recuperados A/SOUL-md` | source_object `107be09151cbb8c007e049d31aee4199d2ef49c1` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Soul-Spec` | `Core kernel Yaiwes/Componentes recuperados B/Soul-Spec` | source_object `240f9d6bacf8b1e342596531b7910ac3d71a047a` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Soul-Spec-Antonio` | `Core kernel Yaiwes/Componentes recuperados A/Soul-Spec-Antonio` | source_object `1b7b17a960eac320a04912b38326a7b94c382d0c` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `SoulSpec` | `Core kernel Yaiwes/Componentes recuperados B/SoulSpec` | source_object `15ce1cee4d85d580034f6ee6a5b3b4d0be2af950` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `SoulSpec-clawsouls` | `Core kernel Yaiwes/Componentes recuperados A/SoulSpec-clawsouls` | source_object `15ce1cee4d85d580034f6ee6a5b3b4d0be2af950` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `SQLite` | `Core kernel Yaiwes/Componentes recuperados B/SQLite` | source_object `84a1b17cf3d38a162cc7bf9fd69577fa0b6e00c5` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `sqlite-vec` | `Core kernel Yaiwes/Componentes recuperados A/sqlite-vec` | source_object `c269b67ab0f07617ad03dca7b5235ca174d8aa1b` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Stamina` | `Core kernel Yaiwes/Componentes recuperados B/Stamina` | source_object `bb5c67ef65db8f97f7571e3d71ff579c3e9000ff` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `SWE-agent` | `Core kernel Yaiwes/Componentes recuperados A/SWE-agent` | source_object `06608d8dfafe1ccb7dad89917e75eaeedf037197` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Syft` | `Core kernel Yaiwes/Componentes recuperados B/Syft` | source_object `2113dd65e7fe8544ed728fa743be3864c9e1f72c` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `TaskWeaver` | `Core kernel Yaiwes/Componentes recuperados A/TaskWeaver` | source_object `9ca6924734b710878cc89706dcddde19ed2699c5` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Temporal` | `Core kernel Yaiwes/Temporal` | source_object `9f51319bf379d26413b360cf4e2958c6a9beb9e2` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Temporal-Python-SDK` | `Core kernel Yaiwes/Componentes recuperados B/Temporal-Python-SDK` | source_object `dea29eb738aaec9f6b73f33403e1185edd9cb17c` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Tenacity` | `Core kernel Yaiwes/Componentes recuperados A/Tenacity` | source_object `84cea911b8ad043e15cb6e72be5f1333a0adcf5e` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `TensorZero` | `Core kernel Yaiwes/TensorZero` | source_object `4bdc4069cadb6acb69aef34ed697ed3781bae8c9` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `ThoughtSource` | `Core kernel Yaiwes/Componentes recuperados A/ThoughtSource` | source_object `2380a8ae699e45aa65ead783017335af82e60dfe` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Traefik` | `Core kernel Yaiwes/Componentes recuperados B/Traefik` | source_object `06505fa3b9d8e7be96c70ce0d10d1a574e3ae947` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `transitions` | `Core kernel Yaiwes/Componentes recuperados A/transitions` | source_object `6c6ca86a938b6ee92345325d831437372528ac2d` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Tree-of-Thoughts` | `Core kernel Yaiwes/Componentes recuperados A/Tree-of-Thoughts` | source_object `01c2ad00238c55323b81ad8a3e1a8439e994271f` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Trigger-dev` | `Core kernel Yaiwes/Componentes recuperados A/Trigger-dev` | source_object `01e77139783de5147e374ac740975e245501f34a` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `TruLens` | `Core kernel Yaiwes/Componentes recuperados A/TruLens` | source_object `f0dd0a986aa9e3d346e057a498794bad78e59ebf` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `txtai` | `Core kernel Yaiwes/Componentes recuperados A/txtai` | source_object `7fdf48fa879e8c2974fb70309df9f3aa3fd7d475` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Typer` | `Core kernel Yaiwes/Componentes recuperados B/Typer` | source_object `b55713ba5a77b78231f7f900a54992554dc473fb` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `UltraFeedback` | `Core kernel Yaiwes/Componentes recuperados A/UltraFeedback` | source_object `72f5a9db873d01d09df022518ed99018a9924bb2` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Unleash` | `Core kernel Yaiwes/Componentes recuperados A/Unleash` | source_object `45428fe12ffe1773766923f16cba46e13b8ec7ce` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `VictoriaMetrics` | `Core kernel Yaiwes/Componentes recuperados A/VictoriaMetrics` | source_object `5146d95cda8280742faa2395466518cff185c769` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `vLLM-Semantic-Router` | `Core kernel Yaiwes/Componentes recuperados A/vLLM-Semantic-Router` | source_object `7ec068321bac971ef2c9cce6b164dcf870801c91` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `VM_logo` | `Core kernel Yaiwes/Componentes recuperados A/VM_logo` | source_object `df49497eae31b7dcbc748327bf5be5aae06e22f7` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Voyager` | `Core kernel Yaiwes/Componentes recuperados B/Voyager` | source_object `66d7d2d043c5da45e1f8174cf65f953a6a7254f8` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `XState` | `Core kernel Yaiwes/Componentes recuperados B/XState` | source_object `948f1c9f640128f601126cf5b2a398ad679179c2` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Z3` | `Core kernel Yaiwes/Componentes recuperados A/Z3` | source_object `67eeea2b44b57b82dba293e01c7bae82fb8ef75f` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Zen-Engine` | `Core kernel Yaiwes/Componentes recuperados A/Zen-Engine` | source_object `89f981421fdeff8ab35eb0bbe7d92a15f78b43da` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Zep` | `Core kernel Yaiwes/Componentes recuperados A/Zep` | source_object `2c48cfc1a126d4d5cc211359a071deafa9b94a86` | node `None` | `SOURCE_PRESENT_NO_NODE`
+- `Zod` | `Core kernel Yaiwes/Componentes recuperados A/Zod` | source_object `61b560397d129c9b0a29ca1c3623bbf35918d844` | node `None` | `SOURCE_PRESENT_NO_NODE`

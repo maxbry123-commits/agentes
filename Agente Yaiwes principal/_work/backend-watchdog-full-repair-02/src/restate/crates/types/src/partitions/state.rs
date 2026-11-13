@@ -1,0 +1,753 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use std::sync::Arc;
+
+use dashmap::Entry;
+use tokio::sync::futures::Notified;
+use tokio::sync::{Notify, watch};
+
+use restate_encoding::NetSerde;
+
+use crate::cluster_state::ClusterState;
+use crate::identifiers::{LeaderEpoch, PartitionId};
+use crate::logs::{Lsn, SequenceNumber};
+use crate::partitions::PartitionConfiguration;
+use crate::{GenerationalNodeId, Merge, PlainNodeId, Version};
+
+type DashMap<K, V> = dashmap::DashMap<K, V, ahash::RandomState>;
+
+/// A map of max observed replica-set configurations for partitions
+#[derive(Clone, Default)]
+pub struct PartitionReplicaSetStates {
+    inner: Arc<Inner>,
+}
+
+/// Batches notifications for observed membership updates.
+pub struct MembershipUpdateBatch {
+    states: PartitionReplicaSetStates,
+    changed: bool,
+    membership_changed: bool,
+}
+
+impl MembershipUpdateBatch {
+    pub fn note_observed_membership(
+        &mut self,
+        partition_id: PartitionId,
+        current_leader: LeadershipState,
+        current_membership: &ReplicaSetState,
+        next_membership: &Option<ReplicaSetState>,
+    ) {
+        let modified = self.states.merge_observed_membership(
+            partition_id,
+            current_leader,
+            current_membership,
+            next_membership,
+        );
+        self.changed |= modified.changed();
+        self.membership_changed |= modified.membership_changed;
+    }
+}
+
+impl Drop for MembershipUpdateBatch {
+    fn drop(&mut self) {
+        self.states
+            .notify_observed_membership_changes(self.changed, self.membership_changed);
+    }
+}
+
+#[derive(Default)]
+struct Inner {
+    partitions: DashMap<PartitionId, MembershipState>,
+    global_notify: Notify,
+    // Fires only for partition membership changes
+    membership_notify: Notify,
+}
+
+impl PartitionReplicaSetStates {
+    /// Update the leadership state for a partition
+    ///
+    /// The leadership state should only be updated after we are confident that
+    /// the new leader has committed the leader epoch to the log. It's also acceptable
+    /// to delay updating it until the actual leader or any of the followers have
+    /// observed the leader epoch as being the winner of the elections.
+    pub fn note_observed_leader(
+        &self,
+        partition_id: PartitionId,
+        incoming_leader: LeadershipState,
+    ) {
+        // filter out invalid leader epochs.
+        if !incoming_leader.current_leader_epoch.is_valid() {
+            return;
+        }
+
+        let modified = match self.inner.partitions.entry(partition_id) {
+            Entry::Occupied(mut occupied_entry) => occupied_entry
+                .get_mut()
+                .current_leader
+                .send_if_modified(|l| l.merge(incoming_leader)),
+            Entry::Vacant(entry) => {
+                entry.insert(MembershipState {
+                    current_leader: watch::Sender::new(incoming_leader),
+                    observed_current_membership: Default::default(),
+                    observed_next_membership: Default::default(),
+                });
+                true
+            }
+        };
+
+        if modified {
+            self.inner.global_notify.notify_waiters();
+        }
+    }
+
+    /// Update the membership state for a partition
+    ///
+    /// If you don't have a new leadership state, use Default::default() instead for the parameter
+    /// `leadershipstate`.
+    pub fn note_observed_membership(
+        &self,
+        partition_id: PartitionId,
+        current_leader: LeadershipState,
+        current_membership: &ReplicaSetState,
+        next_membership: &Option<ReplicaSetState>,
+    ) {
+        let modified = self.merge_observed_membership(
+            partition_id,
+            current_leader,
+            current_membership,
+            next_membership,
+        );
+        self.notify_observed_membership_changes(modified.changed(), modified.membership_changed);
+    }
+
+    pub fn membership_update_batch(&self) -> MembershipUpdateBatch {
+        MembershipUpdateBatch {
+            states: self.clone(),
+            changed: false,
+            membership_changed: false,
+        }
+    }
+
+    fn merge_observed_membership(
+        &self,
+        partition_id: PartitionId,
+        current_leader: LeadershipState,
+        current_membership: &ReplicaSetState,
+        next_membership: &Option<ReplicaSetState>,
+    ) -> MembershipMergeResult {
+        match self.inner.partitions.entry(partition_id) {
+            Entry::Occupied(mut occupied_entry) => {
+                occupied_entry
+                    .get_mut()
+                    .merge(current_leader, current_membership, next_membership)
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(MembershipState {
+                    current_leader: watch::Sender::new(current_leader),
+                    observed_current_membership: current_membership.clone(),
+                    observed_next_membership: next_membership.clone(),
+                });
+                MembershipMergeResult::all_changed()
+            }
+        }
+    }
+
+    fn notify_observed_membership_changes(&self, changed: bool, membership_changed: bool) {
+        if changed {
+            self.inner.global_notify.notify_waiters();
+        }
+        if membership_changed {
+            self.inner.membership_notify.notify_waiters();
+        }
+    }
+
+    pub fn note_durable_lsn(
+        &self,
+        partition_id: PartitionId,
+        node_id: PlainNodeId,
+        durable_lsn: Lsn,
+    ) {
+        let Some(mut state) = self.inner.partitions.get_mut(&partition_id) else {
+            return;
+        };
+        let mut modified = false;
+
+        // update durable lsn in members of current and/or next
+        for member in state
+            .value_mut()
+            .observed_current_membership
+            .members
+            .iter_mut()
+        {
+            if member.node_id == node_id && durable_lsn > member.durable_lsn {
+                member.durable_lsn = durable_lsn;
+                modified |= true;
+            }
+        }
+
+        if let Some(next_membership) = state.value_mut().observed_next_membership.as_mut() {
+            for member in next_membership.members.iter_mut() {
+                if member.node_id == node_id && durable_lsn > member.durable_lsn {
+                    member.durable_lsn = durable_lsn;
+                    modified |= true;
+                }
+            }
+        }
+
+        if modified {
+            self.inner.global_notify.notify_waiters();
+        }
+    }
+
+    /// Returns the minimum durable lsn of the given partition by looking at
+    /// the union of the current and next membership configuration.
+    ///
+    /// This returns `Lsn::INVALID` if we can't establish a reasonable view of the
+    /// durable lsns from replica-set members.
+    pub fn get_min_durable_lsn(&self, partition_id: PartitionId) -> Lsn {
+        let Some(state) = self.inner.partitions.get(&partition_id) else {
+            return Lsn::INVALID;
+        };
+        let min_durable_in_current = state
+            .observed_current_membership
+            .members
+            .iter()
+            .map(|m| m.durable_lsn)
+            .min()
+            .unwrap_or(Lsn::INVALID);
+
+        if let Some(next) = &state.observed_next_membership {
+            let next_min_durable = next
+                .members
+                .iter()
+                .map(|m| m.durable_lsn)
+                .min()
+                .unwrap_or(Lsn::INVALID);
+            min_durable_in_current.min(next_min_durable)
+        } else {
+            min_durable_in_current
+        }
+    }
+
+    /// Returns the maximum durable lsn of the given partition by looking at
+    /// the union of the current and next membership configuration.
+    ///
+    /// This returns `Lsn::INVALID` if we can't establish a reasonable view of the
+    /// durable lsns from replica-set members.
+    pub fn get_max_durable_lsn(&self, partition_id: PartitionId) -> Lsn {
+        let Some(state) = self.inner.partitions.get(&partition_id) else {
+            return Lsn::INVALID;
+        };
+        let max_durable_in_current = state
+            .observed_current_membership
+            .members
+            .iter()
+            .map(|m| m.durable_lsn)
+            .max()
+            .unwrap_or(Lsn::INVALID);
+
+        if let Some(next) = &state.observed_next_membership {
+            let next_max_durable = next
+                .members
+                .iter()
+                .map(|m| m.durable_lsn)
+                .max()
+                .unwrap_or(Lsn::INVALID);
+            max_durable_in_current.max(next_max_durable)
+        } else {
+            max_durable_in_current
+        }
+    }
+
+    pub fn watch_leadership_state(
+        &self,
+        partition_id: PartitionId,
+    ) -> watch::Receiver<LeadershipState> {
+        match self.inner.partitions.entry(partition_id) {
+            Entry::Occupied(occupied_entry) => occupied_entry.get().watch_current_leader(),
+            Entry::Vacant(entry) => {
+                let value = entry.insert(MembershipState::default());
+                self.inner.global_notify.notify_waiters();
+                value.value().watch_current_leader()
+            }
+        }
+    }
+
+    pub fn membership_state(&self, partition_id: PartitionId) -> MembershipState {
+        match self.inner.partitions.entry(partition_id) {
+            Entry::Occupied(occupied_entry) => occupied_entry.get().clone(),
+            Entry::Vacant(entry) => {
+                let value = entry.insert(MembershipState::default());
+                self.inner.global_notify.notify_waiters();
+                value.value().clone()
+            }
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (PartitionId, MembershipState)> {
+        self.inner
+            .partitions
+            .iter()
+            .map(|entry| (*entry.key(), entry.value().clone()))
+    }
+
+    /// A lightweight accessor to the partition versions to avoid the clone introduced by the `iter` method.
+    pub fn partition_versions(&self) -> Vec<ObservedPartitionReplicaSetVersion> {
+        self.inner
+            .partitions
+            .iter()
+            .map(|entry| {
+                let (id, state) = (*entry.key(), entry.value());
+                ObservedPartitionReplicaSetVersion {
+                    partition_id: id,
+                    current_version: state.observed_current_membership.version,
+                    next_version: state.observed_next_membership.as_ref().map(|s| s.version),
+                }
+            })
+            .collect()
+    }
+
+    /// Future to monitor changes to the partition replica set states.
+    ///
+    /// If you don't want to miss any changes, it's advised to create this future first, read the
+    /// partition replica set states, then await this future for updates.
+    pub fn changed(&self) -> Notified<'_> {
+        self.inner.global_notify.notified()
+    }
+
+    /// Future to monitor changes to the partition membership changes only.
+    ///
+    /// If you don't want to miss any changes, it's advised to create this future first, read the
+    /// partition replica set states, then await this future for updates.
+    pub fn membership_changed(&self) -> Notified<'_> {
+        self.inner.membership_notify.notified()
+    }
+}
+
+#[derive(Debug, Clone, Copy, bilrost::Message, NetSerde)]
+pub struct LeadershipState {
+    pub current_leader_epoch: LeaderEpoch,
+    pub current_leader: GenerationalNodeId,
+}
+
+impl Default for LeadershipState {
+    fn default() -> Self {
+        Self {
+            current_leader_epoch: LeaderEpoch::INVALID,
+            current_leader: GenerationalNodeId::INVALID,
+        }
+    }
+}
+
+impl Merge for LeadershipState {
+    fn merge(&mut self, other: Self) -> bool {
+        match self.current_leader_epoch.cmp(&other.current_leader_epoch) {
+            std::cmp::Ordering::Greater => false,
+            std::cmp::Ordering::Less => {
+                self.current_leader_epoch = other.current_leader_epoch;
+                self.current_leader = other.current_leader;
+                true
+            }
+            std::cmp::Ordering::Equal
+                if !self.current_leader.is_valid() && other.current_leader.is_valid() =>
+            {
+                // update our current leader if the incoming knows about it and we don't.
+                self.current_leader = other.current_leader;
+                true
+            }
+            std::cmp::Ordering::Equal => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MembershipState {
+    current_leader: watch::Sender<LeadershipState>,
+    pub observed_current_membership: ReplicaSetState,
+    pub observed_next_membership: Option<ReplicaSetState>,
+}
+
+impl Default for MembershipState {
+    fn default() -> Self {
+        Self {
+            current_leader: watch::Sender::new(LeadershipState::default()),
+            observed_current_membership: ReplicaSetState::default(),
+            observed_next_membership: None,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct MembershipMergeResult {
+    leadership_changed: bool,
+    membership_changed: bool,
+    durable_lsn_changed: bool,
+}
+
+impl MembershipMergeResult {
+    fn changed(&self) -> bool {
+        self.leadership_changed || self.membership_changed || self.durable_lsn_changed
+    }
+    fn all_changed() -> Self {
+        Self {
+            leadership_changed: true,
+            membership_changed: true,
+            durable_lsn_changed: true,
+        }
+    }
+}
+
+impl MembershipState {
+    fn merge(
+        &mut self,
+        incoming_leadership_state: LeadershipState,
+        incoming_current_membership: &ReplicaSetState,
+        incoming_next_membership: &Option<ReplicaSetState>,
+    ) -> MembershipMergeResult {
+        let mut result = MembershipMergeResult::default();
+        match incoming_current_membership
+            .version
+            .cmp(&self.observed_current_membership.version)
+        {
+            // we have a new current membership
+            std::cmp::Ordering::Greater => {
+                // todo: try to use previous durable lsns if the two replica-sets intersect
+                self.observed_current_membership = incoming_current_membership.clone();
+                result.membership_changed = true;
+                result.durable_lsn_changed = true;
+                if self
+                    .observed_next_membership
+                    .as_ref()
+                    .is_some_and(|my_next| {
+                        my_next.version <= self.observed_current_membership.version
+                    })
+                {
+                    // unset our next, our current has caught up
+                    self.observed_next_membership = None;
+                }
+            }
+            std::cmp::Ordering::Equal => {
+                // merge member's durable lsns
+                result.durable_lsn_changed |= self
+                    .observed_current_membership
+                    .merge(incoming_current_membership.clone());
+            }
+            std::cmp::Ordering::Less => { /* ignore it */ }
+        }
+
+        result.leadership_changed |= self
+            .current_leader
+            .send_if_modified(|l| l.merge(incoming_leadership_state));
+
+        // dealing with next membership configuration
+        let Some(incoming_next_membership) = incoming_next_membership else {
+            return result;
+        };
+
+        // incoming has next but it older/equal to our own current
+        if incoming_next_membership.version <= self.observed_current_membership.version {
+            // ignore it, their next is lower that our current's
+            return result;
+        }
+
+        let Some(my_next_membership) = &mut self.observed_next_membership else {
+            self.observed_next_membership = Some(incoming_next_membership.clone());
+            result.membership_changed = true;
+            result.durable_lsn_changed = true;
+            return result;
+        };
+
+        match incoming_next_membership
+            .version
+            .cmp(&my_next_membership.version)
+        {
+            std::cmp::Ordering::Greater => {
+                *my_next_membership = incoming_next_membership.clone();
+                result.membership_changed = true;
+                result.durable_lsn_changed = true;
+            }
+            std::cmp::Ordering::Equal => {
+                // merge member's durable lsns
+                result.durable_lsn_changed |=
+                    my_next_membership.merge(incoming_next_membership.clone());
+            }
+            std::cmp::Ordering::Less => { /* ignore it */ }
+        }
+
+        result
+    }
+
+    /// Returns true if the given node_id is part of the current or next membership.
+    pub fn contains(&self, node_id: PlainNodeId) -> bool {
+        self.observed_current_membership
+            .members
+            .iter()
+            .any(|m| m.node_id == node_id)
+            || self
+                .observed_next_membership
+                .as_ref()
+                .map(|m| m.members.iter().any(|m| m.node_id == node_id))
+                .unwrap_or(false)
+    }
+
+    pub fn current_leader(&self) -> LeadershipState {
+        *self.current_leader.borrow()
+    }
+
+    pub fn watch_current_leader(&self) -> watch::Receiver<LeadershipState> {
+        self.current_leader.subscribe()
+    }
+
+    /// Iterates over node IDs in the current and next replica-set configurations.
+    ///
+    /// A node present in both configurations is yielded twice.
+    pub fn replica_set_union(&self) -> impl Iterator<Item = PlainNodeId> {
+        std::iter::once(&self.observed_current_membership)
+            .chain(self.observed_next_membership.iter())
+            .flat_map(|membership| membership.members.iter())
+            .map(|member| member.node_id)
+    }
+
+    /// Returns the first alive node from `observed_current_membership` by overlaying it with the
+    /// current cluster state.
+    pub fn first_alive_node(&self, cluster_state: &ClusterState) -> Option<GenerationalNodeId> {
+        self.observed_current_membership
+            .members
+            .iter()
+            .find_map(|member| {
+                let (node_id, state) =
+                    cluster_state.get_node_state_and_generation(member.node_id)?;
+                if state.is_alive() {
+                    Some(node_id)
+                } else {
+                    None
+                }
+            })
+    }
+}
+
+#[derive(Debug, Clone, bilrost::Message, NetSerde)]
+pub struct ReplicaSetState {
+    pub version: Version,
+    // ordered, akin to NodeSet
+    pub members: Vec<MemberState>,
+}
+
+impl ReplicaSetState {
+    /// Creates the replica set state from the given partition configuration. It assumes the
+    /// durable lsn to be invalid since we don't have information about it yet.
+    pub fn from_partition_configuration(partition_configuration: &PartitionConfiguration) -> Self {
+        let members = partition_configuration
+            .replica_set()
+            .iter()
+            .map(|node_id| MemberState {
+                node_id: *node_id,
+                durable_lsn: Lsn::INVALID,
+            })
+            .collect();
+        Self {
+            version: partition_configuration.version,
+            members,
+        }
+    }
+}
+
+impl Default for ReplicaSetState {
+    fn default() -> Self {
+        Self {
+            version: Version::INVALID,
+            members: Vec::new(),
+        }
+    }
+}
+
+impl Merge for ReplicaSetState {
+    fn merge(&mut self, other: Self) -> bool {
+        assert!(
+            itertools::equal(
+                self.members.iter().map(|m| m.node_id),
+                other.members.iter().map(|m| m.node_id)
+            ),
+            "The system currently relies on a consistent view of the replica set state (e.g. for routing decisions and starting partition processors)"
+        );
+        let mut modified = false;
+        for (member, incoming_member) in self.members.iter_mut().zip(other.members) {
+            if incoming_member.durable_lsn > member.durable_lsn {
+                member.durable_lsn = incoming_member.durable_lsn;
+                modified = true;
+            }
+        }
+
+        modified
+    }
+}
+
+#[derive(Debug, Clone, bilrost::Message, NetSerde)]
+pub struct MemberState {
+    pub node_id: PlainNodeId,
+    pub durable_lsn: Lsn,
+}
+
+#[derive(Debug, Clone)]
+pub struct ObservedPartitionReplicaSetVersion {
+    pub partition_id: PartitionId,
+    pub current_version: Version,
+    pub next_version: Option<Version>,
+}
+
+#[cfg(test)]
+mod tests {
+    use futures::FutureExt;
+
+    use super::{LeadershipState, PartitionReplicaSetStates, ReplicaSetState};
+    use crate::identifiers::{LeaderEpoch, PartitionId};
+    use crate::partitions::state::MemberState;
+    use crate::{GenerationalNodeId, PlainNodeId, Version, logs::Lsn};
+
+    #[test]
+    fn changed_notifications() {
+        let states: PartitionReplicaSetStates = Default::default();
+
+        // After init, the change notifications shouldn't fire.
+        assert!(states.changed().now_or_never().is_none());
+        assert!(states.membership_changed().now_or_never().is_none());
+
+        // Observing a new partition should trigger both notification.
+        {
+            let changed = states.changed();
+            let membership_changed = states.membership_changed();
+            states.note_observed_membership(
+                PartitionId::from(0),
+                LeadershipState {
+                    current_leader_epoch: LeaderEpoch::from(0),
+                    current_leader: GenerationalNodeId::from(0),
+                },
+                &ReplicaSetState {
+                    version: Version::from(1),
+                    members: Default::default(),
+                },
+                &None,
+            );
+
+            assert!(changed.now_or_never().is_some());
+            assert!(membership_changed.now_or_never().is_some());
+        }
+
+        // Batched updates are immediately visible but notify only after the batch closes.
+        {
+            let mut changed = Box::pin(states.changed());
+            let mut membership_changed = Box::pin(states.membership_changed());
+            {
+                let mut batch = states.membership_update_batch();
+                for partition_id in [PartitionId::from(1), PartitionId::from(2)] {
+                    batch.note_observed_membership(
+                        partition_id,
+                        LeadershipState::default(),
+                        &ReplicaSetState {
+                            version: Version::from(1),
+                            members: Default::default(),
+                        },
+                        &None,
+                    );
+                }
+
+                assert_eq!(states.iter().count(), 3);
+                assert!(changed.as_mut().now_or_never().is_none());
+                assert!(membership_changed.as_mut().now_or_never().is_none());
+            }
+
+            assert!(changed.now_or_never().is_some());
+            assert!(membership_changed.now_or_never().is_some());
+        }
+
+        // Observing a "next" version for a partition should trigger both notifications.
+        {
+            let changed = states.changed();
+            let membership_changed = states.membership_changed();
+            states.note_observed_membership(
+                PartitionId::from(0),
+                LeadershipState {
+                    current_leader_epoch: LeaderEpoch::from(0),
+                    current_leader: GenerationalNodeId::from(0),
+                },
+                &ReplicaSetState {
+                    version: Version::from(1),
+                    members: Default::default(),
+                },
+                &Some(ReplicaSetState {
+                    version: Version::from(2),
+                    members: Default::default(),
+                }),
+            );
+
+            assert!(changed.now_or_never().is_some());
+            assert!(membership_changed.now_or_never().is_some());
+        }
+
+        // Observing a higher version for a partition should trigger a notification.
+        {
+            let changed = states.changed();
+            let membership_changed = states.membership_changed();
+            states.note_observed_membership(
+                PartitionId::from(0),
+                LeadershipState {
+                    current_leader_epoch: LeaderEpoch::from(0),
+                    current_leader: GenerationalNodeId::from(0),
+                },
+                &ReplicaSetState {
+                    version: Version::from(3),
+                    members: vec![MemberState {
+                        node_id: PlainNodeId::from(0),
+                        durable_lsn: Lsn::from(50),
+                    }],
+                },
+                &None,
+            );
+
+            assert!(changed.now_or_never().is_some());
+            assert!(membership_changed.now_or_never().is_some());
+        }
+
+        // Leadership changes should trigger a changed notification, but not a membership changed notification.
+        {
+            let changed = states.changed();
+            let membership_changed = states.membership_changed();
+            states.note_observed_leader(
+                PartitionId::from(0),
+                LeadershipState {
+                    current_leader_epoch: LeaderEpoch::from(10),
+                    current_leader: GenerationalNodeId::from(2),
+                },
+            );
+            assert!(changed.now_or_never().is_some());
+            assert!(membership_changed.now_or_never().is_none());
+        }
+
+        // Durable lsn changes should trigger a changed notification, but not a membership changed notification.
+        {
+            let changed = states.changed();
+            let membership_changed = states.membership_changed();
+            states.note_durable_lsn(PartitionId::from(0), PlainNodeId::from(0), Lsn::from(100));
+            assert!(changed.now_or_never().is_some());
+            assert!(membership_changed.now_or_never().is_none());
+        }
+
+        // Applying a change that doesn't mutate the state should not trigger a changed notification.
+        // In this case, it's applying a durable LSN change older than what we've observed before
+        {
+            let changed = states.changed();
+            let membership_changed = states.membership_changed();
+            states.note_durable_lsn(PartitionId::from(0), PlainNodeId::from(0), Lsn::from(70));
+            assert!(changed.now_or_never().is_none());
+            assert!(membership_changed.now_or_never().is_none());
+        }
+    }
+}

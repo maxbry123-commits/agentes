@@ -1,0 +1,72 @@
+services:
+  cerbos:
+    container_name: cerbos
+    image: ghcr.io/cerbos/cerbos:${CERBOS_VERSION:-dev}
+    profiles: [pdp]
+    restart: always
+    command: ["server", "--config=/conf/.cerbos.yaml", "--log-level=warn"]
+    depends_on:
+      postgres:
+        condition: service_started
+        required: false
+    environment:
+      - AUDIT_ENABLED=${AUDIT_ENABLED}
+      - SCHEMA_ENFORCEMENT=${SCHEMA_ENFORCEMENT}
+      - STORE=${STORE}
+    volumes:
+      - ${WORK_DIR}/cerbos:/conf
+      - ${WORK_DIR}/policies:/policies
+      - ${WORK_DIR}/audit:/audit
+    ports:
+      - "3592:3592"
+      - "3593:3593"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 512M
+        reservations:
+          cpus: '1.0'
+          memory: 64M
+
+  postgres:
+    container_name: postgres
+    image: postgres:14.0-alpine@sha256:1cf551de75fd602ebc94ccda93305a4e411f941bf9465f59d850bdcfd474ca52
+    restart: always
+    profiles:
+      - postgres
+    environment:
+      - POSTGRES_USER=cerbos
+      - POSTGRES_PASSWORD=cerbos
+      - POSTGRES_DB=cerbos
+    volumes:
+      - ${WORK_DIR}/postgres/init:/docker-entrypoint-initdb.d
+      - ${WORK_DIR}/postgres/data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:latest@sha256:4a61322ac1103a0e3aea2a61ef1718422a48fa046441f299d71e660a3bc71ae9
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--log.level=warn"]
+    user: "0:0"
+    volumes:
+      - ./conf/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    restart: always
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:latest@sha256:83749231c3835e390a3144e5e940203e42b9589761f20ef3169c716e734ad505
+    user: "0:0"
+    environment:
+      - GF_LOG_LEVEL=warn
+      - PROMETHEUS_URL=${PROMETHEUS_URL:-http://prometheus:9090}
+    volumes:
+      - ./conf/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ./conf/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./conf/grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - "3000:3000"
+    restart: always

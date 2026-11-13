@@ -1,0 +1,70 @@
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: quarterly
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: quarterly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - patch
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      go-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - patch
+      go-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: monthly
+    groups:
+      ui-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - patch
+      ui-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"

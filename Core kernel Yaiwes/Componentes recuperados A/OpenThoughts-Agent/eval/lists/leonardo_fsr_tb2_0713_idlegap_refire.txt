@@ -1,0 +1,17 @@
+# tb2 priority-1 re-fire — 2026-07-13 idle-gap harvest driver sweep
+# 7 terminal Leonardo tb2 legs, ALL gate-FAIL on completeness (67-81% valid-complete) → warm-resume
+# each reuses its OWN below-gate bfeuer00 DB row (--once flips Finished->Pending, no dupes); richard.zhuang siblings untouched
+# r360 nemotron_csharp (Leo 49304852 done, vc 71.5%) — re-fire #2 (prior 49265997 also below-gate)
+# r364 qasper (Leo 49293955 done, vc 80.9%)
+# r367 softwareheritage (Leo 49293957 done, vc 74.5%)
+# r370 stack_dockerfile (Leo 49269756 done, vc 70.0%)
+# r379 stackexchange_codereview (Leo 49293958 done, vc 67.4%)
+# r386 toolscale (Leo 49265439 done, vc 77.9% + nb 31)
+# r506 issue_tasks (Leo 49265420 done, vc 69.3% + nb 31)
+DCAgent/a1-nemotron_csharp
+DCAgent/a1-qasper
+DCAgent/a1-softwareheritage
+DCAgent/a1-stack_dockerfile
+DCAgent/a1-stackexchange_codereview
+DCAgent/a1-toolscale
+DCAgent/a1-issue_tasks

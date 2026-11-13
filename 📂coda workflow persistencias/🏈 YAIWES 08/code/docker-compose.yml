@@ -1,0 +1,165 @@
+name: redcell
+
+x-app-env: &app-env
+  REDCELL_RUN_MODE: ${REDCELL_RUN_MODE:-live}
+  REDCELL_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-redcell}:${POSTGRES_PASSWORD:-redcell}@postgres:5432/${POSTGRES_DB:-redcell}
+  REDCELL_REDIS_URL: redis://redis:6379/0
+  REDCELL_S3_ENDPOINT: http://minio:9000
+  REDCELL_S3_PRESIGN_ENDPOINT: ${REDCELL_S3_PRESIGN_ENDPOINT:-http://localhost:9000}
+  REDCELL_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+  REDCELL_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  REDCELL_S3_REGION: ${REDCELL_S3_REGION:-us-east-1}
+  REDCELL_ENV: ${REDCELL_ENV:-production}
+  REDCELL_SECRET_KEY: ${REDCELL_SECRET_KEY:-}
+  REDCELL_SECRET_KEY_FILE: /run/redcell/secret_key
+  REDCELL_JWT_SECRET: ${REDCELL_JWT_SECRET:-}
+  REDCELL_JWT_SECRET_FILE: /run/redcell/jwt_secret
+  REDCELL_ADMIN_USERNAME: ${REDCELL_ADMIN_USERNAME:-admin}
+  REDCELL_ADMIN_PASSWORD: ${REDCELL_ADMIN_PASSWORD:-}
+  REDCELL_ADMIN_PASSWORD_FILE: /run/redcell/admin_password
+  REDCELL_COOKIE_SECURE: ${REDCELL_COOKIE_SECURE:-true}
+  REDCELL_CORS_ORIGINS: ${REDCELL_CORS_ORIGINS:-http://localhost:5183}
+  REDCELL_COMPOSE_DIR: ${REDCELL_COMPOSE_DIR:-}
+  REDCELL_UPDATER_IMAGE: ${REDCELL_UPDATER_IMAGE:-docker:cli}
+  REDCELL_CALLBACK_HOST: ${REDCELL_CALLBACK_HOST:-host.docker.internal}
+  REDCELL_CALLBACK_PORT_MIN: ${REDCELL_CALLBACK_PORT_MIN:-4444}
+  REDCELL_CALLBACK_PORT_MAX: ${REDCELL_CALLBACK_PORT_MAX:-4464}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-redcell}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-redcell}
+      POSTGRES_DB: ${POSTGRES_DB:-redcell}
+    volumes:
+      - redcell_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-redcell}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - redcell_minio:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'mc ready local || exit 1']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  init-secrets:
+    image: ghcr.io/martian56/redcell-api:latest
+    entrypoint: ['sh', '-c']
+    command:
+      - |
+        set -e
+        d=/run/redcell
+        mkdir -p "$$d"
+        [ -s "$$d/secret_key" ] || (umask 077; python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())' > "$$d/secret_key")
+        [ -s "$$d/jwt_secret" ] || (umask 077; python -c 'import secrets; print(secrets.token_urlsafe(48))' > "$$d/jwt_secret")
+        if [ ! -s "$$d/admin_password" ]; then
+          umask 077; python -c 'import secrets; print(secrets.token_urlsafe(18))' > "$$d/admin_password"
+          echo "=================================================================="
+          echo " REDCELL first run: generated an admin password:"
+          echo "     $$(cat "$$d/admin_password")"
+          echo " Stored in the redcell_secrets volume. Log in and change it."
+          echo "=================================================================="
+        fi
+    volumes:
+      - redcell_secrets:/run/redcell
+    restart: 'no'
+
+  migrate:
+    image: ghcr.io/martian56/redcell-api:latest
+    environment: *app-env
+    command: ['sh', '-c', 'rc db upgrade && rc seed']
+    restart: 'no'
+    volumes:
+      - redcell_secrets:/run/redcell:ro
+    depends_on:
+      init-secrets:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  api:
+    image: ghcr.io/martian56/redcell-api:latest
+    environment: *app-env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - redcell_secrets:/run/redcell:ro
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    image: ghcr.io/martian56/redcell-worker:latest
+    environment: *app-env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - redcell_secrets:/run/redcell:ro
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    image: ghcr.io/martian56/redcell-web:latest
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./docker/caddy/${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+
+volumes:
+  redcell_pg: {}
+  redcell_minio: {}
+  redcell_secrets: {}
+  caddy_data: {}
+  caddy_config: {}

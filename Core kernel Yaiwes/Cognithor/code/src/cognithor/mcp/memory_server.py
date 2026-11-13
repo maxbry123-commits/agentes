@@ -1,0 +1,963 @@
+"""Memory-Tools fuer Cognithor · MCP-Server fuer das 6-Tier Memory-System.
+
+Exponiert das Cognitive Memory-System als Tool-Calls, damit der Planner
+ueber den normalen MCP-Kanal auf alle Memory-Tiers zugreifen kann.
+
+Tools:
+  - search_memory: Hybrid-Suche ueber alle Memory-Tiers (BM25 + Vektor + Graph)
+  - save_to_memory: Speichert Information in den passenden Tier
+  - get_entity: Laedt eine Entitaet mit Relationen aus dem Wissens-Graphen
+  - add_entity: Erstellt eine neue Entitaet im Wissens-Graphen
+  - add_relation: Erstellt eine Relation zwischen zwei Entitaeten
+  - delete_entity: Loescht eine Entitaet mit allen Relationen (GDPR erasure)
+  - delete_relation: Loescht eine Relation zwischen zwei Entitaeten (GDPR erasure)
+  - get_core_memory: Gibt die aktuelle Core Memory (CORE.md) zurueck
+  - get_recent_episodes: Laedt die letzten Tageslog-Eintraege
+  - search_procedures: Sucht nach gelernten Prozeduren/Skills
+  - record_procedure_usage: Meldet Erfolg/Misserfolg einer Prozedur
+  - memory_stats: Gibt Gesamtstatistiken des Memory-Systems zurueck
+
+Bibel-Referenz: §5.3 (jarvis-memory Server)
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import date
+from typing import TYPE_CHECKING, Any
+
+from cognithor.i18n import t
+from cognithor.models import Entity, MemorySearchResult, MemoryTier, Relation
+from cognithor.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from cognithor.memory.manager import MemoryManager
+
+log = get_logger(__name__)
+
+
+class MemoryToolsError(Exception):
+    """Fehler bei Memory-Tool-Operationen."""
+
+
+class MemoryTools:
+    """Memory-Operationen als Tool-Calls fuer den Planner. [B§5.3]
+
+    Wrapper um den MemoryManager, der alle Operationen als
+    einfache Funktionen mit String-Ein/Ausgabe exponiert.
+    """
+
+    def __init__(self, memory: MemoryManager) -> None:
+        """Initialisiert MemoryTools mit einem MemoryManager."""
+        self._memory = memory
+
+    # ── Search ───────────────────────────────────────────────────
+
+    def search_memory(
+        self,
+        query: str,
+        top_k: int = 6,
+        tier: str = "",
+    ) -> str:
+        """Durchsucht das Memory-System mit Hybrid-Suche.
+
+        Kombiniert BM25 (lexikalisch), Vektor (semantisch) und
+        Graph-Traversal fuer optimale Ergebnisse. Nutzt synchronen
+        BM25-Fallback wenn kein Embedding-Server verfuegbar.
+
+        Args:
+            query: Natuerlichsprachliche Suchanfrage.
+            top_k: Maximale Anzahl Ergebnisse (1-20, Default: 6).
+            tier: Optionaler Filter auf einen Tier
+                  ("core"|"episodic"|"semantic"|"procedural"|"").
+                  Leer = alle Tiers durchsuchen.
+
+        Returns:
+            Formatierte Suchergebnisse mit Score, Quelle und Text.
+        """
+        if not query.strip():
+            return t("memory.error_empty_query")
+
+        top_k = max(1, min(20, top_k))
+
+        # Tier-Filter parsen
+        tier_filter = None
+        if tier:
+            try:
+                tier_filter = MemoryTier(tier.lower())
+            except ValueError:
+                valid = ", ".join(m.value for m in MemoryTier)
+                return t("memory.invalid_tier", tier=tier, valid=valid)
+
+        # Synchrone BM25-Suche (immer verfuegbar, kein Embedding noetig)
+        results = self._memory.search_memory_sync(query, top_k=top_k)
+
+        if not results:
+            return t("memory.no_results", query=query)
+
+        # Tier-Filter anwenden (post-hoc, da search_memory_sync keinen hat)
+        if tier_filter:
+            results = [r for r in results if r.chunk.memory_tier == tier_filter]
+
+        return self._format_results(results)
+
+    @staticmethod
+    def _format_results(results: list[MemorySearchResult]) -> str:
+        """Formatiert Suchergebnisse fuer den Planner.
+
+        Args:
+            results: Liste von MemorySearchResult.
+
+        Returns:
+            Menschenlesbarer Text mit allen Ergebnissen.
+        """
+        lines: list[str] = [t("memory.search_results_header", count=len(results))]
+
+        for i, r in enumerate(results, 1):
+            chunk = r.chunk
+            tier_label = chunk.memory_tier.value if chunk.memory_tier else "?"
+            ts = ""
+            if chunk.timestamp:
+                ts = f" · {chunk.timestamp.strftime('%Y-%m-%d')}"
+
+            lines.append(
+                f"**[{i}]** Score: {r.score:.3f} · "
+                f"Tier: {tier_label} · "
+                f"Quelle: `{chunk.source_path}`{ts}"
+            )
+            lines.append(chunk.text.strip())
+            lines.append("")
+
+        return "\n".join(lines)
+
+    # ── Save ─────────────────────────────────────────────────────
+
+    def save_to_memory(
+        self,
+        content: str,
+        tier: str = "episodic",
+        topic: str = "",
+        source_path: str = "",
+    ) -> str:
+        """Speichert Information in den passenden Memory-Tier.
+
+        Args:
+            content: Der zu speichernde Text.
+            tier: Ziel-Tier ("episodic"|"semantic"|"procedural").
+                  Core ist nicht direkt beschreibbar.
+            topic: Thema/Ueberschrift (fuer Episodic: wird als Titel verwendet).
+            source_path: Optionaler Quellpfad (fuer Semantic/Procedural).
+
+        Returns:
+            Bestaetigungsnachricht.
+        """
+        if not content.strip():
+            return t("memory.error_empty_content")
+
+        tier_lower = tier.lower()
+
+        if tier_lower == "episodic":
+            return self._save_episodic(content, topic)
+        elif tier_lower == "semantic":
+            return self._save_semantic(content, source_path)
+        elif tier_lower == "procedural":
+            return self._save_procedural(content, source_path)
+        elif tier_lower == "core":
+            return t("memory.core_readonly")
+        else:
+            valid = "episodic, semantic, procedural"
+            return t("memory.invalid_tier", tier=tier, valid=valid)
+
+    def _save_episodic(self, content: str, topic: str) -> str:
+        """Schreibt einen Eintrag in den heutigen Tageslog.
+
+        Args:
+            content: Der Eintrag-Text.
+            topic: Ueberschrift des Eintrags.
+
+        Returns:
+            Bestaetigungsnachricht.
+        """
+        topic = topic or "Notiz"
+        self._memory.episodic.append_entry(topic=topic, content=content)
+        today = date.today().isoformat()
+        return t("memory.episodic_saved", date=today, topic=topic)
+
+    def _save_semantic(self, content: str, source_path: str) -> str:
+        """Indexiert Text als semantisches Wissen.
+
+        Args:
+            content: Der zu indexierende Text.
+            source_path: Virtueller Quellpfad.
+
+        Returns:
+            Bestaetigungsnachricht mit Chunk-Anzahl.
+        """
+        if not source_path:
+            source_path = f"knowledge/auto/{date.today().isoformat()}.md"
+
+        count = self._memory.index_text(content, source_path, MemoryTier.SEMANTIC)
+        return t("memory.semantic_saved", count=count, source_path=source_path)
+
+    def _save_procedural(self, content: str, source_path: str) -> str:
+        """Speichert eine Prozedur/Skill.
+
+        Args:
+            content: YAML-Frontmatter + Markdown-Body der Prozedur.
+            source_path: Dateiname (z.B. "bu-angebot-erstellen.md").
+
+        Returns:
+            Bestaetigungsnachricht.
+        """
+        if not source_path:
+            source_path = f"auto-{date.today().isoformat()}.md"
+
+        # Sicherstellen dass es mit .md endet
+        if not source_path.endswith(".md"):
+            source_path += ".md"
+
+        proc_dir = self._memory.procedural._dir
+        target = (proc_dir / source_path).resolve()
+        # Path-Traversal-Schutz: target muss innerhalb proc_dir bleiben
+        try:
+            target.relative_to(proc_dir.resolve())
+        except ValueError:
+            return t("memory.access_denied", path=source_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+
+        # Auch indexieren
+        count = self._memory.index_text(content, str(target), MemoryTier.PROCEDURAL)
+        return t("memory.procedural_saved", source_path=source_path, count=count)
+
+    # ── Entity/Relation (Wissens-Graph) ──────────────────────────
+
+    def get_entity(self, name: str) -> str:
+        """Laedt eine Entitaet mit allen Relationen aus dem Wissens-Graphen.
+
+        Args:
+            name: Name der Entitaet (Teilmatch, case-insensitive).
+
+        Returns:
+            Formatierte Entitaet mit Attributen und Relationen.
+        """
+        if not name.strip():
+            return t("memory.error_empty_name")
+
+        # Suche in DB
+        entities = self._memory.index.search_entities(name)
+
+        if not entities:
+            return t("memory.entity_not_found", name=name)
+
+        lines: list[str] = []
+        for entity in entities[:5]:  # Max 5 Treffer
+            lines.append(f"### {entity.name}")
+            lines.append(t("memory.entity_type_label", value=entity.type))
+
+            if entity.attributes:
+                attrs = entity.attributes
+                if isinstance(attrs, str):
+                    try:
+                        attrs = json.loads(attrs)
+                    except json.JSONDecodeError:
+                        attrs = {}
+                for k, v in attrs.items():
+                    lines.append(f"- **{k}:** {v}")
+
+            # Relationen laden
+            relations = self._memory.index.get_relations_for_entity(entity.id)
+            if relations:
+                lines.append(t("memory.entity_relations_label"))
+                for rel in relations:
+                    if rel.source_entity == entity.id:
+                        other_id = rel.target_entity
+                        arrow = "→"
+                    else:
+                        other_id = rel.source_entity
+                        arrow = "←"
+                    other = self._memory.index.get_entity_by_id(other_id)
+                    other_name = other.name if other else other_id
+                    lines.append(f"- {rel.relation_type} {arrow} {other_name}")
+
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def add_entity(
+        self,
+        name: str,
+        entity_type: str,
+        attributes: str = "{}",
+        source_file: str = "",
+    ) -> str:
+        """Erstellt eine neue Entitaet im Wissens-Graphen.
+
+        Args:
+            name: Anzeigename der Entitaet.
+            entity_type: Typ (z.B. "person", "company", "product", "project").
+            attributes: JSON-String mit zusaetzlichen Attributen.
+            source_file: Quell-Datei aus der die Entitaet gelernt wurde.
+
+        Returns:
+            Bestaetigungsnachricht mit Entity-ID.
+        """
+        if not name.strip():
+            return t("memory.error_empty_name")
+
+        # Attribute parsen
+        try:
+            attrs = json.loads(attributes) if attributes else {}
+        except json.JSONDecodeError:
+            return t("memory.invalid_json", attributes=attributes)
+
+        entity = Entity(
+            type=entity_type or "unknown",
+            name=name.strip(),
+            attributes=attrs,
+            source_file=source_file,
+        )
+        self._memory.index.upsert_entity(entity)
+
+        log.info("entity_created", name=name, type=entity_type, id=entity.id)
+        return t("memory.entity_created", name=name, entity_type=entity_type, id=entity.id)
+
+    def add_relation(
+        self,
+        source_name: str,
+        relation_type: str,
+        target_name: str,
+        attributes: str = "{}",
+    ) -> str:
+        """Erstellt eine Relation zwischen zwei Entitaeten.
+
+        Sucht die Entitaeten anhand des Namens. Beide muessen existieren.
+
+        Args:
+            source_name: Name der Quell-Entitaet.
+            relation_type: Art der Beziehung (z.B. "hat_police", "arbeitet_bei").
+            target_name: Name der Ziel-Entitaet.
+            attributes: JSON-String mit zusaetzlichen Attributen.
+
+        Returns:
+            Bestaetigungsnachricht.
+        """
+        # Entitaeten suchen
+        sources = self._memory.index.search_entities(source_name)
+        if not sources:
+            return t("memory.source_entity_not_found", name=source_name)
+
+        targets = self._memory.index.search_entities(target_name)
+        if not targets:
+            return t("memory.target_entity_not_found", name=target_name)
+
+        try:
+            attrs = json.loads(attributes) if attributes else {}
+        except json.JSONDecodeError:
+            return t("memory.invalid_json", attributes=attributes)
+
+        relation = Relation(
+            source_entity=sources[0].id,
+            relation_type=relation_type,
+            target_entity=targets[0].id,
+            attributes=attrs,
+        )
+        self._memory.index.upsert_relation(relation)
+
+        log.info(
+            "relation_created",
+            source=source_name,
+            relation=relation_type,
+            target=target_name,
+        )
+        return t(
+            "memory.relation_created",
+            source=source_name,
+            relation=relation_type,
+            target=target_name,
+        )
+
+    # ── Delete Entity/Relation (GDPR erasure) ──────────────────
+
+    def delete_entity(self, name: str) -> str:
+        """Loescht eine Entitaet und alle zugehoerigen Relationen (GDPR erasure).
+
+        Args:
+            name: Exakter Name der Entitaet.
+
+        Returns:
+            Bestaetigungsnachricht oder Fehlermeldung.
+        """
+        if not name.strip():
+            return t("memory.error_empty_name")
+
+        entities = self._memory.index.search_entities(name)
+        # Filter to exact match (case-insensitive)
+        exact = [e for e in entities if e.name.lower() == name.strip().lower()]
+        if not exact:
+            return t("memory.entity_not_found", name=name)
+
+        deleted_count = 0
+        for entity in exact:
+            if self._memory.index.delete_entity(entity.id):
+                deleted_count += 1
+
+        log.info("entity_deleted_gdpr", name=name, count=deleted_count)
+        return t("memory.entity_deleted", count=deleted_count, name=name)
+
+    def delete_relation(
+        self,
+        source_name: str,
+        relation_type: str,
+        target_name: str,
+    ) -> str:
+        """Loescht eine Relation zwischen zwei Entitaeten (GDPR erasure).
+
+        Args:
+            source_name: Name der Quell-Entitaet.
+            relation_type: Art der Beziehung.
+            target_name: Name der Ziel-Entitaet.
+
+        Returns:
+            Bestaetigungsnachricht oder Fehlermeldung.
+        """
+        sources = self._memory.index.search_entities(source_name)
+        if not sources:
+            return t("memory.source_entity_not_found", name=source_name)
+
+        targets = self._memory.index.search_entities(target_name)
+        if not targets:
+            return t("memory.target_entity_not_found", name=target_name)
+
+        source_id = sources[0].id
+        target_id = targets[0].id
+
+        # Delete matching relations from the database
+        try:
+            conn = self._memory.index.conn
+            cursor = conn.execute(
+                "DELETE FROM relations"
+                " WHERE source_entity = ? AND relation_type = ? AND target_entity = ?",
+                (source_id, relation_type, target_id),
+            )
+            conn.commit()
+            count = cursor.rowcount
+        except Exception as e:
+            return t("memory.delete_failed", error=e)
+
+        if count == 0:
+            return t(
+                "memory.relation_not_found",
+                relation=relation_type,
+                source=source_name,
+                target=target_name,
+            )
+
+        log.info(
+            "relation_deleted_gdpr",
+            source=source_name,
+            relation=relation_type,
+            target=target_name,
+        )
+        return t(
+            "memory.relation_deleted",
+            source=source_name,
+            relation=relation_type,
+            target=target_name,
+        )
+
+    # ── Core Memory ──────────────────────────────────────────────
+
+    def get_core_memory(self) -> str:
+        """Gibt die aktuelle Core Memory (CORE.md) zurueck.
+
+        Returns:
+            Vollstaendiger Inhalt der CORE.md.
+        """
+        content = self._memory.core.load()
+        if not content:
+            return t("memory.core_empty")
+        return content
+
+    # ── Episodic ─────────────────────────────────────────────────
+
+    def get_recent_episodes(self, days: int = 3) -> str:
+        """Laedt die letzten Tageslog-Eintraege.
+
+        Args:
+            days: Anzahl Tage zurueck (1-30, Default: 3).
+
+        Returns:
+            Formatierte Tageslog-Eintraege.
+        """
+        days = max(1, min(30, days))
+
+        recent = self._memory.episodic.get_recent(days=days)
+
+        if not recent:
+            return t("memory.no_episodes", days=days)
+
+        lines: list[str] = []
+        for d, content in recent:
+            lines.append(f"## {d.isoformat()}")
+            lines.append(content.strip())
+            lines.append("")
+
+        return "\n".join(lines)
+
+    # ── Procedural ───────────────────────────────────────────────
+
+    def search_procedures(self, query: str, top_k: int = 3) -> str:
+        """Sucht nach gelernten Prozeduren/Skills.
+
+        Args:
+            query: Suchtext (matched gegen Trigger-Keywords und Inhalt).
+            top_k: Maximale Anzahl Ergebnisse (Default: 3).
+
+        Returns:
+            Formatierte Liste relevanter Prozeduren.
+        """
+        if not query.strip():
+            return t("memory.error_empty_query")
+
+        keywords = query.strip().split()
+        top_k = max(1, min(10, top_k))
+        results = self._memory.procedural.find_by_keywords(keywords)
+
+        if not results:
+            return t("memory.no_procedures", query=query)
+
+        results = results[:top_k]
+
+        lines: list[str] = [t("memory.procedures_header", count=len(results))]
+        for meta, body, score in results:
+            lines.append(
+                t(
+                    "memory.procedure_item",
+                    name=meta.name,
+                    rate=f"{meta.success_rate:.0%}",
+                    uses=meta.total_uses,
+                    score=f"{score:.1f}",
+                )
+            )
+            # Body kuerzen auf 500 Zeichen
+            body_short = body[:500] + "…" if len(body) > 500 else body
+            lines.append(body_short)
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def record_procedure_usage(
+        self,
+        name: str,
+        success: bool,
+        score: float = 0.0,
+        session_id: str = "",
+    ) -> str:
+        """Meldet Erfolg oder Misserfolg einer Prozedur.
+
+        Aktualisiert die Nutzungsstatistik (success_rate, total_uses etc.).
+
+        Args:
+            name: Name der Prozedur (Dateiname ohne .md).
+            success: True wenn erfolgreich, False bei Fehler.
+            score: Bewertungs-Score (0.0-1.0).
+            session_id: Session-ID in der die Nutzung stattfand.
+
+        Returns:
+            Aktualisierte Statistik der Prozedur.
+        """
+        if not name.strip():
+            return t("memory.error_empty_procedure_name")
+
+        result = self._memory.procedural.record_usage(
+            name=name.strip(),
+            success=success,
+            score=score,
+            session_id=session_id,
+        )
+
+        if result is None:
+            return t("memory.procedure_not_found", name=name)
+
+        status = (
+            t("memory.procedure_status_success")
+            if success
+            else t("memory.procedure_status_failure")
+        )
+        return t(
+            "memory.procedure_usage_recorded",
+            name=name,
+            status=status,
+            total=result.total_uses,
+            rate=f"{result.success_rate:.0%}",
+        )
+
+    # ── Stats ────────────────────────────────────────────────────
+
+    def memory_stats(self) -> str:
+        """Gibt Gesamtstatistiken des Memory-Systems zurueck.
+
+        Returns:
+            Formatierte Uebersicht aller Memory-Tiers und Indizes.
+        """
+        stats = self._memory.stats()
+
+        yes = t("memory.stats_yes")
+        no = t("memory.stats_no")
+        lines = [
+            t("memory.stats_header"),
+            t("memory.stats_chunks", value=stats["chunks"]),
+            t("memory.stats_embeddings", value=stats["embeddings"]),
+            t("memory.stats_entities", value=stats["entities"]),
+            t("memory.stats_relations", value=stats["relations"]),
+            t(
+                "memory.stats_procedures",
+                value=stats["procedures"],
+                reliable=stats["procedures_reliable"],
+            ),
+            t("memory.stats_episode_dates", value=stats["episode_dates"]),
+            t("memory.stats_core_loaded", value=yes if stats["core_memory_loaded"] else no),
+            t(
+                "memory.stats_embedding_cache",
+                hits=stats["embedding_cache_hits"],
+                calls=stats["embedding_api_calls"],
+            ),
+            t("memory.stats_initialized", value=yes if stats["initialized"] else no),
+        ]
+
+        return "\n".join(lines)
+
+
+# ── Registration ─────────────────────────────────────────────────
+
+
+def register_memory_tools(
+    mcp_client: Any,
+    memory: MemoryManager,
+) -> MemoryTools:
+    """Registriert Memory-Tools beim MCP-Client.
+
+    Args:
+        mcp_client: JarvisMCPClient-Instanz.
+        memory: Initialisierter MemoryManager.
+
+    Returns:
+        MemoryTools-Instanz fuer direkten Zugriff.
+    """
+    mt = MemoryTools(memory)
+
+    # ── search_memory ────────────────────────────────────────────
+    mcp_client.register_builtin_handler(
+        "search_memory",
+        mt.search_memory,
+        description=(
+            "Durchsucht das Jarvis-Gedächtnis (alle 5 Tiers). "
+            "Nutzt Hybrid-Suche: BM25 (lexikalisch) + Vektor (semantisch) + Graph. "
+            "Immer als ERSTES aufrufen wenn du Kontext brauchst."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Suchanfrage in natürlicher Sprache",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Max Ergebnisse (1-20)",
+                    "default": 6,
+                },
+                "tier": {
+                    "type": "string",
+                    "description": "Optionaler Filter: core|episodic|semantic|procedural",
+                    "default": "",
+                },
+            },
+            "required": ["query"],
+        },
+    )
+
+    # ── save_to_memory ───────────────────────────────────────────
+    mcp_client.register_builtin_handler(
+        "save_to_memory",
+        mt.save_to_memory,
+        description=(
+            "Speichert neue Information ins Jarvis-Gedächtnis. "
+            "Tier wählen: 'episodic' für Tageslog, 'semantic' für Fakten, "
+            "'procedural' für gelernte Abläufe."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "Der zu speichernde Text",
+                },
+                "tier": {
+                    "type": "string",
+                    "description": "Ziel: episodic|semantic|procedural",
+                    "default": "episodic",
+                },
+                "topic": {
+                    "type": "string",
+                    "description": "Thema/Überschrift (für Episodic)",
+                    "default": "",
+                },
+                "source_path": {
+                    "type": "string",
+                    "description": "Quellpfad (für Semantic/Procedural)",
+                    "default": "",
+                },
+            },
+            "required": ["content"],
+        },
+    )
+
+    # ── get_entity ───────────────────────────────────────────────
+    mcp_client.register_builtin_handler(
+        "get_entity",
+        mt.get_entity,
+        description=(
+            "Lädt eine Entität aus dem Wissens-Graphen mit allen Attributen "
+            "und Relationen. Sucht per Name (Teilmatch möglich)."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Name der Entität (z.B. 'Müller')",
+                },
+            },
+            "required": ["name"],
+        },
+    )
+
+    # ── add_entity ───────────────────────────────────────────────
+    mcp_client.register_builtin_handler(
+        "add_entity",
+        mt.add_entity,
+        description=(
+            "Erstellt eine neue Entität im Wissens-Graphen. "
+            "Typen: person, company, product, project, etc."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Anzeigename",
+                },
+                "entity_type": {
+                    "type": "string",
+                    "description": "Typ: person|company|product|project|...",
+                },
+                "attributes": {
+                    "type": "string",
+                    "description": (
+                        'Zusätzliche Attribute als JSON-String, z.B. {"beruf": "Ingenieur"}'
+                    ),
+                    "default": "{}",
+                },
+                "source_file": {
+                    "type": "string",
+                    "description": "Quelldatei",
+                    "default": "",
+                },
+            },
+            "required": ["name", "entity_type"],
+        },
+    )
+
+    # ── add_relation ─────────────────────────────────────────────
+    mcp_client.register_builtin_handler(
+        "add_relation",
+        mt.add_relation,
+        description=(
+            "Erstellt eine Beziehung zwischen zwei Entitäten im Wissens-Graphen. "
+            "Beispiel: Müller --[nutzt]→ Cloud-Pro"
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "source_name": {
+                    "type": "string",
+                    "description": "Name der Quell-Entität",
+                },
+                "relation_type": {
+                    "type": "string",
+                    "description": "Art der Beziehung (z.B. hat_police, arbeitet_bei)",
+                },
+                "target_name": {
+                    "type": "string",
+                    "description": "Name der Ziel-Entität",
+                },
+                "attributes": {
+                    "type": "string",
+                    "description": "Zusätzliche Attribute als JSON",
+                    "default": "{}",
+                },
+            },
+            "required": ["source_name", "relation_type", "target_name"],
+        },
+    )
+
+    # ── get_core_memory ──────────────────────────────────────────
+    mcp_client.register_builtin_handler(
+        "get_core_memory",
+        mt.get_core_memory,
+        description="Gibt die CORE.md zurück (Identität, Regeln, Präferenzen).",
+        input_schema={
+            "type": "object",
+            "properties": {},
+        },
+    )
+
+    # ── get_recent_episodes ──────────────────────────────────────
+    mcp_client.register_builtin_handler(
+        "get_recent_episodes",
+        mt.get_recent_episodes,
+        description="Lädt die Tageslog-Einträge der letzten Tage.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "integer",
+                    "description": "Anzahl Tage zurück (1-30)",
+                    "default": 3,
+                },
+            },
+        },
+    )
+
+    # ── search_procedures ────────────────────────────────────────
+    mcp_client.register_builtin_handler(
+        "search_procedures",
+        mt.search_procedures,
+        description=(
+            "Sucht nach gelernten Prozeduren/Skills. "
+            "Prozeduren enthalten bewährte Abläufe für wiederkehrende Aufgaben."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Suchtext (z.B. 'Projekt', 'Email')",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Max Ergebnisse (1-10)",
+                    "default": 3,
+                },
+            },
+            "required": ["query"],
+        },
+    )
+
+    # ── record_procedure_usage ───────────────────────────────────
+    mcp_client.register_builtin_handler(
+        "record_procedure_usage",
+        mt.record_procedure_usage,
+        description="Meldet Erfolg/Misserfolg einer Prozedur für Lern-Tracking.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Prozedurname (ohne .md)",
+                },
+                "success": {
+                    "type": "boolean",
+                    "description": "true = Erfolg, false = Fehlschlag",
+                },
+                "score": {
+                    "type": "number",
+                    "description": "Bewertungs-Score (0.0-1.0)",
+                    "default": 0.0,
+                },
+                "session_id": {
+                    "type": "string",
+                    "description": "Session-ID",
+                    "default": "",
+                },
+            },
+            "required": ["name", "success"],
+        },
+    )
+
+    # ── memory_stats ─────────────────────────────────────────────
+    mcp_client.register_builtin_handler(
+        "memory_stats",
+        mt.memory_stats,
+        description="Zeigt Statistiken des Memory-Systems (Chunks, Entitäten, Prozeduren etc.).",
+        input_schema={
+            "type": "object",
+            "properties": {},
+        },
+    )
+
+    # ── delete_entity ───────────────────────────────────────────
+    mcp_client.register_builtin_handler(
+        "delete_entity",
+        mt.delete_entity,
+        description=(
+            "Löscht eine Entität und alle zugehörigen Relationen aus dem "
+            "Wissens-Graphen (GDPR erasure). Exakter Name-Match."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Exakter Name der zu löschenden Entität",
+                },
+            },
+            "required": ["name"],
+        },
+    )
+
+    # ── delete_relation ─────────────────────────────────────────
+    mcp_client.register_builtin_handler(
+        "delete_relation",
+        mt.delete_relation,
+        description=(
+            "Löscht eine Relation zwischen zwei Entitäten aus dem Wissens-Graphen (GDPR erasure)."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "source_name": {
+                    "type": "string",
+                    "description": "Name der Quell-Entität",
+                },
+                "relation_type": {
+                    "type": "string",
+                    "description": "Art der Beziehung",
+                },
+                "target_name": {
+                    "type": "string",
+                    "description": "Name der Ziel-Entität",
+                },
+            },
+            "required": ["source_name", "relation_type", "target_name"],
+        },
+    )
+
+    _tool_names = [
+        "search_memory",
+        "save_to_memory",
+        "get_entity",
+        "add_entity",
+        "add_relation",
+        "delete_entity",
+        "delete_relation",
+        "get_core_memory",
+        "get_recent_episodes",
+        "search_procedures",
+        "record_procedure_usage",
+        "memory_stats",
+    ]
+    log.info("memory_tools_registered", tools=_tool_names)
+    return mt

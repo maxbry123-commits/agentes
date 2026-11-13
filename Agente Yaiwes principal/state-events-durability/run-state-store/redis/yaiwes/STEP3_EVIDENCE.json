@@ -1,0 +1,27 @@
+{
+  "node": 24,
+  "worker": "SOL integración 2",
+  "status": "GAP",
+  "step": 3,
+  "wiring": {
+    "adapter": "Agente Yaiwes principal/state-events-durability/run-state-store/redis/yaiwes/redis_adapter.py",
+    "adapter_blob": "2f77b8387bd798e4c346f14015780aeec56352a5",
+    "adapter_sha256": "5b648d051aae4e66dbde9ea025b3c4f673c302d0727bcadad9de6c51773cbfb1",
+    "ficha": "Agente Yaiwes principal/state-events-durability/run-state-store/redis/yaiwes/ficha.redis.v2.json",
+    "ficha_blob": "1eb57ef4f300b2633286f9188f597b243eae88bc",
+    "plugin_id": "yaiwes.state.redis_cache",
+    "canonical_bus_blob": "470f9c91650bc6c59e2900f7e71090b84363da9f",
+    "canonical_ficha_code_blob": "a72508027cc2458553ef6a2255a9aa33d9a77a21"
+  },
+  "microtest": {
+    "path": "Agente Yaiwes principal/state-events-durability/run-state-store/redis/yaiwes/redis_microtest.py",
+    "blob": "5ca170d34ad51e265eb5584a428ca2ad18010899",
+    "functional_route": "moved redis-server -> RESP/TCP adapter -> PING -> SET -> GET -> DEL",
+    "executed": false,
+    "check_runs_on_commit": 0,
+    "required_for_pass": true
+  },
+  "prune": "NOT_NEEDED",
+  "reason": "No existing authorized STEP3 runner was found that executes N24 Redis; target-path push produced zero check-runs. FAIL_CLOSED: wiring is persisted but runtime/feature evidence is not fabricated.",
+  "next_action": "Execute redis_microtest.py through an existing authorized STEP3 runner, collect L2_build+L3_runtime+L4_feature, read-back SHA/log, then PASS and release."
+}

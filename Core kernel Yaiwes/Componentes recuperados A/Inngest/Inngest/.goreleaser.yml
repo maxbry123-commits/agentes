@@ -1,0 +1,132 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+    - make build-ui
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    main: ./cmd/
+    binary: inngest
+    ldflags:
+      - -s -w
+      - -X github.com/inngest/inngest/pkg/inngest/version.Version={{.Version}}
+      - -X github.com/inngest/inngest/pkg/inngest/version.Hash={{.ShortCommit}}
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+dockers:
+  - id: inngest-amd64
+    goos: linux
+    goarch: amd64
+    skip_push: false
+    use: buildx
+    dockerfile: 'Dockerfile.goreleaser'
+    image_templates:
+    - "inngest/inngest:{{ .Tag }}-amd64"
+    - "{{ if not .Prerelease }}inngest/inngest:latest-amd64{{ end }}"
+    build_flag_templates:
+    - "--pull"
+    - "--label=org.opencontainers.image.created={{.Date}}"
+    - "--label=org.opencontainers.image.title={{.ProjectName}}"
+    - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+    - "--label=org.opencontainers.image.version={{.Version}}"
+    - "--platform=linux/amd64"
+  - id: inngest-arm64
+    goos: linux
+    goarch: arm64
+    skip_push: false
+    use: buildx
+    dockerfile: 'Dockerfile.goreleaser'
+    image_templates:
+    - "inngest/inngest:{{ .Tag }}-arm64v8"
+    - "{{ if not .Prerelease }}inngest/inngest:latest-arm64v8{{ end }}"
+    build_flag_templates:
+    - "--pull"
+    - "--label=org.opencontainers.image.created={{.Date}}"
+    - "--label=org.opencontainers.image.title={{.ProjectName}}"
+    - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+    - "--label=org.opencontainers.image.version={{.Version}}"
+    - "--platform=linux/arm64"
+docker_manifests:
+  - name_template: "{{ if not .Prerelease }}inngest/inngest:latest{{ end }}"
+    image_templates:
+      - "{{ if not .Prerelease }}inngest/inngest:latest-amd64{{ end }}"
+      - "{{ if not .Prerelease }}inngest/inngest:latest-arm64v8{{ end }}"
+  - name_template: inngest/inngest:{{ .Tag }}
+    image_templates:
+      - inngest/inngest:{{ .Tag }}-amd64
+      - inngest/inngest:{{ .Tag }}-arm64v8
+
+archives:
+  - format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE.md
+
+checksum:
+  name_template: 'checksums.txt'
+
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: false
+
+snapshot:
+  version_template: "{{ incpatch .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+homebrew_casks:
+  - name: inngest
+
+    # https://github.com/inngest/homebrew-tap
+    repository:
+      owner: inngest
+      name: homebrew-tap
+      branch: "goreleaser/{{ .ProjectName }}-{{ .Tag }}"
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      pull_request:
+        enabled: true
+        base:
+          owner: inngest
+          name: homebrew-tap
+          branch: main
+
+    # auto only uploads stable releases to homebrew-tap
+    # set to false temporarily if testing prereleases too
+    skip_upload: auto
+
+    homepage: "https://www.inngest.com/"
+    description: "Inngest CLI and development server"
+
+release:
+  # Repo in which the release will be created.
+  # Default is extracted from the origin remote URL or empty if its private hosted.
+  github:
+    owner: inngest
+    name: inngest
+  prerelease: auto
+  make_latest: "{{ not .Prerelease }}"

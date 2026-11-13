@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "yaiwes.agent-skill.contract/v1",
+  "title": "YAIWES executable Agent Skill contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "skill",
+    "source",
+    "objective",
+    "inputs",
+    "actions",
+    "acceptance",
+    "evidence",
+    "failures",
+    "integration"
+  ],
+  "properties": {
+    "schema": {
+      "const": "yaiwes.agent-skill.contract/v1"
+    },
+    "skill": {
+      "type": "object",
+      "required": [
+        "name",
+        "description"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 64
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "license": {
+          "type": "string"
+        },
+        "compatibility": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "repo",
+        "commit",
+        "files"
+      ],
+      "properties": {
+        "repo": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "blob_sha"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "blob_sha": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$"
+              },
+              "symbols": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "operation",
+          "side_effect"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "side_effect": {
+            "type": "boolean"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "acceptance": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "failures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "security_rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "integration": {
+      "type": "object",
+      "required": [
+        "target",
+        "mode",
+        "core_embedding"
+      ],
+      "properties": {
+        "target": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "native_tool",
+            "adapter",
+            "reference_only"
+          ]
+        },
+        "core_embedding": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+name: lawma-annotations-deepseek-all-1x-formated
+operators:
+  - id: load_lawma_annotations
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/lawma-annotations-deepseek-all-1x
+      split: train
+
+  - id: fix_R1_formating
+    input_ids:
+      - load_lawma_annotations
+    config:
+      type: completions
+      map: chat
+      map_config:
+        user_message: |
+          The following text justifies a response to a question. 
+          It should end with either 1: Conservative, 2: Liberal, or 3: Unspecifiable. 
+          Please make sure that the response is formatted correctly, but change nothing else.
+
+          Here is the text: {{deepseek_solution}}
+        output_column: deepseek_solution_formatted
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+

@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 695442,
+  "bundle_sha256": "fda945e6070cc6c6ae5694e6aeb21784dea5e8fdc003f229e746af31deff723f",
+  "extracted_tree": {
+    "bytes": 2519043,
+    "files": 189,
+    "sha256": "f715764a1bd0fe6edc76b43257c146d50de6b6492330c85465f73fa2e70d7ab5"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 695442,
+      "name": "22-PHANTOM.bundle.zip.part-0001",
+      "sha256": "fda945e6070cc6c6ae5694e6aeb21784dea5e8fdc003f229e746af31deff723f"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "22-PHANTOM",
+  "source_bytes": 2519043,
+  "source_commit": "107341b5beeb34ae916201a70b68a58f632722d9",
+  "source_files": 189,
+  "source_ref": "HEAD",
+  "source_repo": "Usta0x001/Phantom",
+  "source_tree": {
+    "bytes": 2519043,
+    "files": 189,
+    "sha256": "f715764a1bd0fe6edc76b43257c146d50de6b6492330c85465f73fa2e70d7ab5"
+  }
+}

@@ -1,0 +1,66 @@
+// Copyright IBM Corp. 2015, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package agent
+
+import (
+	"net/http"
+
+	"github.com/hashicorp/nomad/nomad/structs"
+)
+
+// SearchRequest accepts a prefix and context and returns a list of matching
+// IDs for that context.
+func (s *HTTPServer) SearchRequest(resp http.ResponseWriter, req *http.Request) (any, error) {
+	if req.Method == http.MethodPost || req.Method == http.MethodPut {
+		return s.newSearchRequest(resp, req)
+	}
+	return nil, CodedError(http.StatusMethodNotAllowed, ErrInvalidMethod)
+}
+
+func (s *HTTPServer) newSearchRequest(resp http.ResponseWriter, req *http.Request) (any, error) {
+	args := structs.SearchRequest{}
+
+	if err := decodeBody(req, &args); err != nil {
+		return nil, CodedError(http.StatusBadRequest, err.Error())
+	}
+
+	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
+		return nil, nil
+	}
+
+	var out structs.SearchResponse
+	if err := s.agent.RPC("Search.PrefixSearch", &args, &out); err != nil {
+		return nil, err
+	}
+
+	setMeta(resp, &out.QueryMeta)
+	return out, nil
+}
+
+func (s *HTTPServer) FuzzySearchRequest(resp http.ResponseWriter, req *http.Request) (any, error) {
+	if req.Method == http.MethodPost || req.Method == http.MethodPut {
+		return s.newFuzzySearchRequest(resp, req)
+	}
+	return nil, CodedError(http.StatusMethodNotAllowed, ErrInvalidMethod)
+}
+
+func (s *HTTPServer) newFuzzySearchRequest(resp http.ResponseWriter, req *http.Request) (any, error) {
+	var args structs.FuzzySearchRequest
+
+	if err := decodeBody(req, &args); err != nil {
+		return nil, CodedError(http.StatusBadRequest, err.Error())
+	}
+
+	if s.parse(resp, req, &args.Region, &args.QueryOptions) {
+		return nil, nil
+	}
+
+	var out structs.FuzzySearchResponse
+	if err := s.agent.RPC("Search.FuzzySearch", &args, &out); err != nil {
+		return nil, err
+	}
+
+	setMeta(resp, &out.QueryMeta)
+	return out, nil
+}

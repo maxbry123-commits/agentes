@@ -1,0 +1,96 @@
+name: YAIWES 15 Memory Surgical Fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes15-memory-surgical-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes15-memory-surgical-fix
+  cancel-in-progress: false
+
+jobs:
+  repair-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes15-memory-surgical-fix.yml
+            /📂coda workflow persistencias/🏈 YAIWES 15/code/skills/memory/__init__.py
+            /📂coda workflow persistencias/🏈 YAIWES 15/code/skills/base.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply exact two-line repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('📂coda workflow persistencias/🏈 YAIWES 15/code/skills/memory/__init__.py')
+          text = p.read_text(encoding='utf-8')
+          old = '        c.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))\n        session = dict(c.fetchone()) if c.fetchone() else None\n'
+          new = '        c.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))\n        row = c.fetchone()\n        session = dict(row) if row else None\n'
+          if old not in text:
+              if new in text:
+                  print('YAIWES15_FIX_ALREADY_PRESENT')
+              else:
+                  raise SystemExit('YAIWES15_EXPECTED_SOURCE_NOT_FOUND')
+          else:
+              if text.count(old) != 1:
+                  raise SystemExit('YAIWES15_NON_UNIQUE_PATCH_TARGET')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+              print('YAIWES15_SURGICAL_PATCH_APPLIED')
+          PY
+      - name: Compile repaired module
+        run: python3 -m py_compile '📂coda workflow persistencias/🏈 YAIWES 15/code/skills/memory/__init__.py'
+      - name: SQLite save-load round trip
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE='📂coda workflow persistencias/🏈 YAIWES 15/code'
+          PYTHONPATH="$CODE" python3 - <<'PY'
+          import asyncio
+          import tempfile
+          from pathlib import Path
+          from skills.memory import MemorySkill
+          async def main():
+              with tempfile.TemporaryDirectory(prefix='yaiwes15-memory-') as td:
+                  obj = MemorySkill.__new__(MemorySkill)
+                  obj.db_path = str(Path(td) / 'memory.db')
+                  obj._init_db()
+                  saved = await obj._save_session({'session_data': {'target': 'local-safe-test','mode': 'benign','findings': [{'type': 'quality-gap','description': 'round-trip-test'}],'stages': {'chain': {'chains': []}}}})
+                  assert saved.success is True
+                  loaded = await obj._load_session({'session_id': saved.data['session_id']})
+                  assert loaded.success is True, loaded.data
+                  assert loaded.data['session']['target'] == 'local-safe-test'
+                  assert len(loaded.data['findings']) == 1
+                  missing = await obj._load_session({'session_id': 'missing-session'})
+                  assert missing.success is False
+                  print('YAIWES15_SQLITE_ROUND_TRIP=PASS')
+          asyncio.run(main())
+          PY
+      - name: Commit repaired source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          P='📂coda workflow persistencias/🏈 YAIWES 15/code/skills/memory/__init__.py'
+          if git diff --quiet -- "$P"; then echo 'YAIWES15_SOURCE_ALREADY_REPAIRED'; exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$P"
+          git commit -m 'fix(yaiwes15): consume session row exactly once'
+          git fetch origin main
+          test "$(git rev-parse HEAD^)" = "$(git rev-parse origin/main)"
+          git push origin HEAD:main
+          echo 'YAIWES15_COMMIT=PASS'

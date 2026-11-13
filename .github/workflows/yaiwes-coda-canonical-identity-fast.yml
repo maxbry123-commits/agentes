@@ -1,0 +1,260 @@
+name: YAIWES CODA Canonical Identity Fast
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-coda-canonical-identity-fast.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sparse partial checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            .github
+          sparse-checkout-cone-mode: false
+
+      - name: Canonicalize identities with Git plumbing
+        shell: bash
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+          import json, re, subprocess, sys
+
+          ROOT = '📂coda workflow persistencias'
+          FIELD = '🏈 cancha deportiva de fútbol'
+          TEAM = 'Swarm agent team Navy seals YAIWES'
+          CLEANUP_WORKFLOWS = {
+              'yaiwes-coda-canonical-identity-cleanup.yml',
+              'yaiwes-coda-canonical-identity-fast.yml',
+          }
+
+          def run(*args, input=None, check=True):
+              p = subprocess.run(args, input=input, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+              if check and p.returncode:
+                  sys.stderr.write(p.stderr.decode('utf-8', 'replace'))
+                  raise RuntimeError('command failed: ' + ' '.join(args))
+              return p
+
+          def text(*args):
+              return run(*args).stdout.decode('utf-8').strip()
+
+          def ls_tree(treeish):
+              out = run('git','ls-tree','-z',treeish).stdout
+              rows = []
+              for rec in out.split(b'\0'):
+                  if not rec: continue
+                  meta, name = rec.split(b'\t',1)
+                  mode, typ, sha = meta.decode().split()
+                  rows.append({'mode':mode,'type':typ,'sha':sha,'name':name.decode('utf-8')})
+              return rows
+
+          def mktree(rows):
+              chunks=[]
+              for r in sorted(rows, key=lambda x:x['name'].encode('utf-8')):
+                  chunks.append(f"{r['mode']} {r['type']} {r['sha']}\t{r['name']}".encode('utf-8')+b'\0')
+              return run('git','mktree','-z',input=b''.join(chunks)).stdout.decode().strip()
+
+          def blob_text(sha):
+              return run('git','cat-file','-p',sha).stdout.decode('utf-8')
+
+          def hash_blob(s):
+              return run('git','hash-object','-w','--stdin',input=s.encode('utf-8')).stdout.decode().strip()
+
+          def rewrite_blob(sha, mappings):
+              try:
+                  s = blob_text(sha)
+              except UnicodeDecodeError:
+                  return sha
+              n = s
+              for old,new in mappings:
+                  n = n.replace(old,new)
+              return sha if n == s else hash_blob(n)
+
+          def rewrite_one_level(tree_sha, mappings, skip_names=frozenset()):
+              rows=[]
+              for r in ls_tree(tree_sha):
+                  if r['name'] in skip_names:
+                      continue
+                  nr=dict(r)
+                  if r['type']=='blob':
+                      nr['sha']=rewrite_blob(r['sha'],mappings)
+                  rows.append(nr)
+              return mktree(rows)
+
+          def build(base):
+              top_tree = text('git','rev-parse',f'{base}^{{tree}}')
+              top = ls_tree(top_tree)
+              top_by = {r['name']:r for r in top}
+              if ROOT not in top_by or '.github' not in top_by:
+                  raise RuntimeError('required roots missing')
+
+              coda = ls_tree(top_by[ROOT]['sha'])
+              numbered=[]
+              for r in coda:
+                  m=re.match(r'^🏈 (\d{2})(?:$|.+)$', r['name'])
+                  if m and r['name'] != FIELD:
+                      numbered.append((int(m.group(1)),r))
+              if len(numbered)!=24 or sorted(i for i,_ in numbered)!=list(range(1,25)):
+                  raise RuntimeError(f'expected 24 numbered components, got {[(i,r["name"]) for i,r in numbered]}')
+
+              mappings=[]
+              source_by_num={}
+              for i,r in numbered:
+                  target=f'🏈 {i:02d}'
+                  mappings.append((r['name'],target))
+                  source_by_num[i]=r
+
+              # Build each component tree: canonical manifest metadata + canonical README identity.
+              new_component_sha={}
+              for i in range(1,25):
+                  oldrow=source_by_num[i]
+                  rows=ls_tree(oldrow['sha'])
+                  out=[]
+                  found_manifest=False
+                  for r in rows:
+                      nr=dict(r)
+                      if r['type']=='blob' and r['name']=='INTERNAL-SURGICAL-MANIFEST-V5.json':
+                          nr['sha']=rewrite_blob(r['sha'],mappings)
+                          found_manifest=True
+                      out.append(nr)
+                  if not found_manifest:
+                      raise RuntimeError(f'manifest missing at component {i:02d}')
+                  readme=f'# 🏈 {i:02d}\n\n{TEAM}\n'
+                  out=[r for r in out if r['name']!='README-YAIWES.md']
+                  out.append({'mode':'100644','type':'blob','sha':hash_blob(readme),'name':'README-YAIWES.md'})
+                  new_component_sha[i]=mktree(out)
+
+              # Rewrite all top-level orchestration metadata in the field and Fables trees.
+              coda_by={r['name']:r for r in coda}
+              if FIELD not in coda_by or 'Fables enchufe universal' not in coda_by:
+                  raise RuntimeError('field/Fables tree missing')
+              new_field=rewrite_one_level(coda_by[FIELD]['sha'],mappings)
+              new_fables=rewrite_one_level(coda_by['Fables enchufe universal']['sha'],mappings)
+
+              new_coda=[]
+              numbered_names={r['name'] for _,r in numbered}
+              for r in coda:
+                  if r['name'] in numbered_names:
+                      continue
+                  nr=dict(r)
+                  if r['name']==FIELD: nr['sha']=new_field
+                  if r['name']=='Fables enchufe universal': nr['sha']=new_fables
+                  new_coda.append(nr)
+              for i in range(1,25):
+                  new_coda.append({'mode':'040000','type':'tree','sha':new_component_sha[i],'name':f'🏈 {i:02d}'})
+              new_coda_sha=mktree(new_coda)
+
+              # Rewrite hard-coded orchestration labels in .github/scripts and remove temporary cleanup workflows.
+              gh_rows=ls_tree(top_by['.github']['sha'])
+              gh_by={r['name']:r for r in gh_rows}
+              scripts_sha=gh_by.get('scripts',{}).get('sha')
+              workflows_sha=gh_by.get('workflows',{}).get('sha')
+              if not scripts_sha or not workflows_sha:
+                  raise RuntimeError('.github scripts/workflows missing')
+              new_scripts=rewrite_one_level(scripts_sha,mappings)
+              new_workflows=rewrite_one_level(workflows_sha,mappings,CLEANUP_WORKFLOWS)
+              new_gh=[]
+              for r in gh_rows:
+                  nr=dict(r)
+                  if r['name']=='scripts': nr['sha']=new_scripts
+                  if r['name']=='workflows': nr['sha']=new_workflows
+                  new_gh.append(nr)
+              new_gh_sha=mktree(new_gh)
+
+              new_top=[]
+              for r in top:
+                  nr=dict(r)
+                  if r['name']==ROOT: nr['sha']=new_coda_sha
+                  if r['name']=='.github': nr['sha']=new_gh_sha
+                  new_top.append(nr)
+              new_top_sha=mktree(new_top)
+
+              # Structural validation from the generated tree, without a full checkout.
+              generated_coda=ls_tree(new_coda_sha)
+              actual=sorted(r['name'] for r in generated_coda if re.fullmatch(r'🏈 \d{2}',r['name']))
+              expected=[f'🏈 {i:02d}' for i in range(1,25)]
+              if actual!=expected:
+                  raise RuntimeError(f'canonical set mismatch: {actual}')
+              for i in range(1,25):
+                  rows=ls_tree(new_component_sha[i])
+                  names={r['name'] for r in rows}
+                  if 'INTERNAL-SURGICAL-MANIFEST-V5.json' not in names or 'README-YAIWES.md' not in names or 'code' not in names:
+                      raise RuntimeError(f'component structure incomplete: {i:02d}')
+                  manifest_sha=next(r['sha'] for r in rows if r['name']=='INTERNAL-SURGICAL-MANIFEST-V5.json')
+                  manifest=json.loads(blob_text(manifest_sha))
+                  if manifest.get('component')!=f'🏈 {i:02d}':
+                      raise RuntimeError(f'manifest identity mismatch: {i:02d}:{manifest.get("component")}')
+                  code_sha=next(r['sha'] for r in rows if r['name']=='code')
+                  code_names={r['name']:r for r in ls_tree(code_sha)}
+                  if 'yaiwes_internal' not in code_names:
+                      raise RuntimeError(f'runtime dir missing: {i:02d}')
+                  yi=ls_tree(code_names['yaiwes_internal']['sha'])
+                  if 'persistence_runtime.py' not in {x['name'] for x in yi}:
+                      raise RuntimeError(f'runtime missing: {i:02d}')
+
+              field_rows=ls_tree(new_field)
+              registry_row=next((r for r in field_rows if r['name']=='YAIWES-INTERNAL-SWARM-REGISTRY-V5.json'),None)
+              if not registry_row:
+                  raise RuntimeError('registry missing')
+              registry=json.loads(blob_text(registry_row['sha']))
+              if [x['component'] for x in registry.get('components',[])]!=expected:
+                  raise RuntimeError('registry identities mismatch')
+              if registry.get('team')!=TEAM or registry.get('count')!=24:
+                  raise RuntimeError('registry team/count mismatch')
+
+              # Ensure previous full orchestration labels are absent from rewritten identity surfaces.
+              old_labels=[o for o,n in mappings if o!=n]
+              for sha in [new_field,new_fables,new_scripts,new_workflows]:
+                  for r in ls_tree(sha):
+                      if r['type']!='blob': continue
+                      try: s=blob_text(r['sha'])
+                      except UnicodeDecodeError: continue
+                      for old in old_labels:
+                          if old in s:
+                              raise RuntimeError(f'old label remains in identity surface: {r["name"]}')
+              print('CANONICAL_TREE_VALIDATED=24')
+              return new_top_sha
+
+          for attempt in range(1,5):
+              run('git','fetch','--filter=blob:none','origin','main')
+              base=text('git','rev-parse','origin/main')
+              new_tree=build(base)
+              commit=run('git','commit-tree',new_tree,'-p',base,input=b'refactor(coda): canonical YAIWES identities only\n').stdout.decode().strip()
+              run('git','fetch','--filter=blob:none','origin','main')
+              current=text('git','rev-parse','origin/main')
+              if current!=base:
+                  print(f'STALE_LOCK_GAP attempt={attempt} base={base} current={current}')
+                  continue
+              p=run('git','push','origin',f'{commit}:refs/heads/main',check=False)
+              if p.returncode==0:
+                  print(f'CANONICAL_PUBLISHED={commit}')
+                  break
+              print(p.stderr.decode('utf-8','replace'))
+          else:
+              raise SystemExit('CANONICAL_PUBLISH_FAILED_AFTER_RETRIES')
+          PY
+
+      - name: Final fresh readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --filter=blob:none origin main
+          echo "ORIGIN_MAIN=$(git rev-parse origin/main)"
+          git ls-tree --name-only origin/main:'📂coda workflow persistencias' | grep -E '^🏈 [0-9]{2}$' | sort > /tmp/canonical.txt
+          test "$(wc -l < /tmp/canonical.txt)" -eq 24
+          cat /tmp/canonical.txt

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tool_schemas>
+  <tool name="comprehensive_js_analysis">
+    <description>Perform comprehensive JavaScript analysis: fetch JS files, extract endpoints, detect secrets, identify frameworks, and extract parameters.</description>
+    <parameters>
+      <parameter name="url" type="string" required="true">
+        <description>Target webpage URL (e.g., "https://spa.example.com").</description>
+      </parameter>
+      <parameter name="include_inline" type="boolean" required="false">
+        <description>Include inline scripts in analysis.</description>
+      </parameter>
+      <parameter name="max_files" type="integer" required="false">
+        <description>Maximum external JS files to fetch.</description>
+      </parameter>
+      <parameter name="include_secrets" type="boolean" required="false">
+        <description>Scan for secrets (may expose sensitive data).</description>
+      </parameter>
+      <parameter name="timeout" type="number" required="false">
+        <description>Timeout per HTTP request in seconds.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Comprehensive results: js_files_found, endpoints, parameters, auth_patterns, frameworks, routes, secrets, and high_severity_secrets.</description>
+    </returns>
+    <examples>
+      <function=comprehensive_js_analysis>
+        <parameter=url>https://banking-app.example.com</parameter>
+      </function>
+    </examples>
+  </tool>
+</tool_schemas>

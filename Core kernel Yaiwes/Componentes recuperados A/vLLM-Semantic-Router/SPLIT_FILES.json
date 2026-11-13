@@ -1,0 +1,23 @@
+[
+  {
+    "repo": "vLLM-Semantic-Router",
+    "path": "src/semantic-router/.cache/ml-models/svm_model.json",
+    "chunks_dir": "vLLM-Semantic-Router/src/semantic-router/.cache/ml-models/svm_model.json.chunks",
+    "bytes": 86399613,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "vLLM-Semantic-Router",
+    "path": "src/semantic-router/.cache/ml-models/knn_model.json",
+    "chunks_dir": "vLLM-Semantic-Router/src/semantic-router/.cache/ml-models/knn_model.json.chunks",
+    "bytes": 27484971,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "vLLM-Semantic-Router",
+    "path": "website/static/white-paper.pdf",
+    "chunks_dir": "vLLM-Semantic-Router/website/static/white-paper.pdf.chunks",
+    "bytes": 28984317,
+    "chunk_bytes": 8388608
+  }
+]

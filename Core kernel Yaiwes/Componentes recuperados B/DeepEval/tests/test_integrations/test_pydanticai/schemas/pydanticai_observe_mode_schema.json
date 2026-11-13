@@ -1,0 +1,112 @@
+{
+  "uuid": "aa0cb86b-a511-4efd-879d-f68aeffc212c",
+  "baseSpans": [],
+  "agentSpans": [
+    {
+      "uuid": "dc02aa98-71f6-42c7-a2b8-1199691d92da",
+      "name": "observe_outer",
+      "status": "SUCCESS",
+      "type": "agent",
+      "startTime": "2026-06-01T16:36:40.856Z",
+      "endTime": "2026-06-01T16:36:41.586Z",
+      "input": {
+        "p": "Say hello in exactly three words."
+      },
+      "output": "Hello there, friend!",
+      "integration": "PydanticAI",
+      "availableTools": [],
+      "agentHandoffs": []
+    },
+    {
+      "uuid": "5d4812ce8484bcae",
+      "name": "modes_agent",
+      "status": "SUCCESS",
+      "type": "agent",
+      "parentUuid": "dc02aa98-71f6-42c7-a2b8-1199691d92da",
+      "startTime": "2026-06-01T16:36:40.857Z",
+      "endTime": "2026-06-01T16:36:41.585Z",
+      "input": [
+        {
+          "role": "user",
+          "content": "Say hello in exactly three words."
+        }
+      ],
+      "output": "Hello there, friend!",
+      "integration": "PydanticAI",
+      "availableTools": [],
+      "agentHandoffs": []
+    }
+  ],
+  "llmSpans": [
+    {
+      "uuid": "db511c4597a2ffbf",
+      "name": "chat gpt-4o-mini",
+      "status": "SUCCESS",
+      "type": "llm",
+      "parentUuid": "5d4812ce8484bcae",
+      "startTime": "2026-06-01T16:36:40.859Z",
+      "endTime": "2026-06-01T16:36:41.583Z",
+      "input": [
+        {
+          "role": "system",
+          "content": "Be concise, reply with one short sentence only."
+        },
+        {
+          "role": "user",
+          "content": "Say hello in exactly three words."
+        },
+        {
+          "role": "Model Request Parameters",
+          "content": {
+            "function_tools": [],
+            "native_tools": [],
+            "output_mode": "text",
+            "output_object": null,
+            "output_tools": [],
+            "prompted_output_template": null,
+            "allow_text_output": true,
+            "allow_image_output": false,
+            "instruction_parts": null,
+            "thinking": null
+          }
+        }
+      ],
+      "output": [
+        {
+          "role": "assistant",
+          "content": "Hello there, friend!"
+        }
+      ],
+      "integration": "PydanticAI",
+      "model": "gpt-4o-mini",
+      "provider": "OpenAI",
+      "inputTokenCount": 28.0,
+      "outputTokenCount": 5.0
+    }
+  ],
+  "retrieverSpans": [],
+  "toolSpans": [],
+  "startTime": "2026-06-01T16:36:40.856Z",
+  "endTime": "2026-06-01T16:36:41.586Z",
+  "name": "pydanticai-observe-trace",
+  "metadata": {
+    "test_type": "observe_mode",
+    "mode": "observe",
+    "source": "runtime"
+  },
+  "tags": [
+    "observe-mode",
+    "runtime"
+  ],
+  "environment": "development",
+  "threadId": "observe-mode-123",
+  "userId": "observe-user",
+  "input": [
+    {
+      "role": "user",
+      "content": "Say hello in exactly three words."
+    }
+  ],
+  "output": "Hello there, friend!",
+  "status": "SUCCESS"
+}

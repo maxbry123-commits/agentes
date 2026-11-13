@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- https://raw.githubusercontent.com/argoproj/argo-events/stable/manifests/base/crds/argoproj.io_eventbus.yaml
+- https://raw.githubusercontent.com/argoproj/argo-events/stable/manifests/base/crds/argoproj.io_eventsources.yaml
+- https://raw.githubusercontent.com/argoproj/argo-events/stable/manifests/base/crds/argoproj.io_sensors.yaml
+- argo-workflows-agent-ca-certificates.yaml
+- argo.service-account-token-secret.yaml
+- get-cm-rbac.yaml
+- e2e-secrets-rbac.yaml
+
+components:
+- ../components/base
+- ../components/in-cluster-argo
+
+namespace: argo

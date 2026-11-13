@@ -1,0 +1,22 @@
+package queue
+
+const (
+	// KindStart represents a queue state that the function state has been created but not started yet.
+	// Essentially a status that represents the backlog.
+	KindStart           = "start"
+	KindEdge            = "edge"
+	KindSleep           = "sleep"
+	KindPause           = "pause"
+	KindDebounce        = "debounce"
+	KindScheduleBatch   = "schedule-batch"
+	KindEdgeError       = "edge-error"        // KindEdgeError is used to indicate a final step error attempting a graceful save.
+	KindPauseBlockFlush = "pbf"               // Flushes pauses from the buffer to blocks.
+	KindJobPromote      = "jps"               // job promotion service
+	KindCancel          = "cancel"            // cancel signals eager cancellation of queue items
+	KindFunctionPause   = "fp"                // pause function
+	KindFunctionUnpause = "fup"               // unpause function
+	KindCronSync        = "cron-sync"         // updates sync schedules
+	KindCron            = "cron"              // handles the actual cron workloads
+	KindCronHealthCheck = "cron-health-check" // reconciles cron queues with fn configs from DB
+	KindLatencyTrack    = "ltc"               // latency tracking canary job
+)

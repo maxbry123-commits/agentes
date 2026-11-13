@@ -1,0 +1,46 @@
+name: YAIWES approved17 gap diagnose
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Core kernel Yaiwes/Download code Yaiwes/APPROVED17-GAP-DIAGNOSE-20260914.json'
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - slug: detect-secrets
+            repo: https://github.com/Yelp/detect-secrets.git
+          - slug: semgrep
+            repo: https://github.com/semgrep/semgrep.git
+          - slug: gatekeeper
+            repo: https://github.com/open-policy-agent/gatekeeper.git
+          - slug: great-expectations
+            repo: https://github.com/great-expectations/great_expectations.git
+    steps:
+      - name: Probe source tree
+        shell: bash
+        env:
+          SOURCE_REPO: ${{ matrix.repo }}
+          SLUG: ${{ matrix.slug }}
+        run: |
+          set -euo pipefail
+          mkdir source && cd source
+          git init -q
+          git remote add origin "$SOURCE_REPO"
+          git -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.required=false fetch --depth=1 --filter=blob:none origin HEAD
+          git checkout -q --detach FETCH_HEAD
+          echo "SLUG=$SLUG"
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo '--- SYMLINKS ---'
+          git ls-tree -r HEAD | awk '$1=="120000" {print}' || true
+          echo '--- GITLINKS ---'
+          git ls-tree -r HEAD | awk '$1=="160000" {print}' || true
+          echo '--- BLOBS_GE_95_MIB ---'
+          find . -path ./.git -prune -o -type f -size +95M -printf '%s %p\n' || true
+          echo '--- LFS_POINTERS ---'
+          find . -path ./.git -prune -o -type f -size -2k -print0 | xargs -0 -r grep -l '^version https://git-lfs.github.com/spec/v1$' || true

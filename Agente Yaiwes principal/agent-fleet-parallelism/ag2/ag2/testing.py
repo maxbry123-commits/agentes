@@ -1,0 +1,143 @@
+# Copyright (c) 2026, AG2ai, Inc., AG2ai open-source projects maintainers and core contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, Any
+from unittest.mock import MagicMock
+
+from typing_extensions import Self
+
+from ag2 import Context
+from ag2.config import LLMClient, ModelConfig, ModelProvider
+from ag2.events import BaseEvent, ModelMessage, ModelResponse, ToolCallEvent, ToolCallsEvent, ToolErrorEvent
+
+if TYPE_CHECKING:
+    from ag2.files.protocol import FilesClient
+
+__all__ = (
+    "TestConfig",
+    "TrackingConfig",
+)
+
+
+class TestClient(LLMClient):
+    __test__ = False
+
+    def __init__(
+        self,
+        *events: str | ModelResponse | ToolCallEvent | Iterable[ToolCallEvent],
+        raise_tool_errors: bool = True,
+    ) -> None:
+        self.events = iter(events)
+        self.raise_tool_errors = raise_tool_errors
+
+    async def __call__(
+        self,
+        messages: Sequence[BaseEvent],
+        context: Context,
+        **kwargs: Any,
+    ) -> ModelResponse:
+        if self.raise_tool_errors:
+            for m in messages:
+                if isinstance(m, ToolErrorEvent):
+                    raise m.error
+
+        next_msg = next(self.events)
+
+        if isinstance(next_msg, str):
+            message = ModelMessage(next_msg)
+            await context.send(message)
+            next_msg = ModelResponse(message)
+
+        elif isinstance(next_msg, Iterable):
+            next_msg = ModelResponse(tool_calls=ToolCallsEvent(list(next_msg)))
+
+        elif isinstance(next_msg, ToolCallEvent):
+            next_msg = ModelResponse(tool_calls=ToolCallsEvent([next_msg]))
+
+        return next_msg
+
+
+class TrackingClient(LLMClient):
+    def __init__(self, client: LLMClient, mock: MagicMock) -> None:
+        self.client = client
+        self.mock = mock
+
+    async def __call__(
+        self,
+        messages: Sequence[BaseEvent],
+        context: Context,
+        **kwargs: Any,
+    ) -> ModelResponse:
+        self.mock(messages[-1])
+        return await self.client(messages, context=context, **kwargs)
+
+
+class TrackingConfig(ModelConfig):
+    def __init__(self, config: ModelConfig) -> None:
+        self.config = config
+        self.mock = MagicMock()
+
+    @property
+    def provider(self) -> ModelProvider:
+        return self.config.provider
+
+    @property
+    def model(self) -> str:
+        return self.config.model
+
+    def copy(self) -> Self:
+        return self
+
+    def create(self) -> TrackingClient:
+        return TrackingClient(self.config.create(), self.mock)
+
+    def create_files_client(self) -> "FilesClient":
+        raise NotImplementedError(f"{type(self).__name__} does not support Files API.")
+
+
+class TestConfig(ModelConfig):
+    __test__ = False
+
+    def __init__(
+        self,
+        *events: ModelResponse | ToolCallEvent | Iterable[ToolCallEvent] | str,
+        provider: ModelProvider | None = None,
+        model: str | None = None,
+        raise_tool_errors: bool = True,
+    ) -> None:
+        """Script one LLM turn per positional event.
+
+        ``raise_tool_errors`` (default ``True``) re-raises any ``ToolErrorEvent``
+        it finds in the history, which is the convenient way to assert that a
+        tool blew up. Set it to ``False`` to model a *real* provider, which is
+        handed a failed tool call as an ordinary result and carries on: a test
+        asserting that something **ends the turn** needs that, or it is
+        asserting this double's behaviour rather than the agent's.
+        """
+        self.events = events
+        self._provider = provider
+        self._model = model
+        self._raise_tool_errors = raise_tool_errors
+
+    @property
+    def provider(self) -> ModelProvider:
+        if not self._provider:
+            raise NotImplementedError
+        return self._provider
+
+    @property
+    def model(self) -> str:
+        if not self._model:
+            raise NotImplementedError
+        return self._model
+
+    def copy(self) -> Self:
+        return self
+
+    def create(self) -> TestClient:
+        return TestClient(*self.events, raise_tool_errors=self._raise_tool_errors)
+
+    def create_files_client(self) -> "FilesClient":
+        raise NotImplementedError(f"{type(self).__name__} does not support Files API.")

@@ -1,0 +1,56 @@
+1\. Install the SDK
+```sh
+composer require unleash/client guzzlehttp/guzzle symfony/cache
+```
+or
+```sh
+composer require unleash/client symfony/http-client nyholm/psr7 symfony/cache
+```
+
+2\. Initialize Unleash
+```php
+<?php
+
+use Unleash\\Client\\UnleashBuilder;
+
+require 'vendor/autoload.php';
+
+$unleash = UnleashBuilder::create()
+    ->withAppName('unleash-onboarding-php')
+    ->withAppUrl('<YOUR_API_URL>')
+    ->withHeader('Authorization', '<YOUR_API_TOKEN>') // in production use environment variable
+    ->withInstanceId('unleash-onboarding-instance')
+    ->build();
+
+while (true) {
+    if ($unleash->isEnabled('<YOUR_FLAG>')) {
+        echo '<YOUR_FLAG> is enabled' . PHP_EOL;
+    } else {
+        echo '<YOUR_FLAG> is disabled' . PHP_EOL;
+    }
+    sleep(1);
+}
+```
+---
+```php
+$unleash = UnleashBuilder::create()
+    ->withAppName('unleash-onboarding-php')
+    ->withAppUrl('<YOUR_API_URL>')
+    ->withHeader('Authorization', getenv('UNLEASH_API_TOKEN'))
+    ->withInstanceId('unleash-onboarding-instance')
+    ->build();
+```
+
+---
+- [SDK repository with documentation](https://github.com/Unleash/unleash-client-php)
+- [PHP SDK example with CodeSandbox](https://github.com/Unleash/unleash-sdk-examples/tree/main/PHP)
+
+---
+
+```php
+if ($unleash->isEnabled('<YOUR_FLAG>')) {
+    echo '<YOUR_FLAG> is enabled' . PHP_EOL;
+} else {
+    echo '<YOUR_FLAG> is disabled' . PHP_EOL;
+}
+```

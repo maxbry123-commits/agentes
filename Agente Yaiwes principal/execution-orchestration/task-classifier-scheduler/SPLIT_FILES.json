@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "APScheduler",
+    "path": "tools/dockerize",
+    "chunks_dir": "APScheduler/tools/dockerize.chunks",
+    "bytes": 8528260,
+    "chunk_bytes": 8388608
+  }
+]

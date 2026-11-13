@@ -1,0 +1,82 @@
+1\. Install the SDK
+
+```gradle
+implementation("io.getunleash:unleash-android:+")
+```
+
+2\. Enable required [permissions](https://developer.android.com/guide/topics/manifest/uses-permission-element)
+
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+```
+
+3\. Initialize Unleash in your application
+
+```kotlin
+class MyApplication: Application() {
+    val unleash: Unleash by lazy {
+        val instance = DefaultUnleash(
+            androidContext = this,
+            unleashConfig = UnleashConfig.newBuilder(appName = "unleash-onboarding-android")
+                .proxyUrl("<YOUR_API_URL>")
+                .clientKey("<YOUR_API_TOKEN>")
+                .build()
+        )
+        instance.start()
+        instance
+    }
+
+    override fun onTerminate() {
+        super.onTerminate()
+        unleash.close()
+    }
+}
+```
+
+4\. Check flag status
+
+```kotlin
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val unleashInstance = (application as MyApplication).unleash
+
+        setContent {
+            var flagStatus by remember { mutableStateOf("loading") }
+            LaunchedEffect(Unit) {
+                while (isActive) {
+                    val isFlagEnabled = unleashInstance.isEnabled("<YOUR_FLAG>")
+                    flagStatus = if (isFlagEnabled) {
+                        "Flag is enabled"
+                    } else {
+                        "Flag is disabled"
+                    }
+                    delay(3.seconds)
+                }
+            }
+
+            Text(text = flagStatus)
+        }
+
+    }
+}
+```
+ℹ️ **Info:** The Android SDK takes at least 60 seconds to post metrics to Unleash.
+
+---
+---
+- [SDK repository with documentation and example](https://github.com/Unleash/unleash-android)
+- [Android SDK basic example](hhttps://github.com/Unleash/unleash-sdk-examples/tree/main/Android)
+
+---
+
+```kotlin
+if (unleash.isEnabled("<YOUR_FLAG>")) {
+    println("<YOUR_FLAG> is enabled")
+} else {
+    println("<YOUR_FLAG> is disabled")
+}
+```
+
+ℹ️ **Info:** The Android SDK takes at least 60 seconds to post metrics to Unleash.

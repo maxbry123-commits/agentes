@@ -1,0 +1,32 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "worker-entrypoint-with-assets",
+	"main": "./workers/worker-entrypoint.ts",
+	"compatibility_date": "2025-05-01",
+	"assets": {
+		"directory": "./assets",
+	},
+	"services": [
+		{
+			"binding": "SERVICE_WORKER",
+			"service": "service-worker",
+		},
+		{
+			"binding": "EXPORTED_HANDLER",
+			"service": "exported-handler",
+		},
+		{
+			"binding": "EXPORTED_HANDLER_WITH_ASSETS",
+			"service": "exported-handler-with-assets",
+		},
+		{
+			"binding": "WORKER_ENTRYPOINT",
+			"service": "worker-entrypoint",
+		},
+		{
+			"binding": "NAMED_ENTRYPOINT",
+			"service": "worker-entrypoint",
+			"entrypoint": "NamedEntrypoint",
+		},
+	],
+}

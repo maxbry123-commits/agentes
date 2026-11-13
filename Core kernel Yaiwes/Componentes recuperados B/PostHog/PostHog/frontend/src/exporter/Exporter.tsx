@@ -1,0 +1,274 @@
+import '~/styles'
+import './Exporter.scss'
+
+import clsx from 'clsx'
+import { BindLogic, useValues } from 'kea'
+import { Suspense, useEffect, useSyncExternalStore } from 'react'
+
+import { Logo } from 'lib/brand'
+import { useResizeObserver } from 'lib/hooks/useResizeObserver'
+import { useThemedHtml } from 'lib/hooks/useThemedHtml'
+import { LemonMarkdown } from 'lib/lemon-ui/LemonMarkdown'
+import { Link } from 'lib/lemon-ui/Link'
+import { WrappingLoadingSkeleton } from 'lib/ui/WrappingLoadingSkeleton/WrappingLoadingSkeleton'
+import { humanFriendlyDuration } from 'lib/utils/durations'
+import { lazyWithRetry } from 'lib/utils/retryImport'
+import { AUTO_REFRESH_INITIAL_INTERVAL_SECONDS } from 'scenes/dashboard/dashboardConstants'
+import { teamLogic } from 'scenes/teamLogic'
+
+import { ExporterLogin } from '~/exporter/ExporterLogin'
+import { ExportType, ExportedData } from '~/exporter/types'
+import { isInsightVizNode, isTrendsQuery } from '~/queries/utils'
+import { ChartDisplayType } from '~/types'
+
+import { exporterViewLogic } from './exporterViewLogic'
+
+const LazyDashboardScene = lazyWithRetry(() => import('./scenes/ExporterDashboardScene'))
+const LazyHeatmapScene = lazyWithRetry(() => import('./scenes/ExporterHeatmapScene'))
+const LazyInsightScene = lazyWithRetry(() => import('./scenes/ExporterInsightScene'))
+const LazyNotebookScene = lazyWithRetry(() => import('./scenes/ExporterNotebookScene'))
+const LazyRecordingScene = lazyWithRetry(() => import('./scenes/ExporterRecordingScene'))
+const LazyInterviewScene = lazyWithRetry(() => import('./scenes/ExporterInterviewScene'))
+const LazyQueryScene = lazyWithRetry(() => import('./scenes/ExporterQueryScene'))
+
+function ExportedSceneSkeleton(): JSX.Element {
+    return (
+        <WrappingLoadingSkeleton fullWidth>
+            <span className="block w-full h-screen" />
+        </WrappingLoadingSkeleton>
+    )
+}
+
+const PREFERS_DARK_MEDIA_QUERY = '(prefers-color-scheme: dark)'
+
+function subscribeToColorSchemeChanges(onChange: () => void): () => void {
+    const media = window.matchMedia?.(PREFERS_DARK_MEDIA_QUERY)
+    if (!media) {
+        return () => {}
+    }
+    // Shared/embedded pages are viewed from browsers we don't control; old WebKit (Safari < 14)
+    // only implements the legacy listener API, and throwing here would crash the whole page
+    if (typeof media.addEventListener !== 'function') {
+        media.addListener(onChange)
+        return () => media.removeListener(onChange)
+    }
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+}
+
+function getSystemPrefersDark(): boolean {
+    return typeof window !== 'undefined' && !!window.matchMedia?.(PREFERS_DARK_MEDIA_QUERY)?.matches
+}
+
+function useResolvedForcedTheme(theme?: 'light' | 'dark' | 'system'): 'light' | 'dark' | null {
+    // Subscribe so a shared page left open follows system light/dark switches without a reload
+    const systemPrefersDark = useSyncExternalStore(subscribeToColorSchemeChanges, getSystemPrefersDark)
+    if (theme === 'light' || theme === 'dark') {
+        return theme
+    }
+    if (theme !== 'system') {
+        return null
+    }
+    return systemPrefersDark ? 'dark' : 'light'
+}
+
+export function Exporter(props: ExportedData): JSX.Element {
+    const {
+        type,
+        dashboard,
+        insight,
+        recording,
+        notebook,
+        insights,
+        inline_query_results: inlineQueryResults,
+        query,
+        query_results: queryResults,
+        query_title: queryTitle,
+        themes,
+        accessToken,
+        exportToken,
+        interview,
+        ...exportOptions
+    } = props
+    const { whitelabel, showInspector = false } = exportOptions
+    const forcedTheme = useResolvedForcedTheme(exportOptions.theme)
+
+    // A metric insight sizes to a compact card rather than filling the viewport, so drop the 100vh floor
+    // that would otherwise leave empty space below it (see Exporter.scss and ExportedInsight.scss).
+    // Applies to both saved insights and ad-hoc query exports — the image exporter narrows
+    // the screenshot viewport for both.
+    const metricQuery = insight?.query ?? query
+    const metric =
+        metricQuery &&
+        isInsightVizNode(metricQuery) &&
+        isTrendsQuery(metricQuery.source) &&
+        metricQuery.source.trendsFilter?.display === ChartDisplayType.Metric
+            ? metricQuery
+            : undefined
+
+    const { currentTeam } = useValues(teamLogic)
+    const { ref: elementRef, height, width } = useResizeObserver()
+
+    useEffect(() => {
+        // NOTE: For embedded views we emit an event to indicate the content width / height to allow the parent to correctly resize
+        // NOTE: We post the window name to allow the parent to identify the iframe
+        // it's ok to use we use a wildcard for the origin bc data isn't sensitive
+        // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration
+        window.parent?.postMessage({ event: 'posthog:dimensions', name: window.name, height, width }, '*')
+    }, [height, width])
+
+    useEffect(() => {
+        if (dashboard && (type === ExportType.Scene || type === ExportType.Embed)) {
+            const baseTitle = dashboard.name || 'Dashboard'
+            document.title = whitelabel ? baseTitle : `${baseTitle} • PostHog`
+        } else if (insight && (type === ExportType.Scene || type === ExportType.Embed)) {
+            const baseTitle = insight.name || insight.derived_name || 'Insight'
+            document.title = whitelabel ? baseTitle : `${baseTitle} • PostHog`
+        } else if (notebook && (type === ExportType.Scene || type === ExportType.Embed)) {
+            const baseTitle = notebook.title || 'Notebook'
+            document.title = whitelabel ? baseTitle : `${baseTitle} • PostHog`
+        }
+    }, [dashboard, insight, notebook, type, whitelabel])
+
+    useThemedHtml(false, forcedTheme)
+
+    if (type === ExportType.Unlock) {
+        return <ExporterLogin whitelabel={whitelabel} />
+    }
+
+    if (type === ExportType.Interview && interview) {
+        return (
+            <Suspense fallback={<ExportedSceneSkeleton />}>
+                <LazyInterviewScene interview={interview} accessToken={accessToken} />
+            </Suspense>
+        )
+    }
+
+    return (
+        <BindLogic logic={exporterViewLogic} props={props}>
+            <div
+                className={clsx('Exporter', {
+                    'Exporter--insight': !!insight,
+                    'Exporter--metric': !!metric,
+                    'Exporter--dashboard': !!dashboard,
+                    'Exporter--recording': !!recording,
+                    'Exporter--notebook': !!notebook,
+                    'Exporter--heatmap': type === ExportType.Heatmap,
+                })}
+                ref={elementRef}
+            >
+                {dashboard ? (
+                    type === ExportType.Scene ? (
+                        <div className="SharedDashboard-header">
+                            {!whitelabel && (
+                                <Link
+                                    to="https://posthog.com?utm_medium=in-product&utm_campaign=shared-dashboard"
+                                    target="_blank"
+                                >
+                                    <Logo size="xs" />
+                                </Link>
+                            )}
+                            <div className="SharedDashboard-header-title">
+                                <h1 className="mb-2" data-attr="dashboard-item-title">
+                                    {dashboard.name}
+                                </h1>
+                                <LemonMarkdown lowKeyHeadings>{dashboard.description || ''}</LemonMarkdown>
+                            </div>
+                            <div className="SharedDashboard-header-team text-right">
+                                <span className="block">{currentTeam?.name}</span>
+                                <span className="block text-xs text-muted-alt">
+                                    Auto refresh every {humanFriendlyDuration(AUTO_REFRESH_INITIAL_INTERVAL_SECONDS)}
+                                </span>
+                            </div>
+                        </div>
+                    ) : type === ExportType.Embed && !whitelabel ? (
+                        <Link
+                            to="https://posthog.com?utm_medium=in-product&utm_campaign=shared-dashboard"
+                            target="_blank"
+                        >
+                            <Logo size="xs" />
+                        </Link>
+                    ) : type === ExportType.Image && !whitelabel ? (
+                        <>
+                            <h1 className="mb-2">{dashboard.name}</h1>
+                            <LemonMarkdown lowKeyHeadings>{dashboard.description || ''}</LemonMarkdown>
+                        </>
+                    ) : null
+                ) : null}
+                {notebook ? (
+                    <div className="SharedNotebook">
+                        {!whitelabel && type === ExportType.Scene && (
+                            <div className="SharedDashboard-header">
+                                <Link
+                                    to="https://posthog.com?utm_medium=in-product&utm_campaign=shared-notebook"
+                                    target="_blank"
+                                >
+                                    <Logo size="xs" />
+                                </Link>
+                                <div className="SharedDashboard-header-team text-right">
+                                    <span className="block">{currentTeam?.name}</span>
+                                </div>
+                            </div>
+                        )}
+                        <Suspense fallback={<ExportedSceneSkeleton />}>
+                            <LazyNotebookScene
+                                notebook={notebook}
+                                insights={insights}
+                                inline_query_results={inlineQueryResults}
+                            />
+                        </Suspense>
+                    </div>
+                ) : insight ? (
+                    <Suspense fallback={<ExportedSceneSkeleton />}>
+                        <LazyInsightScene insight={insight} themes={themes!} exportOptions={exportOptions} />
+                    </Suspense>
+                ) : query ? (
+                    <Suspense fallback={<ExportedSceneSkeleton />}>
+                        <LazyQueryScene
+                            query={query}
+                            queryResults={queryResults}
+                            title={queryTitle}
+                            themes={themes!}
+                            exportOptions={exportOptions}
+                        />
+                    </Suspense>
+                ) : dashboard ? (
+                    <Suspense fallback={<ExportedSceneSkeleton />}>
+                        <LazyDashboardScene dashboard={dashboard} type={type} themes={themes} />
+                    </Suspense>
+                ) : recording ? (
+                    <Suspense fallback={<ExportedSceneSkeleton />}>
+                        <LazyRecordingScene
+                            recording={recording}
+                            mode={props.mode}
+                            autoplay={props.autoplay}
+                            noBorder={props.noBorder}
+                            exportToken={exportToken}
+                            showInspector={showInspector}
+                        />
+                    </Suspense>
+                ) : type === ExportType.Heatmap ? (
+                    <Suspense fallback={<ExportedSceneSkeleton />}>
+                        <LazyHeatmapScene />
+                    </Suspense>
+                ) : (
+                    <h1 className="text-center p-4">Something went wrong...</h1>
+                )}
+                {!whitelabel && dashboard && (
+                    <div className="text-center pb-4">
+                        {type === ExportType.Image ? <Logo size="xs" /> : null}
+                        <div>
+                            Made with{' '}
+                            <Link
+                                to="https://posthog.com?utm_medium=in-product&utm_campaign=shared-dashboard"
+                                target="_blank"
+                            >
+                                PostHog — open-source product analytics
+                            </Link>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </BindLogic>
+    )
+}

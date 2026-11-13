@@ -1,0 +1,46 @@
+import {Box, Heading, Page, PageHeader} from '@dagster-io/ui-components';
+import {Redirect} from 'react-router-dom';
+
+import {GlobalAutomaterializationContent} from './GlobalAutomaterializationContent';
+import {assertUnreachable} from '../../app/Util';
+import {useTrackPageView} from '../../app/analytics';
+import {AutomationTabs} from '../../automation/AutomationTabs';
+import {useDocumentTitle} from '../../hooks/useDocumentTitle';
+import {useAutoMaterializeSensorFlag} from '../AutoMaterializeSensorFlag';
+
+// Determine whether the user is flagged to see automaterialize policies as
+// sensors. If so, redirect to either the merged Automations page or the Sensors overview,
+// depending on their nav flag state.
+export const AutomaterializationRoot = () => {
+  const automaterializeSensorsFlagState = useAutoMaterializeSensorFlag();
+  switch (automaterializeSensorsFlagState) {
+    case 'unknown':
+      return <div />; // Waiting for result
+    case 'has-global-amp':
+      return <GlobalAutomaterializationRoot />;
+    case 'has-sensor-amp':
+      return <Redirect to="/automation" />;
+    default:
+      assertUnreachable(automaterializeSensorsFlagState);
+  }
+};
+
+const GlobalAutomaterializationRoot = () => {
+  useTrackPageView();
+  useDocumentTitle('Automation | Auto-materialize');
+  return (
+    <Page>
+      <PageHeader
+        title={
+          <Heading size={16} weight={600}>
+            Automation
+          </Heading>
+        }
+      />
+      <Box padding={{horizontal: 24}} border="bottom">
+        <AutomationTabs tab="global-amp" />
+      </Box>
+      <GlobalAutomaterializationContent />
+    </Page>
+  );
+};

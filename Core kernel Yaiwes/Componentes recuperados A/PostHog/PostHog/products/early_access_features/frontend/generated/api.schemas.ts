@@ -1,0 +1,325 @@
+/**
+ * Auto-generated from the Django backend OpenAPI schema.
+ * To modify these types, update the Django serializers or views, then run:
+ *   hogli build:openapi
+ * Questions or issues? #team-devex on Slack
+ *
+ * PostHog API - generated
+ * OpenAPI spec version: 1.0.0
+ */
+/**
+ * * `server` - Server
+ * * `client` - Client
+ * * `all` - All
+ */
+export type EvaluationRuntimeEnumApi = (typeof EvaluationRuntimeEnumApi)[keyof typeof EvaluationRuntimeEnumApi]
+
+export const EvaluationRuntimeEnumApi = {
+    Server: 'server',
+    Client: 'client',
+    All: 'all',
+} as const
+
+export type BlankEnumApi = (typeof BlankEnumApi)[keyof typeof BlankEnumApi]
+
+export const BlankEnumApi = {
+    '': '',
+} as const
+
+/**
+ * * `distinct_id` - User ID (default)
+ * * `device_id` - Device ID
+ */
+export type BucketingIdentifierEnumApi = (typeof BucketingIdentifierEnumApi)[keyof typeof BucketingIdentifierEnumApi]
+
+export const BucketingIdentifierEnumApi = {
+    DistinctId: 'distinct_id',
+    DeviceId: 'device_id',
+} as const
+
+export type MinimalFeatureFlagApiFilters = { [key: string]: unknown }
+
+export interface MinimalFeatureFlagApi {
+    readonly id: number
+    readonly team_id: number
+    name?: string
+    /** @maxLength 400 */
+    key: string
+    filters?: MinimalFeatureFlagApiFilters
+    deleted?: boolean
+    active?: boolean
+    /** @nullable */
+    ensure_experience_continuity?: boolean | null
+    /**
+     * @minimum -2147483648
+     * @maximum 2147483647
+     * @nullable
+     */
+    version?: number | null
+    /** Specifies where this feature flag should be evaluated
+     *
+     * * `server` - Server
+     * * `client` - Client
+     * * `all` - All */
+    evaluation_runtime?: EvaluationRuntimeEnumApi | BlankEnumApi | null
+    /** Identifier used for bucketing users into rollout and variants
+     *
+     * * `distinct_id` - User ID (default)
+     * * `device_id` - Device ID */
+    bucketing_identifier?: BucketingIdentifierEnumApi | BlankEnumApi | null
+    readonly evaluation_contexts: readonly string[]
+}
+
+/**
+ * * `draft` - draft
+ * * `concept` - concept
+ * * `alpha` - alpha
+ * * `beta` - beta
+ * * `general-availability` - general availability
+ * * `archived` - archived
+ */
+export type EarlyAccessFeatureStageEnumApi =
+    (typeof EarlyAccessFeatureStageEnumApi)[keyof typeof EarlyAccessFeatureStageEnumApi]
+
+export const EarlyAccessFeatureStageEnumApi = {
+    Draft: 'draft',
+    Concept: 'concept',
+    Alpha: 'alpha',
+    Beta: 'beta',
+    GeneralAvailability: 'general-availability',
+    Archived: 'archived',
+} as const
+
+/**
+ * * `engineering` - Engineering
+ * * `data` - Data
+ * * `product` - Product Management
+ * * `founder` - Founder
+ * * `leadership` - Leadership
+ * * `marketing` - Marketing
+ * * `sales` - Sales / Success
+ * * `student` - Student
+ * * `other` - Other
+ */
+export type RoleAtOrganizationEnumApi = (typeof RoleAtOrganizationEnumApi)[keyof typeof RoleAtOrganizationEnumApi]
+
+export const RoleAtOrganizationEnumApi = {
+    Engineering: 'engineering',
+    Data: 'data',
+    Product: 'product',
+    Founder: 'founder',
+    Leadership: 'leadership',
+    Marketing: 'marketing',
+    Sales: 'sales',
+    Student: 'student',
+    Other: 'other',
+} as const
+
+/**
+ * @nullable
+ */
+export type UserBasicApiHedgehogConfig = { [key: string]: unknown } | null
+
+export interface UserBasicApi {
+    readonly id: number
+    readonly uuid: string
+    /**
+     * @maxLength 200
+     * @nullable
+     */
+    distinct_id?: string | null
+    /** @maxLength 150 */
+    first_name?: string
+    /** @maxLength 150 */
+    last_name?: string
+    /** @maxLength 254 */
+    email: string
+    /** @nullable */
+    is_email_verified?: boolean | null
+    /** @nullable */
+    readonly hedgehog_config: UserBasicApiHedgehogConfig
+    role_at_organization?: RoleAtOrganizationEnumApi | BlankEnumApi | null
+}
+
+/**
+ * Feature flag payload for this early access feature
+ */
+export type EarlyAccessFeatureApiPayload = { [key: string]: unknown }
+
+/**
+ * The person or role responsible for this feature, e.g. {"type": "user", "id": 123} or {"type": "role", "id": "<role uuid>"}. Defaults to the creator. Send null to unassign.
+ * @nullable
+ */
+export type EarlyAccessFeatureApiAssignee = {
+    readonly type?: 'user' | 'role'
+    readonly id?: number | string
+} | null
+
+/**
+ * Mixin for serializers to add user access control fields
+ */
+export interface EarlyAccessFeatureApi {
+    readonly id: string
+    readonly feature_flag: MinimalFeatureFlagApi
+    /**
+     * The name of the early access feature.
+     * @maxLength 200
+     */
+    name: string
+    /** A longer description of what this early access feature does, shown to users in the opt-in UI. */
+    description?: string
+    /** Lifecycle stage. Valid values: draft, concept, alpha, beta, general-availability, archived. Moving to an active stage (alpha/beta/general-availability) enables the feature flag for opted-in users.
+     *
+     * * `draft` - draft
+     * * `concept` - concept
+     * * `alpha` - alpha
+     * * `beta` - beta
+     * * `general-availability` - general availability
+     * * `archived` - archived */
+    stage: EarlyAccessFeatureStageEnumApi
+    /** URL to external documentation for this feature. Shown to users in the opt-in UI. */
+    documentation_url?: string
+    /** Feature flag payload for this early access feature */
+    readonly payload: EarlyAccessFeatureApiPayload
+    readonly created_at: string
+    /** The user who created this early access feature. Null for features created before creator tracking was added. */
+    readonly created_by: UserBasicApi | null
+    /**
+     * The person or role responsible for this feature, e.g. {"type": "user", "id": 123} or {"type": "role", "id": "<role uuid>"}. Defaults to the creator. Send null to unassign.
+     * @nullable
+     */
+    readonly assignee: EarlyAccessFeatureApiAssignee
+    /**
+     * The effective access level the user has for this object
+     * @nullable
+     */
+    readonly user_access_level: string | null
+}
+
+export interface PaginatedEarlyAccessFeatureListApi {
+    count: number
+    /** @nullable */
+    next?: string | null
+    /** @nullable */
+    previous?: string | null
+    results: EarlyAccessFeatureApi[]
+}
+
+/**
+ * The person or role responsible for this feature, e.g. {"type": "user", "id": 123} or {"type": "role", "id": "<role uuid>"}. Defaults to the creator. Send null to unassign.
+ * @nullable
+ */
+export type EarlyAccessFeatureSerializerCreateOnlyApiAssignee = {
+    readonly type?: 'user' | 'role'
+    readonly id?: number | string
+} | null
+
+/**
+ * Mixin for serializers to add user access control fields
+ */
+export interface EarlyAccessFeatureSerializerCreateOnlyApi {
+    readonly id: string
+    /**
+     * The name of the early access feature.
+     * @maxLength 200
+     */
+    name: string
+    /** A longer description of what this early access feature does, shown to users in the opt-in UI. */
+    description?: string
+    /** Lifecycle stage. Valid values: draft, concept, alpha, beta, general-availability, archived. Moving to an active stage (alpha/beta/general-availability) enables the feature flag for opted-in users.
+     *
+     * * `draft` - draft
+     * * `concept` - concept
+     * * `alpha` - alpha
+     * * `beta` - beta
+     * * `general-availability` - general availability
+     * * `archived` - archived */
+    stage: EarlyAccessFeatureStageEnumApi
+    /** URL to external documentation for this feature. Shown to users in the opt-in UI. */
+    documentation_url?: string
+    /** Arbitrary JSON metadata associated with this feature. */
+    payload?: unknown
+    readonly created_at: string
+    /** The user who created this early access feature. Null for features created before creator tracking was added. */
+    readonly created_by: UserBasicApi | null
+    /**
+     * The person or role responsible for this feature, e.g. {"type": "user", "id": 123} or {"type": "role", "id": "<role uuid>"}. Defaults to the creator. Send null to unassign.
+     * @nullable
+     */
+    readonly assignee: EarlyAccessFeatureSerializerCreateOnlyApiAssignee
+    /** Optional ID of an existing feature flag to link. If omitted, a new flag is auto-created from the feature name. The flag must not already be linked to another feature, must not be group-based, and must not be multivariate. */
+    feature_flag_id?: number
+    readonly feature_flag: MinimalFeatureFlagApi
+    _create_in_folder?: string
+    /**
+     * The effective access level the user has for this object
+     * @nullable
+     */
+    readonly user_access_level: string | null
+}
+
+/**
+ * Feature flag payload for this early access feature
+ */
+export type PatchedEarlyAccessFeatureApiPayload = { [key: string]: unknown }
+
+/**
+ * The person or role responsible for this feature, e.g. {"type": "user", "id": 123} or {"type": "role", "id": "<role uuid>"}. Defaults to the creator. Send null to unassign.
+ * @nullable
+ */
+export type PatchedEarlyAccessFeatureApiAssignee = {
+    readonly type?: 'user' | 'role'
+    readonly id?: number | string
+} | null
+
+/**
+ * Mixin for serializers to add user access control fields
+ */
+export interface PatchedEarlyAccessFeatureApi {
+    readonly id?: string
+    readonly feature_flag?: MinimalFeatureFlagApi
+    /**
+     * The name of the early access feature.
+     * @maxLength 200
+     */
+    name?: string
+    /** A longer description of what this early access feature does, shown to users in the opt-in UI. */
+    description?: string
+    /** Lifecycle stage. Valid values: draft, concept, alpha, beta, general-availability, archived. Moving to an active stage (alpha/beta/general-availability) enables the feature flag for opted-in users.
+     *
+     * * `draft` - draft
+     * * `concept` - concept
+     * * `alpha` - alpha
+     * * `beta` - beta
+     * * `general-availability` - general availability
+     * * `archived` - archived */
+    stage?: EarlyAccessFeatureStageEnumApi
+    /** URL to external documentation for this feature. Shown to users in the opt-in UI. */
+    documentation_url?: string
+    /** Feature flag payload for this early access feature */
+    readonly payload?: PatchedEarlyAccessFeatureApiPayload
+    readonly created_at?: string
+    /** The user who created this early access feature. Null for features created before creator tracking was added. */
+    readonly created_by?: UserBasicApi | null
+    /**
+     * The person or role responsible for this feature, e.g. {"type": "user", "id": 123} or {"type": "role", "id": "<role uuid>"}. Defaults to the creator. Send null to unassign.
+     * @nullable
+     */
+    readonly assignee?: PatchedEarlyAccessFeatureApiAssignee
+    /**
+     * The effective access level the user has for this object
+     * @nullable
+     */
+    readonly user_access_level?: string | null
+}
+
+export type EarlyAccessFeatureListParams = {
+    /**
+     * Number of results to return per page.
+     */
+    limit?: number
+    /**
+     * The initial index from which to return the results.
+     */
+    offset?: number
+}

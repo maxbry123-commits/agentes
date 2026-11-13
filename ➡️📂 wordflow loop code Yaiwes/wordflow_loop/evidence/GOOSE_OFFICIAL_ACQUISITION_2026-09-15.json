@@ -1,0 +1,258 @@
+{
+  "aggregate_verdict": "VERIFIED_18_OF_18",
+  "canonical_copy_motor": {
+    "blob_sha": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
+    "path": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py",
+    "verdict": "VERIFIED_CLOSED"
+  },
+  "destination": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/agent_sources/goose",
+  "destination_bytes": 359711474,
+  "destination_files": 2464,
+  "destination_manifest_sha256": "c1b3226b34121bb2996c8f4ce1ca473d1e3af4fec8e9dc9e3ab6aa48b68b53c6",
+  "download_extract": {
+    "bundle_sha256": "94c7f8f27ebfad773fa2eb71893c6db737cb623232940bb7b59757380842e37b",
+    "extracted_tree": {
+      "bytes": 359711474,
+      "files": 2464,
+      "sha256": "b213818c833a2c8c85e6b20314d55e05912a449c593f6191ebe9cc859ea37d86"
+    },
+    "extraction_verified": true,
+    "parts": 26,
+    "reconstruction_verified": true,
+    "source_bytes": 359711474,
+    "source_files": 2464,
+    "source_tree": {
+      "bytes": 359711474,
+      "files": 2464,
+      "sha256": "b213818c833a2c8c85e6b20314d55e05912a449c593f6191ebe9cc859ea37d86"
+    }
+  },
+  "download_extract_motor": {
+    "blob_sha": "91e6e4486692eab314be5c7130d8310d3c855397",
+    "path": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py",
+    "verified": true
+  },
+  "official_source": {
+    "git_tree_sha": "4bb43fc0bfecfbc412d827dcbd34a5a8a811c43a",
+    "pinned_commit": "a23a8cd5b138954bc8962cba623c2d8ecd375512",
+    "repo": "aaif-goose/goose",
+    "resolved_commit": "a23a8cd5b138954bc8962cba623c2d8ecd375512"
+  },
+  "runtime_integration_claimed": false,
+  "schema": "yaiwes.goose-official-acquisition/v1",
+  "source_normalization": {
+    "materialization_map": [
+      {
+        "blob_sha": "383f4511d444516caed0fd113ee8a2b640cd2290",
+        "link_target": "hermit",
+        "path": "bin/.cmake-4.2.3.pkg",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "383f4511d444516caed0fd113ee8a2b640cd2290",
+        "link_target": "hermit",
+        "path": "bin/.just-1.40.0.pkg",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "383f4511d444516caed0fd113ee8a2b640cd2290",
+        "link_target": "hermit",
+        "path": "bin/.node-24.10.0.pkg",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "383f4511d444516caed0fd113ee8a2b640cd2290",
+        "link_target": "hermit",
+        "path": "bin/.pnpm-10.30.3.pkg",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "383f4511d444516caed0fd113ee8a2b640cd2290",
+        "link_target": "hermit",
+        "path": "bin/.protoc-31.1.pkg",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "383f4511d444516caed0fd113ee8a2b640cd2290",
+        "link_target": "hermit",
+        "path": "bin/.rustup-1.28.2.pkg",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "383f4511d444516caed0fd113ee8a2b640cd2290",
+        "link_target": "hermit",
+        "path": "bin/.temporal-cli-1.3.0.pkg",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/cargo",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/cargo-clippy",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/cargo-fmt",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/cargo-miri",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "23b8fc381114ae6f7002a3a42b655ae2d1f2501c",
+        "link_target": ".cmake-4.2.3.pkg",
+        "path": "bin/ccmake",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/clippy-driver",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "23b8fc381114ae6f7002a3a42b655ae2d1f2501c",
+        "link_target": ".cmake-4.2.3.pkg",
+        "path": "bin/cmake",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "23b8fc381114ae6f7002a3a42b655ae2d1f2501c",
+        "link_target": ".cmake-4.2.3.pkg",
+        "path": "bin/cmake-gui",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "bce925ef13a28eb438dcbc686bbc8d552bca8a6c",
+        "link_target": ".node-24.10.0.pkg",
+        "path": "bin/corepack",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "23b8fc381114ae6f7002a3a42b655ae2d1f2501c",
+        "link_target": ".cmake-4.2.3.pkg",
+        "path": "bin/cpack",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "23b8fc381114ae6f7002a3a42b655ae2d1f2501c",
+        "link_target": ".cmake-4.2.3.pkg",
+        "path": "bin/ctest",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "63271c139205291f61df17e39c7f5b2869647235",
+        "link_target": ".just-1.40.0.pkg",
+        "path": "bin/just",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "bce925ef13a28eb438dcbc686bbc8d552bca8a6c",
+        "link_target": ".node-24.10.0.pkg",
+        "path": "bin/node",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "bce925ef13a28eb438dcbc686bbc8d552bca8a6c",
+        "link_target": ".node-24.10.0.pkg",
+        "path": "bin/npm",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "bce925ef13a28eb438dcbc686bbc8d552bca8a6c",
+        "link_target": ".node-24.10.0.pkg",
+        "path": "bin/npx",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "0244bae95b92c45ff46be68d36b6023071dc152b",
+        "link_target": ".pnpm-10.30.3.pkg",
+        "path": "bin/pnpm",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "6bb03478fcfe19c14cbd93205b6a6e6b6dcee0c8",
+        "link_target": ".protoc-31.1.pkg",
+        "path": "bin/protoc",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/rls",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/rust-analyzer",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/rust-gdb",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/rust-gdbgui",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/rust-lldb",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/rustc",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/rustdoc",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/rustfmt",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "906ee94ca6891416a56b8a1df9e0bbcc0000429d",
+        "link_target": ".rustup-1.28.2.pkg",
+        "path": "bin/rustup",
+        "resolved_tracked_path": "bin/hermit"
+      },
+      {
+        "blob_sha": "d03f34b506bb3f0bacef683b195cba61b2295a26",
+        "link_target": ".temporal-cli-1.3.0.pkg",
+        "path": "bin/temporal",
+        "resolved_tracked_path": "bin/hermit"
+      }
+    ],
+    "materialization_map_sha256": "4a83ef0a784ed087510e423fb12321651eff89807252feeff7dce8dbdb7b562d",
+    "materialized_symlinks": 34,
+    "official_git_tree_sha": "4bb43fc0bfecfbc412d827dcbd34a5a8a811c43a",
+    "runtime_semantics_claimed": false,
+    "strategy": "TRACKED_INTERNAL_SYMLINKS_MATERIALIZED_TO_REGULAR_FILES",
+    "tracked_entries": 2464
+  },
+  "verdict": "VERIFIED_CLOSED"
+}

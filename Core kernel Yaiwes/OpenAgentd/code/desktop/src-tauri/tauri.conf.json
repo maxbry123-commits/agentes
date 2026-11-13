@@ -1,0 +1,142 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OpenAgentd",
+  "mainBinaryName": "OpenAgentd",
+  "version": "2.15.0",
+  "identifier": "com.openagentd.desktop",
+  "build": {
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": {
+      "cwd": "../..",
+      "script": "cd web && bun install --frozen-lockfile && bun run build"
+    },
+    "frontendDist": "../../web/dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "create": false,
+        "label": "main",
+        "title": "OpenAgentd",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 820,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "visible": false,
+        "transparent": false,
+        "backgroundColor": "#FAF6EC",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "dragDropEnabled": false,
+        "trafficLightPosition": {
+          "x": 12,
+          "y": 20
+        }
+      }
+    ],
+    "security": {
+      "dangerousDisableAssetCspModification": [
+        "script-src",
+        "style-src"
+      ],
+      "csp": {
+        "default-src": "'self' http: https:",
+        "connect-src": "'self' http: https: ws: wss: ipc: https://ipc.localhost",
+        "script-src": "'self' 'unsafe-inline' 'unsafe-eval' blob: data: http: https:",
+        "style-src": "'self' 'unsafe-inline' blob: data: http: https:",
+        "img-src": "'self' data: blob: http: https:",
+        "font-src": "'self' data: blob: http: https:",
+        "media-src": "'self' blob: http: https:",
+        "frame-src": "'self' about: data: blob: http: https:",
+        "object-src": "'none'",
+        "worker-src": "'self' blob:"
+      },
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/*",
+          "$APPLOCALDATA/*",
+          "$APPCACHE/*",
+          "$APPLOG/*"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "category": "Productivity",
+    "copyright": "Copyright (c) 2026 OpenAgentd contributors",
+    "shortDescription": "On-machine coding agent \u2014 streaming chat, tool use, persistent memory.",
+    "longDescription": "OpenAgentd is a self-hosted coding agent platform. The desktop app runs everything locally \u2014 your data, your keys, your machine.",
+    "targets": [
+      "dmg",
+      "app",
+      "msi",
+      "deb",
+      "appimage"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../sidecar-bundle/": "sidecar/",
+      "../scripts/install.sh": "install.sh",
+      "../scripts/INSTALL.md": "INSTALL.md",
+      "entitlements.plist": "entitlements.plist"
+    },
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "11.0",
+      "exceptionDomain": "",
+      "signingIdentity": "-",
+      "entitlements": "entitlements.plist",
+      "infoPlist": "Info.plist"
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "wix": {
+        "language": "en-US"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0"
+        ]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "openagentd"
+        ]
+      }
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZBODEyQUU4RjBFMjJFOEIKUldTTEx1THc2Q3FCYXE5L3VCTUlTZ1VwRHF2bXlIQ1BHdjVtZHpGUlBjZE1SaGkvYUFjclJJbEkK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

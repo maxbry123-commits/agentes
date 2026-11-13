@@ -1,0 +1,50 @@
+name: YAIWES Architecture README Sparse Append
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-architecture-readme-sparse-append.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  append-delta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            Readme arquitectura Yaiwes/README.md
+            Core kernel Yaiwes/Crack wall bitácora stated JSON/ARCHITECTURE_DELTA_1_5.md
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+      - name: Append only if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='Readme arquitectura Yaiwes/README.md'
+          DELTA='Core kernel Yaiwes/Crack wall bitácora stated JSON/ARCHITECTURE_DELTA_1_5.md'
+          MARKER='## 26. Integraciones VERIFIED_CLOSED — componentes 1–5 · 2026-09-07'
+          if grep -Fq "$MARKER" "$FILE"; then
+            echo 'ARCHITECTURE_DELTA_ALREADY_PRESENT'
+          else
+            printf '\n' >> "$FILE"
+            cat "$DELTA" >> "$FILE"
+          fi
+      - name: Commit surgical append
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'YAIWES Integration Loop'
+          git config user.email 'actions@users.noreply.github.com'
+          git add 'Readme arquitectura Yaiwes/README.md'
+          if git diff --cached --quiet; then
+            echo 'NO_ARCHITECTURE_DELTA_TO_COMMIT'
+            exit 0
+          fi
+          git commit -m 'docs(yaiwes): append verified components 1-5 to architecture'
+          git push origin HEAD:main

@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=../../../.jsonschema/ServerTestCase.schema.json
+---
+description: "Corrupt policy data"
+wantStatus:
+  httpStatusCode: 400
+  grpcStatusCode: 0
+playgroundEvaluate:
+  input:
+    {
+      "playgroundId": "test",
+      "files":
+        [
+          { "fileName": "common_roles.yaml", "contents": "rubbish" },
+          { "fileName": "resource.yaml", "contents": "rubbish" },
+        ],
+      "actions": ["view", "delete"],
+      "principal": { "id": "eduardo", "roles": ["user"] },
+      "resource":
+        {
+          "kind": "album_object",
+          "id": "XX125",
+          "attr": { "owner": "alicia", "public": false },
+        },
+    }
+  wantResponse:
+    {
+      "playgroundId": "test",
+      "failure":
+        {
+          "errors":
+            [
+              {
+                "file": "resource.yaml",
+                "error": "Failed to read: invalid document: contents are not valid YAML or JSON",
+                "details": { "line": 1, "column": 1 },
+              },
+              {
+                "file": "common_roles.yaml",
+                "error": "Failed to read: invalid document: contents are not valid YAML or JSON",
+                "details": { "line": 1, "column": 1 },
+              },
+            ],
+        },
+    }

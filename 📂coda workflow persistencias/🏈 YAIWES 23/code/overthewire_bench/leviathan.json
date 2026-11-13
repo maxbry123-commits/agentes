@@ -1,0 +1,37 @@
+[
+	{
+		"id": 0,
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 1,
+		"category": "Binary Exploitation",
+		"difficulty": "easy"
+	},
+	{
+		"id": 2,
+		"category": "Binary Exploitation",
+		"difficulty": "medium"
+	},
+	{
+		"id": 3,
+		"category": "Binary Exploitation",
+		"difficulty": "medium"
+	},
+	{
+		"id": 4,
+		"category": "General Skills",
+		"difficulty": "easy"
+	},
+	{
+		"id": 5,
+		"category": "Binary Exploitation",
+		"difficulty": "medium"
+	},
+	{
+		"id": 6,
+		"category": "Cryptography",
+		"difficulty": "easy"
+	}
+]

@@ -1,0 +1,80 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use super::replication_error_boundary::{Error, Result};
+use super::replication_filemeta_boundary::MrfReplicateEntry;
+
+/// Kept test-only: the runtime consumer was the worker HEAD's fake proxy
+/// counting (removed in backlog#1675 P1-5); the resyncer tests still pin the
+/// classifier's semantics for the real client read-proxy failure accounting.
+#[cfg(test)]
+pub(crate) use rustfs_replication::should_count_head_proxy_failure;
+pub use rustfs_replication::{BucketReplicationResyncStatus, ResyncOpts, ResyncStatusType, TargetReplicationResyncStatus};
+pub(crate) use rustfs_replication::{
+    is_version_id_mismatch, resync_state_accepts_update, resync_status_duration, sanitize_resync_error_detail,
+    should_auto_resume_resync,
+};
+
+#[allow(
+    dead_code,
+    reason = "declared boundary surface for the ECStore replication split plan; no caller in this port (backlog#1823)"
+)]
+pub(crate) const RESYNC_META_FORMAT: u16 = rustfs_replication::resync::RESYNC_META_FORMAT;
+#[allow(
+    dead_code,
+    reason = "declared boundary surface for the ECStore replication split plan; no caller in this port (backlog#1823)"
+)]
+pub(crate) const RESYNC_META_VERSION: u16 = rustfs_replication::resync::RESYNC_META_VERSION;
+pub(crate) const RESYNC_FILE_MAX_BYTES: usize = rustfs_replication::RESYNC_FILE_MAX_BYTES;
+#[allow(
+    dead_code,
+    reason = "declared boundary surface for the ECStore replication split plan; no caller in this port (backlog#1823)"
+)]
+pub(crate) const WIRE_ZERO_TIME_UNIX: i64 = rustfs_replication::resync::WIRE_ZERO_TIME_UNIX;
+#[allow(
+    dead_code,
+    reason = "declared boundary surface for the ECStore replication split plan; no caller in this port (backlog#1823)"
+)]
+pub(crate) const MRF_META_FORMAT: u16 = rustfs_replication::mrf::MRF_META_FORMAT;
+#[allow(
+    dead_code,
+    reason = "declared boundary surface for the ECStore replication split plan; no caller in this port (backlog#1823)"
+)]
+pub(crate) const MRF_META_VERSION: u16 = rustfs_replication::mrf::MRF_META_VERSION;
+
+fn map_replication_error(err: rustfs_replication::ResyncStateError) -> Error {
+    match err {
+        rustfs_replication::ResyncStateError::CorruptedFormat => Error::CorruptedFormat,
+        // Keep the io error typed so its kind survives into StorageError::Io
+        // instead of degrading to a stringified other() (backlog#1845).
+        rustfs_replication::ResyncStateError::Io(err) => Error::Io(err),
+        rustfs_replication::ResyncStateError::Other(err) => Error::other(err),
+    }
+}
+
+pub(crate) fn encode_resync_file(status: &BucketReplicationResyncStatus) -> Result<Vec<u8>> {
+    rustfs_replication::encode_resync_file(status).map_err(map_replication_error)
+}
+
+pub(crate) fn decode_resync_file(data: &[u8]) -> Result<BucketReplicationResyncStatus> {
+    rustfs_replication::decode_resync_file(data).map_err(map_replication_error)
+}
+
+pub(crate) fn encode_mrf_file(entries: &[MrfReplicateEntry]) -> Result<Vec<u8>> {
+    rustfs_replication::encode_mrf_file(entries).map_err(map_replication_error)
+}
+
+pub(crate) fn decode_mrf_file(data: &[u8]) -> Result<Vec<MrfReplicateEntry>> {
+    rustfs_replication::decode_mrf_file(data).map_err(map_replication_error)
+}

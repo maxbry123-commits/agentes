@@ -1,0 +1,399 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Provability Fabric Plan DSL Schema",
+  "description": "Schema for defining execution plans with runtime mediation points",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "enum": ["v1"],
+      "description": "Schema version"
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "Unique identifier for the plan"
+    },
+    "bundle_id": {
+      "type": "string",
+      "description": "Associated bundle identifier"
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "capability_id": {
+            "type": "string",
+            "description": "Unique capability identifier"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["call", "log", "declassify", "emit", "retrieve", "read", "write"],
+            "description": "Type of mediated operation"
+          },
+          "field_commit": {
+            "type": "string",
+            "description": "Cryptographic commitment to the field values"
+          },
+          "args_hash": {
+            "type": "string",
+            "description": "Hash of the operation arguments"
+          },
+          "resource": {
+            "type": "object",
+            "properties": {
+              "doc_id": {
+                "type": "string",
+                "description": "Document identifier for read/write operations"
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Field path for document operations"
+              },
+              "tool": {
+                "type": "string",
+                "description": "Tool identifier for call operations"
+              }
+            },
+            "description": "Resource specification for the operation"
+          },
+          "conditions": {
+            "type": "object",
+            "properties": {
+              "rate_limit": {
+                "type": "object",
+                "properties": {
+                  "window_ms": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "max_operations": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "tolerance_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": ["window_ms", "max_operations"]
+              },
+              "budget": {
+                "type": "object",
+                "properties": {
+                  "max_cost": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "currency": {
+                    "type": "string",
+                    "default": "USD"
+                  }
+                },
+                "required": ["max_cost"]
+              },
+              "privacy": {
+                "type": "object",
+                "properties": {
+                  "differential_privacy": {
+                    "type": "object",
+                    "properties": {
+                      "epsilon": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "delta": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "required": ["epsilon", "delta"]
+                  }
+                }
+              },
+              "abac": {
+                "type": "object",
+                "properties": {
+                  "attributes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "description": "Attribute key"
+                        },
+                        "value": {
+                          "type": "string",
+                          "description": "Attribute value"
+                        },
+                        "operator": {
+                          "type": "string",
+                          "enum": ["eq", "ne", "gt", "lt", "gte", "lte", "in", "not_in"],
+                          "description": "Comparison operator"
+                        }
+                      },
+                      "required": ["key", "value", "operator"]
+                    }
+                  },
+                  "session_attrs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "description": "Session attribute keys to check"
+                    }
+                  },
+                  "epoch_range": {
+                    "type": "object",
+                    "properties": {
+                      "start": {
+                        "type": "integer",
+                        "description": "Start epoch (inclusive)"
+                      },
+                      "end": {
+                        "type": "integer",
+                        "description": "End epoch (inclusive)"
+                      }
+                    },
+                    "required": ["start", "end"]
+                  },
+                  "scope": {
+                    "type": "string",
+                    "description": "Tenant or organizational scope"
+                  }
+                }
+              }
+            }
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["read", "write", "network", "file_system", "database"]
+            }
+          },
+          "declassification_rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from_label": {
+                  "type": "string"
+                },
+                "to_label": {
+                  "type": "string"
+                },
+                "condition": {
+                  "type": "string"
+                },
+                "justification": {
+                  "type": "string"
+                }
+              },
+              "required": ["from_label", "to_label", "condition", "justification"]
+            }
+          }
+        },
+        "required": ["capability_id", "type", "field_commit", "args_hash"]
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "description": "Unique rule identifier"
+          },
+          "effect": {
+            "type": "string",
+            "enum": ["allow", "deny", "forbid"],
+            "description": "Permission effect"
+          },
+          "subject": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "description": "Role-based access control"
+              },
+              "principal": {
+                "type": "string",
+                "description": "Specific principal identifier"
+              },
+              "organization": {
+                "type": "string",
+                "description": "Organizational scope"
+              }
+            },
+            "description": "Subject specification"
+          },
+          "action": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["call", "read", "write", "grant"],
+                "description": "Action type"
+              },
+              "resource": {
+                "type": "string",
+                "description": "Resource identifier (tool name, document URI, etc.)"
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Field path for document operations"
+              }
+            },
+            "required": ["type", "resource"]
+          },
+          "conditions": {
+            "type": "object",
+            "properties": {
+              "abac": {
+                "type": "object",
+                "properties": {
+                  "attributes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        },
+                        "operator": {
+                          "type": "string",
+                          "enum": ["eq", "ne", "gt", "lt", "gte", "lte", "in", "not_in"]
+                        }
+                      },
+                      "required": ["key", "value", "operator"]
+                    }
+                  },
+                  "session_attrs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "epoch_range": {
+                    "type": "object",
+                    "properties": {
+                      "start": {
+                        "type": "integer"
+                      },
+                      "end": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["start", "end"]
+                  },
+                  "scope": {
+                    "type": "string"
+                  }
+                }
+              },
+              "time_constraints": {
+                "type": "object",
+                "properties": {
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "valid_until": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "time_window": {
+                    "type": "object",
+                    "properties": {
+                      "start_hour": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 23
+                      },
+                      "end_hour": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 23
+                      },
+                      "timezone": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Rule priority (higher numbers take precedence)"
+          }
+        },
+        "required": ["rule_id", "effect", "subject", "action"]
+      }
+    },
+    "execution_order": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Ordered list of capability IDs defining execution sequence"
+    },
+    "invariants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          }
+        },
+        "required": ["name", "condition", "severity"]
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": ["version", "plan_id", "bundle_id", "capabilities"],
+  "additionalProperties": false
+} 

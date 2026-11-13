@@ -1,0 +1,57 @@
+# axolotl SFT backend — Stage 6 NON-DELPHI parity config (Gate P clean number).
+#
+# jinja-as-ground-truth reframe (notes/axolotl-sft-launch/README.md §Gate M/P
+# DECISION): the CLEAN loss-parity number is measured on a NON-delphi config — it
+# confirms the axolotl backend trains correctly (final loss within a few % relative
+# of the LF baseline, both curves decreasing, no NaN). delphi is NOT gated on
+# LF-loss-match (LF was divergent; jinja is ground truth) — its validation is Stage 4.
+#
+# Pair (same model + dataset + effective batch, run through the SAME launcher):
+#   LF     : --sft_backend llamafactory  --train_config_path sft/lf_configs/<llama3-nondelphi>.yaml
+#   axolotl: --sft_backend axolotl        --train_config_path sft/axolotl_configs/parity_llama3.yaml
+#   both   : --dataset philschmid/guanaco-sharegpt-style --global_batch_size 8 (or matched)
+#
+# aarch64: SDPA (no flash-attn-2 wheel on TACC Vista); sample_packing off.
+
+base_model: NousResearch/Meta-Llama-3-8B-Instruct
+trust_remote_code: true
+
+# non-delphi: standard llama3 chat template, no template_integrity/footgun plugin.
+datasets:
+  - path: philschmid/guanaco-sharegpt-style
+    type: chat_template
+
+chat_template: llama3
+
+attn_implementation: sdpa
+sample_packing: false
+
+sequence_len: 1024
+val_set_size: 0.0
+
+# aarch64/TACC AF_UNIX-path-too-long on multiproc dataset tokenization (see smoke.yaml).
+dataset_num_proc: 1
+
+micro_batch_size: 1
+gradient_accumulation_steps: 1
+num_epochs: 1
+max_steps: 30
+
+optimizer: adamw_torch
+lr_scheduler: cosine
+learning_rate: 0.00002
+warmup_steps: 3
+max_grad_norm: 1.0
+
+bf16: auto
+tf32: false
+gradient_checkpointing: true
+
+logging_steps: 1
+save_steps: 30
+save_total_limit: 1
+
+supabase_register: false
+mfu: false
+
+output_dir: ./outputs/axolotl-parity-llama3-out

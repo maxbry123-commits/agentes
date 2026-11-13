@@ -1,0 +1,66 @@
+from collections.abc import Callable
+from logging import getLogger
+from pathlib import Path
+from typing import Any
+
+from gitignore_parser import parse_gitignore
+from watchdog.events import FileSystemEvent
+
+logger = getLogger("taskiq.worker")
+
+
+class FileWatcher:  # pragma: no cover
+    """Filewatcher that watches for filesystem changes."""
+
+    def __init__(
+        self,
+        callback: Callable[..., None],
+        path: Path,
+        use_gitignore: bool = True,
+        **callback_kwargs: Any,
+    ) -> None:
+        self.callback = callback
+        self.gitignore = None
+        project_root = Path().resolve()
+        path = path.resolve()
+
+        if use_gitignore:
+            while path != project_root.parent:
+                gpath = path / ".gitignore"
+                if gpath.exists():
+                    self.gitignore = parse_gitignore(gpath)
+                    break
+                path = path.parent
+
+        self.callback_kwargs = callback_kwargs
+
+    def dispatch(self, event: FileSystemEvent) -> None:
+        """
+        React to event.
+
+        This function checks whether we need to
+        react to event and calls callback if we do.
+
+        :param event: incoming fs event.
+        """
+        if event.is_directory:
+            return
+        if event.event_type in {"opened", "closed", "closed_no_write"}:
+            return
+
+        if ".git" in event.src_path:
+            return
+
+        try:
+            if self.gitignore and self.gitignore(event.src_path):
+                return
+        except Exception as exc:
+            logger.info(
+                "Cannot check path `%r` in gitignore. Cause: %s",
+                event.src_path,
+                exc,
+            )
+            return
+
+        logger.debug("File changed. Event: %s", event)
+        self.callback(**self.callback_kwargs)

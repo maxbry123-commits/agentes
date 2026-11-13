@@ -1,0 +1,20 @@
+include_hp: dcft/train/hp_settings/reasoning.yaml
+
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/instruction_filtering_askllm_seed_data_math_w_openthoughts
+messages: conversations
+formatting: sharegpt
+role_tag: from
+content_tag: value
+user_tag: user
+assistant_tag: assistant
+
+per_device_train_batch_size: 1      # Can change depending on hardware
+gradient_accumulation_steps: 3      # Can change depending on number of GPUs
+
+output_dir: "/data4/dcft/experiments/train/checkpoints/instruction_filtering_askllm_seed_data_math_w_openthoughts"
+run_name: instruction_filtering_askllm_seed_data_math_w_openthoughts
+hub_model_id: mlfoundations-dev/instruction_filtering_askllm_seed_data_math_w_openthoughts
+report_to: wandb
+push_to_db: true
+push_to_hub: true

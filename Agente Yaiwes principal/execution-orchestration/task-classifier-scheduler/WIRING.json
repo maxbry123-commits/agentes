@@ -1,0 +1,12 @@
+{
+  "component": "yaiwes.scheduler.apscheduler",
+  "source": "apscheduler/",
+  "adapter": "adapter.py",
+  "manifest": "ficha.apscheduler.v2.json",
+  "plugin_bus": "../../kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py",
+  "contract_validator": "../../kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py",
+  "classification": "B",
+  "director_gate": "required",
+  "activation_state": "testing",
+  "fail_closed": true
+}

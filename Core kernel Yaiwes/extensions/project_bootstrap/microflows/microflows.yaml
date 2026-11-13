@@ -1,0 +1,82 @@
+# Micro-flujos de plantillas de documentos
+# Fuente: PIPELINE 12 FULL §13
+# Todos tipo D (deterministas) salvo donde se indique
+
+build_profile:
+  tipo: D
+  resource_brain: false
+  pasos:
+    - extraer_proposito
+    - extraer_alcance
+    - extraer_entradas_salidas
+    - extraer_restricciones
+    - generar_ficha_identidad
+  salida: PROJECT_PROFILE.md
+
+build_architecture:
+  tipo: D
+  resource_brain: true
+  pasos:
+    - escanear_componentes
+    - mapear_dependencias
+    - clasificar_capas
+    - generar_mermaid
+  salida: ARCHITECTURE.md
+
+build_workflow:
+  tipo: D
+  resource_brain: true
+  pasos:
+    - identificar_fases_repetibles
+    - definir_entrada_salida_por_fase
+    - asignar_herramientas
+    - emitir_yaml_ejecutable
+  salida: WORKFLOW.md
+
+build_pipeline:
+  tipo: D
+  resource_brain: false
+  pasos:
+    - detectar_procesos_etl
+    - definir_input_transform_output
+    - asignar_triggers
+    - emitir_schema
+  salida: PIPELINE.md
+
+build_capabilities:
+  tipo: D
+  resource_brain: true
+  pasos:
+    - escanear_funciones_exportadas
+    - generar_fichas_capability
+    - registrar_en_capability_registry
+  salida: CAPABILITIES.md
+
+append_trace:
+  tipo: D
+  resource_brain: false
+  pasos:
+    - registrar_decision
+    - enlazar_commit_o_paso
+    - ordenar_cronologico_inverso
+  salida: TRACEABILITY.md
+
+extract_goal:
+  tipo: D
+  resource_brain: false
+  pasos:
+    - extraer_meta_principal
+    - verificar_verbo_accion
+    - redactar_formato_estandar
+    - asignar_emoji_y_hash
+  salida: goal_struct
+
+decompose_tasks:
+  tipo: D
+  resource_brain: false
+  pasos:
+    - descomponer_pasos_atomicos
+    - asignar_estado_pending
+    - ordenar_por_dependencias
+    - asignar_prioridad
+  salida: task_list

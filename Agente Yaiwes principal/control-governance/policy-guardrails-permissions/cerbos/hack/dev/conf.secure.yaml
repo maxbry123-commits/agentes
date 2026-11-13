@@ -1,0 +1,47 @@
+---
+server:
+  httpListenAddr: ":3592"
+  grpcListenAddr: ":3593"
+  logRequestPayloads: false
+  playgroundEnabled: true
+  adminAPI:
+    enabled: true
+    adminCredentials:
+      username: cerbos
+      passwordHash: JDJ5JDEwJC5BYjQyY2RJNG5QR2NWMmJPdnNtQU93c09RYVA0eFFGdHBrbmFEeXh1NnlIVTE1cHJNY05PCgo=
+  tls:
+    cert: hack/dev/tls.crt
+    key: hack/dev/tls.key
+
+auxData:
+  jwt:
+    keySets:
+      - id: default
+        local:
+          file: internal/test/testdata/auxdata/verify_key.jwk
+
+audit:
+  enabled: true
+  backend: "file"
+  local:
+    storagePath: /tmp/cerbos_auditlog
+    advanced:
+      flushInterval: 5s
+  file:
+    path: stdout
+    additionalPaths:
+      - /tmp/audit_1.log
+      - /tmp/audit_2.log
+    logRotation:
+      maxFileSizeMB: 1
+      maxFileAgeDays: 1
+      maxFileCount: 3
+
+storage:
+  driver: "disk"
+  disk:
+    directory: internal/test/testdata/store
+    watchForChanges: true
+
+schema:
+  enforcement: reject

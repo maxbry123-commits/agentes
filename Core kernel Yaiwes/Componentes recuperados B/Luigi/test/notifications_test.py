@@ -1,0 +1,863 @@
+# -*- coding: utf-8 -*-
+#
+# Copyright 2012-2015 Spotify AB
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+import os
+import socket
+import sys
+import tempfile
+
+import mock
+from helpers import unittest, with_config
+
+import luigi
+from luigi import notifications
+from luigi.notifications import generate_email
+from luigi.scheduler import Scheduler
+from luigi.worker import Worker
+
+
+class TestImageHelpers(unittest.TestCase):
+    """Test image normalization and iteration helpers."""
+
+    def test_normalize_images_handles_none_list_and_tuple(self):
+        self.assertIsNone(notifications._normalize_images(None))
+        self.assertEqual(["one.png"], notifications._normalize_images(["one.png"]))
+        self.assertEqual(["one.png", "two.png"], notifications._normalize_images(("one.png", "two.png")))
+
+    def test_iter_images_handles_none_list_and_tuple(self):
+        self.assertEqual([], list(notifications._iter_images(None)))
+        self.assertEqual(["one.png"], list(notifications._iter_images(["one.png"])))
+        self.assertEqual(["one.png", "two.png"], list(notifications._iter_images(("one.png", "two.png"))))
+
+    def test_generate_email_attaches_multiple_images(self):
+        """Verify that generate_email actually opens and attaches image files."""
+        image_content_1 = b"test-image-1"
+        image_content_2 = b"test-image-2"
+
+        fd1, path1 = tempfile.mkstemp(suffix=".png")
+        fd2, path2 = tempfile.mkstemp(suffix=".png")
+        try:
+            with os.fdopen(fd1, "wb") as f:
+                f.write(image_content_1)
+            with os.fdopen(fd2, "wb") as f:
+                f.write(image_content_2)
+
+            msg = generate_email(
+                sender="test@example.com",
+                subject="test",
+                message="test message",
+                recipients=["user@example.com"],
+                images_png=[path1, path2],
+            )
+
+            # Verify message has text + 2 image attachments
+            parts = msg.get_payload()
+            self.assertEqual(len(parts), 3)
+        finally:
+            os.unlink(path1)
+            os.unlink(path2)
+
+    def test_iter_images_empty_list_returns_empty_iterator(self):
+        """Verify that _iter_images returns empty iterator for empty list."""
+        result = list(notifications._iter_images([]))
+        self.assertEqual(result, [])
+
+
+class TestEmail(unittest.TestCase):
+    def testEmailNoPrefix(self):
+        self.assertEqual("subject", notifications._prefix("subject"))
+
+    @with_config({"email": {"prefix": "[prefix]"}})
+    def testEmailPrefix(self):
+        self.assertEqual("[prefix] subject", notifications._prefix("subject"))
+
+
+class TestException(Exception):
+    pass
+
+
+class TestTask(luigi.Task):
+    foo = luigi.Parameter()
+    bar = luigi.Parameter()
+
+
+class FailSchedulingTask(TestTask):
+    def requires(self):
+        raise TestException("Oops!")
+
+    def run(self):
+        pass
+
+    def complete(self):
+        return False
+
+
+class FailRunTask(TestTask):
+    def run(self):
+        raise TestException("Oops!")
+
+    def complete(self):
+        return False
+
+
+class ExceptionFormatTest(unittest.TestCase):
+    def setUp(self):
+        self.sch = Scheduler()
+
+    def test_fail_run(self):
+        task = FailRunTask(foo="foo", bar="bar")
+        self._run_task(task)
+
+    def test_fail_run_html(self):
+        task = FailRunTask(foo="foo", bar="bar")
+        self._run_task_html(task)
+
+    def test_fail_schedule(self):
+        task = FailSchedulingTask(foo="foo", bar="bar")
+        self._run_task(task)
+
+    def test_fail_schedule_html(self):
+        task = FailSchedulingTask(foo="foo", bar="bar")
+        self._run_task_html(task)
+
+    @with_config({"email": {"receiver": "nowhere@example.com", "prefix": "[TEST] "}})
+    @mock.patch("luigi.notifications.send_error_email")
+    def _run_task(self, task, mock_send):
+        with Worker(scheduler=self.sch) as w:
+            w.add(task)
+            w.run()
+
+        self.assertEqual(mock_send.call_count, 1)
+        args, kwargs = mock_send.call_args
+        self._check_subject(args[0], task)
+        self._check_body(args[1], task, html=False)
+
+    @with_config({"email": {"receiver": "nowhere@axample.com", "prefix": "[TEST] ", "format": "html"}})
+    @mock.patch("luigi.notifications.send_error_email")
+    def _run_task_html(self, task, mock_send):
+        with Worker(scheduler=self.sch) as w:
+            w.add(task)
+            w.run()
+
+        self.assertEqual(mock_send.call_count, 1)
+        args, kwargs = mock_send.call_args
+        self._check_subject(args[0], task)
+        self._check_body(args[1], task, html=True)
+
+    def _check_subject(self, subject, task):
+        self.assertIn(str(task), subject)
+
+    def _check_body(self, body, task, html=False):
+        if html:
+            self.assertIn("<th>name</th><td>{}</td>".format(task.task_family), body)
+            self.assertIn('<div class="highlight"', body)
+            self.assertIn("Oops!", body)
+
+            for param, value in task.param_kwargs.items():
+                self.assertIn("<th>{}</th><td>{}</td>".format(param, value), body)
+        else:
+            self.assertIn("Name: {}\n".format(task.task_family), body)
+            self.assertIn("Parameters:\n", body)
+            self.assertIn("TestException: Oops!", body)
+
+            for param, value in task.param_kwargs.items():
+                self.assertIn("{}: {}\n".format(param, value), body)
+
+    @with_config({"email": {"receiver": "a@a.a"}})
+    def testEmailRecipients(self):
+        self.assertCountEqual(notifications._email_recipients(), ["a@a.a"])
+        self.assertCountEqual(notifications._email_recipients("b@b.b"), ["a@a.a", "b@b.b"])
+        self.assertCountEqual(notifications._email_recipients(["b@b.b", "c@c.c"]), ["a@a.a", "b@b.b", "c@c.c"])
+
+    @with_config({"email": {}}, replace_sections=True)
+    def testEmailRecipientsNoConfig(self):
+        self.assertCountEqual(notifications._email_recipients(), [])
+        self.assertCountEqual(notifications._email_recipients("a@a.a"), ["a@a.a"])
+        self.assertCountEqual(notifications._email_recipients(["a@a.a", "b@b.b"]), ["a@a.a", "b@b.b"])
+
+    @with_config({"email": {"format": "none"}})
+    def test_email_disabled_reason_format_none(self):
+        self.assertEqual("email format is 'none'", notifications._email_disabled_reason())
+
+    @with_config({"email": {"force_send": "True"}})
+    def test_email_disabled_reason_force_send(self):
+        self.assertIsNone(notifications._email_disabled_reason())
+
+    @with_config({"email": {}}, replace_sections=True)
+    def test_email_disabled_reason_tty(self):
+        with mock.patch("luigi.notifications.sys.stdout.isatty", return_value=True):
+            self.assertEqual("running from a tty", notifications._email_disabled_reason())
+
+    @with_config({"email": {}}, replace_sections=True)
+    def test_email_disabled_reason_default_allows_sending(self):
+        with mock.patch("luigi.notifications.sys.stdout.isatty", return_value=False):
+            self.assertIsNone(notifications._email_disabled_reason())
+
+    def test_generate_unicode_email(self):
+        generate_email(
+            sender="test@example.com",
+            subject="sübjéct",
+            message="你好",
+            recipients=["receiver@example.com"],
+            images_png=None,
+        )
+
+    def test_generate_email_with_multiple_images(self):
+        image_content_1 = b"fake-png-1"
+        image_content_2 = b"fake-png-2"
+
+        fd1, image_path_1 = tempfile.mkstemp(suffix=".png")
+        fd2, image_path_2 = tempfile.mkstemp(suffix=".png")
+        try:
+            with os.fdopen(fd1, "wb") as image_file_1:
+                image_file_1.write(image_content_1)
+            with os.fdopen(fd2, "wb") as image_file_2:
+                image_file_2.write(image_content_2)
+
+            msg = generate_email(
+                sender="test@example.com",
+                subject="subject",
+                message="body",
+                recipients=["receiver@example.com"],
+                images_png=[image_path_1, image_path_2],
+            )
+
+            payload = msg.get_payload()
+            self.assertEqual(3, len(payload))
+
+            filenames = [part.get_filename() for part in payload[1:]]
+            self.assertCountEqual(filenames, [os.path.basename(image_path_1), os.path.basename(image_path_2)])
+        finally:
+            os.unlink(image_path_1)
+            os.unlink(image_path_2)
+
+    def test_generate_email_with_single_image_png_kwarg(self):
+        image_content = b"fake-png-single"
+
+        fd, image_path = tempfile.mkstemp(suffix=".png")
+        try:
+            with os.fdopen(fd, "wb") as image_file:
+                image_file.write(image_content)
+
+            msg = generate_email(
+                sender="test@example.com",
+                subject="subject",
+                message="body",
+                recipients=["receiver@example.com"],
+                images_png=image_path,
+            )
+
+            payload = msg.get_payload()
+            self.assertEqual(2, len(payload))
+
+            filenames = [part.get_filename() for part in payload[1:]]
+            self.assertEqual([os.path.basename(image_path)], filenames)
+        finally:
+            os.unlink(image_path)
+
+    def test_generate_email_with_empty_images_list(self):
+        msg = generate_email(
+            sender="test@example.com",
+            subject="subject",
+            message="body",
+            recipients=["receiver@example.com"],
+            images_png=[],
+        )
+
+        payload = msg.get_payload()
+        # only the text part should be present
+        self.assertEqual(1, len(payload))
+
+    def test_generate_email_with_tuple_images(self):
+        image_content_1 = b"fake-png-1"
+        image_content_2 = b"fake-png-2"
+
+        fd1, image_path_1 = tempfile.mkstemp(suffix=".png")
+        fd2, image_path_2 = tempfile.mkstemp(suffix=".png")
+        try:
+            with os.fdopen(fd1, "wb") as image_file_1:
+                image_file_1.write(image_content_1)
+            with os.fdopen(fd2, "wb") as image_file_2:
+                image_file_2.write(image_content_2)
+
+            msg = generate_email(
+                sender="test@example.com",
+                subject="subject",
+                message="body",
+                recipients=["receiver@example.com"],
+                images_png=(image_path_1, image_path_2),
+            )
+
+            payload = msg.get_payload()
+            self.assertEqual(3, len(payload))
+
+            filenames = [part.get_filename() for part in payload[1:]]
+            self.assertCountEqual(filenames, [os.path.basename(image_path_1), os.path.basename(image_path_2)])
+        finally:
+            os.unlink(image_path_1)
+            os.unlink(image_path_2)
+
+    def test_generate_email_with_none_images(self):
+        msg = generate_email(
+            sender="test@example.com",
+            subject="subject",
+            message="body",
+            recipients=["receiver@example.com"],
+            images_png=None,
+        )
+
+        payload = msg.get_payload()
+        # only the text part should be present
+        self.assertEqual(1, len(payload))
+
+    def test_generate_email_with_nonexistent_path_raises(self):
+        with self.assertRaises(FileNotFoundError):
+            generate_email(
+                sender="test@example.com",
+                subject="subject",
+                message="body",
+                recipients=["receiver@example.com"],
+                images_png=["/path/does/not/exist.png"],
+            )
+
+    def test_generate_email_with_generator_images_raises_typeerror(self):
+        # A generator is not a list/tuple and will be treated as a single value,
+        # causing open() to receive a non-path and raise a TypeError.
+        def gen():
+            yield "/tmp/some.png"
+
+        with self.assertRaises(TypeError):
+            generate_email(
+                sender="test@example.com",
+                subject="subject",
+                message="body",
+                recipients=["receiver@example.com"],
+                images_png=gen(),
+            )
+
+
+class NotificationFixture:
+    """
+    Defines API and message fixture.
+
+    config, sender, subject, message, recipients, images_png
+    """
+
+    sender = "luigi@unittest"
+    subject = "Oops!"
+    message = """A multiline
+                 message."""
+    recipients = ["noone@nowhere.no", "phantom@opera.fr"]
+    images_png = None
+
+    notification_args = [sender, subject, message, recipients, images_png]
+    mocked_email_msg = """Content-Type: multipart/related; boundary="===============0998157881=="
+MIME-Version: 1.0
+Subject: Oops!
+From: luigi@unittest
+To: noone@nowhere.no,phantom@opera.fr
+
+--===============0998157881==
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Type: text/plain; charset="utf-8"
+
+A multiline
+message.
+--===============0998157881==--"""
+
+
+class TestSMTPEmail(unittest.TestCase, NotificationFixture):
+    """
+    Tests sending SMTP email.
+    """
+
+    def setUp(self):
+        sys.modules["smtplib"] = mock.MagicMock()
+        import smtplib  # noqa: F401
+
+    def tearDown(self):
+        del sys.modules["smtplib"]
+
+    @with_config(
+        {
+            "smtp": {
+                "ssl": "False",
+                "host": "my.smtp.local",
+                "port": "999",
+                "local_hostname": "ptms",
+                "timeout": "1200",
+                "username": "Robin",
+                "password": "dooH",
+                "no_tls": "False",
+            }
+        }
+    )
+    def test_sends_smtp_email(self):
+        """
+        Call notifications.send_email_smtp with fixture parameters with smtp_without_tls  set to False
+        and check that sendmail is properly called.
+        """
+
+        smtp_kws = {"host": "my.smtp.local", "port": 999, "local_hostname": "ptms", "timeout": 1200}
+
+        with mock.patch("smtplib.SMTP") as SMTP:
+            with mock.patch("luigi.notifications.generate_email") as generate_email:
+                generate_email.return_value.as_string.return_value = self.mocked_email_msg
+
+                notifications.send_email_smtp(*self.notification_args)
+
+                SMTP.assert_called_once_with(**smtp_kws)
+                SMTP.return_value.login.assert_called_once_with("Robin", "dooH")
+                SMTP.return_value.starttls.assert_called_once_with()
+                SMTP.return_value.sendmail.assert_called_once_with(self.sender, self.recipients, self.mocked_email_msg)
+
+    @with_config(
+        {
+            "smtp": {
+                "ssl": "False",
+                "host": "my.smtp.local",
+                "port": "999",
+                "local_hostname": "ptms",
+                "timeout": "1200",
+                "username": "Robin",
+                "password": "dooH",
+                "no_tls": "False",
+            }
+        }
+    )
+    def test_sends_smtp_email_with_images_png(self):
+        image_content = b"fake-png-smtp"
+        fd, image_path = tempfile.mkstemp(suffix=".png")
+        try:
+            with os.fdopen(fd, "wb") as image_file:
+                image_file.write(image_content)
+
+            with mock.patch("smtplib.SMTP") as SMTP:
+                with mock.patch("luigi.notifications.generate_email") as generate_email:
+                    generate_email.return_value.as_string.return_value = self.mocked_email_msg
+
+                    notifications.send_email_smtp(self.sender, self.subject, self.message, self.recipients, images_png=[image_path])
+
+                    generate_email.assert_called_once_with(
+                        self.sender,
+                        self.subject,
+                        self.message,
+                        self.recipients,
+                        images_png=[image_path],
+                    )
+                    SMTP.return_value.sendmail.assert_called_once_with(self.sender, self.recipients, self.mocked_email_msg)
+        finally:
+            os.unlink(image_path)
+
+    @with_config(
+        {
+            "smtp": {
+                "ssl": "False",
+                "host": "my.smtp.local",
+                "port": "999",
+                "local_hostname": "ptms",
+                "timeout": "1200",
+                "username": "Robin",
+                "password": "dooH",
+                "no_tls": "True",
+            }
+        }
+    )
+    def test_sends_smtp_email_without_tls(self):
+        """
+        Call notifications.send_email_smtp with fixture parameters with no_tls  set to True
+        and check that sendmail is properly called without also calling
+        starttls.
+        """
+        smtp_kws = {"host": "my.smtp.local", "port": 999, "local_hostname": "ptms", "timeout": 1200}
+
+        with mock.patch("smtplib.SMTP") as SMTP:
+            with mock.patch("luigi.notifications.generate_email") as generate_email:
+                generate_email.return_value.as_string.return_value = self.mocked_email_msg
+
+                notifications.send_email_smtp(*self.notification_args)
+
+                SMTP.assert_called_once_with(**smtp_kws)
+                self.assertEqual(SMTP.return_value.starttls.called, False)
+                SMTP.return_value.login.assert_called_once_with("Robin", "dooH")
+                SMTP.return_value.sendmail.assert_called_once_with(self.sender, self.recipients, self.mocked_email_msg)
+
+    @with_config(
+        {
+            "smtp": {
+                "ssl": "False",
+                "host": "my.smtp.local",
+                "port": "999",
+                "local_hostname": "ptms",
+                "timeout": "1200",
+                "username": "Robin",
+                "password": "dooH",
+                "no_tls": "True",
+            }
+        }
+    )
+    def test_sends_smtp_email_exceptions(self):
+        """
+        Call notifications.send_email_smtp when it cannot connect to smtp server (socket.error)
+        starttls.
+        """
+        smtp_kws = {"host": "my.smtp.local", "port": 999, "local_hostname": "ptms", "timeout": 1200}
+
+        with mock.patch("smtplib.SMTP") as SMTP:
+            with mock.patch("luigi.notifications.generate_email") as generate_email:
+                SMTP.side_effect = socket.error()
+                generate_email.return_value.as_string.return_value = self.mocked_email_msg
+
+                try:
+                    notifications.send_email_smtp(*self.notification_args)
+                except socket.error:
+                    self.fail("send_email_smtp() raised expection unexpectedly")
+
+                SMTP.assert_called_once_with(**smtp_kws)
+                self.assertEqual(notifications.generate_email.called, False)
+                self.assertEqual(SMTP.sendemail.called, False)
+
+
+class TestSendgridEmail(unittest.TestCase, NotificationFixture):
+    """
+    Tests sending Sendgrid email.
+    """
+
+    def setUp(self):
+        sys.modules["sendgrid"] = mock.MagicMock()
+        import sendgrid  # noqa: F401
+
+    def tearDown(self):
+        del sys.modules["sendgrid"]
+
+    @with_config({"sendgrid": {"apikey": "456abcdef123"}})
+    def test_sends_sendgrid_email(self):
+        """
+        Call notifications.send_email_sendgrid with fixture parameters
+        and check that SendGridAPIClient is properly called.
+        """
+
+        with mock.patch("sendgrid.SendGridAPIClient") as SendGridAPIClient:
+            notifications.send_email_sendgrid(*self.notification_args)
+
+            SendGridAPIClient.assert_called_once_with("456abcdef123")
+            self.assertTrue(SendGridAPIClient.return_value.send.called)
+
+    @with_config({"sendgrid": {"apikey": "456abcdef123"}})
+    def test_sends_sendgrid_email_with_multiple_images(self):
+        image_content_1 = b"fake-png-1"
+        image_content_2 = b"fake-png-2"
+
+        fd1, image_path_1 = tempfile.mkstemp(suffix=".png")
+        fd2, image_path_2 = tempfile.mkstemp(suffix=".png")
+        try:
+            with os.fdopen(fd1, "wb") as image_file_1:
+                image_file_1.write(image_content_1)
+            with os.fdopen(fd2, "wb") as image_file_2:
+                image_file_2.write(image_content_2)
+
+            with mock.patch("sendgrid.SendGridAPIClient") as SendGridAPIClient:
+                notifications.send_email_sendgrid(
+                    self.sender,
+                    self.subject,
+                    self.message,
+                    self.recipients,
+                    [image_path_1, image_path_2],
+                )
+
+                to_send = SendGridAPIClient.return_value.send.call_args[0][0]
+                self.assertEqual(to_send.add_attachment.call_count, 2)
+                to_send.add_attachment.assert_any_call(image_content_1, filename=os.path.basename(image_path_1))
+                to_send.add_attachment.assert_any_call(image_content_2, filename=os.path.basename(image_path_2))
+        finally:
+            os.unlink(image_path_1)
+            os.unlink(image_path_2)
+
+    @with_config({"sendgrid": {"apikey": "456abcdef123"}})
+    def test_sendgrid_with_empty_images_list_does_not_attach(self):
+        with mock.patch("sendgrid.SendGridAPIClient") as SendGridAPIClient:
+            notifications.send_email_sendgrid(self.sender, self.subject, self.message, self.recipients, images_png=[])
+            to_send = SendGridAPIClient.return_value.send.call_args[0][0]
+            self.assertEqual(to_send.add_attachment.call_count, 0)
+
+    @with_config({"sendgrid": {"apikey": "456abcdef123"}})
+    def test_sends_sendgrid_email_with_image_png_kwarg(self):
+        image_content = b"fake-png-single"
+
+        fd, image_path = tempfile.mkstemp(suffix=".png")
+        try:
+            with os.fdopen(fd, "wb") as image_file:
+                image_file.write(image_content)
+
+            with mock.patch("sendgrid.SendGridAPIClient") as SendGridAPIClient:
+                notifications.send_email_sendgrid(
+                    self.sender,
+                    self.subject,
+                    self.message,
+                    self.recipients,
+                    images_png=image_path,
+                )
+
+                to_send = SendGridAPIClient.return_value.send.call_args[0][0]
+                self.assertEqual(to_send.add_attachment.call_count, 1)
+                to_send.add_attachment.assert_any_call(image_content, filename=os.path.basename(image_path))
+        finally:
+            os.unlink(image_path)
+
+
+class TestSESEmail(unittest.TestCase, NotificationFixture):
+    """
+    Tests sending email through AWS SES.
+    """
+
+    def setUp(self):
+        sys.modules["boto3"] = mock.MagicMock()
+        import boto3  # noqa: F401
+
+    def tearDown(self):
+        del sys.modules["boto3"]
+
+    @with_config({})
+    def test_sends_ses_email(self):
+        """
+        Call notifications.send_email_ses with fixture parameters
+        and check that boto is properly called.
+        """
+
+        with mock.patch("boto3.client") as boto_client:
+            with mock.patch("luigi.notifications.generate_email") as generate_email:
+                generate_email.return_value.as_string.return_value = self.mocked_email_msg
+
+                notifications.send_email_ses(*self.notification_args)
+
+                SES = boto_client.return_value
+                SES.send_raw_email.assert_called_once_with(Source=self.sender, Destinations=self.recipients, RawMessage={"Data": self.mocked_email_msg})
+
+    @with_config({})
+    def test_sends_ses_email_with_images_png(self):
+        image_content = b"fake-png-ses"
+        fd, image_path = tempfile.mkstemp(suffix=".png")
+        try:
+            with os.fdopen(fd, "wb") as image_file:
+                image_file.write(image_content)
+
+            with mock.patch("boto3.client") as boto_client:
+                with mock.patch("luigi.notifications.generate_email") as generate_email:
+                    generate_email.return_value.as_string.return_value = self.mocked_email_msg
+
+                    notifications.send_email_ses(self.sender, self.subject, self.message, self.recipients, images_png=(image_path,))
+
+                    generate_email.assert_called_once_with(
+                        self.sender,
+                        self.subject,
+                        self.message,
+                        self.recipients,
+                        images_png=(image_path,),
+                    )
+                    SES = boto_client.return_value
+                    SES.send_raw_email.assert_called_once_with(Source=self.sender, Destinations=self.recipients, RawMessage={"Data": self.mocked_email_msg})
+        finally:
+            os.unlink(image_path)
+
+
+class TestSNSNotification(unittest.TestCase, NotificationFixture):
+    """
+    Tests sending email through AWS SNS.
+    """
+
+    def setUp(self):
+        sys.modules["boto3"] = mock.MagicMock()
+        import boto3  # noqa: F401
+
+    def tearDown(self):
+        del sys.modules["boto3"]
+
+    @with_config({})
+    def test_sends_sns_email(self):
+        """
+        Call notifications.send_email_sns with fixture parameters
+        and check that boto3 is properly called.
+        """
+
+        with mock.patch("boto3.resource") as res:
+            notifications.send_email_sns(*self.notification_args)
+
+            SNS = res.return_value
+            SNS.Topic.assert_called_once_with(self.recipients[0])
+            SNS.Topic.return_value.publish.assert_called_once_with(Subject=self.subject, Message=self.message)
+
+    @with_config({})
+    def test_sns_subject_is_shortened(self):
+        """
+        Call notifications.send_email_sns with too long Subject (more than 100 chars)
+        and check that it is cut to length of 100 chars.
+        """
+
+        long_subject = (
+            "Luigi: SanityCheck(regexPattern=aligned-source\\|data-not-older\\|source-chunks-compl,mailFailure=False, mongodb=mongodb://localhost/stats) FAILED"
+        )
+
+        with mock.patch("boto3.resource") as res:
+            notifications.send_email_sns(self.sender, long_subject, self.message, self.recipients, self.images_png)
+
+            SNS = res.return_value
+            SNS.Topic.assert_called_once_with(self.recipients[0])
+            called_subj = SNS.Topic.return_value.publish.call_args[1]["Subject"]
+            self.assertTrue(len(called_subj) <= 100, "Subject can be max 100 chars long! Found {}.".format(len(called_subj)))
+
+    @with_config({})
+    def test_send_email_sns_ignores_images_png(self):
+        # Ensure passing images_png to SNS doesn't break publish
+        image_content = b"fake"
+        fd, image_path = tempfile.mkstemp(suffix=".png")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(image_content)
+
+            with mock.patch("boto3.resource") as res:
+                notifications.send_email_sns(self.sender, self.subject, self.message, self.recipients, images_png=[image_path])
+
+                SNS = res.return_value
+                SNS.Topic.assert_called_once_with(self.recipients[0])
+                SNS.Topic.return_value.publish.assert_called_once_with(Subject=self.subject, Message=self.message)
+        finally:
+            os.unlink(image_path)
+
+
+class TestNotificationDispatcher(unittest.TestCase, NotificationFixture):
+    """
+    Test dispatching of notifications on configuration values.
+    """
+
+    def check_dispatcher(self, target):
+        """
+        Call notifications.send_email and test that the proper
+        function was called.
+        """
+
+        expected_args = self.notification_args
+
+        with mock.patch("luigi.notifications.{}".format(target)) as sender:
+            notifications.send_email(self.subject, self.message, self.sender, self.recipients, images_png=self.images_png)
+
+            self.assertTrue(sender.called)
+
+            call_args = sender.call_args[0]
+
+            self.assertEqual(tuple(expected_args), call_args)
+
+    @with_config({"email": {"force_send": "True", "method": "sendgrid"}})
+    def test_send_email_forwards_images_png_exactly(self):
+        # Verify send_email forwards images_png exactly to the chosen sender
+        single = "/tmp/fake.png"
+        lst = ["/tmp/fake1.png", "/tmp/fake2.png"]
+
+        with mock.patch("luigi.notifications.send_email_sendgrid") as sender:
+            notifications.send_email(self.subject, self.message, self.sender, self.recipients, images_png=single)
+            self.assertTrue(sender.called)
+            call_args = sender.call_args[0]
+            self.assertEqual(call_args[4], single)
+
+        with mock.patch("luigi.notifications.send_email_sendgrid") as sender2:
+            notifications.send_email(self.subject, self.message, self.sender, self.recipients, images_png=lst)
+            self.assertTrue(sender2.called)
+            call_args = sender2.call_args[0]
+            self.assertEqual(call_args[4], lst)
+
+    @with_config({"email": {"force_send": "True", "method": "smtp"}})
+    def test_send_email_forwards_images_png_to_smtp(self):
+        single = "/tmp/fake.png"
+        lst = ["/tmp/fake1.png", "/tmp/fake2.png"]
+
+        with mock.patch("luigi.notifications.send_email_smtp") as sender:
+            notifications.send_email(self.subject, self.message, self.sender, self.recipients, images_png=single)
+            self.assertTrue(sender.called)
+            call_args = sender.call_args[0]
+            self.assertEqual(call_args[4], single)
+
+        with mock.patch("luigi.notifications.send_email_smtp") as sender2:
+            notifications.send_email(self.subject, self.message, self.sender, self.recipients, images_png=lst)
+            self.assertTrue(sender2.called)
+            call_args = sender2.call_args[0]
+            self.assertEqual(call_args[4], lst)
+
+    @with_config({"email": {"force_send": "True", "method": "ses"}})
+    def test_send_email_forwards_images_png_to_ses(self):
+        single = "/tmp/fake.png"
+        lst = ["/tmp/fake1.png", "/tmp/fake2.png"]
+
+        with mock.patch("luigi.notifications.send_email_ses") as sender:
+            notifications.send_email(self.subject, self.message, self.sender, self.recipients, images_png=single)
+            self.assertTrue(sender.called)
+            call_args = sender.call_args[0]
+            self.assertEqual(call_args[4], single)
+
+        with mock.patch("luigi.notifications.send_email_ses") as sender2:
+            notifications.send_email(self.subject, self.message, self.sender, self.recipients, images_png=lst)
+            self.assertTrue(sender2.called)
+            call_args = sender2.call_args[0]
+            self.assertEqual(call_args[4], lst)
+
+    @with_config({"email": {"force_send": "True", "method": "sns"}})
+    def test_send_email_forwards_images_png_to_sns(self):
+        single = "/tmp/fake.png"
+        lst = ["/tmp/fake1.png", "/tmp/fake2.png"]
+
+        with mock.patch("luigi.notifications.send_email_sns") as sender:
+            notifications.send_email(self.subject, self.message, self.sender, self.recipients, images_png=single)
+            self.assertTrue(sender.called)
+            call_args = sender.call_args[0]
+            self.assertEqual(call_args[4], single)
+
+        with mock.patch("luigi.notifications.send_email_sns") as sender2:
+            notifications.send_email(self.subject, self.message, self.sender, self.recipients, images_png=lst)
+            self.assertTrue(sender2.called)
+            call_args = sender2.call_args[0]
+            self.assertEqual(call_args[4], lst)
+
+    @with_config({"email": {"force_send": "True", "method": "sendgrid"}})
+    def test_send_email_without_recipients_returns_early(self):
+        with mock.patch("luigi.notifications.send_email_sendgrid") as sender:
+            result = notifications.send_email(self.subject, self.message, self.sender, [], images_png=None)
+
+            self.assertIsNone(result)
+            self.assertFalse(sender.called)
+
+    @with_config({"email": {"force_send": "True", "method": "sendgrid"}})
+    def test_send_email_tuple_none_recipients_returns_early(self):
+        with mock.patch("luigi.notifications.send_email_sendgrid") as sender:
+            result = notifications.send_email(self.subject, self.message, self.sender, (None,), images_png=None)
+
+            self.assertIsNone(result)
+            self.assertFalse(sender.called)
+
+    @with_config({"email": {"force_send": "True", "method": "smtp"}})
+    def test_smtp(self):
+        return self.check_dispatcher("send_email_smtp")
+
+    @with_config({"email": {"force_send": "True", "method": "ses"}})
+    def test_ses(self):
+        return self.check_dispatcher("send_email_ses")
+
+    @with_config({"email": {"force_send": "True", "method": "sendgrid"}})
+    def test_sendgrid(self):
+        return self.check_dispatcher("send_email_sendgrid")
+
+    @with_config({"email": {"force_send": "True", "method": "sns"}})
+    def test_sns(self):
+        return self.check_dispatcher("send_email_sns")

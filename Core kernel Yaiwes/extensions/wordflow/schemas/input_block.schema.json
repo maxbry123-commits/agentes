@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.input_block.v1",
+  "title": "InputBlock",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "block_id",
+    "source_type",
+    "raw_text",
+    "quality_bar",
+    "goals_hint"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "block_id": { "type": "string", "minLength": 1 },
+    "source_type": {
+      "type": "string",
+      "enum": ["chat", "document", "file", "system", "repair"]
+    },
+    "raw_text": { "type": "string", "minLength": 1 },
+    "quality_bar": {
+      "type": "string",
+      "enum": ["never_MVP", "standard", "draft"]
+    },
+    "goals_hint": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "P3"],
+      "default": "P1"
+    },
+    "parent_block_id": { "type": ["string", "null"] },
+    "doc_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "doc_id": { "type": "string" },
+          "path": { "type": "string" },
+          "section": { "type": "string" }
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

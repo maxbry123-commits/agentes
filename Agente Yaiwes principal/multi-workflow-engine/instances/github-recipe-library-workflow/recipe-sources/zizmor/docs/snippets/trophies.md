@@ -1,0 +1,3966 @@
+
+-   ![](https://github.com/0xMiden.png?size=40){ width="40" loading=lazy align=left } 0xMiden
+
+    ---
+
+    ??? example "Examples"
+        - 0xMiden/miden-vm#2999
+
+
+-   ![](https://github.com/aboutcode-org.png?size=40){ width="40" loading=lazy align=left } aboutcode-org
+
+    ---
+
+    ??? example "Examples"
+        - aboutcode-org/scancode-toolkit#4847
+
+
+-   ![](https://github.com/actix.png?size=40){ width="40" loading=lazy align=left } actix
+
+    ---
+
+    ??? example "Examples"
+        - actix/actix#693
+        - actix/actix-extras#720
+        - actix/actix-net#869
+        - actix/actix-web#4054
+        - actix/actix-website#731
+        - actix/examples#1302
+
+
+-   ![](https://github.com/actualbudget.png?size=40){ width="40" loading=lazy align=left } actualbudget
+
+    ---
+
+    ??? example "Examples"
+        - actualbudget/actual#7465
+
+
+-   ![](https://github.com/adafruit.png?size=40){ width="40" loading=lazy align=left } adafruit
+
+    ---
+
+    ??? example "Examples"
+        - adafruit/circuitpython#9785
+
+
+-   ![](https://github.com/ag2ai.png?size=40){ width="40" loading=lazy align=left } ag2ai
+
+    ---
+
+    ??? example "Examples"
+        - ag2ai/faststream#2398
+
+
+-   ![](https://github.com/aio-libs.png?size=40){ width="40" loading=lazy align=left } aio-libs
+
+    ---
+
+    ??? example "Examples"
+        - aio-libs/aiobotocore#1344
+        - aio-libs/aiobotocore#1355
+
+
+-   ![](https://github.com/altair-graphql.png?size=40){ width="40" loading=lazy align=left } altair-graphql
+
+    ---
+
+    ??? example "Examples"
+        - altair-graphql/altair@4aa5679f89528c183321a07e387567c13be29f26
+
+
+-   ![](https://github.com/anchore.png?size=40){ width="40" loading=lazy align=left } anchore
+
+    ---
+
+    ??? example "Examples"
+        - anchore/sbom-action#564
+        - anchore/scan-action#573
+        - anchore/syft#4556
+        - anchore/vunnel#832
+
+
+-   ![](https://github.com/ansible.png?size=40){ width="40" loading=lazy align=left } ansible
+
+    ---
+
+    ??? example "Examples"
+        - ansible/ansible-documentation#3188
+
+
+-   ![](https://github.com/anthropics.png?size=40){ width="40" loading=lazy align=left } anthropics
+
+    ---
+
+    ??? example "Examples"
+        - anthropics/claude-code-action#729
+
+
+-   ![](https://github.com/apache.png?size=40){ width="40" loading=lazy align=left } apache
+
+    ---
+
+    ??? example "Examples"
+        - apache/airflow#45408
+        - apache/airflow#47258
+        - apache/airflow#50749
+        - apache/arrow-adbc#4270
+        - apache/iceberg#15793
+        - apache/iceberg#15820
+        - apache/iceberg-cpp#618
+        - apache/iceberg-go#904
+        - apache/iceberg-python#3204
+        - apache/iceberg-rust#1123
+        - apache/iceberg-rust#2289
+        - apache/iceberg-rust#2290
+        - apache/lucene#15216
+        - apache/opendal-reqsign#687
+        - apache/opennlp#736
+        - apache/ozone#10102
+        - apache/polaris#4097
+        - apache/ratis#1426
+        - apache/sedona#1976
+        - apache/sedona#2582
+
+
+-   ![](https://github.com/apollographql.png?size=40){ width="40" loading=lazy align=left } apollographql
+
+    ---
+
+    ??? example "Examples"
+        - apollographql/apollo-client#13236
+
+
+-   ![](https://github.com/aquasecurity.png?size=40){ width="40" loading=lazy align=left } aquasecurity
+
+    ---
+
+    ??? example "Examples"
+        - aquasecurity/trivy#10322
+        - aquasecurity/trivy-action#502
+        - aquasecurity/trivy-operator#2910
+        - aquasecurity/vuln-list-update#411
+
+
+-   ![](https://github.com/arc53.png?size=40){ width="40" loading=lazy align=left } arc53
+
+    ---
+
+    ??? example "Examples"
+        - arc53/DocsGPT#2383
+
+
+-   ![](https://github.com/argoproj.png?size=40){ width="40" loading=lazy align=left } argoproj
+
+    ---
+
+    ??? example "Examples"
+        - argoproj/argo-cd#27304
+
+
+-   ![](https://github.com/ariel-os.png?size=40){ width="40" loading=lazy align=left } ariel-os
+
+    ---
+
+    ??? example "Examples"
+        - ariel-os/ariel-os#1738
+
+
+-   ![](https://github.com/aristocratos.png?size=40){ width="40" loading=lazy align=left } aristocratos
+
+    ---
+
+    ??? example "Examples"
+        - aristocratos/btop#1590
+
+
+-   ![](https://github.com/Arize-ai.png?size=40){ width="40" loading=lazy align=left } Arize-ai
+
+    ---
+
+    ??? example "Examples"
+        - Arize-ai/phoenix#13202
+
+
+-   ![](https://github.com/artichoke.png?size=40){ width="40" loading=lazy align=left } artichoke
+
+    ---
+
+    ??? example "Examples"
+        - artichoke/artichoke#2825
+        - artichoke/boba#265
+        - artichoke/project-infrastructure#683
+        - artichoke/setup-rust#121
+
+
+-   ![](https://github.com/ashishb.png?size=40){ width="40" loading=lazy align=left } ashishb
+
+    ---
+
+    ??? example "Examples"
+        - ashishb/wp2hugo#91
+
+
+-   ![](https://github.com/aspnet-contrib.png?size=40){ width="40" loading=lazy align=left } aspnet-contrib
+
+    ---
+
+    ??? example "Examples"
+        - aspnet-contrib/AspNet.Security.OAuth.Providers#1095
+
+
+-   ![](https://github.com/astral-sh.png?size=40){ width="40" loading=lazy align=left } astral-sh
+
+    ---
+
+    ??? example "Examples"
+        - astral-sh/python-build-standalone#716
+        - astral-sh/ruff#14844
+        - astral-sh/ruff-action#206
+        - astral-sh/ty-vscode#142
+        - astral-sh/uv#15016
+        - astral-sh/uv#15018
+
+
+-   ![](https://github.com/astronomer.png?size=40){ width="40" loading=lazy align=left } astronomer
+
+    ---
+
+    ??? example "Examples"
+        - astronomer/astronomer-cosmos#1870
+        - astronomer/dag-factory#482
+
+
+-   ![](https://github.com/astropy.png?size=40){ width="40" loading=lazy align=left } astropy
+
+    ---
+
+    ??? example "Examples"
+        - astropy/astropy#17315
+
+
+-   ![](https://github.com/audreyfeldroy.png?size=40){ width="40" loading=lazy align=left } audreyfeldroy
+
+    ---
+
+    ??? example "Examples"
+        - audreyfeldroy/cookiecutter-pypackage@40f172432f78ef920d758520b543cd69be32f80a
+
+
+-   ![](https://github.com/autotag-dev.png?size=40){ width="40" loading=lazy align=left } autotag-dev
+
+    ---
+
+    ??? example "Examples"
+        - autotag-dev/autotag#142
+
+
+-   ![](https://github.com/axios.png?size=40){ width="40" loading=lazy align=left } axios
+
+    ---
+
+    ??? example "Examples"
+        - axios/axios#10618
+
+
+-   ![](https://github.com/Azure.png?size=40){ width="40" loading=lazy align=left } Azure
+
+    ---
+
+    ??? example "Examples"
+        - Azure/azure-container-networking#4302
+
+
+-   ![](https://github.com/basecamp.png?size=40){ width="40" loading=lazy align=left } basecamp
+
+    ---
+
+    ??? example "Examples"
+        - basecamp/activerecord-tenanted#284
+        - basecamp/audits1984#73
+        - basecamp/console1984#146
+        - basecamp/fizzy#2645
+        - basecamp/geared_pagination#58
+        - basecamp/kamal#1805
+        - basecamp/kamal-proxy#200
+        - basecamp/lexxy#882
+        - basecamp/marginalia#146
+        - basecamp/once#20
+        - basecamp/once-campfire#185
+        - basecamp/trix#1284
+        - basecamp/upright#50
+        - basecamp/writebook#396
+
+
+-   ![](https://github.com/Bash-it.png?size=40){ width="40" loading=lazy align=left } Bash-it
+
+    ---
+
+    ??? example "Examples"
+        - Bash-it/bash-it#2381
+
+
+-   ![](https://github.com/ben-manes.png?size=40){ width="40" loading=lazy align=left } ben-manes
+
+    ---
+
+    ??? example "Examples"
+        - ben-manes/caffeine@cc5425aa2dca829276b583c5f7669e16d88d8403
+
+
+-   ![](https://github.com/BerkeleyLearnVerify.png?size=40){ width="40" loading=lazy align=left } BerkeleyLearnVerify
+
+    ---
+
+    ??? example "Examples"
+        - BerkeleyLearnVerify/Scenic#320
+
+
+-   ![](https://github.com/BerriAI.png?size=40){ width="40" loading=lazy align=left } BerriAI
+
+    ---
+
+    ??? example "Examples"
+        - BerriAI/litellm#24663
+
+
+-   ![](https://github.com/beste.png?size=40){ width="40" loading=lazy align=left } beste
+
+    ---
+
+    ??? example "Examples"
+        - beste/firebase-php#1093
+
+
+-   ![](https://github.com/better-auth.png?size=40){ width="40" loading=lazy align=left } better-auth
+
+    ---
+
+    ??? example "Examples"
+        - better-auth/better-auth#8879
+
+
+-   ![](https://github.com/bevyengine.png?size=40){ width="40" loading=lazy align=left } bevyengine
+
+    ---
+
+    ??? example "Examples"
+        - bevyengine/bevy#22294
+        - bevyengine/bevy#22817
+
+
+-   ![](https://github.com/biomejs.png?size=40){ width="40" loading=lazy align=left } biomejs
+
+    ---
+
+    ??? example "Examples"
+        - biomejs/biome#10428
+        - biomejs/biome-vscode#1101
+        - biomejs/biome-zed#207
+
+
+-   ![](https://github.com/bitcoindevkit.png?size=40){ width="40" loading=lazy align=left } bitcoindevkit
+
+    ---
+
+    ??? example "Examples"
+        - bitcoindevkit/bdk#1778
+        - bitcoindevkit/bdk#1813
+
+
+-   ![](https://github.com/bitwarden.png?size=40){ width="40" loading=lazy align=left } bitwarden
+
+    ---
+
+    ??? example "Examples"
+        - bitwarden/ios#2124
+        - bitwarden/passkeys-index#128
+        - bitwarden/sdk-sm#1378
+        - bitwarden/server#6409
+
+
+-   ![](https://github.com/blakeblackshear.png?size=40){ width="40" loading=lazy align=left } blakeblackshear
+
+    ---
+
+    ??? example "Examples"
+        - blakeblackshear/frigate#15490
+
+
+-   ![](https://github.com/bleachbit.png?size=40){ width="40" loading=lazy align=left } bleachbit
+
+    ---
+
+    ??? example "Examples"
+        - bleachbit/bleachbit#2216
+
+
+-   ![](https://github.com/bloomberg.png?size=40){ width="40" loading=lazy align=left } bloomberg
+
+    ---
+
+    ??? example "Examples"
+        - bloomberg/memray#922
+        - bloomberg/pystack#292
+        - bloomberg/pytest-memray#179
+
+
+-   ![](https://github.com/bluesky-social.png?size=40){ width="40" loading=lazy align=left } bluesky-social
+
+    ---
+
+    ??? example "Examples"
+        - bluesky-social/social-app#10779
+
+
+-   ![](https://github.com/boto.png?size=40){ width="40" loading=lazy align=left } boto
+
+    ---
+
+    ??? example "Examples"
+        - boto/boto3#4755
+        - boto/botocore#3665
+        - boto/s3transfer#374
+
+
+-   ![](https://github.com/brian-team.png?size=40){ width="40" loading=lazy align=left } brian-team
+
+    ---
+
+    ??? example "Examples"
+        - brian-team/brian2@d497b11a268549c0c491df2f5f9c6332c4f733d0
+
+
+-   ![](https://github.com/bw2.png?size=40){ width="40" loading=lazy align=left } bw2
+
+    ---
+
+    ??? example "Examples"
+        - bw2/ConfigArgParse#336
+
+
+-   ![](https://github.com/bytecodealliance.png?size=40){ width="40" loading=lazy align=left } bytecodealliance
+
+    ---
+
+    ??? example "Examples"
+        - bytecodealliance/jco#1543
+
+
+-   ![](https://github.com/c15t.png?size=40){ width="40" loading=lazy align=left } c15t
+
+    ---
+
+    ??? example "Examples"
+        - c15t/c15t#853
+
+
+-   ![](https://github.com/cachix.png?size=40){ width="40" loading=lazy align=left } cachix
+
+    ---
+
+    ??? example "Examples"
+        - cachix/git-hooks.nix#606
+
+
+-   ![](https://github.com/cactus.png?size=40){ width="40" loading=lazy align=left } cactus
+
+    ---
+
+    ??? example "Examples"
+        - cactus/go-camo#87
+
+
+-   ![](https://github.com/cakephp.png?size=40){ width="40" loading=lazy align=left } cakephp
+
+    ---
+
+    ??? example "Examples"
+        - cakephp/cakephp#18081
+
+
+-   ![](https://github.com/Calysto.png?size=40){ width="40" loading=lazy align=left } Calysto
+
+    ---
+
+    ??? example "Examples"
+        - Calysto/metakernel#344
+        - Calysto/octave_kernel#263
+
+
+-   ![](https://github.com/canonical.png?size=40){ width="40" loading=lazy align=left } canonical
+
+    ---
+
+    ??? example "Examples"
+        - canonical/lxd#17961
+        - canonical/operator#1656
+        - canonical/operator#1721
+        - canonical/testflinger#630
+        - canonical/ubuntu.com#16128
+
+
+-   ![](https://github.com/cerbos.png?size=40){ width="40" loading=lazy align=left } cerbos
+
+    ---
+
+    ??? example "Examples"
+        - cerbos/cerbos#3002
+
+
+-   ![](https://github.com/certbot.png?size=40){ width="40" loading=lazy align=left } certbot
+
+    ---
+
+    ??? example "Examples"
+        - certbot/josepy#193
+
+
+-   ![](https://github.com/chainguard-dev.png?size=40){ width="40" loading=lazy align=left } chainguard-dev
+
+    ---
+
+    ??? example "Examples"
+        - chainguard-dev/apko#2166
+        - chainguard-dev/malcontent#1451
+        - chainguard-dev/melange#2463
+
+
+-   ![](https://github.com/chainguard-images.png?size=40){ width="40" loading=lazy align=left } chainguard-images
+
+    ---
+
+    ??? example "Examples"
+        - chainguard-images/images#3076
+
+
+-   ![](https://github.com/changesets.png?size=40){ width="40" loading=lazy align=left } changesets
+
+    ---
+
+    ??? example "Examples"
+        - changesets/action#617
+
+
+-   ![](https://github.com/chapel-lang.png?size=40){ width="40" loading=lazy align=left } chapel-lang
+
+    ---
+
+    ??? example "Examples"
+        - chapel-lang/chapel#29160
+
+
+-   ![](https://github.com/chatmail.png?size=40){ width="40" loading=lazy align=left } chatmail
+
+    ---
+
+    ??? example "Examples"
+        - chatmail/core#7942
+
+
+-   ![](https://github.com/cheeriojs.png?size=40){ width="40" loading=lazy align=left } cheeriojs
+
+    ---
+
+    ??? example "Examples"
+        - cheeriojs/cheerio#5212
+
+
+-   ![](https://github.com/Clipy.png?size=40){ width="40" loading=lazy align=left } Clipy
+
+    ---
+
+    ??? example "Examples"
+        - Clipy/Clipy#666
+
+
+-   ![](https://github.com/cloudflare.png?size=40){ width="40" loading=lazy align=left } cloudflare
+
+    ---
+
+    ??? example "Examples"
+        - cloudflare/vinext#1577
+
+
+-   ![](https://github.com/coder.png?size=40){ width="40" loading=lazy align=left } coder
+
+    ---
+
+    ??? example "Examples"
+        - coder/coder#19459
+
+
+-   ![](https://github.com/composer.png?size=40){ width="40" loading=lazy align=left } composer
+
+    ---
+
+    ??? example "Examples"
+        - composer/packagist#1711
+        - composer/semver#176
+
+
+-   ![](https://github.com/conda.png?size=40){ width="40" loading=lazy align=left } conda
+
+    ---
+
+    ??? example "Examples"
+        - conda/conda-lock#814
+
+
+-   ![](https://github.com/containerd.png?size=40){ width="40" loading=lazy align=left } containerd
+
+    ---
+
+    ??? example "Examples"
+        - containerd/nerdctl#4909
+
+
+-   ![](https://github.com/containers.png?size=40){ width="40" loading=lazy align=left } containers
+
+    ---
+
+    ??? example "Examples"
+        - containers/conmon#687
+        - containers/podman#27642
+
+
+-   ![](https://github.com/CopilotKit.png?size=40){ width="40" loading=lazy align=left } CopilotKit
+
+    ---
+
+    ??? example "Examples"
+        - CopilotKit/CopilotKit#4820
+
+
+-   ![](https://github.com/cortex.png?size=40){ width="40" loading=lazy align=left } cortex
+
+    ---
+
+    ??? example "Examples"
+        - cortex/ripasso#411
+
+
+-   ![](https://github.com/CosmoCreeper.png?size=40){ width="40" loading=lazy align=left } CosmoCreeper
+
+    ---
+
+    ??? example "Examples"
+        - CosmoCreeper/Sine#487
+
+
+-   ![](https://github.com/crate-ci.png?size=40){ width="40" loading=lazy align=left } crate-ci
+
+    ---
+
+    ??? example "Examples"
+        - crate-ci/cargo-release#956
+
+
+-   ![](https://github.com/crossterm-rs.png?size=40){ width="40" loading=lazy align=left } crossterm-rs
+
+    ---
+
+    ??? example "Examples"
+        - crossterm-rs/crossterm#1076
+
+
+-   ![](https://github.com/csandman.png?size=40){ width="40" loading=lazy align=left } csandman
+
+    ---
+
+    ??? example "Examples"
+        - csandman/chakra-react-select#411
+
+
+-   ![](https://github.com/cucumber.png?size=40){ width="40" loading=lazy align=left } cucumber
+
+    ---
+
+    ??? example "Examples"
+        - cucumber/cucumber-jvm#3172
+        - cucumber/cucumber-jvm-starter-maven-java@1c6575ba15d09110d5face60d4fe2e022c148581
+        - cucumber/cucumber-rails@c0f4842fe80db7a9d325242a6238ae7b72807957
+        - cucumber/cucumber-ruby@f5c09789d3777c85ea902e998ac810020e9fde2d
+
+
+-   ![](https://github.com/cunla.png?size=40){ width="40" loading=lazy align=left } cunla
+
+    ---
+
+    ??? example "Examples"
+        - cunla/fakeredis-py#391
+
+
+-   ![](https://github.com/curl.png?size=40){ width="40" loading=lazy align=left } curl
+
+    ---
+
+    ??? example "Examples"
+        - curl/curl-for-win@05ca7551743b936656033352be0d796cf56e5c0c
+        - curl/curl@17a669426f36b467dfd945b4b35f6211598b7977
+        - curl/curl@283ad5c4320fa1d733e60a0dbe216ee36e3924fb
+        - curl/curl@ba9fe58d4331402a24495618668b2cc8afe9794e
+        - curl/curl@e522f47986bb72f194636e155191d7dccdc2d4fc
+
+
+-   ![](https://github.com/cvat-ai.png?size=40){ width="40" loading=lazy align=left } cvat-ai
+
+    ---
+
+    ??? example "Examples"
+        - cvat-ai/cvat#10938
+
+
+-   ![](https://github.com/CycloneDX.png?size=40){ width="40" loading=lazy align=left } CycloneDX
+
+    ---
+
+    ??? example "Examples"
+        - CycloneDX/cyclonedx-python#1054
+        - CycloneDX/specification#925
+
+
+-   ![](https://github.com/dani-garcia.png?size=40){ width="40" loading=lazy align=left } dani-garcia
+
+    ---
+
+    ??? example "Examples"
+        - dani-garcia/vaultwarden#5537
+
+
+-   ![](https://github.com/danmar.png?size=40){ width="40" loading=lazy align=left } danmar
+
+    ---
+
+    ??? example "Examples"
+        - danmar/cppcheck#7044
+
+
+-   ![](https://github.com/Dash-Industry-Forum.png?size=40){ width="40" loading=lazy align=left } Dash-Industry-Forum
+
+    ---
+
+    ??? example "Examples"
+        - Dash-Industry-Forum/dash.js#5100
+
+
+-   ![](https://github.com/DataDog.png?size=40){ width="40" loading=lazy align=left } DataDog
+
+    ---
+
+    ??? example "Examples"
+        - DataDog/datadog-agent#30871
+        - DataDog/dd-trace-py#11640
+        - DataDog/dd-trace-rb#4456
+
+
+-   ![](https://github.com/datalens-tech.png?size=40){ width="40" loading=lazy align=left } datalens-tech
+
+    ---
+
+    ??? example "Examples"
+        - datalens-tech/datalens-backend#777
+
+
+-   ![](https://github.com/davidlattimore.png?size=40){ width="40" loading=lazy align=left } davidlattimore
+
+    ---
+
+    ??? example "Examples"
+        - davidlattimore/wild#450
+
+
+-   ![](https://github.com/deltachat.png?size=40){ width="40" loading=lazy align=left } deltachat
+
+    ---
+
+    ??? example "Examples"
+        - deltachat/deltachat-android#4390
+        - deltachat/deltachat-core-rust#6539
+        - deltachat/deltachat-desktop#6307
+        - deltachat/deltachat-desktop#6308
+
+
+-   ![](https://github.com/dependabot.png?size=40){ width="40" loading=lazy align=left } dependabot
+
+    ---
+
+    ??? example "Examples"
+        - dependabot/dependabot-core#13531
+
+
+-   ![](https://github.com/DependencyTrack.png?size=40){ width="40" loading=lazy align=left } DependencyTrack
+
+    ---
+
+    ??? example "Examples"
+        - DependencyTrack/dependency-track#7008
+
+
+-   ![](https://github.com/developmentseed.png?size=40){ width="40" loading=lazy align=left } developmentseed
+
+    ---
+
+    ??? example "Examples"
+        - developmentseed/titiler#1354
+
+
+-   ![](https://github.com/Diaoul.png?size=40){ width="40" loading=lazy align=left } Diaoul
+
+    ---
+
+    ??? example "Examples"
+        - Diaoul/subliminal#1190
+
+
+-   ![](https://github.com/digitalbazaar.png?size=40){ width="40" loading=lazy align=left } digitalbazaar
+
+    ---
+
+    ??? example "Examples"
+        - digitalbazaar/pyld#211
+
+
+-   ![](https://github.com/django.png?size=40){ width="40" loading=lazy align=left } django
+
+    ---
+
+    ??? example "Examples"
+        - django/django@09d4bf5cd9c95c588d3ec22edea5db1f5f146900
+        - django/django@86b8058b40145fb5ba4fd859676225f533eca986
+        - django/django@e8958c4690faef27b6715524ecb5c49c3ecb6a09
+
+
+-   ![](https://github.com/django-commons.png?size=40){ width="40" loading=lazy align=left } django-commons
+
+    ---
+
+    ??? example "Examples"
+        - django-commons/django-tasks-scheduler#272
+
+
+-   ![](https://github.com/dnnsoftware.png?size=40){ width="40" loading=lazy align=left } dnnsoftware
+
+    ---
+
+    ??? example "Examples"
+        - dnnsoftware/Dnn.Platform#7195
+
+
+-   ![](https://github.com/DNSCrypt.png?size=40){ width="40" loading=lazy align=left } DNSCrypt
+
+    ---
+
+    ??? example "Examples"
+        - DNSCrypt/dnscrypt-proxy@60ab04f6ebab4c362f5d4c798f07e6dff4345ac5
+
+
+-   ![](https://github.com/docker.png?size=40){ width="40" loading=lazy align=left } docker
+
+    ---
+
+    ??? example "Examples"
+        - docker/compose#12737
+
+
+-   ![](https://github.com/dry-rb.png?size=40){ width="40" loading=lazy align=left } dry-rb
+
+    ---
+
+    ??? example "Examples"
+        - dry-rb/dry-validation@44db170688d78e301d1e2d5f4e7dc260047f6fa5
+
+
+-   ![](https://github.com/dubzzz.png?size=40){ width="40" loading=lazy align=left } dubzzz
+
+    ---
+
+    ??? example "Examples"
+        - dubzzz/fast-check#6369
+        - dubzzz/fast-check#6370
+        - dubzzz/fast-check#6978
+
+
+-   ![](https://github.com/Dynatrace.png?size=40){ width="40" loading=lazy align=left } Dynatrace
+
+    ---
+
+    ??? example "Examples"
+        - Dynatrace/dynatrace-operator#6154
+
+
+-   ![](https://github.com/earthobservations.png?size=40){ width="40" loading=lazy align=left } earthobservations
+
+    ---
+
+    ??? example "Examples"
+        - earthobservations/wetterdienst#1440
+
+
+-   ![](https://github.com/eclipse-ditto.png?size=40){ width="40" loading=lazy align=left } eclipse-ditto
+
+    ---
+
+    ??? example "Examples"
+        - eclipse-ditto/ditto#2421
+
+
+-   ![](https://github.com/eclipse-transformer.png?size=40){ width="40" loading=lazy align=left } eclipse-transformer
+
+    ---
+
+    ??? example "Examples"
+        - eclipse-transformer/transformer#867
+
+
+-   ![](https://github.com/edgelesssys.png?size=40){ width="40" loading=lazy align=left } edgelesssys
+
+    ---
+
+    ??? example "Examples"
+        - edgelesssys/contrast#1604
+
+
+-   ![](https://github.com/edrlab.png?size=40){ width="40" loading=lazy align=left } edrlab
+
+    ---
+
+    ??? example "Examples"
+        - edrlab/thorium-reader@18974d39db0baea5a713b2b269681ff48bc1b22f
+
+
+-   ![](https://github.com/EFForg.png?size=40){ width="40" loading=lazy align=left } EFForg
+
+    ---
+
+    ??? example "Examples"
+        - EFForg/rayhunter#711
+
+
+-   ![](https://github.com/egbakou.png?size=40){ width="40" loading=lazy align=left } egbakou
+
+    ---
+
+    ??? example "Examples"
+        - egbakou/RESTCountries.NET#55
+
+
+-   ![](https://github.com/Electric-Coin-Company.png?size=40){ width="40" loading=lazy align=left } Electric-Coin-Company
+
+    ---
+
+    ??? example "Examples"
+        - Electric-Coin-Company/zcash-light-client-ffi#186
+
+
+-   ![](https://github.com/element-hq.png?size=40){ width="40" loading=lazy align=left } element-hq
+
+    ---
+
+    ??? example "Examples"
+        - element-hq/element-call#3797
+        - element-hq/element-desktop#2877
+        - element-hq/element-web#32717
+        - element-hq/element-x-ios#5161
+
+
+-   ![](https://github.com/elixir-lang.png?size=40){ width="40" loading=lazy align=left } elixir-lang
+
+    ---
+
+    ??? example "Examples"
+        - elixir-lang/elixir#15114
+
+
+-   ![](https://github.com/emberjs.png?size=40){ width="40" loading=lazy align=left } emberjs
+
+    ---
+
+    ??? example "Examples"
+        - emberjs/ember.js#21185
+
+
+-   ![](https://github.com/endevco.png?size=40){ width="40" loading=lazy align=left } endevco
+
+    ---
+
+    ??? example "Examples"
+        - endevco/aube#631
+        - endevco/pitchfork#434
+
+
+-   ![](https://github.com/endoflife-date.png?size=40){ width="40" loading=lazy align=left } endoflife-date
+
+    ---
+
+    ??? example "Examples"
+        - endoflife-date/release-data#610
+
+
+-   ![](https://github.com/endojs.png?size=40){ width="40" loading=lazy align=left } endojs
+
+    ---
+
+    ??? example "Examples"
+        - endojs/endo#3252
+
+
+-   ![](https://github.com/EpicWink.png?size=40){ width="40" loading=lazy align=left } EpicWink
+
+    ---
+
+    ??? example "Examples"
+        - EpicWink/proxpi@5e04d5e24bb8abfc6ad65721aea1c1781628ac9b
+
+
+-   ![](https://github.com/ergebnis.png?size=40){ width="40" loading=lazy align=left } ergebnis
+
+    ---
+
+    ??? example "Examples"
+        - ergebnis/composer-normalize#1622
+
+
+-   ![](https://github.com/erlang.png?size=40){ width="40" loading=lazy align=left } erlang
+
+    ---
+
+    ??? example "Examples"
+        - erlang/otp#11000
+        - erlang/rebar3#3001
+
+
+-   ![](https://github.com/erlef.png?size=40){ width="40" loading=lazy align=left } erlef
+
+    ---
+
+    ??? example "Examples"
+        - erlef/oidcc#533
+
+
+-   ![](https://github.com/esl.png?size=40){ width="40" loading=lazy align=left } esl
+
+    ---
+
+    ??? example "Examples"
+        - esl/MongooseIM#4435
+
+
+-   ![](https://github.com/ethereum.png?size=40){ width="40" loading=lazy align=left } ethereum
+
+    ---
+
+    ??? example "Examples"
+        - ethereum/hevm#615
+
+
+-   ![](https://github.com/external-secrets.png?size=40){ width="40" loading=lazy align=left } external-secrets
+
+    ---
+
+    ??? example "Examples"
+        - external-secrets/external-secrets#5368
+
+
+-   ![](https://github.com/falconry.png?size=40){ width="40" loading=lazy align=left } falconry
+
+    ---
+
+    ??? example "Examples"
+        - falconry/falcon#2652
+
+
+-   ![](https://github.com/fastapi.png?size=40){ width="40" loading=lazy align=left } fastapi
+
+    ---
+
+    ??? example "Examples"
+        - fastapi/asyncer#555
+        - fastapi/fastapi#15607
+        - fastapi/full-stack-fastapi-template#2260
+        - fastapi/sqlmodel#1871
+        - fastapi/typer#1705
+
+
+-   ![](https://github.com/fatiando.png?size=40){ width="40" loading=lazy align=left } fatiando
+
+    ---
+
+    ??? example "Examples"
+        - fatiando/harmonica#550
+
+
+-   ![](https://github.com/flatironinstitute.png?size=40){ width="40" loading=lazy align=left } flatironinstitute
+
+    ---
+
+    ??? example "Examples"
+        - flatironinstitute/nemos#520
+
+
+-   ![](https://github.com/flet-dev.png?size=40){ width="40" loading=lazy align=left } flet-dev
+
+    ---
+
+    ??? example "Examples"
+        - flet-dev/flet#6602
+
+
+-   ![](https://github.com/Flexget.png?size=40){ width="40" loading=lazy align=left } Flexget
+
+    ---
+
+    ??? example "Examples"
+        - Flexget/Flexget#4299
+
+
+-   ![](https://github.com/foyer-rs.png?size=40){ width="40" loading=lazy align=left } foyer-rs
+
+    ---
+
+    ??? example "Examples"
+        - foyer-rs/foyer#859
+
+
+-   ![](https://github.com/fpgmaas.png?size=40){ width="40" loading=lazy align=left } fpgmaas
+
+    ---
+
+    ??? example "Examples"
+        - fpgmaas/deptry#1161
+        - fpgmaas/deptry#972
+
+
+-   ![](https://github.com/freeCodeCamp.png?size=40){ width="40" loading=lazy align=left } freeCodeCamp
+
+    ---
+
+    ??? example "Examples"
+        - freeCodeCamp/devdocs#2386
+
+
+-   ![](https://github.com/freedomofpress.png?size=40){ width="40" loading=lazy align=left } freedomofpress
+
+    ---
+
+    ??? example "Examples"
+        - freedomofpress/securedrop-workstation#1222
+
+
+-   ![](https://github.com/freemocap.png?size=40){ width="40" loading=lazy align=left } freemocap
+
+    ---
+
+    ??? example "Examples"
+        - freemocap/freemocap#659
+
+
+-   ![](https://github.com/freqtrade.png?size=40){ width="40" loading=lazy align=left } freqtrade
+
+    ---
+
+    ??? example "Examples"
+        - freqtrade/freqtrade@5efad94d3de54d7c33731a40113f7218d46dd801
+        - freqtrade/technical@5fcb81bb1fcf269702de1634e59bb0ba87953ef2
+        - freqtrade/technical@63037a14d72be329dd35d4dced122705333af133
+
+
+-   ![](https://github.com/G-Research.png?size=40){ width="40" loading=lazy align=left } G-Research
+
+    ---
+
+    ??? example "Examples"
+        - G-Research/consuldotnet#640
+
+
+-   ![](https://github.com/gaphor.png?size=40){ width="40" loading=lazy align=left } gaphor
+
+    ---
+
+    ??? example "Examples"
+        - gaphor/gaphor#3658
+
+
+-   ![](https://github.com/gechr.png?size=40){ width="40" loading=lazy align=left } gechr
+
+    ---
+
+    ??? example "Examples"
+        - gechr/WhichSpace@e32d710e7e17102dd6eecd522aa1b511b961fcf3
+
+
+-   ![](https://github.com/GenericMappingTools.png?size=40){ width="40" loading=lazy align=left } GenericMappingTools
+
+    ---
+
+    ??? example "Examples"
+        - GenericMappingTools/pygmt#3861
+
+
+-   ![](https://github.com/getsops.png?size=40){ width="40" loading=lazy align=left } getsops
+
+    ---
+
+    ??? example "Examples"
+        - getsops/sops#1704
+
+
+-   ![](https://github.com/girlbossceo.png?size=40){ width="40" loading=lazy align=left } girlbossceo
+
+    ---
+
+    ??? example "Examples"
+        - girlbossceo/conduwuit@c6bf8f5ea15a6b963220a1de4bb50a639d0d0696
+
+
+-   ![](https://github.com/Giskard-AI.png?size=40){ width="40" loading=lazy align=left } Giskard-AI
+
+    ---
+
+    ??? example "Examples"
+        - Giskard-AI/giskard-oss#2336
+
+
+-   ![](https://github.com/git-lfs.png?size=40){ width="40" loading=lazy align=left } git-lfs
+
+    ---
+
+    ??? example "Examples"
+        - git-lfs/git-lfs#5930
+
+
+-   ![](https://github.com/gitbutlerapp.png?size=40){ width="40" loading=lazy align=left } gitbutlerapp
+
+    ---
+
+    ??? example "Examples"
+        - gitbutlerapp/gitbutler#5946
+
+
+-   ![](https://github.com/github.png?size=40){ width="40" loading=lazy align=left } github
+
+    ---
+
+    ??? example "Examples"
+        - github/docs@1b4a2ba9469efdb412736afdc7499f608b69faa1
+
+
+-   ![](https://github.com/github-aws-runners.png?size=40){ width="40" loading=lazy align=left } github-aws-runners
+
+    ---
+
+    ??? example "Examples"
+        - github-aws-runners/terraform-aws-github-runner#4808
+
+
+-   ![](https://github.com/gitify-app.png?size=40){ width="40" loading=lazy align=left } gitify-app
+
+    ---
+
+    ??? example "Examples"
+        - gitify-app/gitify#2763
+
+
+-   ![](https://github.com/GitoxideLabs.png?size=40){ width="40" loading=lazy align=left } GitoxideLabs
+
+    ---
+
+    ??? example "Examples"
+        - GitoxideLabs/gitoxide#2337
+
+
+-   ![](https://github.com/gleam-lang.png?size=40){ width="40" loading=lazy align=left } gleam-lang
+
+    ---
+
+    ??? example "Examples"
+        - gleam-lang/gleam#5559
+
+
+-   ![](https://github.com/golangci.png?size=40){ width="40" loading=lazy align=left } golangci
+
+    ---
+
+    ??? example "Examples"
+        - golangci/golangci-lint#6500
+
+
+-   ![](https://github.com/google.png?size=40){ width="40" loading=lazy align=left } google
+
+    ---
+
+    ??? example "Examples"
+        - google/grinder.dart#432
+        - google/osv-scanner#2591
+        - google/osv.dev#4969
+        - google/zerocop#2810
+        - google/zx#1067
+        - google/zx#1126
+
+
+-   ![](https://github.com/gophercloud.png?size=40){ width="40" loading=lazy align=left } gophercloud
+
+    ---
+
+    ??? example "Examples"
+        - gophercloud/gophercloud#3659
+
+
+-   ![](https://github.com/graelo.png?size=40){ width="40" loading=lazy align=left } graelo
+
+    ---
+
+    ??? example "Examples"
+        - graelo/pumas#61
+
+
+-   ![](https://github.com/grafana.png?size=40){ width="40" loading=lazy align=left } grafana
+
+    ---
+
+    ??? example "Examples"
+        - grafana/agent#7148
+        - grafana/beyla#1868
+        - grafana/carbon-relay-ng#601
+        - grafana/carbon-relay-ng#602
+        - grafana/carbon-relay-ng#603
+        - grafana/clickhouse-datasource#1231
+        - grafana/grafana-operator#1977
+        - grafana/grizzly#610
+        - grafana/logs-drilldown#1222
+        - grafana/pyroscope#4157
+        - grafana/rollout-operator#218
+        - grafana/synthetic-monitoring-app#1126
+        - grafana/tanka#1441
+
+
+-   ![](https://github.com/great-expectations.png?size=40){ width="40" loading=lazy align=left } great-expectations
+
+    ---
+
+    ??? example "Examples"
+        - great-expectations/airflow-provider-great-expectations#209
+
+
+-   ![](https://github.com/GreptimeTeam.png?size=40){ width="40" loading=lazy align=left } GreptimeTeam
+
+    ---
+
+    ??? example "Examples"
+        - GreptimeTeam/greptimedb#5491
+
+
+-   ![](https://github.com/guacsec.png?size=40){ width="40" loading=lazy align=left } guacsec
+
+    ---
+
+    ??? example "Examples"
+        - guacsec/guac#2276
+
+
+-   ![](https://github.com/h2non.png?size=40){ width="40" loading=lazy align=left } h2non
+
+    ---
+
+    ??? example "Examples"
+        - h2non/jsonpath-ng@ca251d50a404aa5a608e42e800e8fa435338ad7e
+
+
+-   ![](https://github.com/h5py.png?size=40){ width="40" loading=lazy align=left } h5py
+
+    ---
+
+    ??? example "Examples"
+        - h5py/h5py#2824
+
+
+-   ![](https://github.com/hanami.png?size=40){ width="40" loading=lazy align=left } hanami
+
+    ---
+
+    ??? example "Examples"
+        - hanami/hanami@4c206392546c1bbaea29782df60fed7769071e84
+
+
+-   ![](https://github.com/hellux.png?size=40){ width="40" loading=lazy align=left } hellux
+
+    ---
+
+    ??? example "Examples"
+        - hellux/jotdown#76
+
+
+-   ![](https://github.com/hexpm.png?size=40){ width="40" loading=lazy align=left } hexpm
+
+    ---
+
+    ??? example "Examples"
+        - hexpm/hex#1110
+        - hexpm/hexpm#1383
+
+
+-   ![](https://github.com/holoviz.png?size=40){ width="40" loading=lazy align=left } holoviz
+
+    ---
+
+    ??? example "Examples"
+        - holoviz/colorcet#155
+        - holoviz/datashader#1497
+        - holoviz/geoviews#841
+        - holoviz/holoviews#6860
+        - holoviz/hvplot#1726
+        - holoviz/panel#8584
+        - holoviz/param#1143
+
+
+-   ![](https://github.com/Homebrew.png?size=40){ width="40" loading=lazy align=left } Homebrew
+
+    ---
+
+    ??? example "Examples"
+        - Homebrew/actions#630
+        - Homebrew/actions#631
+        - Homebrew/brew#18662
+        - Homebrew/brew.sh#1107
+        - Homebrew/formulae.brew.sh#1621
+        - Homebrew/homebrew-cask#195308
+        - Homebrew/homebrew-cask#195309
+        - Homebrew/homebrew-cask#195310
+        - Homebrew/homebrew-cask#195318
+        - Homebrew/homebrew-command-not-found#203
+        - Homebrew/homebrew-core#195961
+        - Homebrew/homebrew-core#201306
+        - Homebrew/homebrew-portable-ruby#255
+
+
+-   ![](https://github.com/hplush.png?size=40){ width="40" loading=lazy align=left } hplush
+
+    ---
+
+    ??? example "Examples"
+        - hplush/slowreader@811da1f98bea76d6bfcd5768c134dc9e5cbcb754
+
+
+-   ![](https://github.com/huggingface.png?size=40){ width="40" loading=lazy align=left } huggingface
+
+    ---
+
+    ??? example "Examples"
+        - huggingface/lerobot#732
+        - huggingface/peft#2288
+
+
+-   ![](https://github.com/hugovk.png?size=40){ width="40" loading=lazy align=left } hugovk
+
+    ---
+
+    ??? example "Examples"
+        - hugovk/em-keyboard#148
+        - hugovk/norwegianblue#233
+        - hugovk/pypistats#460
+
+
+-   ![](https://github.com/hynek.png?size=40){ width="40" loading=lazy align=left } hynek
+
+    ---
+
+    ??? example "Examples"
+        - hynek/argon2-cffi#185
+        - hynek/doc2dash#225
+        - hynek/doc2dash#288
+        - hynek/environ-config#88
+        - hynek/environ-config@196762acd9033d975b293dc94592db93c9ac4133
+        - hynek/hatch-fancy-pypi-readme#57
+        - hynek/hatch-fancy-pypi-readme@40ee1ed2764da14034a3774b28ccda80ce58710b
+        - hynek/pem#100
+        - hynek/prometheus-async#70
+        - hynek/stamina#81
+        - hynek/stamina@fa8740c0c866f9519cd2b8923404764417ec78df
+        - hynek/structlog#663
+        - hynek/svcs#111
+        - hynek/svcs#161
+
+
+-   ![](https://github.com/icsharpcode.png?size=40){ width="40" loading=lazy align=left } icsharpcode
+
+    ---
+
+    ??? example "Examples"
+        - icsharpcode/ILSpy#3365
+
+
+-   ![](https://github.com/iliaal.png?size=40){ width="40" loading=lazy align=left } iliaal
+
+    ---
+
+    ??? example "Examples"
+        - iliaal/php_excel@010f6e257e9809a4cad60eef85689420c3e7e30f
+
+
+-   ![](https://github.com/immich-app.png?size=40){ width="40" loading=lazy align=left } immich-app
+
+    ---
+
+    ??? example "Examples"
+        - immich-app/immich#17651
+
+
+-   ![](https://github.com/indico.png?size=40){ width="40" loading=lazy align=left } indico
+
+    ---
+
+    ??? example "Examples"
+        - indico/indico#7533
+
+
+-   ![](https://github.com/indygreg.png?size=40){ width="40" loading=lazy align=left } indygreg
+
+    ---
+
+    ??? example "Examples"
+        - indygreg/apple-platform-rs@5bded60cbfc2b81e1bedd745ab41417e5c3a76ea
+        - indygreg/cryptography-rs@d0ae52a8040c7be8fd2024a5e2dc1cc1705c3469
+        - indygreg/python-zstandard@d0bf56011d85faf1c76da38f63d174b275c2cdeb
+
+
+-   ![](https://github.com/infection.png?size=40){ width="40" loading=lazy align=left } infection
+
+    ---
+
+    ??? example "Examples"
+        - infection/infection#3158
+
+
+-   ![](https://github.com/inspektor-gadget.png?size=40){ width="40" loading=lazy align=left } inspektor-gadget
+
+    ---
+
+    ??? example "Examples"
+        - inspektor-gadget/inspektor-gadget#5337
+
+
+-   ![](https://github.com/Instagram.png?size=40){ width="40" loading=lazy align=left } Instagram
+
+    ---
+
+    ??? example "Examples"
+        - Instagram/LibCST#1262
+
+
+-   ![](https://github.com/intel.png?size=40){ width="40" loading=lazy align=left } intel
+
+    ---
+
+    ??? example "Examples"
+        - intel/llvm#20437
+
+
+-   ![](https://github.com/intlify.png?size=40){ width="40" loading=lazy align=left } intlify
+
+    ---
+
+    ??? example "Examples"
+        - intlify/vue-i18n#2489
+
+
+-   ![](https://github.com/iorate.png?size=40){ width="40" loading=lazy align=left } iorate
+
+    ---
+
+    ??? example "Examples"
+        - iorate/ublacklist#828
+
+
+-   ![](https://github.com/irbis-sh.png?size=40){ width="40" loading=lazy align=left } irbis-sh
+
+    ---
+
+    ??? example "Examples"
+        - irbis-sh/zen-desktop#684
+
+
+-   ![](https://github.com/ispc.png?size=40){ width="40" loading=lazy align=left } ispc
+
+    ---
+
+    ??? example "Examples"
+        - ispc/ispc#3589
+
+
+-   ![](https://github.com/j178.png?size=40){ width="40" loading=lazy align=left } j178
+
+    ---
+
+    ??? example "Examples"
+        - j178/prek#947
+
+
+-   ![](https://github.com/jaredwray.png?size=40){ width="40" loading=lazy align=left } jaredwray
+
+    ---
+
+    ??? example "Examples"
+        - jaredwray/cacheable#1701
+        - jaredwray/keyv#2056
+
+
+-   ![](https://github.com/jazzband.png?size=40){ width="40" loading=lazy align=left } jazzband
+
+    ---
+
+    ??? example "Examples"
+        - jazzband/pip-tools#2327
+
+
+-   ![](https://github.com/jdx.png?size=40){ width="40" loading=lazy align=left } jdx
+
+    ---
+
+    ??? example "Examples"
+        - jdx/fnox#480
+        - jdx/hk#925
+        - jdx/mise#9804
+        - jdx/mise-action#471
+        - jdx/usage#633
+
+
+-   ![](https://github.com/jedisct1.png?size=40){ width="40" loading=lazy align=left } jedisct1
+
+    ---
+
+    ??? example "Examples"
+        - jedisct1/dsvpn@5383fd9ae714d3c6856023714a27db811ab78e6e
+
+
+-   ![](https://github.com/jj-vcs.png?size=40){ width="40" loading=lazy align=left } jj-vcs
+
+    ---
+
+    ??? example "Examples"
+        - jj-vcs/jj#5076
+
+
+-   ![](https://github.com/JOML-CI.png?size=40){ width="40" loading=lazy align=left } JOML-CI
+
+    ---
+
+    ??? example "Examples"
+        - JOML-CI/JOML@98290c379f54d05d6d27afb11ae88dfd86e35c9d
+
+
+-   ![](https://github.com/js-cookie.png?size=40){ width="40" loading=lazy align=left } js-cookie
+
+    ---
+
+    ??? example "Examples"
+        - js-cookie/js-cookie#946
+
+
+-   ![](https://github.com/Julian.png?size=40){ width="40" loading=lazy align=left } Julian
+
+    ---
+
+    ??? example "Examples"
+        - Julian/lean.nvim@4f9d48499b002ab361a4351142cae2f6f5403646
+
+
+-   ![](https://github.com/junit-team.png?size=40){ width="40" loading=lazy align=left } junit-team
+
+    ---
+
+    ??? example "Examples"
+        - junit-team/junit-framework#4838
+        - junit-team/junit-framework#4840
+
+
+-   ![](https://github.com/jupyterhub.png?size=40){ width="40" loading=lazy align=left } jupyterhub
+
+    ---
+
+    ??? example "Examples"
+        - jupyterhub/jupyterhub#5049
+
+
+-   ![](https://github.com/jupyterlab.png?size=40){ width="40" loading=lazy align=left } jupyterlab
+
+    ---
+
+    ??? example "Examples"
+        - jupyterlab/jupyter-ai#1577
+
+
+-   ![](https://github.com/jupyterlab-contrib.png?size=40){ width="40" loading=lazy align=left } jupyterlab-contrib
+
+    ---
+
+    ??? example "Examples"
+        - jupyterlab-contrib/jupyterlab_code_formatter#403
+
+
+-   ![](https://github.com/jupytext.png?size=40){ width="40" loading=lazy align=left } jupytext
+
+    ---
+
+    ??? example "Examples"
+        - jupytext/jupytext#1569
+
+
+-   ![](https://github.com/kanidm.png?size=40){ width="40" loading=lazy align=left } kanidm
+
+    ---
+
+    ??? example "Examples"
+        - kanidm/kanidm#3430
+
+
+-   ![](https://github.com/kata-containers.png?size=40){ width="40" loading=lazy align=left } kata-containers
+
+    ---
+
+    ??? example "Examples"
+        - kata-containers/kata-containers#11392
+        - kata-containers/kata-containers#11475
+
+
+-   ![](https://github.com/kimai.png?size=40){ width="40" loading=lazy align=left } kimai
+
+    ---
+
+    ??? example "Examples"
+        - kimai/kimai#5952
+
+
+-   ![](https://github.com/Kludex.png?size=40){ width="40" loading=lazy align=left } Kludex
+
+    ---
+
+    ??? example "Examples"
+        - Kludex/python-multipart#242
+        - Kludex/uvicorn#2872
+
+
+-   ![](https://github.com/kubecolor.png?size=40){ width="40" loading=lazy align=left } kubecolor
+
+    ---
+
+    ??? example "Examples"
+        - kubecolor/kubecolor#273
+
+
+-   ![](https://github.com/kubernetes-client.png?size=40){ width="40" loading=lazy align=left } kubernetes-client
+
+    ---
+
+    ??? example "Examples"
+        - kubernetes-client/javascript#2814
+
+
+-   ![](https://github.com/kubernetes-sigs.png?size=40){ width="40" loading=lazy align=left } kubernetes-sigs
+
+    ---
+
+    ??? example "Examples"
+        - kubernetes-sigs/kubebuilder#5570
+        - kubernetes-sigs/kubebuilder#5578
+
+
+-   ![](https://github.com/kubewarden.png?size=40){ width="40" loading=lazy align=left } kubewarden
+
+    ---
+
+    ??? example "Examples"
+        - kubewarden/kubewarden-controller#1596
+
+
+-   ![](https://github.com/kysely-org.png?size=40){ width="40" loading=lazy align=left } kysely-org
+
+    ---
+
+    ??? example "Examples"
+        - kysely-org/kysely#1869
+
+
+-   ![](https://github.com/labd.png?size=40){ width="40" loading=lazy align=left } labd
+
+    ---
+
+    ??? example "Examples"
+        - labd/nextjs-basic-auth-middleware#44
+
+
+-   ![](https://github.com/langfuse.png?size=40){ width="40" loading=lazy align=left } langfuse
+
+    ---
+
+    ??? example "Examples"
+        - langfuse/langfuse#13048
+        - langfuse/langfuse-js#783
+        - langfuse/langfuse-python#1623
+
+
+-   ![](https://github.com/LedgerHQ.png?size=40){ width="40" loading=lazy align=left } LedgerHQ
+
+    ---
+
+    ??? example "Examples"
+        - LedgerHQ/ledger-live#20757
+
+
+-   ![](https://github.com/lemon24.png?size=40){ width="40" loading=lazy align=left } lemon24
+
+    ---
+
+    ??? example "Examples"
+        - lemon24/reader@01bbe67e5722e373c62a108c3685c443042ee901
+
+
+-   ![](https://github.com/libexpat.png?size=40){ width="40" loading=lazy align=left } libexpat
+
+    ---
+
+    ??? example "Examples"
+        - libexpat/libexpat#1308
+
+
+-   ![](https://github.com/libssh2.png?size=40){ width="40" loading=lazy align=left } libssh2
+
+    ---
+
+    ??? example "Examples"
+        - libssh2/libssh2#1609
+
+
+-   ![](https://github.com/lissy93.png?size=40){ width="40" loading=lazy align=left } lissy93
+
+    ---
+
+    ??? example "Examples"
+        - lissy93/dashy#2140
+
+
+-   ![](https://github.com/llvm.png?size=40){ width="40" loading=lazy align=left } llvm
+
+    ---
+
+    ??? example "Examples"
+        - llvm/llvm-project#187905
+
+
+-   ![](https://github.com/lmstudio-ai.png?size=40){ width="40" loading=lazy align=left } lmstudio-ai
+
+    ---
+
+    ??? example "Examples"
+        - lmstudio-ai/venvstacks#51
+
+
+-   ![](https://github.com/louislam.png?size=40){ width="40" loading=lazy align=left } louislam
+
+    ---
+
+    ??? example "Examples"
+        - louislam/uptime-kuma#6575
+
+
+-   ![](https://github.com/m-bain.png?size=40){ width="40" loading=lazy align=left } m-bain
+
+    ---
+
+    ??? example "Examples"
+        - m-bain/whisperX#1423
+
+
+-   ![](https://github.com/madnuttah.png?size=40){ width="40" loading=lazy align=left } madnuttah
+
+    ---
+
+    ??? example "Examples"
+        - madnuttah/unbound-docker#119
+
+
+-   ![](https://github.com/maennchen.png?size=40){ width="40" loading=lazy align=left } maennchen
+
+    ---
+
+    ??? example "Examples"
+        - maennchen/ZipStream-PHP#414
+
+
+-   ![](https://github.com/MAIF.png?size=40){ width="40" loading=lazy align=left } MAIF
+
+    ---
+
+    ??? example "Examples"
+        - MAIF/yozefu#284
+
+
+-   ![](https://github.com/maplibre.png?size=40){ width="40" loading=lazy align=left } maplibre
+
+    ---
+
+    ??? example "Examples"
+        - maplibre/martin#2440
+
+
+-   ![](https://github.com/marcusvolz.png?size=40){ width="40" loading=lazy align=left } marcusvolz
+
+    ---
+
+    ??? example "Examples"
+        - marcusvolz/strava_py#53
+
+
+-   ![](https://github.com/matplotlib.png?size=40){ width="40" loading=lazy align=left } matplotlib
+
+    ---
+
+    ??? example "Examples"
+        - matplotlib/matplotlib#29251
+
+
+-   ![](https://github.com/matrix-org.png?size=40){ width="40" loading=lazy align=left } matrix-org
+
+    ---
+
+    ??? example "Examples"
+        - matrix-org/matrix-js-sdk#5212
+        - matrix-org/matrix.org#3299
+
+
+-   ![](https://github.com/maxmind.png?size=40){ width="40" loading=lazy align=left } maxmind
+
+    ---
+
+    ??? example "Examples"
+        - maxmind/geoip2-csv-converter#87
+        - maxmind/GeoIP2-java#517
+        - maxmind/GeoIP2-node#1387
+        - maxmind/GeoIP2-php#233
+        - maxmind/geoipupdate#354
+        - maxmind/libmaxminddb#365
+        - maxmind/MaxMind-DB-Reader-dotnet#198
+        - maxmind/MaxMind-DB-Reader-java#221
+        - maxmind/MaxMind-DB-Reader-python#178
+        - maxmind/mmdbinspect#82
+        - maxmind/mmdbwriter#104
+
+
+-   ![](https://github.com/mbta.png?size=40){ width="40" loading=lazy align=left } mbta
+
+    ---
+
+    ??? example "Examples"
+        - mbta/api#1048
+
+
+-   ![](https://github.com/mccutchen.png?size=40){ width="40" loading=lazy align=left } mccutchen
+
+    ---
+
+    ??? example "Examples"
+        - mccutchen/go-httpbin#252
+
+
+-   ![](https://github.com/medic.png?size=40){ width="40" loading=lazy align=left } medic
+
+    ---
+
+    ??? example "Examples"
+        - medic/cht-core#10559
+
+
+-   ![](https://github.com/meltano.png?size=40){ width="40" loading=lazy align=left } meltano
+
+    ---
+
+    ??? example "Examples"
+        - meltano/meltano#9972
+
+
+-   ![](https://github.com/meta-pytorch.png?size=40){ width="40" loading=lazy align=left } meta-pytorch
+
+    ---
+
+    ??? example "Examples"
+        - meta-pytorch/attention-gym#324
+
+
+-   ![](https://github.com/metabrainz.png?size=40){ width="40" loading=lazy align=left } metabrainz
+
+    ---
+
+    ??? example "Examples"
+        - metabrainz/listenbrainz-server#3778
+        - metabrainz/musicbrainz-server#3777
+
+
+-   ![](https://github.com/MeteorDevelopment.png?size=40){ width="40" loading=lazy align=left } MeteorDevelopment
+
+    ---
+
+    ??? example "Examples"
+        - MeteorDevelopment/meteor-client#5091
+
+
+-   ![](https://github.com/mfussenegger.png?size=40){ width="40" loading=lazy align=left } mfussenegger
+
+    ---
+
+    ??? example "Examples"
+        - mfussenegger/nvim-lint#710
+
+
+-   ![](https://github.com/mgechev.png?size=40){ width="40" loading=lazy align=left } mgechev
+
+    ---
+
+    ??? example "Examples"
+        - mgechev/revive#1733
+
+
+-   ![](https://github.com/michaelbull.png?size=40){ width="40" loading=lazy align=left } michaelbull
+
+    ---
+
+    ??? example "Examples"
+        - michaelbull/kotlin-result@7f213175f2bf525463fa4e8642956d14aebddc69
+        - michaelbull/kotlin-retry@b030616942c72812b892fec4950f3eca0813cb07
+
+
+-   ![](https://github.com/microsoft.png?size=40){ width="40" loading=lazy align=left } microsoft
+
+    ---
+
+    ??? example "Examples"
+        - microsoft/azurelinux#15733
+        - microsoft/component-detection#1532
+        - microsoft/linux-package-repositories#208
+        - microsoft/vscode-jupyter#16622
+        - microsoft/vscode-python#25047
+        - microsoft/vscode-python-debugger#709
+
+
+-   ![](https://github.com/middyjs.png?size=40){ width="40" loading=lazy align=left } middyjs
+
+    ---
+
+    ??? example "Examples"
+        - middyjs/middy#1646
+
+
+-   ![](https://github.com/miguelgrinberg.png?size=40){ width="40" loading=lazy align=left } miguelgrinberg
+
+    ---
+
+    ??? example "Examples"
+        - miguelgrinberg/microdot#362
+
+
+-   ![](https://github.com/mikavilpas.png?size=40){ width="40" loading=lazy align=left } mikavilpas
+
+    ---
+
+    ??? example "Examples"
+        - mikavilpas/yazi.nvim#1881
+
+
+-   ![](https://github.com/miketheman.png?size=40){ width="40" loading=lazy align=left } miketheman
+
+    ---
+
+    ??? example "Examples"
+        - miketheman/pytest-socket#462
+
+
+-   ![](https://github.com/mkuf.png?size=40){ width="40" loading=lazy align=left } mkuf
+
+    ---
+
+    ??? example "Examples"
+        - mkuf/prind#183
+
+
+-   ![](https://github.com/MLCIL.png?size=40){ width="40" loading=lazy align=left } MLCIL
+
+    ---
+
+    ??? example "Examples"
+        - MLCIL/scikit-fingerprints#553
+
+
+-   ![](https://github.com/mne-tools.png?size=40){ width="40" loading=lazy align=left } mne-tools
+
+    ---
+
+    ??? example "Examples"
+        - mne-tools/mne-python#13011
+
+
+-   ![](https://github.com/MoarVM.png?size=40){ width="40" loading=lazy align=left } MoarVM
+
+    ---
+
+    ??? example "Examples"
+        - MoarVM/MoarVM#1875
+
+
+-   ![](https://github.com/modelcontextprotocol.png?size=40){ width="40" loading=lazy align=left } modelcontextprotocol
+
+    ---
+
+    ??? example "Examples"
+        - modelcontextprotocol/python-sdk#2648
+
+
+-   ![](https://github.com/mongodb.png?size=40){ width="40" loading=lazy align=left } mongodb
+
+    ---
+
+    ??? example "Examples"
+        - mongodb/django-mongodb-backend#315
+        - mongodb/mongo-python-driver#2001
+        - mongodb/motor#312
+
+
+-   ![](https://github.com/mongodb-labs.png?size=40){ width="40" loading=lazy align=left } mongodb-labs
+
+    ---
+
+    ??? example "Examples"
+        - mongodb-labs/flask-pymongo#170
+
+
+-   ![](https://github.com/mozilla.png?size=40){ width="40" loading=lazy align=left } mozilla
+
+    ---
+
+    ??? example "Examples"
+        - mozilla/addons#15751
+        - mozilla/fx-private-relay#6364
+        - mozilla/fxa#18628
+        - mozilla/neqo#2413
+        - mozilla/neqo#2721
+
+
+-   ![](https://github.com/mpi4py.png?size=40){ width="40" loading=lazy align=left } mpi4py
+
+    ---
+
+    ??? example "Examples"
+        - mpi4py/mpi4py#760
+
+
+-   ![](https://github.com/mvanhorn.png?size=40){ width="40" loading=lazy align=left } mvanhorn
+
+    ---
+
+    ??? example "Examples"
+        - mvanhorn/last30days-skill#472
+
+
+-   ![](https://github.com/mwouts.png?size=40){ width="40" loading=lazy align=left } mwouts
+
+    ---
+
+    ??? example "Examples"
+        - mwouts/itables#580
+
+
+-   ![](https://github.com/napari.png?size=40){ width="40" loading=lazy align=left } napari
+
+    ---
+
+    ??? example "Examples"
+        - napari/napari#8811
+        - napari/napari#8885
+
+
+-   ![](https://github.com/narwhals-dev.png?size=40){ width="40" loading=lazy align=left } narwhals-dev
+
+    ---
+
+    ??? example "Examples"
+        - narwhals-dev/narwhals#1567
+
+
+-   ![](https://github.com/NaturalIntelligence.png?size=40){ width="40" loading=lazy align=left } NaturalIntelligence
+
+    ---
+
+    ??? example "Examples"
+        - NaturalIntelligence/fast-xml-parser#841
+
+
+-   ![](https://github.com/nedbat.png?size=40){ width="40" loading=lazy align=left } nedbat
+
+    ---
+
+    ??? example "Examples"
+        - nedbat/coveragepy@675c2f8c6c36771c85929ac9e1190b13e0269344
+
+
+-   ![](https://github.com/neocmakelsp.png?size=40){ width="40" loading=lazy align=left } neocmakelsp
+
+    ---
+
+    ??? example "Examples"
+        - neocmakelsp/neocmakelsp#216
+
+
+-   ![](https://github.com/neovim.png?size=40){ width="40" loading=lazy align=left } neovim
+
+    ---
+
+    ??? example "Examples"
+        - neovim/neovim#38230
+
+
+-   ![](https://github.com/NetApp.png?size=40){ width="40" loading=lazy align=left } NetApp
+
+    ---
+
+    ??? example "Examples"
+        - NetApp/harvest#3247
+
+
+-   ![](https://github.com/neuvector.png?size=40){ width="40" loading=lazy align=left } neuvector
+
+    ---
+
+    ??? example "Examples"
+        - neuvector/neuvector#2719
+
+
+-   ![](https://github.com/nextcloud.png?size=40){ width="40" loading=lazy align=left } nextcloud
+
+    ---
+
+    ??? example "Examples"
+        - nextcloud/.github#477
+        - nextcloud/news#3560
+        - nextcloud/user_saml#947
+
+
+-   ![](https://github.com/nextest-rs.png?size=40){ width="40" loading=lazy align=left } nextest-rs
+
+    ---
+
+    ??? example "Examples"
+        - nextest-rs/nextest#3196
+
+
+-   ![](https://github.com/NixOS.png?size=40){ width="40" loading=lazy align=left } NixOS
+
+    ---
+
+    ??? example "Examples"
+        - NixOS/infra#613
+        - NixOS/nixpkgs#396451
+
+
+-   ![](https://github.com/NLnetLabs.png?size=40){ width="40" loading=lazy align=left } NLnetLabs
+
+    ---
+
+    ??? example "Examples"
+        - NLnetLabs/nsd#413
+        - NLnetLabs/unbound#1204
+
+
+-   ![](https://github.com/notify-rs.png?size=40){ width="40" loading=lazy align=left } notify-rs
+
+    ---
+
+    ??? example "Examples"
+        - notify-rs/notify#911
+
+
+-   ![](https://github.com/npmx-dev.png?size=40){ width="40" loading=lazy align=left } npmx-dev
+
+    ---
+
+    ??? example "Examples"
+        - npmx-dev/npmx.dev#2632
+
+
+-   ![](https://github.com/numpy.png?size=40){ width="40" loading=lazy align=left } numpy
+
+    ---
+
+    ??? example "Examples"
+        - numpy/numpy#27931
+        - numpy/numpy.org#797
+
+
+-   ![](https://github.com/nuxt.png?size=40){ width="40" loading=lazy align=left } nuxt
+
+    ---
+
+    ??? example "Examples"
+        - nuxt/nuxt#35089
+
+
+-   ![](https://github.com/NVIDIA-NeMo.png?size=40){ width="40" loading=lazy align=left } NVIDIA-NeMo
+
+    ---
+
+    ??? example "Examples"
+        - NVIDIA-NeMo/Guardrails#2055
+
+
+-   ![](https://github.com/octo-sts.png?size=40){ width="40" loading=lazy align=left } octo-sts
+
+    ---
+
+    ??? example "Examples"
+        - octo-sts/app#1294
+
+
+-   ![](https://github.com/octobox.png?size=40){ width="40" loading=lazy align=left } octobox
+
+    ---
+
+    ??? example "Examples"
+        - octobox/octobox#4377
+
+
+-   ![](https://github.com/onnx.png?size=40){ width="40" loading=lazy align=left } onnx
+
+    ---
+
+    ??? example "Examples"
+        - onnx/onnx#6661
+        - onnx/onnx#6662
+        - onnx/onnx#7363
+        - onnx/onnxmltools#763
+        - onnx/optimizer#300
+        - onnx/tensorflow-onnx#2456
+
+
+-   ![](https://github.com/onyx-dot-app.png?size=40){ width="40" loading=lazy align=left } onyx-dot-app
+
+    ---
+
+    ??? example "Examples"
+        - onyx-dot-app/onyx#6344
+
+
+-   ![](https://github.com/open-circle.png?size=40){ width="40" loading=lazy align=left } open-circle
+
+    ---
+
+    ??? example "Examples"
+        - open-circle/valibot#1589
+
+
+-   ![](https://github.com/open-edge-platform.png?size=40){ width="40" loading=lazy align=left } open-edge-platform
+
+    ---
+
+    ??? example "Examples"
+        - open-edge-platform/geti#162
+        - open-edge-platform/geti-sdk#603
+
+
+-   ![](https://github.com/open-policy-agent.png?size=40){ width="40" loading=lazy align=left } open-policy-agent
+
+    ---
+
+    ??? example "Examples"
+        - open-policy-agent/opa#8356
+
+
+-   ![](https://github.com/open-quantum-safe.png?size=40){ width="40" loading=lazy align=left } open-quantum-safe
+
+    ---
+
+    ??? example "Examples"
+        - open-quantum-safe/oqs-provider#786
+
+
+-   ![](https://github.com/open-telemetry.png?size=40){ width="40" loading=lazy align=left } open-telemetry
+
+    ---
+
+    ??? example "Examples"
+        - open-telemetry/opentelemetry-collector#15358
+        - open-telemetry/opentelemetry-dotnet#7334
+        - open-telemetry/opentelemetry-dotnet-contrib#4425
+        - open-telemetry/opentelemetry-dotnet-instrumentation#5077
+        - open-telemetry/opentelemetry-ebpf-instrumentation#1511
+        - open-telemetry/opentelemetry-js#6732
+        - open-telemetry/opentelemetry-js-contrib#3533
+
+
+-   ![](https://github.com/openbao.png?size=40){ width="40" loading=lazy align=left } openbao
+
+    ---
+
+    ??? example "Examples"
+        - openbao/openbao#924
+
+
+-   ![](https://github.com/openpubkey.png?size=40){ width="40" loading=lazy align=left } openpubkey
+
+    ---
+
+    ??? example "Examples"
+        - openpubkey/opkssh#198
+        - openpubkey/opkssh#247
+
+
+-   ![](https://github.com/operaton.png?size=40){ width="40" loading=lazy align=left } operaton
+
+    ---
+
+    ??? example "Examples"
+        - operaton/operaton#3538
+
+
+-   ![](https://github.com/opf.png?size=40){ width="40" loading=lazy align=left } opf
+
+    ---
+
+    ??? example "Examples"
+        - opf/openproject#23067
+
+
+-   ![](https://github.com/Orange-OpenSource.png?size=40){ width="40" loading=lazy align=left } Orange-OpenSource
+
+    ---
+
+    ??? example "Examples"
+        - Orange-OpenSource/hurl#3574
+
+
+-   ![](https://github.com/orion-rs.png?size=40){ width="40" loading=lazy align=left } orion-rs
+
+    ---
+
+    ??? example "Examples"
+        - orion-rs/orion#441
+        - orion-rs/orion#490
+
+
+-   ![](https://github.com/ossf.png?size=40){ width="40" loading=lazy align=left } ossf
+
+    ---
+
+    ??? example "Examples"
+        - ossf/allstar#818
+
+
+-   ![](https://github.com/otter-sec.png?size=40){ width="40" loading=lazy align=left } otter-sec
+
+    ---
+
+    ??? example "Examples"
+        - otter-sec/anchor#4594
+
+
+-   ![](https://github.com/Ouranosinc.png?size=40){ width="40" loading=lazy align=left } Ouranosinc
+
+    ---
+
+    ??? example "Examples"
+        - Ouranosinc/xclim#2023
+
+
+-   ![](https://github.com/owid.png?size=40){ width="40" loading=lazy align=left } owid
+
+    ---
+
+    ??? example "Examples"
+        - owid/owid-grapher#6615
+
+
+-   ![](https://github.com/oxc-project.png?size=40){ width="40" loading=lazy align=left } oxc-project
+
+    ---
+
+    ??? example "Examples"
+        - oxc-project/oxc#7844
+        - oxc-project/oxc-resolver#370
+        - oxc-project/oxc-resolver#373
+
+
+-   ![](https://github.com/oxigraph.png?size=40){ width="40" loading=lazy align=left } oxigraph
+
+    ---
+
+    ??? example "Examples"
+        - oxigraph/oxigraph#1728
+
+
+-   ![](https://github.com/pablosnt.png?size=40){ width="40" loading=lazy align=left } pablosnt
+
+    ---
+
+    ??? example "Examples"
+        - pablosnt/rekono#299
+
+
+-   ![](https://github.com/pallets.png?size=40){ width="40" loading=lazy align=left } pallets
+
+    ---
+
+    ??? example "Examples"
+        - pallets/click#3304
+        - pallets/flask#5945
+        - pallets/werkzeug#3150
+
+
+-   ![](https://github.com/pantsbuild.png?size=40){ width="40" loading=lazy align=left } pantsbuild
+
+    ---
+
+    ??? example "Examples"
+        - pantsbuild/pants#23249
+
+
+-   ![](https://github.com/paperless-ngx.png?size=40){ width="40" loading=lazy align=left } paperless-ngx
+
+    ---
+
+    ??? example "Examples"
+        - paperless-ngx/paperless-ngx#12466
+
+
+-   ![](https://github.com/pendulum-project.png?size=40){ width="40" loading=lazy align=left } pendulum-project
+
+    ---
+
+    ??? example "Examples"
+        - pendulum-project/ntpd-rs#2139
+
+
+-   ![](https://github.com/pentacent.png?size=40){ width="40" loading=lazy align=left } pentacent
+
+    ---
+
+    ??? example "Examples"
+        - pentacent/keila@7eb6aeb61d0b191bc8fca13f4deef0bd422ac8d3
+
+
+-   ![](https://github.com/pgautoupgrade.png?size=40){ width="40" loading=lazy align=left } pgautoupgrade
+
+    ---
+
+    ??? example "Examples"
+        - pgautoupgrade/docker-pgautoupgrade#221
+
+
+-   ![](https://github.com/philips-software.png?size=40){ width="40" loading=lazy align=left } philips-software
+
+    ---
+
+    ??? example "Examples"
+        - philips-software/amp-devcontainer#830
+
+
+-   ![](https://github.com/php.png?size=40){ width="40" loading=lazy align=left } php
+
+    ---
+
+    ??? example "Examples"
+        - php/pie#634
+
+
+-   ![](https://github.com/PlasmaPy.png?size=40){ width="40" loading=lazy align=left } PlasmaPy
+
+    ---
+
+    ??? example "Examples"
+        - PlasmaPy/PlasmaPy#2975
+
+
+-   ![](https://github.com/pnpm.png?size=40){ width="40" loading=lazy align=left } pnpm
+
+    ---
+
+    ??? example "Examples"
+        - pnpm/pnpm#11608
+
+
+-   ![](https://github.com/podman-container-tools.png?size=40){ width="40" loading=lazy align=left } podman-container-tools
+
+    ---
+
+    ??? example "Examples"
+        - podman-container-tools/buildah#7052
+        - podman-container-tools/skopeo#2952
+
+
+-   ![](https://github.com/PowerDNS.png?size=40){ width="40" loading=lazy align=left } PowerDNS
+
+    ---
+
+    ??? example "Examples"
+        - PowerDNS/pdns#15600
+
+
+-   ![](https://github.com/powersync-ja.png?size=40){ width="40" loading=lazy align=left } powersync-ja
+
+    ---
+
+    ??? example "Examples"
+        - powersync-ja/powersync.dart#416
+
+
+-   ![](https://github.com/praetorian-inc.png?size=40){ width="40" loading=lazy align=left } praetorian-inc
+
+    ---
+
+    ??? example "Examples"
+        - praetorian-inc/noseyparker#228
+
+
+-   ![](https://github.com/prettytable.png?size=40){ width="40" loading=lazy align=left } prettytable
+
+    ---
+
+    ??? example "Examples"
+        - prettytable/prettytable#339
+
+
+-   ![](https://github.com/privacyidea.png?size=40){ width="40" loading=lazy align=left } privacyidea
+
+    ---
+
+    ??? example "Examples"
+        - privacyidea/privacyidea#4854
+
+
+-   ![](https://github.com/prometheus.png?size=40){ width="40" loading=lazy align=left } prometheus
+
+    ---
+
+    ??? example "Examples"
+        - prometheus/prometheus#16530
+
+
+-   ![](https://github.com/prosekit.png?size=40){ width="40" loading=lazy align=left } prosekit
+
+    ---
+
+    ??? example "Examples"
+        - prosekit/prosekit#1609
+
+
+-   ![](https://github.com/prowler-cloud.png?size=40){ width="40" loading=lazy align=left } prowler-cloud
+
+    ---
+
+    ??? example "Examples"
+        - prowler-cloud/prowler#10200
+        - prowler-cloud/prowler#10207
+        - prowler-cloud/prowler#10208
+
+
+-   ![](https://github.com/psf.png?size=40){ width="40" loading=lazy align=left } psf
+
+    ---
+
+    ??? example "Examples"
+        - psf/black#4901
+        - psf/black#4905
+        - psf/black#4906
+        - psf/black#4911
+        - psf/cachecontrol#345
+        - psf/requests#7314
+
+
+-   ![](https://github.com/pubgrub-rs.png?size=40){ width="40" loading=lazy align=left } pubgrub-rs
+
+    ---
+
+    ??? example "Examples"
+        - pubgrub-rs/pubgrub#389
+
+
+-   ![](https://github.com/py-pdf.png?size=40){ width="40" loading=lazy align=left } py-pdf
+
+    ---
+
+    ??? example "Examples"
+        - py-pdf/pypdf#3808
+
+
+-   ![](https://github.com/pyca.png?size=40){ width="40" loading=lazy align=left } pyca
+
+    ---
+
+    ??? example "Examples"
+        - pyca/service-identity#75
+
+
+-   ![](https://github.com/pydantic.png?size=40){ width="40" loading=lazy align=left } pydantic
+
+    ---
+
+    ??? example "Examples"
+        - pydantic/monty#312
+        - pydantic/pydantic#13039
+
+
+-   ![](https://github.com/pydata.png?size=40){ width="40" loading=lazy align=left } pydata
+
+    ---
+
+    ??? example "Examples"
+        - pydata/pydata-sphinx-theme#2077
+        - pydata/xarray#11294
+
+
+-   ![](https://github.com/pylast.png?size=40){ width="40" loading=lazy align=left } pylast
+
+    ---
+
+    ??? example "Examples"
+        - pylast/pylast#465
+
+
+-   ![](https://github.com/pymc-devs.png?size=40){ width="40" loading=lazy align=left } pymc-devs
+
+    ---
+
+    ??? example "Examples"
+        - pymc-devs/pymc#7624
+        - pymc-devs/pymc#7959
+        - pymc-devs/pytensor#1136
+        - pymc-devs/pytensor#2281
+
+
+-   ![](https://github.com/PyO3.png?size=40){ width="40" loading=lazy align=left } PyO3
+
+    ---
+
+    ??? example "Examples"
+        - PyO3/pyo3#4774
+
+
+-   ![](https://github.com/pypa.png?size=40){ width="40" loading=lazy align=left } pypa
+
+    ---
+
+    ??? example "Examples"
+        - pypa/cibuildwheel#2776
+        - pypa/packaging#1035
+        - pypa/packaging.python.org#1765
+        - pypa/pip-audit#851
+        - pypa/readme_renderer#354
+
+
+-   ![](https://github.com/pypi.png?size=40){ width="40" loading=lazy align=left } pypi
+
+    ---
+
+    ??? example "Examples"
+        - pypi/stdlib-list#138
+        - pypi/warehouse#16996
+        - pypi/warehouse#18103
+
+
+-   ![](https://github.com/pytest-dev.png?size=40){ width="40" loading=lazy align=left } pytest-dev
+
+    ---
+
+    ??? example "Examples"
+        - pytest-dev/pytest#13062
+        - pytest-dev/pytest-asyncio#1122
+        - pytest-dev/pytest-asyncio#1295
+        - pytest-dev/pytest-django#1211
+        - pytest-dev/pytest-django#1214
+
+
+-   ![](https://github.com/python.png?size=40){ width="40" loading=lazy align=left } python
+
+    ---
+
+    ??? example "Examples"
+        - python/bedevere#652
+        - python/cpython#127749
+        - python/miss-islington#705
+        - python/mypy#18413
+
+
+-   ![](https://github.com/python-attrs.png?size=40){ width="40" loading=lazy align=left } python-attrs
+
+    ---
+
+    ??? example "Examples"
+        - python-attrs/attrs#1368
+        - python-attrs/cattrs#605
+
+
+-   ![](https://github.com/python-babel.png?size=40){ width="40" loading=lazy align=left } python-babel
+
+    ---
+
+    ??? example "Examples"
+        - python-babel/babel#1230
+
+
+-   ![](https://github.com/python-humanize.png?size=40){ width="40" loading=lazy align=left } python-humanize
+
+    ---
+
+    ??? example "Examples"
+        - python-humanize/humanize#221
+
+
+-   ![](https://github.com/python-pillow.png?size=40){ width="40" loading=lazy align=left } python-pillow
+
+    ---
+
+    ??? example "Examples"
+        - python-pillow/Pillow#8526
+
+
+-   ![](https://github.com/python-poetry.png?size=40){ width="40" loading=lazy align=left } python-poetry
+
+    ---
+
+    ??? example "Examples"
+        - python-poetry/cleo#462
+        - python-poetry/poetry#9895
+        - python-poetry/poetry-core#799
+        - python-poetry/poetry-plugin-bundle#125
+        - python-poetry/poetry-plugin-export#308
+
+
+-   ![](https://github.com/python-social-auth.png?size=40){ width="40" loading=lazy align=left } python-social-auth
+
+    ---
+
+    ??? example "Examples"
+        - python-social-auth/social-core#1098
+
+
+-   ![](https://github.com/python-telegram-bot.png?size=40){ width="40" loading=lazy align=left } python-telegram-bot
+
+    ---
+
+    ??? example "Examples"
+        - python-telegram-bot/python-telegram-bot#4606
+        - python-telegram-bot/python-telegram-bot#4668
+
+
+-   ![](https://github.com/python-trio.png?size=40){ width="40" loading=lazy align=left } python-trio
+
+    ---
+
+    ??? example "Examples"
+        - python-trio/trio#3154
+        - python-trio/trio#3482
+
+
+-   ![](https://github.com/pyvista.png?size=40){ width="40" loading=lazy align=left } pyvista
+
+    ---
+
+    ??? example "Examples"
+        - pyvista/pyvista#7006
+
+
+-   ![](https://github.com/PyVRP.png?size=40){ width="40" loading=lazy align=left } PyVRP
+
+    ---
+
+    ??? example "Examples"
+        - PyVRP/PyVRP#670
+
+
+-   ![](https://github.com/quarkslab.png?size=40){ width="40" loading=lazy align=left } quarkslab
+
+    ---
+
+    ??? example "Examples"
+        - quarkslab/quokka#46
+
+
+-   ![](https://github.com/quarto-dev.png?size=40){ width="40" loading=lazy align=left } quarto-dev
+
+    ---
+
+    ??? example "Examples"
+        - quarto-dev/quarto-web#2157
+
+
+-   ![](https://github.com/quay.png?size=40){ width="40" loading=lazy align=left } quay
+
+    ---
+
+    ??? example "Examples"
+        - quay/quay#5887
+
+
+-   ![](https://github.com/rails.png?size=40){ width="40" loading=lazy align=left } rails
+
+    ---
+
+    ??? example "Examples"
+        - rails/rails-html-sanitizer#220
+
+
+-   ![](https://github.com/raineorshine.png?size=40){ width="40" loading=lazy align=left } raineorshine
+
+    ---
+
+    ??? example "Examples"
+        - raineorshine/npm-check-updates#1946
+
+
+-   ![](https://github.com/ranaroussi.png?size=40){ width="40" loading=lazy align=left } ranaroussi
+
+    ---
+
+    ??? example "Examples"
+        - ranaroussi/yfinance#2735
+
+
+-   ![](https://github.com/rancher.png?size=40){ width="40" loading=lazy align=left } rancher
+
+    ---
+
+    ??? example "Examples"
+        - rancher/fleet#5301
+        - rancher/rancher#54439
+
+
+-   ![](https://github.com/ratatui.png?size=40){ width="40" loading=lazy align=left } ratatui
+
+    ---
+
+    ??? example "Examples"
+        - ratatui/ratatui#1961
+        - ratatui/tui-widgets#249
+
+
+-   ![](https://github.com/raydak-labs.png?size=40){ width="40" loading=lazy align=left } raydak-labs
+
+    ---
+
+    ??? example "Examples"
+        - raydak-labs/configarr#457
+
+
+-   ![](https://github.com/RediSearch.png?size=40){ width="40" loading=lazy align=left } RediSearch
+
+    ---
+
+    ??? example "Examples"
+        - RediSearch/RediSearch#10654
+
+
+-   ![](https://github.com/redux-saga.png?size=40){ width="40" loading=lazy align=left } redux-saga
+
+    ---
+
+    ??? example "Examples"
+        - redux-saga/redux-saga#2771
+
+
+-   ![](https://github.com/renovatebot.png?size=40){ width="40" loading=lazy align=left } renovatebot
+
+    ---
+
+    ??? example "Examples"
+        - renovatebot/github-action#1025
+        - renovatebot/renovate#42346
+
+
+-   ![](https://github.com/reubeno.png?size=40){ width="40" loading=lazy align=left } reubeno
+
+    ---
+
+    ??? example "Examples"
+        - reubeno/brush#1289
+        - reubeno/brush#534
+        - reubeno/brush#535
+
+
+-   ![](https://github.com/rkyv.png?size=40){ width="40" loading=lazy align=left } rkyv
+
+    ---
+
+    ??? example "Examples"
+        - rkyv/rkyv#611
+
+
+-   ![](https://github.com/rocicorp.png?size=40){ width="40" loading=lazy align=left } rocicorp
+
+    ---
+
+    ??? example "Examples"
+        - rocicorp/mono#6052
+
+
+-   ![](https://github.com/rolldown.png?size=40){ width="40" loading=lazy align=left } rolldown
+
+    ---
+
+    ??? example "Examples"
+        - rolldown/rolldown#3861
+
+
+-   ![](https://github.com/roostorg.png?size=40){ width="40" loading=lazy align=left } roostorg
+
+    ---
+
+    ??? example "Examples"
+        - roostorg/osprey#350
+
+
+-   ![](https://github.com/rootless-containers.png?size=40){ width="40" loading=lazy align=left } rootless-containers
+
+    ---
+
+    ??? example "Examples"
+        - rootless-containers/usernetes#392
+
+
+-   ![](https://github.com/rsyslog.png?size=40){ width="40" loading=lazy align=left } rsyslog
+
+    ---
+
+    ??? example "Examples"
+        - rsyslog/rsyslog#6808
+
+
+-   ![](https://github.com/rubocop.png?size=40){ width="40" loading=lazy align=left } rubocop
+
+    ---
+
+    ??? example "Examples"
+        - rubocop/rubocop-rspec#2202
+
+
+-   ![](https://github.com/ruby.png?size=40){ width="40" loading=lazy align=left } ruby
+
+    ---
+
+    ??? example "Examples"
+        - ruby/ruby#16273
+
+
+-   ![](https://github.com/rubygems.png?size=40){ width="40" loading=lazy align=left } rubygems
+
+    ---
+
+    ??? example "Examples"
+        - rubygems/rubygems#8702
+        - rubygems/rubygems.org#5350
+
+
+-   ![](https://github.com/rubysec.png?size=40){ width="40" loading=lazy align=left } rubysec
+
+    ---
+
+    ??? example "Examples"
+        - rubysec/bundler-audit#424
+        - rubysec/ruby-advisory-db#1064
+
+
+-   ![](https://github.com/runtimeverification.png?size=40){ width="40" loading=lazy align=left } runtimeverification
+
+    ---
+
+    ??? example "Examples"
+        - runtimeverification/evm-semantics#2878
+
+
+-   ![](https://github.com/rust-bitcoin.png?size=40){ width="40" loading=lazy align=left } rust-bitcoin
+
+    ---
+
+    ??? example "Examples"
+        - rust-bitcoin/rust-bitcoin#5234
+
+
+-   ![](https://github.com/rust-lang.png?size=40){ width="40" loading=lazy align=left } rust-lang
+
+    ---
+
+    ??? example "Examples"
+        - rust-lang/bors#732
+        - rust-lang/compiler-builtins#1113
+        - rust-lang/compiler-builtins#1115
+        - rust-lang/crates.io#10176
+        - rust-lang/crates.io#11203
+        - rust-lang/rust-clippy#13933
+        - rust-lang/team#2412
+        - rust-lang/this-week-in-rust#6721
+
+
+-   ![](https://github.com/rust-phf.png?size=40){ width="40" loading=lazy align=left } rust-phf
+
+    ---
+
+    ??? example "Examples"
+        - rust-phf/rust-phf#404
+
+
+-   ![](https://github.com/rustls.png?size=40){ width="40" loading=lazy align=left } rustls
+
+    ---
+
+    ??? example "Examples"
+        - rustls/rustls#2261
+        - rustls/tokio-rustls#96
+        - rustls/webpki#299
+
+
+-   ![](https://github.com/RustPython.png?size=40){ width="40" loading=lazy align=left } RustPython
+
+    ---
+
+    ??? example "Examples"
+        - RustPython/RustPython#7463
+
+
+-   ![](https://github.com/rustsec.png?size=40){ width="40" loading=lazy align=left } rustsec
+
+    ---
+
+    ??? example "Examples"
+        - rustsec/advisory-db#2444
+        - rustsec/rustsec#1449
+
+
+-   ![](https://github.com/Saghen.png?size=40){ width="40" loading=lazy align=left } Saghen
+
+    ---
+
+    ??? example "Examples"
+        - Saghen/blink.cmp#991
+
+
+-   ![](https://github.com/sanity-io.png?size=40){ width="40" loading=lazy align=left } sanity-io
+
+    ---
+
+    ??? example "Examples"
+        - sanity-io/sanity#12830
+
+
+-   ![](https://github.com/SAP.png?size=40){ width="40" loading=lazy align=left } SAP
+
+    ---
+
+    ??? example "Examples"
+        - SAP/ai-sdk-js#1822
+        - SAP/cloud-sdk-js#6564
+
+
+-   ![](https://github.com/sass.png?size=40){ width="40" loading=lazy align=left } sass
+
+    ---
+
+    ??? example "Examples"
+        - sass/dart-sass#2792
+
+
+-   ![](https://github.com/savonrb.png?size=40){ width="40" loading=lazy align=left } savonrb
+
+    ---
+
+    ??? example "Examples"
+        - savonrb/savon@1cb9ad4311e7ed1f59dbdb0b48ad677016a0a875
+
+
+-   ![](https://github.com/SBoudrias.png?size=40){ width="40" loading=lazy align=left } SBoudrias
+
+    ---
+
+    ??? example "Examples"
+        - SBoudrias/Inquirer.js#2232
+
+
+-   ![](https://github.com/scientific-python.png?size=40){ width="40" loading=lazy align=left } scientific-python
+
+    ---
+
+    ??? example "Examples"
+        - scientific-python/repo-review#257
+
+
+-   ![](https://github.com/scikit-build.png?size=40){ width="40" loading=lazy align=left } scikit-build
+
+    ---
+
+    ??? example "Examples"
+        - scikit-build/scikit-build-core#983
+
+
+-   ![](https://github.com/scikit-image.png?size=40){ width="40" loading=lazy align=left } scikit-image
+
+    ---
+
+    ??? example "Examples"
+        - scikit-image/scikit-image#7662
+
+
+-   ![](https://github.com/scroll-tech.png?size=40){ width="40" loading=lazy align=left } scroll-tech
+
+    ---
+
+    ??? example "Examples"
+        - scroll-tech/go-ethereum#1146
+
+
+-   ![](https://github.com/seantis.png?size=40){ width="40" loading=lazy align=left } seantis
+
+    ---
+
+    ??? example "Examples"
+        - seantis/suitable#58
+
+
+-   ![](https://github.com/sebp.png?size=40){ width="40" loading=lazy align=left } sebp
+
+    ---
+
+    ??? example "Examples"
+        - sebp/scikit-survival#617
+
+
+-   ![](https://github.com/Setasign.png?size=40){ width="40" loading=lazy align=left } Setasign
+
+    ---
+
+    ??? example "Examples"
+        - Setasign/FPDI#253
+
+
+-   ![](https://github.com/sharkdp.png?size=40){ width="40" loading=lazy align=left } sharkdp
+
+    ---
+
+    ??? example "Examples"
+        - sharkdp/fd#1828
+
+
+-   ![](https://github.com/sigstore.png?size=40){ width="40" loading=lazy align=left } sigstore
+
+    ---
+
+    ??? example "Examples"
+        - sigstore/cosign#3959
+        - sigstore/fulcio#1910
+        - sigstore/gitsign#602
+        - sigstore/model-transparency#369
+        - sigstore/sigstore-rs#424
+        - sigstore/sigstore-rs#519
+
+
+-   ![](https://github.com/simpeg.png?size=40){ width="40" loading=lazy align=left } simpeg
+
+    ---
+
+    ??? example "Examples"
+        - simpeg/simpeg#1592
+
+
+-   ![](https://github.com/sinonjs.png?size=40){ width="40" loading=lazy align=left } sinonjs
+
+    ---
+
+    ??? example "Examples"
+        - sinonjs/sinon#2686
+
+
+-   ![](https://github.com/Skyscanner.png?size=40){ width="40" loading=lazy align=left } Skyscanner
+
+    ---
+
+    ??? example "Examples"
+        - Skyscanner/backpack#4124
+        - Skyscanner/backpack-android#2561
+        - Skyscanner/turbolift#202
+
+
+-   ![](https://github.com/Skyvern-AI.png?size=40){ width="40" loading=lazy align=left } Skyvern-AI
+
+    ---
+
+    ??? example "Examples"
+        - Skyvern-AI/skyvern#5237
+
+
+-   ![](https://github.com/slackapi.png?size=40){ width="40" loading=lazy align=left } slackapi
+
+    ---
+
+    ??? example "Examples"
+        - slackapi/bolt-js#2537
+        - slackapi/bolt-python#1303
+        - slackapi/java-slack-sdk#1474
+        - slackapi/manifest-schema#14
+        - slackapi/node-slack-sdk#2246
+        - slackapi/python-slack-events-api#110
+        - slackapi/python-slack-hooks#58
+        - slackapi/python-slack-sdk#1691
+        - slackapi/slack-cli#100
+
+
+-   ![](https://github.com/sonos.png?size=40){ width="40" loading=lazy align=left } sonos
+
+    ---
+
+    ??? example "Examples"
+        - sonos/tract#2262
+
+
+-   ![](https://github.com/sparklemotion.png?size=40){ width="40" loading=lazy align=left } sparklemotion
+
+    ---
+
+    ??? example "Examples"
+        - sparklemotion/nokogiri#3654
+
+
+-   ![](https://github.com/sqlite.png?size=40){ width="40" loading=lazy align=left } sqlite
+
+    ---
+
+    ??? example "Examples"
+        - sqlite/sqlite-wasm#166
+
+
+-   ![](https://github.com/stanfordnlp.png?size=40){ width="40" loading=lazy align=left } stanfordnlp
+
+    ---
+
+    ??? example "Examples"
+        - stanfordnlp/dspy#9743
+
+
+-   ![](https://github.com/statamic.png?size=40){ width="40" loading=lazy align=left } statamic
+
+    ---
+
+    ??? example "Examples"
+        - statamic/cms#14687
+
+
+-   ![](https://github.com/Stebalien.png?size=40){ width="40" loading=lazy align=left } Stebalien
+
+    ---
+
+    ??? example "Examples"
+        - Stebalien/tempfile#402
+
+
+-   ![](https://github.com/stravalib.png?size=40){ width="40" loading=lazy align=left } stravalib
+
+    ---
+
+    ??? example "Examples"
+        - stravalib/stravalib#645
+        - stravalib/stravalib#648
+        - stravalib/stravalib#649
+
+
+-   ![](https://github.com/strawberry-graphql.png?size=40){ width="40" loading=lazy align=left } strawberry-graphql
+
+    ---
+
+    ??? example "Examples"
+        - strawberry-graphql/strawberry#4097
+
+
+-   ![](https://github.com/stripe.png?size=40){ width="40" loading=lazy align=left } stripe
+
+    ---
+
+    ??? example "Examples"
+        - stripe/stripe-dotnet#3432
+        - stripe/stripe-go#2416
+        - stripe/stripe-java#2276
+        - stripe/stripe-mock#1643
+        - stripe/stripe-node#2824
+        - stripe/stripe-php#2133
+        - stripe/stripe-python#1891
+        - stripe/stripe-ruby#1943
+
+
+-   ![](https://github.com/stx-labs.png?size=40){ width="40" loading=lazy align=left } stx-labs
+
+    ---
+
+    ??? example "Examples"
+        - stx-labs/clarinet#2281
+
+
+-   ![](https://github.com/sunpy.png?size=40){ width="40" loading=lazy align=left } sunpy
+
+    ---
+
+    ??? example "Examples"
+        - sunpy/sunpy#8745
+
+
+-   ![](https://github.com/super-linter.png?size=40){ width="40" loading=lazy align=left } super-linter
+
+    ---
+
+    ??? example "Examples"
+        - super-linter/super-linter#7241
+
+
+-   ![](https://github.com/Swatinem.png?size=40){ width="40" loading=lazy align=left } Swatinem
+
+    ---
+
+    ??? example "Examples"
+        - Swatinem/rust-cache#262
+
+
+-   ![](https://github.com/symfony.png?size=40){ width="40" loading=lazy align=left } symfony
+
+    ---
+
+    ??? example "Examples"
+        - symfony/symfony#64325
+        - symfony/symfony#64772
+        - symfony/ux#3579
+
+
+-   ![](https://github.com/sympy.png?size=40){ width="40" loading=lazy align=left } sympy
+
+    ---
+
+    ??? example "Examples"
+        - sympy/sympy#29641
+
+
+-   ![](https://github.com/TanStack.png?size=40){ width="40" loading=lazy align=left } TanStack
+
+    ---
+
+    ??? example "Examples"
+        - TanStack/cli#450
+        - TanStack/config#387
+        - TanStack/db#1525
+        - TanStack/devtools#440
+        - TanStack/form#2176
+        - TanStack/pacer#212
+        - TanStack/query#10700
+        - TanStack/router#7389
+        - TanStack/store#326
+        - TanStack/table#6251
+        - TanStack/tanstack.com#919
+
+
+-   ![](https://github.com/target.png?size=40){ width="40" loading=lazy align=left } target
+
+    ---
+
+    ??? example "Examples"
+        - target/data-validator#223
+
+
+-   ![](https://github.com/TecharoHQ.png?size=40){ width="40" loading=lazy align=left } TecharoHQ
+
+    ---
+
+    ??? example "Examples"
+        - TecharoHQ/anubis#188
+
+
+-   ![](https://github.com/tektoncd.png?size=40){ width="40" loading=lazy align=left } tektoncd
+
+    ---
+
+    ??? example "Examples"
+        - tektoncd/operator#3300
+        - tektoncd/operator#3324
+        - tektoncd/pipeline#9667
+
+
+-   ![](https://github.com/tensorzero.png?size=40){ width="40" loading=lazy align=left } tensorzero
+
+    ---
+
+    ??? example "Examples"
+        - tensorzero/tensorzero#7402
+
+
+-   ![](https://github.com/termcolor.png?size=40){ width="40" loading=lazy align=left } termcolor
+
+    ---
+
+    ??? example "Examples"
+        - termcolor/termcolor#89
+
+
+-   ![](https://github.com/termux.png?size=40){ width="40" loading=lazy align=left } termux
+
+    ---
+
+    ??? example "Examples"
+        - termux/termux-packages#22519
+
+
+-   ![](https://github.com/textlint.png?size=40){ width="40" loading=lazy align=left } textlint
+
+    ---
+
+    ??? example "Examples"
+        - textlint/textlint#1711
+
+
+-   ![](https://github.com/theopenconversationkit.png?size=40){ width="40" loading=lazy align=left } theopenconversationkit
+
+    ---
+
+    ??? example "Examples"
+        - theopenconversationkit/tock@85face9458cd6f9676d647cabc00de7be74ecac5
+
+
+-   ![](https://github.com/theupdateframework.png?size=40){ width="40" loading=lazy align=left } theupdateframework
+
+    ---
+
+    ??? example "Examples"
+        - theupdateframework/python-tuf#2798
+        - theupdateframework/tuf-on-ci#548
+
+
+-   ![](https://github.com/thomaspoignant.png?size=40){ width="40" loading=lazy align=left } thomaspoignant
+
+    ---
+
+    ??? example "Examples"
+        - thomaspoignant/go-feature-flag#5118
+
+
+-   ![](https://github.com/tiangolo.png?size=40){ width="40" loading=lazy align=left } tiangolo
+
+    ---
+
+    ??? example "Examples"
+        - tiangolo/library-skills#31
+
+
+-   ![](https://github.com/toml-rs.png?size=40){ width="40" loading=lazy align=left } toml-rs
+
+    ---
+
+    ??? example "Examples"
+        - toml-rs/toml#1145
+
+
+-   ![](https://github.com/torchbox.png?size=40){ width="40" loading=lazy align=left } torchbox
+
+    ---
+
+    ??? example "Examples"
+        - torchbox/wagtailmedia#252
+
+
+-   ![](https://github.com/tornadoweb.png?size=40){ width="40" loading=lazy align=left } tornadoweb
+
+    ---
+
+    ??? example "Examples"
+        - tornadoweb/tornado#3438
+        - tornadoweb/tornado#3463
+
+
+-   ![](https://github.com/toy.png?size=40){ width="40" loading=lazy align=left } toy
+
+    ---
+
+    ??? example "Examples"
+        - toy/image_optim@9ccbbd0bc8e6a2d3258988e34de5dbe86408da80
+
+
+-   ![](https://github.com/tradingview.png?size=40){ width="40" loading=lazy align=left } tradingview
+
+    ---
+
+    ??? example "Examples"
+        - tradingview/lightweight-charts#2085
+
+
+-   ![](https://github.com/trailofbits.png?size=40){ width="40" loading=lazy align=left } trailofbits
+
+    ---
+
+    ??? example "Examples"
+        - trailofbits/fickling#144
+        - trailofbits/fickling#177
+
+
+-   ![](https://github.com/trifectatechfoundation.png?size=40){ width="40" loading=lazy align=left } trifectatechfoundation
+
+    ---
+
+    ??? example "Examples"
+        - trifectatechfoundation/sudo-rs#1488
+        - trifectatechfoundation/sudo-rs#1490
+        - trifectatechfoundation/teach-rs#162
+
+
+-   ![](https://github.com/triggerdotdev.png?size=40){ width="40" loading=lazy align=left } triggerdotdev
+
+    ---
+
+    ??? example "Examples"
+        - triggerdotdev/trigger.dev#3506
+
+
+-   ![](https://github.com/trinodb.png?size=40){ width="40" loading=lazy align=left } trinodb
+
+    ---
+
+    ??? example "Examples"
+        - trinodb/trino#30556
+
+
+-   ![](https://github.com/TritonVM.png?size=40){ width="40" loading=lazy align=left } TritonVM
+
+    ---
+
+    ??? example "Examples"
+        - TritonVM/triton-vm@670907d4bfe9b70d160c78403cd0ad1fb16757e8
+
+
+-   ![](https://github.com/tstyche.png?size=40){ width="40" loading=lazy align=left } tstyche
+
+    ---
+
+    ??? example "Examples"
+        - tstyche/tstyche@477b8b9c52f59c141918e1c164ad59644d64f81f
+
+
+-   ![](https://github.com/TypeCellOS.png?size=40){ width="40" loading=lazy align=left } TypeCellOS
+
+    ---
+
+    ??? example "Examples"
+        - TypeCellOS/BlockNote#2764
+
+
+-   ![](https://github.com/typescript-eslint.png?size=40){ width="40" loading=lazy align=left } typescript-eslint
+
+    ---
+
+    ??? example "Examples"
+        - typescript-eslint/typescript-eslint#12329
+
+
+-   ![](https://github.com/ua-parser.png?size=40){ width="40" loading=lazy align=left } ua-parser
+
+    ---
+
+    ??? example "Examples"
+        - ua-parser/uap-python#250
+
+
+-   ![](https://github.com/ubicloud.png?size=40){ width="40" loading=lazy align=left } ubicloud
+
+    ---
+
+    ??? example "Examples"
+        - ubicloud/ubicloud#5472
+
+
+-   ![](https://github.com/UKGovernmentBEIS.png?size=40){ width="40" loading=lazy align=left } UKGovernmentBEIS
+
+    ---
+
+    ??? example "Examples"
+        - UKGovernmentBEIS/inspect_evals#1597
+        - UKGovernmentBEIS/inspect_evals#1599
+
+
+-   ![](https://github.com/ultrajson.png?size=40){ width="40" loading=lazy align=left } ultrajson
+
+    ---
+
+    ??? example "Examples"
+        - ultrajson/ultrajson#650
+
+
+-   ![](https://github.com/unicode-org.png?size=40){ width="40" loading=lazy align=left } unicode-org
+
+    ---
+
+    ??? example "Examples"
+        - unicode-org/icu#4052
+
+
+-   ![](https://github.com/Unidata.png?size=40){ width="40" loading=lazy align=left } Unidata
+
+    ---
+
+    ??? example "Examples"
+        - Unidata/MetPy#3710
+
+
+-   ![](https://github.com/Uniswap.png?size=40){ width="40" loading=lazy align=left } Uniswap
+
+    ---
+
+    ??? example "Examples"
+        - Uniswap/docs#1114
+        - Uniswap/sdks#516
+        - Uniswap/UniswapX#362
+        - Uniswap/v4-periphery#515
+
+
+-   ![](https://github.com/updatecli.png?size=40){ width="40" loading=lazy align=left } updatecli
+
+    ---
+
+    ??? example "Examples"
+        - updatecli/updatecli#7865
+
+
+-   ![](https://github.com/urllib3.png?size=40){ width="40" loading=lazy align=left } urllib3
+
+    ---
+
+    ??? example "Examples"
+        - urllib3/urllib3#3528
+
+
+-   ![](https://github.com/uutils.png?size=40){ width="40" loading=lazy align=left } uutils
+
+    ---
+
+    ??? example "Examples"
+        - uutils/coreutils#6973
+
+
+-   ![](https://github.com/ViaVersion.png?size=40){ width="40" loading=lazy align=left } ViaVersion
+
+    ---
+
+    ??? example "Examples"
+        - ViaVersion/ViaVersion#4315
+
+
+-   ![](https://github.com/ViewComponent.png?size=40){ width="40" loading=lazy align=left } ViewComponent
+
+    ---
+
+    ??? example "Examples"
+        - ViewComponent/view_component#2678
+
+
+-   ![](https://github.com/vitejs.png?size=40){ width="40" loading=lazy align=left } vitejs
+
+    ---
+
+    ??? example "Examples"
+        - vitejs/vite#22442
+        - vitejs/vite-ecosystem-ci#469
+        - vitejs/vite-plugin-basic-ssl#113
+        - vitejs/vite-plugin-react#1232
+        - vitejs/vite-plugin-vue#787
+
+
+-   ![](https://github.com/vitessio.png?size=40){ width="40" loading=lazy align=left } vitessio
+
+    ---
+
+    ??? example "Examples"
+        - vitessio/vitess#19149
+
+
+-   ![](https://github.com/vitest-dev.png?size=40){ width="40" loading=lazy align=left } vitest-dev
+
+    ---
+
+    ??? example "Examples"
+        - vitest-dev/vitest#10375
+
+
+-   ![](https://github.com/vlang.png?size=40){ width="40" loading=lazy align=left } vlang
+
+    ---
+
+    ??? example "Examples"
+        - vlang/v#22681
+
+
+-   ![](https://github.com/VowpalWabbit.png?size=40){ width="40" loading=lazy align=left } VowpalWabbit
+
+    ---
+
+    ??? example "Examples"
+        - VowpalWabbit/vowpal_wabbit#4918
+
+
+-   ![](https://github.com/VSCodium.png?size=40){ width="40" loading=lazy align=left } VSCodium
+
+    ---
+
+    ??? example "Examples"
+        - VSCodium/vscodium#2795
+
+
+-   ![](https://github.com/wagtail.png?size=40){ width="40" loading=lazy align=left } wagtail
+
+    ---
+
+    ??? example "Examples"
+        - wagtail/wagtail#14285
+        - wagtail/wagtail-localize#843
+
+
+-   ![](https://github.com/wasmCloud.png?size=40){ width="40" loading=lazy align=left } wasmCloud
+
+    ---
+
+    ??? example "Examples"
+        - wasmCloud/wasmCloud#5129
+
+
+-   ![](https://github.com/wasp-lang.png?size=40){ width="40" loading=lazy align=left } wasp-lang
+
+    ---
+
+    ??? example "Examples"
+        - wasp-lang/wasp#4345
+
+
+-   ![](https://github.com/wgsl-analyzer.png?size=40){ width="40" loading=lazy align=left } wgsl-analyzer
+
+    ---
+
+    ??? example "Examples"
+        - wgsl-analyzer/wgsl-analyzer#844
+
+
+-   ![](https://github.com/wireapp.png?size=40){ width="40" loading=lazy align=left } wireapp
+
+    ---
+
+    ??? example "Examples"
+        - wireapp/wire-webapp#21362
+
+
+-   ![](https://github.com/withastro.png?size=40){ width="40" loading=lazy align=left } withastro
+
+    ---
+
+    ??? example "Examples"
+        - withastro/astro#16810
+        - withastro/docs#13917
+
+
+-   ![](https://github.com/wntrblm.png?size=40){ width="40" loading=lazy align=left } wntrblm
+
+    ---
+
+    ??? example "Examples"
+        - wntrblm/nox#925
+
+
+-   ![](https://github.com/WordPress.png?size=40){ width="40" loading=lazy align=left } WordPress
+
+    ---
+
+    ??? example "Examples"
+        - WordPress/gutenberg#69126
+        - WordPress/wordpress-develop#8007
+
+
+-   ![](https://github.com/xgcm.png?size=40){ width="40" loading=lazy align=left } xgcm
+
+    ---
+
+    ??? example "Examples"
+        - xgcm/xgcm#700
+
+
+-   ![](https://github.com/yamadashy.png?size=40){ width="40" loading=lazy align=left } yamadashy
+
+    ---
+
+    ??? example "Examples"
+        - yamadashy/repomix#1212
+
+
+-   ![](https://github.com/yt-dlp.png?size=40){ width="40" loading=lazy align=left } yt-dlp
+
+    ---
+
+    ??? example "Examples"
+        - yt-dlp/ejs#40
+        - yt-dlp/yt-dlp#15324
+        - yt-dlp/yt-dlp#15387
+
+
+-   ![](https://github.com/zama-ai.png?size=40){ width="40" loading=lazy align=left } zama-ai
+
+    ---
+
+    ??? example "Examples"
+        - zama-ai/tfhe-rs#2292
+        - zama-ai/tfhe-rs#2979
+
+
+-   ![](https://github.com/zarr-developers.png?size=40){ width="40" loading=lazy align=left } zarr-developers
+
+    ---
+
+    ??? example "Examples"
+        - zarr-developers/zarr-python#3837
+
+
+-   ![](https://github.com/zcash.png?size=40){ width="40" loading=lazy align=left } zcash
+
+    ---
+
+    ??? example "Examples"
+        - zcash/halo2#857
+        - zcash/librustzcash#1679
+
+
+-   ![](https://github.com/ZcashFoundation.png?size=40){ width="40" loading=lazy align=left } ZcashFoundation
+
+    ---
+
+    ??? example "Examples"
+        - ZcashFoundation/zebra#9110
+
+
+-   ![](https://github.com/zed-industries.png?size=40){ width="40" loading=lazy align=left } zed-industries
+
+    ---
+
+    ??? example "Examples"
+        - zed-industries/zed#61401
+
+
+-   ![](https://github.com/zenn-dev.png?size=40){ width="40" loading=lazy align=left } zenn-dev
+
+    ---
+
+    ??? example "Examples"
+        - zenn-dev/zenn-editor#691
+
+
+-   ![](https://github.com/zkonduit.png?size=40){ width="40" loading=lazy align=left } zkonduit
+
+    ---
+
+    ??? example "Examples"
+        - zkonduit/ezkl#906
+        - zkonduit/ezkl#907
+
+
+-   ![](https://github.com/zulip.png?size=40){ width="40" loading=lazy align=left } zulip
+
+    ---
+
+    ??? example "Examples"
+        - zulip/docker-zulip#568
+        - zulip/zulip#39841
+

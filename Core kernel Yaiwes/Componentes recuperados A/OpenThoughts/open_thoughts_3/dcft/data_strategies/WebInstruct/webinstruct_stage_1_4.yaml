@@ -1,0 +1,105 @@
+operators:
+  - id: sample_dclm_refined_web_shards
+    config:
+      type: dclm_refinedweb_source
+      num_shards: 20
+      s3_bucket: commoncrawl
+      s3_prefix: contrib/datacomp/DCLM-refinedweb/
+      seed: 3141 # different shard than used for training with default seed 42 and round 1.2 training 314
+      materialize_output: false
+
+  - id: sample_dclm_refinedweb_docs # shuffles and subsamples
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample
+      function_config:
+        num_samples: 50_000
+        seed: 3141 # different seed than used for training with default seed 42
+      materialize_output: false
+    input_ids:
+      - sample_dclm_refined_web_shards
+
+  - id: clean_dclm_refinedweb_docs
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.clean_dataset
+      function_config:
+        input_column: text
+        output_column: cleaned_text
+        remove_columns: 
+          - bff_contained_ngram_count_before_dedupe
+          - language_id_whole_page_fasttext
+          - metadata
+          - previous_word_count
+          - warcinfo
+      materialize_output: false # No need to materialize this
+    input_ids:
+      - sample_dclm_refined_web_shards
+  
+  - id: fasttext_recalled_and_url_classified_docs
+    config:
+      type: load_preexisting
+      framework_name: webinstruct_stage_1_3
+
+  - id: selected_docs_based_on_url
+    config:
+      type: function
+      function: data_strategies.commons.filter_out_falsey_values
+      function_config:
+        filter_column: is_educational_domain
+    input_ids:
+      - fasttext_recalled_and_url_classified_docs
+
+  - id: non_selected_docs_based_on_url
+    config:
+      type: function
+      function: data_strategies.commons.filter_out_truey_values
+      function_config:
+        filter_column: is_educational_domain
+    input_ids:
+      - fasttext_recalled_and_url_classified_docs
+
+  - id: selected_docs_based_on_url_sample
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample
+      function_config:
+        num_samples: 100_000
+        seed: 3141
+    input_ids:
+      - selected_docs_based_on_url
+
+  - id: non_selected_docs_based_on_url_sample
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample
+      function_config:
+        num_samples: 50_000
+        seed: 3141
+    input_ids:
+      - non_selected_docs_based_on_url
+
+  - id: mix_negative_train
+    config:
+      type: mix
+    input_ids:
+      - clean_dclm_refinedweb_docs
+      - non_selected_docs_based_on_url_sample
+
+  - id: train_fasttext_classifier
+    config:
+      type: train_fasttext
+      text_column: cleaned_text
+      positive_input_ids:
+        - selected_docs_based_on_url_sample
+      negative_input_ids:
+        - mix_negative_train
+      dim: 256
+      epoch: 3
+      lr: 0.1
+      word_ngrams: 3
+      min_count: 3
+      hf_repo_id: mlfoundations-dev/fasttext_webinstruct_stage_1_4_100k_selected_fasttext_50k_refinedweb_50k_unselected_fasttext
+    input_ids:
+      - selected_docs_based_on_url_sample
+      - mix_negative_train

@@ -1,0 +1,30 @@
+{
+  "node": "Anthropic-Skills",
+  "worker": "SOL integración 3",
+  "status": "PASS",
+  "route": "FABLES -> Anthropic-Skills adapter -> upstream quick_validate.py -> real SKILL.md frontmatter",
+  "plugin_id": "yaiwes.capability.anthropic_skills",
+  "microtest": "validate mcp-builder + skill-creator with upstream validator",
+  "result": {
+    "status": "PASS",
+    "capability": "dynamic_agent_skill_registry",
+    "discovered_top_level_skills": 19,
+    "validated": [
+      "mcp-builder",
+      "skill-creator"
+    ],
+    "validator_results": {
+      "mcp-builder": "Skill is valid!",
+      "skill-creator": "Skill is valid!"
+    }
+  },
+  "evidence_levels": [
+    "L2_build",
+    "L3_runtime",
+    "L4_feature"
+  ],
+  "run": 34718606707,
+  "adapter_sha256": "sha256:fc1c6035cf9afb62837b299499ab26d88afb117148ccf48e3d1df50c5ee8dead",
+  "canonical_bus_blob": "470f9c91650bc6c59e2900f7e71090b84363da9f",
+  "prune": "NOT_NEEDED"
+}

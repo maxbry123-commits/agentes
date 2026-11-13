@@ -1,0 +1,316 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+SCRIPT="$ROOT_DIR/scripts/run_scanner_validation_harness.sh"
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+BIN_DIR="$TMP_DIR/bin"
+OUT_DIR="$TMP_DIR/out"
+mkdir -p "$BIN_DIR"
+
+cat >"$BIN_DIR/mc" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\n' "$*" >>"${MC_LOG:?}"
+if [[ "$*" == "admin config get rustfs-local scanner" ]]; then
+  printf 'scanner delay="30" max_wait="15"\n'
+elif [[ "$*" == "admin config get rustfs-local heal" ]]; then
+  printf 'heal bitrot_cycle="2592000"\n'
+else
+  printf 'unexpected mc args: %s\n' "$*" >&2
+  exit 1
+fi
+STUB
+
+cat >"$BIN_DIR/awscurl" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\n' "$*" >>"${AWSCURL_LOG:?}"
+printf 'access-env-present=%s\n' "${AWS_ACCESS_KEY_ID:+yes}" >>"${AWSCURL_LOG:?}"
+printf 'secret-env-present=%s\n' "${AWS_SECRET_ACCESS_KEY:+yes}" >>"${AWSCURL_LOG:?}"
+
+url="${*: -1}"
+if [[ "$url" == *"/rustfs/admin/v3/background-heal/status" ]]; then
+  cat <<'JSON'
+{
+  "healQueueLength": 4,
+  "healActiveTasks": 1,
+  "healOperations": {
+    "queueLength": 4,
+    "activeTasks": 1,
+    "queuedBySource": {
+      "scanner": 2,
+      "admin": 1,
+      "autoHeal": 1,
+      "internal": 0
+    },
+    "activeBySource": {
+      "scanner": 1,
+      "admin": 0,
+      "autoHeal": 0,
+      "internal": 0
+    },
+    "queuedByPriority": {
+      "low": 2,
+      "normal": 1,
+      "high": 1,
+      "urgent": 0
+    },
+    "activeByPriority": {
+      "low": 1,
+      "normal": 0,
+      "high": 0,
+      "urgent": 0
+    }
+  }
+}
+JSON
+  exit 0
+fi
+
+if [[ "$url" == *"/rustfs/admin/v3/metrics?types=1&by-host=true&n=1" ]]; then
+  cat <<'JSON'
+{"node":"node-a","metrics":{"scanner":{"maintenanceControl":{"primaryControl":"active"}}}}
+JSON
+  exit 0
+fi
+
+cat <<'JSON'
+{
+  "runtime_config": {
+    "delay": { "value": 30, "source": "config" }
+  },
+  "metrics": {
+    "life_time_ops": {
+      "scan_cycle": 9,
+      "scan_bucket_drive": 11,
+      "scan_object": 13,
+      "save_usage": 5
+    },
+    "pacing_pressure": {
+      "primary_pressure": "active_scans"
+    },
+    "current_cycle_objects_scanned": 5,
+    "current_cycle_directories_scanned": 2,
+    "last_cycle_result": "success",
+    "last_cycle_partial_reason": "",
+    "last_cycle_partial_source": "",
+    "lifecycle_transition": {
+      "scanner_missed": 0
+    },
+    "current_cycle_usage_saves": 2,
+    "last_cycle_usage_saves": 3,
+    "usage_freshness": {
+      "dirty_pending_buckets": 1,
+      "last_dirty_mark_unix_secs": 1800000001,
+      "last_dirty_clear_unix_secs": 1800000002,
+      "last_cycle_dirty_buckets": 1,
+      "last_cycle_cleared_dirty_buckets": 1,
+      "last_usage_save_unix_secs": 1800000003,
+      "last_usage_save_result": "success",
+      "last_usage_save_result_code": 1
+    },
+    "source_work": [
+      { "source": "usage", "missed": 0 },
+      { "source": "lifecycle", "missed": 0 }
+    ]
+  }
+}
+JSON
+STUB
+
+cat >"$BIN_DIR/pidof" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+
+cat >"$BIN_DIR/iostat" <<'STUB'
+#!/usr/bin/env bash
+printf 'iostat sample\n'
+STUB
+
+cat >"$BIN_DIR/mpstat" <<'STUB'
+#!/usr/bin/env bash
+printf 'mpstat sample\n'
+STUB
+
+cat >"$BIN_DIR/jq" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$1" == "." ]]; then
+  cat
+  exit 0
+fi
+
+if [[ "$1" == "-s" ]]; then
+  cat <<'JSON'
+{
+  "healOperations": {
+    "queueLength": 8,
+    "activeTasks": 2,
+    "queuedBySource": {
+      "scanner": 4,
+      "admin": 2,
+      "autoHeal": 2,
+      "internal": 0
+    }
+  }
+}
+JSON
+  exit 0
+fi
+
+if [[ "$1" == "-r" ]]; then
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "--arg" && "${2:-}" == "ts" ]]; then
+      printf '"%s","active_scans",5,2,"success","","",0,0,2,3,1,1,1,"success",1800000003,9,11,13,5,8,2,4,2,2\n' "$3"
+      exit 0
+    fi
+    shift
+  done
+fi
+
+printf 'unexpected jq args: %s\n' "$*" >&2
+exit 1
+STUB
+
+chmod +x "$BIN_DIR/mc" "$BIN_DIR/awscurl" "$BIN_DIR/pidof" "$BIN_DIR/iostat" "$BIN_DIR/mpstat" "$BIN_DIR/jq"
+
+mc_log="$TMP_DIR/mc.log"
+awscurl_log="$TMP_DIR/awscurl.log"
+RUSTFS_SECRET_KEY=rustfsadmin MC_LOG="$mc_log" AWSCURL_LOG="$awscurl_log" PATH="$BIN_DIR:$PATH" "$SCRIPT" \
+  --alias rustfs-local \
+  --endpoint http://127.0.0.1:9000 \
+  --access-key rustfsadmin \
+  --deployment single-disk \
+  --workload-label small-object-idle \
+  --metrics-endpoints http://node-a:9000,http://node-b:9000 \
+  --samples 2 \
+  --interval-secs 0 \
+  --out-dir "$OUT_DIR" \
+  --skip-host-telemetry
+
+test -s "$OUT_DIR/scanner-config.before.txt"
+test -s "$OUT_DIR/heal-config.before.txt"
+grep -q 'scanner delay="30" max_wait="15"' "$OUT_DIR/scanner-config.before.txt"
+grep -q 'heal bitrot_cycle="2592000"' "$OUT_DIR/heal-config.before.txt"
+
+status_count=$(find "$OUT_DIR/status" -type f -name 'scanner-status.*.json' | wc -l | tr -d ' ')
+if [[ "$status_count" != "2" ]]; then
+  echo "Expected 2 scanner status snapshots, got $status_count" >&2
+  exit 1
+fi
+
+heal_status_count=$(find "$OUT_DIR/heal" -type f -name 'background-heal-status.*.json' | wc -l | tr -d ' ')
+if [[ "$heal_status_count" != "4" ]]; then
+  echo "Expected 4 background heal status snapshots, got $heal_status_count" >&2
+  exit 1
+fi
+
+metrics_count=$(find "$OUT_DIR/metrics" -type f -name 'admin-metrics.*.ndjson' | wc -l | tr -d ' ')
+if [[ "$metrics_count" != "4" ]]; then
+  echo "Expected 4 distributed admin metrics snapshots, got $metrics_count" >&2
+  exit 1
+fi
+
+test -s "$OUT_DIR/scanner-summary.csv"
+if [[ "$(wc -l <"$OUT_DIR/scanner-summary.csv" | tr -d ' ')" != "3" ]]; then
+  echo "Expected scanner summary header plus 2 rows" >&2
+  exit 1
+fi
+grep -q 'current_cycle_usage_saves,last_cycle_usage_saves,usage_dirty_pending_buckets' "$OUT_DIR/scanner-summary.csv"
+grep -q 'life_time_scan_cycle,life_time_scan_bucket_drive,life_time_scan_object,life_time_save_usage' "$OUT_DIR/scanner-summary.csv"
+grep -q 'heal_queue_length,heal_active_tasks,heal_scanner_queued,heal_admin_queued,heal_auto_heal_queued' "$OUT_DIR/scanner-summary.csv"
+grep -q '"active_scans",5,2,"success","","",0,0,2,3,1,1,1,"success",1800000003,9,11,13,5,8,2,4,2,2' "$OUT_DIR/scanner-summary.csv"
+
+grep -q '^deployment=single-disk$' "$OUT_DIR/run-metadata.env"
+grep -q '^workload_label=small-object-idle$' "$OUT_DIR/run-metadata.env"
+grep -q '^metrics_endpoints=http://node-a:9000,http://node-b:9000$' "$OUT_DIR/run-metadata.env"
+grep -q '## Scanner Validation Report' "$OUT_DIR/scanner-validation-report.md"
+grep -q 'Distributed admin metrics snapshots: 4' "$OUT_DIR/scanner-validation-report.md"
+grep -q 'Background heal status snapshots: 4' "$OUT_DIR/scanner-validation-report.md"
+grep -q 'Usage freshness summary:' "$OUT_DIR/scanner-validation-report.md"
+grep -q 'admin config get rustfs-local scanner' "$mc_log"
+grep -q 'admin config get rustfs-local heal' "$mc_log"
+grep -q -- '--request GET' "$awscurl_log"
+grep -q -- '--request POST' "$awscurl_log"
+grep -q -- 'access-env-present=yes' "$awscurl_log"
+grep -q -- 'secret-env-present=yes' "$awscurl_log"
+if grep -q -- '--secret_key' "$awscurl_log"; then
+  echo "Expected awscurl to receive the secret through the environment, not argv" >&2
+  exit 1
+fi
+grep -q -- 'http://127.0.0.1:9000/rustfs/admin/v3/scanner/status' "$awscurl_log"
+grep -q -- 'http://node-a:9000/rustfs/admin/v3/background-heal/status' "$awscurl_log"
+grep -q -- 'http://node-b:9000/rustfs/admin/v3/background-heal/status' "$awscurl_log"
+grep -q -- 'http://node-a:9000/rustfs/admin/v3/metrics?types=1&by-host=true&n=1' "$awscurl_log"
+grep -q -- 'http://node-b:9000/rustfs/admin/v3/metrics?types=1&by-host=true&n=1' "$awscurl_log"
+
+missing_pid_out="$TMP_DIR/out-missing-pid"
+RUSTFS_SECRET_KEY=rustfsadmin MC_LOG="$mc_log" AWSCURL_LOG="$awscurl_log" PATH="$BIN_DIR:$PATH" "$SCRIPT" \
+  --alias rustfs-local \
+  --endpoint http://127.0.0.1:9000 \
+  --access-key rustfsadmin \
+  --deployment single-disk \
+  --workload-label missing-pid \
+  --samples 1 \
+  --interval-secs 1 \
+  --out-dir "$missing_pid_out"
+
+test -s "$missing_pid_out/status/scanner-status.1."*.json
+test -s "$missing_pid_out/iostat.txt"
+test -s "$missing_pid_out/mpstat.txt"
+
+missing_args_log="$TMP_DIR/missing-args.log"
+if PATH="$BIN_DIR:$PATH" "$SCRIPT" --alias rustfs-local >"$missing_args_log" 2>&1; then
+  echo "Expected missing required arguments to fail" >&2
+  exit 1
+fi
+
+grep -q -- '--alias, --endpoint, and RUSTFS_ACCESS_KEY (or --access-key) are required' "$missing_args_log"
+
+missing_secret_log="$TMP_DIR/missing-secret.log"
+if PATH="$BIN_DIR:$PATH" "$SCRIPT" \
+  --alias rustfs-local \
+  --endpoint http://127.0.0.1:9000 \
+  --access-key rustfsadmin >"$missing_secret_log" 2>&1; then
+  echo "Expected missing RUSTFS_SECRET_KEY to fail" >&2
+  exit 1
+fi
+
+grep -q -- 'RUSTFS_SECRET_KEY is required for scanner status requests' "$missing_secret_log"
+
+invalid_secret_env_log="$TMP_DIR/invalid-secret-env.log"
+if PATH="$BIN_DIR:$PATH" "$SCRIPT" \
+  --alias rustfs-local \
+  --endpoint http://127.0.0.1:9000 \
+  --access-key rustfsadmin \
+  --secret-key-env 'not-valid!' >"$invalid_secret_env_log" 2>&1; then
+  echo "Expected invalid --secret-key-env to fail" >&2
+  exit 1
+fi
+
+grep -q -- '--secret-key-env must be a valid environment variable name' "$invalid_secret_env_log"
+
+missing_value_log="$TMP_DIR/missing-value.log"
+if PATH="$BIN_DIR:$PATH" "$SCRIPT" --alias >"$missing_value_log" 2>&1; then
+  echo "Expected --alias without a value to fail" >&2
+  exit 1
+fi
+
+grep -q -- 'missing value for --alias' "$missing_value_log"
+
+secret_arg_log="$TMP_DIR/secret-arg.log"
+if PATH="$BIN_DIR:$PATH" "$SCRIPT" --secret-key rustfsadmin >"$secret_arg_log" 2>&1; then
+  echo "Expected --secret-key argv to be rejected" >&2
+  exit 1
+fi
+
+grep -q -- 'unknown arg: --secret-key' "$secret_arg_log"
+
+"$ROOT_DIR/scripts/python_bin.sh" "$ROOT_DIR/scripts/test_scanner_abba.py"

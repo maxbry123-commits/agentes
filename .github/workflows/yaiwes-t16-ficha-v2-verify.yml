@@ -1,0 +1,80 @@
+name: YAIWES T16 Ficha Contract v2 Verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-t16-ficha-v2-verify.yml'
+      - 'Agente Yaiwes principal/**/ficha.*.v2.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-t16:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Materialize exact canonical validator from historical commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMIT='37bef3a8a8f6dadca067638b8ea0c32995fc1d63'
+          SRC='skills/research-download-chain/assets/plugin-bus/ficha_contract_v2.py'
+          EXPECTED_BLOB='b27f14b4d64f77bccf53a893c49b6f20bd58e745'
+          git cat-file -e "${COMMIT}^{commit}"
+          ACTUAL_BLOB="$(git rev-parse "${COMMIT}:${SRC}")"
+          test "$ACTUAL_BLOB" = "$EXPECTED_BLOB"
+          git show "${COMMIT}:${SRC}" > /tmp/ficha_contract_v2.py
+          test "$(git hash-object /tmp/ficha_contract_v2.py)" = "$EXPECTED_BLOB"
+          echo "validator_commit=$COMMIT"
+          echo "validator_blob=$ACTUAL_BLOB"
+
+      - name: Run canonical validator self-tests
+        run: python /tmp/ficha_contract_v2.py
+
+      - name: Validate current YAIWES T16 fichas 4 of 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import importlib.util, json, pathlib, sys
+
+          spec = importlib.util.spec_from_file_location('ficha_contract_v2', '/tmp/ficha_contract_v2.py')
+          mod = importlib.util.module_from_spec(spec)
+          assert spec.loader is not None
+          sys.modules[spec.name] = mod
+          spec.loader.exec_module(mod)
+
+          files = [
+              ('Agente Yaiwes principal/execution-orchestration/deterministic-execution/ficha.serial_dispatch.v2.json', 'bc885059ed0a97f73aad02572853d1b0a4f8117d'),
+              ('Agente Yaiwes principal/state-events-durability/checkpoint-recovery/ficha.run_control.v2.json', '7fdb64b7a21fe51c278dcc907b09eb800f2a2770'),
+              ('Agente Yaiwes principal/state-events-durability/checkpoint-recovery/ficha.resume_identity.v2.json', '4ce82a32faa939177dd22603f097402e9b9e6ed9'),
+              ('Agente Yaiwes principal/control-governance/ficha.strategy_delta.v2.json', '44aeb5cb48db6d42499bc940e47e912942d7fd40'),
+          ]
+          failures = []
+          for path, expected_blob in files:
+              p = pathlib.Path(path)
+              if not p.is_file():
+                  failures.append((path, 'MISSING'))
+                  continue
+              import subprocess
+              actual_blob = subprocess.check_output(['git','hash-object',path], text=True).strip()
+              if actual_blob != expected_blob:
+                  failures.append((path, f'BLOB_MISMATCH:{actual_blob}'))
+                  continue
+              data = json.loads(p.read_text(encoding='utf-8'))
+              verdict = mod.validar(data)
+              print(f'{path}: valido={verdict.valido} errores={list(verdict.errores)} blob={actual_blob}')
+              if not verdict.valido:
+                  failures.append((path, ','.join(verdict.errores)))
+          if failures:
+              print('FAILURES=', failures)
+              raise SystemExit(1)
+          print('YAIWES_T16_CANONICAL_VERIFY=PASS 4/4')
+          PY

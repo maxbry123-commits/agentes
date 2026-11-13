@@ -1,0 +1,46 @@
+export type InstancePrices = {
+    pro: {
+        base: number;
+        seat: number;
+        traffic: number;
+    };
+    payg: {
+        seat: number;
+        traffic: number;
+    };
+};
+
+type InstanceBilling = 'pay-as-you-go' | 'subscription';
+
+export interface IInstanceStatus {
+    plan: InstancePlan;
+    trialExpiry?: string;
+    trialStart?: string;
+    trialExtended?: number;
+    billingCenter?: string;
+    state?: InstanceState;
+    seats?: number;
+    minSeats?: number;
+    isCustomBilling?: boolean;
+    billing?: InstanceBilling;
+    ucaSignup?: boolean;
+    emailDomain?: string;
+    autoCreateDomainUsers?: boolean;
+}
+
+export enum InstanceState {
+    UNASSIGNED = 'UNASSIGNED',
+    TRIAL = 'TRIAL',
+    ACTIVE = 'ACTIVE',
+    EXPIRED = 'EXPIRED',
+    CHURNED = 'CHURNED',
+    DELETABLE = 'DELETABLE',
+}
+
+export enum InstancePlan {
+    PRO = 'Pro',
+    COMPANY = 'Company',
+    TEAM = 'Team',
+    ENTERPRISE = 'Enterprise',
+    UNKNOWN = 'Unknown',
+}

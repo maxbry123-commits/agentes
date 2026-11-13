@@ -1,0 +1,62 @@
+#!/usr/bin/env bats
+#
+# Copyright (c) 2023 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+load "${BATS_TEST_DIRNAME}/../../common.bash"
+load "${BATS_TEST_DIRNAME}/lib.sh"
+load "${BATS_TEST_DIRNAME}/tests_common.sh"
+
+setup() {
+	setup_common || die "setup_common failed"
+
+	pods=( "vcpus-less-than-one-with-no-limits" "vcpus-less-than-one-with-limits" "vcpus-more-than-one-with-limits" )
+	expected_vcpus=( 1 1 2 )
+
+	yaml_file="${pod_config_dir}/pod-sandbox-vcpus-allocation.yaml"
+	set_node "$yaml_file" "$node"
+
+	# Add policy to yaml
+	policy_settings_dir="$(create_tmp_policy_settings_dir "${pod_config_dir}")"
+	add_requests_to_policy_settings "${policy_settings_dir}" "ReadStreamRequest"
+	auto_generate_policy "${policy_settings_dir}" "${yaml_file}"
+}
+
+@test "Check the number vcpus are correctly allocated to the sandbox" {
+	local pod
+	local log
+
+	# Create the pods
+	kubectl create -f "${yaml_file}"
+
+	# Wait for each test container to terminate successfully. Using container
+	# termination state is more robust than pod phase checks, which can lag.
+	for pod in "${pods[@]}"; do
+		kubectl wait \
+			--for=jsonpath='{.status.containerStatuses[0].state.terminated.reason}'=Completed \
+			--timeout=$timeout \
+			"pod/${pod}"
+	done
+
+	# Check the pods
+	for i in {0..2}; do
+		pod="${pods[$i]}"
+		bats_unbuffered_info "Getting log for pod: ${pod}"
+
+		log=$(kubectl logs "${pod}")
+		bats_unbuffered_info "Log: ${log}"
+
+		[ "${log}" -eq "${expected_vcpus[$i]}" ]
+	done
+}
+
+teardown() {
+	for pod in "${pods[@]}"; do
+		kubectl logs ${pod}
+	done
+
+	teardown_common "${node}" "${node_start_time:-}"
+	delete_tmp_policy_settings_dir "${policy_settings_dir}"
+}

@@ -1,0 +1,2344 @@
+import dedent from 'dedent';
+import { describe, expect, it } from 'vitest';
+import {
+  calculateAnthropicCost,
+  clampMaxTokensForThinkingBudget,
+  claudeThinkingConsumesTokens,
+  getClaudeModelWarningName,
+  getRefusalDetails,
+  getTokenUsage,
+  isAlwaysOnAdaptiveThinkingClaudeModel,
+  isClaudeFableOrMythos5Model,
+  isClaudeOpus5Model,
+  isClaudeRegionalPremiumModel,
+  isClaudeSonnet5Model,
+  isDisabledThinkingRejectedAtEffort,
+  isSamplingParamsDeprecatedClaudeModel,
+  isThinkingOnByDefaultClaudeModel,
+  normalizeClaudeThinkingConfig,
+  outputFromMessage,
+  parseMessages,
+  processAnthropicTools,
+} from '../../../src/providers/anthropic/util';
+import type Anthropic from '@anthropic-ai/sdk';
+
+import type {
+  MemoryToolConfig,
+  WebFetchToolConfig,
+  WebFetchToolConfig20260209,
+  WebFetchToolConfigV2,
+  WebSearchToolConfig,
+  WebSearchToolConfig20260209,
+} from '../../../src/providers/anthropic/types';
+
+type AnthropicUsageWithOutputDetails = NonNullable<Anthropic.Messages.Message['usage']> & {
+  output_tokens_details?: { thinking_tokens?: number } | null;
+};
+
+type AnthropicTestMessage = Anthropic.Messages.Message & {
+  usage: AnthropicUsageWithOutputDetails;
+};
+
+describe('Anthropic utilities', () => {
+  describe('calculateAnthropicCost', () => {
+    it('should calculate cost for valid input and output tokens', () => {
+      const cost = calculateAnthropicCost('claude-3-5-sonnet-20241022', { cost: 0.015 }, 100, 200);
+      expect(cost).toBe(4.5); // (0.003 * 100) + (0.015 * 200)
+    });
+
+    it('should calculate cost for Claude 3.7 model', () => {
+      const cost = calculateAnthropicCost('claude-3-7-sonnet-20250219', { cost: 0.02 }, 100, 200);
+      expect(cost).toBe(6); // (0.004 * 100) + (0.02 * 200)
+    });
+
+    it('should calculate cost for Claude 3.7 latest model', () => {
+      const cost = calculateAnthropicCost('claude-3-7-sonnet-latest', { cost: 0.02 }, 100, 200);
+      expect(cost).toBe(6); // (0.004 * 100) + (0.02 * 200)
+    });
+
+    it('should calculate cost for Claude Opus 4 model', () => {
+      const cost = calculateAnthropicCost('claude-opus-4-20250514', { cost: 0.02 }, 100, 200);
+      expect(cost).toBe(6); // (0.02 * 100) + (0.02 * 200) - when config.cost is provided, it's used for both
+    });
+
+    it('should calculate cost for Claude Sonnet 4 model', () => {
+      const cost = calculateAnthropicCost('claude-sonnet-4-20250514', { cost: 0.02 }, 100, 200);
+      expect(cost).toBe(6); // (0.02 * 100) + (0.02 * 200) - when config.cost is provided, it's used for both
+    });
+
+    it('should calculate cost for Claude Sonnet 4 latest model', () => {
+      const cost = calculateAnthropicCost('claude-sonnet-4-latest', { cost: 0.02 }, 100, 200);
+      expect(cost).toBe(6); // (0.02 * 100) + (0.02 * 200) - when config.cost is provided, it's used for both
+    });
+
+    it('should calculate default cost for Claude Opus 4.1 model', () => {
+      const cost = calculateAnthropicCost('claude-opus-4-1-20250805', {}, 100, 200);
+      expect(cost).toBe(0.0165); // (0.000015 * 100) + (0.000075 * 200) - using default model costs
+    });
+
+    it('should calculate default cost for Claude Opus 4 model', () => {
+      const cost = calculateAnthropicCost('claude-opus-4-20250514', {}, 100, 200);
+      expect(cost).toBe(0.0165); // (0.000015 * 100) + (0.000075 * 200) - using default model costs
+    });
+
+    it('should calculate default cost for Claude Sonnet 4 model', () => {
+      const cost = calculateAnthropicCost('claude-sonnet-4-20250514', {}, 100, 200);
+      expect(cost).toBe(0.0033); // (0.000003 * 100) + (0.000015 * 200) - using default model costs
+    });
+
+    it('should calculate default cost for Claude Sonnet 4.5 model', () => {
+      const cost = calculateAnthropicCost('claude-sonnet-4-5-20250929', {}, 100, 200);
+      expect(cost).toBe(0.0033); // (0.000003 * 100) + (0.000015 * 200) - using Sonnet 4 pricing
+    });
+
+    it('should calculate default cost for Claude Haiku 4.5 model', () => {
+      const cost = calculateAnthropicCost('claude-haiku-4-5-20251001', {}, 100, 200);
+      expect(cost).toBe(0.0011); // (0.000001 * 100) + (0.000005 * 200) - $1/MTok input, $5/MTok output
+    });
+
+    it('should calculate default cost for Claude Haiku 4.5 latest model', () => {
+      const cost = calculateAnthropicCost('claude-haiku-4-5-latest', {}, 100, 200);
+      expect(cost).toBe(0.0011); // (0.000001 * 100) + (0.000005 * 200) - $1/MTok input, $5/MTok output
+    });
+
+    it('should calculate default cost for Claude Opus 4.8 model', () => {
+      const cost = calculateAnthropicCost('claude-opus-4-8', {}, 100, 200);
+      expect(cost).toBe(0.0055); // (0.000005 * 100) + (0.000025 * 200) - $5/MTok input, $25/MTok output
+    });
+
+    it('should apply cache pricing for Claude Opus 4.8 with cache tokens', () => {
+      // Opus 4.8: $5/MTok input, $25/MTok output
+      // 100 uncached input, 50 cache_read, 30 cache_write, 200 output
+      const cost = calculateAnthropicCost('claude-opus-4-8', {}, 100, 200, 50, 30);
+      const expected =
+        100 * (5 / 1e6) + 50 * (5 / 1e6) * 0.1 + 30 * (5 / 1e6) * 1.25 + 200 * (25 / 1e6);
+      expect(cost).toBeCloseTo(expected, 10);
+    });
+
+    it('should return undefined for claude-opus-4-8-latest (alias does not exist)', () => {
+      // Opus 4.8's documented Claude API alias is the canonical ID itself
+      // (`claude-opus-4-8`); there is no separate `-latest` pointer. Guards
+      // against someone re-adding a `-latest` variant that the API rejects.
+      const cost = calculateAnthropicCost('claude-opus-4-8-latest', {}, 100, 200);
+      expect(cost).toBeUndefined();
+    });
+
+    it('should calculate default cost for Claude Opus 4.7 model', () => {
+      const cost = calculateAnthropicCost('claude-opus-4-7', {}, 100, 200);
+      expect(cost).toBe(0.0055); // (0.000005 * 100) + (0.000025 * 200) - $5/MTok input, $25/MTok output
+    });
+
+    it('should return undefined for a dated Claude Opus 4.7 snapshot (Anthropic publishes none)', () => {
+      // The Models API 404s on dated 4.6+/4.7 snapshots like `claude-opus-4-7-20260416`
+      // (verified live 2026-07-17). If Anthropic starts publishing dated snapshots again,
+      // verify against the API before registering them in ANTHROPIC_MODELS.
+      const cost = calculateAnthropicCost('claude-opus-4-7-20260416', {}, 100, 200);
+      expect(cost).toBeUndefined();
+    });
+
+    it('should apply cache pricing for Claude Opus 4.7 with cache tokens', () => {
+      // Opus 4.7: $5/MTok input, $25/MTok output
+      // 100 uncached input, 50 cache_read, 30 cache_write, 200 output
+      const cost = calculateAnthropicCost('claude-opus-4-7', {}, 100, 200, 50, 30);
+      const expected =
+        100 * (5 / 1e6) + 50 * (5 / 1e6) * 0.1 + 30 * (5 / 1e6) * 1.25 + 200 * (25 / 1e6);
+      expect(cost).toBeCloseTo(expected, 10);
+    });
+
+    it('should return undefined for claude-opus-4-7-latest (alias does not exist)', () => {
+      // The Anthropic Models API returns 404 for `claude-opus-4-7-latest` — it is not a real
+      // alias. If someone copies the `-latest` pattern from 4.6 and re-adds it to
+      // ANTHROPIC_MODELS, this test will fail and prompt them to check the API first.
+      const cost = calculateAnthropicCost('claude-opus-4-7-latest', {}, 100, 200);
+      expect(cost).toBeUndefined();
+    });
+
+    it('should calculate default cost for Claude Opus 4.6 model', () => {
+      const cost = calculateAnthropicCost('claude-opus-4-6', {}, 100, 200);
+      expect(cost).toBe(0.0055); // (0.000005 * 100) + (0.000025 * 200) - $5/MTok input, $25/MTok output
+    });
+
+    it('should return undefined for a dated Claude Opus 4.6 snapshot (Anthropic publishes none)', () => {
+      // `claude-opus-4-6-20260205` is Azure AI Foundry's deployment name for Opus 4.6,
+      // not a first-party Anthropic model ID — the Models API 404s on it.
+      const cost = calculateAnthropicCost('claude-opus-4-6-20260205', {}, 100, 200);
+      expect(cost).toBeUndefined();
+    });
+
+    it('should calculate default cost for Claude Opus 4.6 latest model', () => {
+      const cost = calculateAnthropicCost('claude-opus-4-6-latest', {}, 100, 200);
+      expect(cost).toBe(0.0055); // (0.000005 * 100) + (0.000025 * 200) - $5/MTok input, $25/MTok output
+    });
+
+    it('should calculate default cost for Claude Sonnet 4.6 model', () => {
+      const cost = calculateAnthropicCost('claude-sonnet-4-6', {}, 100, 200);
+      expect(cost).toBe(0.0033); // (0.000003 * 100) + (0.000015 * 200) - $3/MTok input, $15/MTok output
+    });
+
+    it('should calculate default cost for Claude Sonnet 4.6 latest model', () => {
+      const cost = calculateAnthropicCost('claude-sonnet-4-6-latest', {}, 100, 200);
+      expect(cost).toBe(0.0033); // (0.000003 * 100) + (0.000015 * 200) - $3/MTok input, $15/MTok output
+    });
+
+    it('should calculate default cost for Claude Opus 4.5 model', () => {
+      const cost = calculateAnthropicCost('claude-opus-4-5-20251101', {}, 100, 200);
+      expect(cost).toBe(0.0055); // (0.000005 * 100) + (0.000025 * 200) - $5/MTok input, $25/MTok output
+    });
+
+    it('should calculate default cost for Claude Opus 4.5 latest model', () => {
+      const cost = calculateAnthropicCost('claude-opus-4-5-latest', {}, 100, 200);
+      expect(cost).toBe(0.0055); // (0.000005 * 100) + (0.000025 * 200) - $5/MTok input, $25/MTok output
+    });
+
+    it('bills Claude Sonnet 4.5 at the standard rate below 200k tokens', () => {
+      const cost = calculateAnthropicCost('claude-sonnet-4-5-20250929', {}, 150_000, 10_000);
+      expect(cost).toBe(0.6); // (3/1e6 * 150,000) + (15/1e6 * 10,000) = 0.45 + 0.15 = 0.6
+    });
+
+    it('bills Claude Sonnet 4.5 at the standard rate above 200k tokens (no long-context tier)', () => {
+      // Guards against a >200K surcharge sneaking back in: the per-token rate must
+      // not change with prompt size.
+      const cost = calculateAnthropicCost('claude-sonnet-4-5-20250929', {}, 250_000, 10_000);
+      expect(cost).toBe(0.9); // (3/1e6 * 250,000) + (15/1e6 * 10,000) = 0.75 + 0.15 = 0.9
+    });
+
+    it('bills the Claude Sonnet 4.5 latest alias at the standard rate above 200k tokens', () => {
+      const cost = calculateAnthropicCost('claude-sonnet-4-5-latest', {}, 300_000, 20_000);
+      expect(cost).toBe(1.2); // (3/1e6 * 300,000) + (15/1e6 * 20,000) = 0.9 + 0.3 = 1.2
+    });
+
+    it('bills Claude Sonnet 4.6 at the standard rate below 200k tokens', () => {
+      const cost = calculateAnthropicCost('claude-sonnet-4-6', {}, 150_000, 10_000);
+      expect(cost).toBe(0.6); // (3/1e6 * 150,000) + (15/1e6 * 10,000) = 0.45 + 0.15 = 0.6
+    });
+
+    it('bills Claude Sonnet 4.6 at the standard rate above 200k tokens (full 1M at standard pricing)', () => {
+      // Per Anthropic pricing, Sonnet 4.6 includes the full 1M context window at
+      // standard pricing — a 900k-token request bills at the same per-token rate as 9k.
+      const cost = calculateAnthropicCost('claude-sonnet-4-6', {}, 300_000, 20_000);
+      expect(cost).toBe(1.2); // (3/1e6 * 300,000) + (15/1e6 * 20,000) = 0.9 + 0.3 = 1.2
+    });
+
+    it('bills the Claude Sonnet 4.6 latest alias at the standard rate above 200k tokens', () => {
+      const cost = calculateAnthropicCost('claude-sonnet-4-6-latest', {}, 250_000, 10_000);
+      expect(cost).toBe(0.9); // (3/1e6 * 250,000) + (15/1e6 * 10,000) = 0.75 + 0.15 = 0.9
+    });
+
+    it('should calculate default cost for Claude Opus 5 model', () => {
+      const cost = calculateAnthropicCost('claude-opus-5', {}, 100, 200);
+      expect(cost).toBe(0.0055); // (5/1e6 * 100) + (25/1e6 * 200) - $5/MTok input, $25/MTok output
+    });
+
+    it('bills Claude Opus 5 at the standard rate above 200k tokens (no long-context tier)', () => {
+      // Opus 5 bills its full 1M context at the standard rate — there is no >200K surcharge.
+      const cost = calculateAnthropicCost('claude-opus-5', {}, 300_000, 20_000);
+      // (5/1e6 * 300,000) + (25/1e6 * 20,000) = 1.5 + 0.5 = 2.0
+      expect(cost).toBe(2);
+    });
+
+    it('should calculate default cost for Claude Sonnet 5 model', () => {
+      const cost = calculateAnthropicCost('claude-sonnet-5', {}, 100, 200);
+      expect(cost).toBe(0.0033); // (0.000003 * 100) + (0.000015 * 200) - $3/MTok input, $15/MTok output
+    });
+
+    it('should calculate standard cost for Claude Sonnet 5 at or below 200k tokens', () => {
+      const cost = calculateAnthropicCost('claude-sonnet-5', {}, 150_000, 10_000);
+      expect(cost).toBe(0.6); // (3/1e6 * 150,000) + (15/1e6 * 10,000) = 0.45 + 0.15 = 0.6
+    });
+
+    it('bills Claude Sonnet 5 at the standard rate above 200k tokens (no long-context tier)', () => {
+      // Per Anthropic pricing, Sonnet 5 bills its full 1M context at the standard rate —
+      // there is no >200K surcharge.
+      const cost = calculateAnthropicCost('claude-sonnet-5', {}, 300_000, 20_000);
+      // (3/1e6 * 300,000) + (15/1e6 * 20,000) = 0.9 + 0.3 = 1.2 (no >200K surcharge applies)
+      expect(cost).toBe(1.2);
+    });
+
+    it('should use base pricing for other Claude Sonnet 4 models', () => {
+      // Other Sonnet 4 models bill at the same standard rate
+      const models = ['claude-sonnet-4-20250514', 'claude-sonnet-4-0', 'claude-sonnet-4-latest'];
+
+      models.forEach((model) => {
+        const cost = calculateAnthropicCost(model, {}, 300_000, 20_000);
+        // (3/1e6 * 300,000) + (15/1e6 * 20,000) = 0.9 + 0.3 = 1.2
+        expect(cost).toBe(1.2);
+      });
+    });
+
+    it('should respect config.cost override for Claude Sonnet 4.5 models', () => {
+      // When config.cost is provided, it should override list pricing
+      const cost = calculateAnthropicCost(
+        'claude-sonnet-4-5-20250929',
+        { cost: 0.02 },
+        250_000,
+        10_000,
+      );
+      expect(cost).toBe(5200); // (0.02 * 250,000) + (0.02 * 10,000) = 5000 + 200 = 5200
+    });
+
+    it('should respect separate config input and output cost overrides for Sonnet 4.5 models', () => {
+      const cost = calculateAnthropicCost(
+        'claude-sonnet-4-5-20250929',
+        { inputCost: 0.01, outputCost: 0.03 },
+        250_000,
+        10_000,
+      );
+      expect(cost).toBe(2800);
+    });
+
+    it('should return undefined for missing model', () => {
+      const cost = calculateAnthropicCost('non-existent-model', { cost: 0.015 });
+
+      expect(cost).toBeUndefined();
+    });
+
+    it('should return undefined for missing tokens', () => {
+      const cost = calculateAnthropicCost('claude-3-5-sonnet-20241022', { cost: 0.015 });
+
+      expect(cost).toBeUndefined();
+    });
+
+    it('should apply cache pricing for Claude 3.5 models with cache tokens', () => {
+      // claude-3-5-sonnet: $3/MTok input, $15/MTok output
+      // Anthropic: input_tokens is the uncached portion; cache tokens are additive
+      // 100 uncached input, 50 cache_read, 30 cache_write, 200 output
+      const cost = calculateAnthropicCost('claude-3-5-sonnet-20241022', {}, 100, 200, 50, 30);
+      const expected =
+        100 * (3 / 1e6) + 50 * (3 / 1e6) * 0.1 + 30 * (3 / 1e6) * 1.25 + 200 * (15 / 1e6);
+      expect(cost).toBeCloseTo(expected, 10);
+    });
+
+    it('should apply separate config input and output cost overrides to Claude 3.5 cache pricing', () => {
+      const cost = calculateAnthropicCost(
+        'claude-3-5-sonnet-20241022',
+        { inputCost: 0.01, outputCost: 0.03 },
+        100,
+        200,
+        50,
+        30,
+      );
+      const expected = 100 * 0.01 + 50 * 0.01 * 0.1 + 30 * 0.01 * 1.25 + 200 * 0.03;
+      expect(cost).toBeCloseTo(expected, 10);
+    });
+
+    it('should apply cache pricing for Sonnet 4.5 with cache tokens', () => {
+      // Sonnet 4.5: $3/MTok input, $15/MTok output
+      // 100k uncached input, 20k cache_read, 10k cache_write, 10k output
+      const cost = calculateAnthropicCost(
+        'claude-sonnet-4-5-20250929',
+        {},
+        100_000,
+        10_000,
+        20_000,
+        10_000,
+      );
+      const expected =
+        100_000 * (3 / 1e6) +
+        20_000 * (3 / 1e6) * 0.1 +
+        10_000 * (3 / 1e6) * 1.25 +
+        10_000 * (15 / 1e6);
+      expect(cost).toBeCloseTo(expected, 10);
+    });
+
+    it('should apply separate config input and output cost overrides to Sonnet 4.5 cache pricing', () => {
+      const cost = calculateAnthropicCost(
+        'claude-sonnet-4-5-20250929',
+        { inputCost: 0.01, outputCost: 0.03 },
+        100_000,
+        10_000,
+        20_000,
+        10_000,
+      );
+      const expected = 100_000 * 0.01 + 20_000 * 0.01 * 0.1 + 10_000 * 0.01 * 1.25 + 10_000 * 0.03;
+      expect(cost).toBeCloseTo(expected, 10);
+    });
+
+    it('should prefer inputCost/outputCost over cost and preserve cache math when all are set', () => {
+      const cost = calculateAnthropicCost(
+        'claude-sonnet-4-5-20250929',
+        { cost: 0.99, inputCost: 0.01, outputCost: 0.03 },
+        100_000,
+        10_000,
+        20_000,
+        10_000,
+      );
+      const expected = 100_000 * 0.01 + 20_000 * 0.01 * 0.1 + 10_000 * 0.01 * 1.25 + 10_000 * 0.03;
+      expect(cost).toBeCloseTo(expected, 6);
+    });
+
+    it('should use config.cost as fallback for the unset side on Sonnet 4.5 cache pricing', () => {
+      const cost = calculateAnthropicCost(
+        'claude-sonnet-4-5-20250929',
+        { cost: 0.02, inputCost: 0.01 },
+        100_000,
+        10_000,
+        20_000,
+        10_000,
+      );
+      const expected = 100_000 * 0.01 + 20_000 * 0.01 * 0.1 + 10_000 * 0.01 * 1.25 + 10_000 * 0.02;
+      expect(cost).toBeCloseTo(expected, 6);
+    });
+
+    it('should use config.cost as fallback for the unset side on Claude 3.5 cache pricing', () => {
+      const cost = calculateAnthropicCost(
+        'claude-3-5-sonnet-20241022',
+        { cost: 0.02, outputCost: 0.03 },
+        100,
+        200,
+        50,
+        30,
+      );
+      const expected = 100 * 0.02 + 50 * 0.02 * 0.1 + 30 * 0.02 * 1.25 + 200 * 0.03;
+      expect(cost).toBeCloseTo(expected, 6);
+    });
+
+    it('bills standard rates even when cache tokens push effective input past 200k', () => {
+      // 150k uncached input, 60k cache_read, 10k cache_write = 220k effective input,
+      // billed at the standard $3/$15 with the usual cache multipliers — cache tokens
+      // pushing effective input past 200k must not change the per-token rate.
+      const cost = calculateAnthropicCost(
+        'claude-sonnet-4-5-20250929',
+        {},
+        150_000,
+        10_000,
+        60_000,
+        10_000,
+      );
+      const expected =
+        150_000 * (3 / 1e6) +
+        60_000 * (3 / 1e6) * 0.1 +
+        10_000 * (3 / 1e6) * 1.25 +
+        10_000 * (15 / 1e6);
+      expect(cost).toBeCloseTo(expected, 10);
+    });
+
+    it('should fall back to base cost when config.cost overrides cache pricing', () => {
+      // config.cost overrides everything
+      const cost = calculateAnthropicCost(
+        'claude-sonnet-4-5-20250929',
+        { cost: 0.01 },
+        100_000,
+        10_000,
+        20_000,
+        10_000,
+      );
+      // With config.cost, falls through to calculateCostBase which uses config.cost for both rates
+      expect(cost).toBe(0.01 * 100_000 + 0.01 * 10_000);
+    });
+  });
+
+  describe('outputFromMessage', () => {
+    it('should return an empty string for empty content array', () => {
+      const message: AnthropicTestMessage = {
+        content: [],
+        id: '',
+        model: '',
+        role: 'assistant',
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        type: 'message',
+        container: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation: null,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          server_tool_use: null,
+          service_tier: null,
+          inference_geo: null,
+          output_tokens_details: null,
+        },
+      };
+
+      const result = outputFromMessage(message, false);
+      expect(result).toBe('');
+    });
+
+    it('should return text from a single text block', () => {
+      const message: AnthropicTestMessage = {
+        content: [{ type: 'text', text: 'Hello', citations: [] }],
+        id: '',
+        model: '',
+        role: 'assistant',
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        type: 'message',
+        container: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation: null,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          server_tool_use: null,
+          service_tier: null,
+          inference_geo: null,
+          output_tokens_details: null,
+        },
+      };
+
+      const result = outputFromMessage(message, false);
+      expect(result).toBe('Hello');
+    });
+
+    it('should concatenate text blocks without tool_use blocks', () => {
+      const message: AnthropicTestMessage = {
+        content: [
+          { type: 'text', text: 'Hello', citations: [] },
+          { type: 'text', text: 'World', citations: [] },
+        ],
+        id: '',
+        model: '',
+        role: 'assistant',
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        type: 'message',
+        container: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation: null,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          server_tool_use: null,
+          service_tier: null,
+          inference_geo: null,
+          output_tokens_details: null,
+        },
+      };
+
+      const result = outputFromMessage(message, false);
+      expect(result).toBe('Hello\n\nWorld');
+    });
+
+    it('should handle content with tool_use blocks', () => {
+      const message: AnthropicTestMessage = {
+        content: [
+          {
+            type: 'tool_use',
+            caller: { type: 'direct' },
+            id: 'tool1',
+            name: 'get_weather',
+            input: { location: 'San Francisco, CA' },
+          },
+          {
+            type: 'tool_use',
+            caller: { type: 'direct' },
+            id: 'tool2',
+            name: 'get_time',
+            input: { location: 'New York, NY' },
+          },
+        ],
+        id: '',
+        model: '',
+        role: 'assistant',
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        type: 'message',
+        container: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation: null,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          server_tool_use: null,
+          service_tier: null,
+          inference_geo: null,
+          output_tokens_details: null,
+        },
+      };
+
+      const result = outputFromMessage(message, false);
+      expect(result).toBe(
+        '{"type":"tool_use","caller":{"type":"direct"},"id":"tool1","name":"get_weather","input":{"location":"San Francisco, CA"}}\n\n{"type":"tool_use","caller":{"type":"direct"},"id":"tool2","name":"get_time","input":{"location":"New York, NY"}}',
+      );
+    });
+
+    it('should concatenate text and tool_use blocks as JSON strings', () => {
+      const message: AnthropicTestMessage = {
+        content: [
+          { type: 'text', text: 'Hello', citations: [] },
+          {
+            type: 'tool_use',
+            caller: { type: 'direct' },
+            id: 'tool1',
+            name: 'get_weather',
+            input: { location: 'San Francisco, CA' },
+          },
+          { type: 'text', text: 'World', citations: [] },
+        ],
+        id: '',
+        model: '',
+        role: 'assistant',
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        type: 'message',
+        container: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation: null,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          server_tool_use: null,
+          service_tier: null,
+          inference_geo: null,
+          output_tokens_details: null,
+        },
+      };
+
+      const result = outputFromMessage(message, false);
+      expect(result).toBe(
+        'Hello\n\n{"type":"tool_use","caller":{"type":"direct"},"id":"tool1","name":"get_weather","input":{"location":"San Francisco, CA"}}\n\nWorld',
+      );
+    });
+
+    it('should handle text blocks with citations', () => {
+      const message: AnthropicTestMessage = {
+        content: [
+          {
+            type: 'text',
+            text: 'The sky is blue',
+            citations: [
+              {
+                type: 'char_location',
+                cited_text: 'The sky is blue.',
+                document_index: 0,
+                document_title: 'Nature Facts',
+                file_id: null,
+                start_char_index: 0,
+                end_char_index: 15,
+              },
+            ],
+          },
+        ],
+        id: '',
+        model: '',
+        role: 'assistant',
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        type: 'message',
+        container: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation: null,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          server_tool_use: null,
+          service_tier: null,
+          inference_geo: null,
+          output_tokens_details: null,
+        },
+      };
+
+      const result = outputFromMessage(message, false);
+      expect(result).toBe('The sky is blue');
+    });
+
+    it('should include thinking blocks when showThinking is true', () => {
+      const message: AnthropicTestMessage = {
+        content: [
+          { type: 'text', text: 'Hello', citations: [] },
+          {
+            type: 'thinking',
+            thinking: 'I need to consider the weather',
+            signature: 'abc123',
+          },
+          { type: 'text', text: 'World', citations: [] },
+        ],
+        id: '',
+        model: '',
+        role: 'assistant',
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        type: 'message',
+        container: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation: null,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          server_tool_use: null,
+          service_tier: null,
+          inference_geo: null,
+          output_tokens_details: null,
+        },
+      };
+
+      const result = outputFromMessage(message, true);
+      expect(result).toBe(
+        'Hello\n\nThinking: I need to consider the weather\nSignature: abc123\n\nWorld',
+      );
+    });
+
+    it('should omit empty thinking blocks returned by Claude 5', () => {
+      const message = {
+        content: [
+          { type: 'thinking', thinking: '', signature: 'abc123' },
+          { type: 'text', text: 'Final answer', citations: [] },
+        ],
+      } as unknown as Anthropic.Messages.Message;
+
+      expect(outputFromMessage(message, true)).toBe('Final answer');
+    });
+
+    it('should exclude thinking blocks when showThinking is false', () => {
+      const message: AnthropicTestMessage = {
+        content: [
+          { type: 'text', text: 'Hello', citations: [] },
+          {
+            type: 'thinking',
+            thinking: 'I need to consider the weather',
+            signature: 'abc123',
+          },
+          { type: 'text', text: 'World', citations: [] },
+        ],
+        id: '',
+        model: '',
+        role: 'assistant',
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        type: 'message',
+        container: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation: null,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          server_tool_use: null,
+          service_tier: null,
+          inference_geo: null,
+          output_tokens_details: null,
+        },
+      };
+
+      const result = outputFromMessage(message, false);
+      expect(result).toBe('Hello\n\nWorld');
+    });
+
+    it('should include redacted_thinking blocks when showThinking is true', () => {
+      const message: AnthropicTestMessage = {
+        content: [
+          { type: 'text', text: 'Hello', citations: [] },
+          {
+            type: 'redacted_thinking',
+            data: 'Some redacted thinking data',
+          },
+          { type: 'text', text: 'World', citations: [] },
+        ],
+        id: '',
+        model: '',
+        role: 'assistant',
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        type: 'message',
+        container: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation: null,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          server_tool_use: null,
+          service_tier: null,
+          inference_geo: null,
+          output_tokens_details: null,
+        },
+      };
+
+      const result = outputFromMessage(message, true);
+      expect(result).toBe('Hello\n\nRedacted Thinking: Some redacted thinking data\n\nWorld');
+    });
+
+    it('should exclude redacted_thinking blocks when showThinking is false', () => {
+      const message: AnthropicTestMessage = {
+        content: [
+          { type: 'text', text: 'Hello', citations: [] },
+          {
+            type: 'redacted_thinking',
+            data: 'Some redacted thinking data',
+          },
+          { type: 'text', text: 'World', citations: [] },
+        ],
+        id: '',
+        model: '',
+        role: 'assistant',
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        type: 'message',
+        container: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation: null,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          server_tool_use: null,
+          service_tier: null,
+          inference_geo: null,
+          output_tokens_details: null,
+        },
+      };
+
+      const result = outputFromMessage(message, false);
+      expect(result).toBe('Hello\n\nWorld');
+    });
+  });
+
+  describe('parseMessages', () => {
+    it('should parse messages with user and assistant roles', () => {
+      const inputMessages = dedent`user: What is the weather?
+          assistant: The weather is sunny.`;
+
+      const { system, extractedMessages } = parseMessages(inputMessages);
+
+      expect(system).toBeUndefined();
+      expect(extractedMessages).toEqual([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'What is the weather?' }],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'The weather is sunny.' }],
+        },
+      ]);
+    });
+
+    it('should handle system messages', () => {
+      const inputMessages = dedent`system: This is a system message.
+        user: What is the weather?
+        assistant: The weather is sunny.`;
+
+      const { system, extractedMessages } = parseMessages(inputMessages);
+
+      expect(system).toEqual([{ type: 'text', text: 'This is a system message.' }]);
+      expect(extractedMessages).toEqual([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'What is the weather?' }],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'The weather is sunny.' }],
+        },
+      ]);
+    });
+
+    it('should handle empty input', () => {
+      const inputMessages = '';
+
+      const { system, extractedMessages } = parseMessages(inputMessages);
+
+      expect(system).toBeUndefined();
+      expect(extractedMessages).toEqual([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: '' }],
+        },
+      ]);
+    });
+
+    it('should handle only system message', () => {
+      const inputMessages = 'system: This is a system message.';
+
+      const { system, extractedMessages } = parseMessages(inputMessages);
+
+      expect(system).toEqual([{ type: 'text', text: 'This is a system message.' }]);
+      expect(extractedMessages).toEqual([]);
+    });
+
+    it('should handle messages with image content', () => {
+      const inputMessages = dedent`user: Here's an image: [image-1.jpg]
+        assistant: I see the image.`;
+
+      const { system, extractedMessages } = parseMessages(inputMessages);
+
+      expect(system).toBeUndefined();
+      expect(extractedMessages).toEqual([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: "Here's an image: [image-1.jpg]" }],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'I see the image.' }],
+        },
+      ]);
+    });
+
+    it('should handle multiple messages of the same role', () => {
+      const inputMessages = dedent`
+        user: First question
+        user: Second question
+        assistant: Here's the answer`;
+
+      const { system, extractedMessages } = parseMessages(inputMessages);
+
+      expect(system).toBeUndefined();
+      expect(extractedMessages).toEqual([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'First question' }],
+        },
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'Second question' }],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: "Here's the answer" }],
+        },
+      ]);
+    });
+
+    it('should handle a single user message', () => {
+      const inputMessages = 'Hello, Claude';
+
+      const { system, extractedMessages } = parseMessages(inputMessages);
+
+      expect(system).toBeUndefined();
+      expect(extractedMessages).toEqual([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'Hello, Claude' }],
+        },
+      ]);
+    });
+
+    it('should handle multi-line messages', () => {
+      const inputMessages = dedent`
+        user: This is a
+        multi-line
+        message
+        assistant: And this is a
+        multi-line response`;
+
+      const { system, extractedMessages } = parseMessages(inputMessages);
+
+      expect(system).toBeUndefined();
+      expect(extractedMessages).toEqual([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'This is a\nmulti-line\nmessage' }],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'And this is a\nmulti-line response' }],
+        },
+      ]);
+    });
+
+    it('should parse JSON message array with image content', () => {
+      const inputMessages = JSON.stringify([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: "What's in this image?" },
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/jpeg',
+                data: 'base64EncodedImageData',
+              },
+            },
+          ],
+        },
+      ]);
+
+      const { system, extractedMessages } = parseMessages(inputMessages);
+
+      expect(system).toBeUndefined();
+      expect(extractedMessages).toEqual([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: "What's in this image?" },
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/jpeg',
+                data: 'base64EncodedImageData',
+              },
+            },
+          ],
+        },
+      ]);
+    });
+
+    it('should parse JSON message array with mixed content types', () => {
+      const inputMessages = JSON.stringify([
+        { role: 'system', content: 'You are a helpful assistant.' },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe this image:' },
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/png',
+                data: 'base64EncodedImageData',
+              },
+            },
+          ],
+        },
+        { role: 'assistant', content: 'I see a beautiful landscape.' },
+      ]);
+
+      const { system, extractedMessages } = parseMessages(inputMessages);
+
+      expect(system).toEqual([{ type: 'text', text: 'You are a helpful assistant.' }]);
+      expect(extractedMessages).toEqual([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe this image:' },
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/png',
+                data: 'base64EncodedImageData',
+              },
+            },
+          ],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'I see a beautiful landscape.' }],
+        },
+      ]);
+    });
+
+    it('should handle system messages in JSON array format', () => {
+      const inputMessages = JSON.stringify([
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: 'Hello!' },
+        { role: 'assistant', content: 'Hi there!' },
+      ]);
+
+      const { system, extractedMessages } = parseMessages(inputMessages);
+
+      expect(system).toEqual([{ type: 'text', text: 'You are a helpful assistant.' }]);
+      expect(extractedMessages).toEqual([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'Hello!' }],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Hi there!' }],
+        },
+      ]);
+    });
+
+    it('should handle system messages with array content in JSON format', () => {
+      const inputMessages = JSON.stringify([
+        {
+          role: 'system',
+          content: [
+            { type: 'text', text: 'You are a helpful assistant.' },
+            { type: 'text', text: 'Additional system context.' },
+          ],
+        },
+        { role: 'user', content: 'Hello!' },
+      ]);
+
+      const { system, extractedMessages } = parseMessages(inputMessages);
+
+      expect(system).toEqual([
+        { type: 'text', text: 'You are a helpful assistant.' },
+        { type: 'text', text: 'Additional system context.' },
+      ]);
+      expect(extractedMessages).toEqual([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'Hello!' }],
+        },
+      ]);
+    });
+  });
+
+  describe('processAnthropicTools', () => {
+    it('should handle empty tools array', () => {
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([]);
+
+      expect(processedTools).toEqual([]);
+      expect(requiredBetaFeatures).toEqual([]);
+    });
+
+    it('should pass through standard Anthropic tools unchanged', () => {
+      const standardTool: Anthropic.Tool = {
+        name: 'get_weather',
+        description: 'Get weather information',
+        input_schema: {
+          type: 'object',
+          properties: {
+            location: { type: 'string', description: 'City name' },
+          },
+          required: ['location'],
+        },
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([standardTool]);
+
+      expect(processedTools).toEqual([standardTool]);
+      expect(requiredBetaFeatures).toEqual([]);
+    });
+
+    it('should pass through Anthropic memory tool config unchanged', () => {
+      const memoryTool: MemoryToolConfig = {
+        type: 'memory_20250818',
+        name: 'memory',
+        allowed_callers: ['direct'],
+        defer_loading: true,
+        input_examples: [{ command: 'view', path: 'memories/project.md' }],
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([memoryTool]);
+
+      expect(processedTools).toEqual([memoryTool]);
+      expect(requiredBetaFeatures).toEqual([]);
+    });
+
+    it('passes through tool types that collide with Object.prototype members', () => {
+      // The server-tool spec lookup must be prototype-safe. With a plain object literal,
+      // a `type` of 'constructor'/'toString'/'__proto__' resolves to an inherited member,
+      // passes a truthiness check, and then throws when its `fields` are iterated —
+      // turning a user's odd YAML into a crash during request building. `tools` is
+      // user-supplied, so these must fall through to pass-through untouched.
+      for (const type of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__']) {
+        const tool = { type, name: 'whatever', max_uses: 1 } as any;
+        const { processedTools, requiredBetaFeatures } = processAnthropicTools([tool]);
+        expect(processedTools).toEqual([tool]);
+        expect(requiredBetaFeatures).toEqual([]);
+      }
+    });
+
+    it('should process web_fetch_20250910 tool and add beta feature', () => {
+      const webFetchTool: WebFetchToolConfig = {
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+        max_uses: 5,
+        allowed_domains: ['example.com'],
+        citations: { enabled: true },
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([webFetchTool]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(processedTools[0]).toMatchObject({
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+        max_uses: 5,
+        allowed_domains: ['example.com'],
+        citations: { enabled: true },
+      });
+      expect(requiredBetaFeatures).toEqual(['web-fetch-2025-09-10']);
+    });
+
+    it('should process web_search_20250305 tool without adding beta feature', () => {
+      const webSearchTool: WebSearchToolConfig = {
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 3,
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([webSearchTool]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(processedTools[0]).toMatchObject({
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 3,
+      });
+      expect(requiredBetaFeatures).toEqual([]);
+    });
+
+    it('should preserve extended web_search_20250305 options', () => {
+      const webSearchTool: WebSearchToolConfig = {
+        type: 'web_search_20250305',
+        name: 'web_search',
+        allowed_callers: ['direct'],
+        allowed_domains: ['docs.example.com'],
+        cache_control: { type: 'ephemeral' },
+        defer_loading: true,
+        max_uses: 3,
+        user_location: {
+          type: 'approximate',
+          city: 'San Francisco',
+          country: 'US',
+        },
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([webSearchTool]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(processedTools[0]).toMatchObject({
+        type: 'web_search_20250305',
+        name: 'web_search',
+        allowed_callers: ['direct'],
+        allowed_domains: ['docs.example.com'],
+        cache_control: { type: 'ephemeral' },
+        defer_loading: true,
+        max_uses: 3,
+        user_location: {
+          type: 'approximate',
+          city: 'San Francisco',
+          country: 'US',
+        },
+      });
+      expect(requiredBetaFeatures).toEqual([]);
+    });
+
+    it('should handle mixed tool types', () => {
+      const standardTool: Anthropic.Tool = {
+        name: 'calculate',
+        description: 'Perform calculations',
+        input_schema: {
+          type: 'object',
+          properties: {
+            expression: { type: 'string' },
+          },
+        },
+      };
+
+      const webFetchTool: WebFetchToolConfig = {
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+        max_uses: 2,
+        blocked_domains: ['spam.com'],
+      };
+
+      const webSearchTool: WebSearchToolConfig = {
+        type: 'web_search_20250305',
+        name: 'web_search',
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([
+        standardTool,
+        webFetchTool,
+        webSearchTool,
+      ]);
+
+      expect(processedTools).toHaveLength(3);
+      expect(processedTools[0]).toEqual(standardTool);
+      expect(processedTools[1]).toMatchObject({
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+        max_uses: 2,
+        blocked_domains: ['spam.com'],
+      });
+      expect(processedTools[2]).toMatchObject({
+        type: 'web_search_20250305',
+        name: 'web_search',
+      });
+      expect(requiredBetaFeatures).toEqual(['web-fetch-2025-09-10']);
+    });
+
+    it('should handle web_fetch tool with all optional parameters', () => {
+      const webFetchTool: WebFetchToolConfig = {
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+        allowed_callers: ['direct'],
+        max_uses: 10,
+        allowed_domains: ['docs.example.com', 'help.example.com'],
+        blocked_domains: ['ads.example.com'],
+        citations: { enabled: true },
+        defer_loading: true,
+        max_content_tokens: 50000,
+        cache_control: { type: 'ephemeral' },
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([webFetchTool]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(processedTools[0]).toMatchObject({
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+        allowed_callers: ['direct'],
+        max_uses: 10,
+        allowed_domains: ['docs.example.com', 'help.example.com'],
+        blocked_domains: ['ads.example.com'],
+        citations: { enabled: true },
+        defer_loading: true,
+        max_content_tokens: 50000,
+        cache_control: { type: 'ephemeral' },
+      });
+      expect(requiredBetaFeatures).toEqual(['web-fetch-2025-09-10']);
+    });
+
+    it('should handle web_fetch tool with minimal configuration', () => {
+      const webFetchTool: WebFetchToolConfig = {
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([webFetchTool]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(processedTools[0]).toMatchObject({
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+      });
+      expect(requiredBetaFeatures).toEqual(['web-fetch-2025-09-10']);
+    });
+
+    it('should not duplicate beta features', () => {
+      const webFetchTool1: WebFetchToolConfig = {
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+        max_uses: 2,
+      };
+
+      const webFetchTool2: WebFetchToolConfig = {
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+        max_uses: 3,
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([
+        webFetchTool1,
+        webFetchTool2,
+      ]);
+
+      expect(processedTools).toHaveLength(2);
+      expect(requiredBetaFeatures).toEqual(['web-fetch-2025-09-10']);
+    });
+
+    it('should add structured-outputs beta for tools with strict mode', () => {
+      const strictTool: Anthropic.Tool & { strict: boolean } = {
+        name: 'get_weather',
+        description: 'Get weather information',
+        strict: true,
+        input_schema: {
+          type: 'object',
+          properties: {
+            location: { type: 'string' },
+          },
+          required: ['location'],
+          additionalProperties: false,
+        },
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([strictTool]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(processedTools[0]).toEqual(strictTool);
+      expect(requiredBetaFeatures).toEqual(['structured-outputs-2025-11-13']);
+    });
+
+    it('should not add structured-outputs beta for tools without strict mode', () => {
+      const nonStrictTool: Anthropic.Tool = {
+        name: 'get_weather',
+        description: 'Get weather information',
+        input_schema: {
+          type: 'object',
+          properties: {
+            location: { type: 'string' },
+          },
+          required: ['location'],
+        },
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([nonStrictTool]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(processedTools[0]).toEqual(nonStrictTool);
+      expect(requiredBetaFeatures).toEqual([]);
+    });
+
+    it('should not add structured-outputs beta when strict is false', () => {
+      const nonStrictTool: Anthropic.Tool & { strict: boolean } = {
+        name: 'get_weather',
+        description: 'Get weather information',
+        strict: false,
+        input_schema: {
+          type: 'object',
+          properties: {
+            location: { type: 'string' },
+          },
+        },
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([nonStrictTool]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(requiredBetaFeatures).toEqual([]);
+    });
+
+    it('should handle multiple strict tools without duplicating beta features', () => {
+      const strictTool1: Anthropic.Tool & { strict: boolean } = {
+        name: 'get_weather',
+        description: 'Get weather',
+        strict: true,
+        input_schema: {
+          type: 'object',
+          properties: { location: { type: 'string' } },
+          required: ['location'],
+          additionalProperties: false,
+        },
+      };
+
+      const strictTool2: Anthropic.Tool & { strict: boolean } = {
+        name: 'get_time',
+        description: 'Get time',
+        strict: true,
+        input_schema: {
+          type: 'object',
+          properties: { timezone: { type: 'string' } },
+          required: ['timezone'],
+          additionalProperties: false,
+        },
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([
+        strictTool1,
+        strictTool2,
+      ]);
+
+      expect(processedTools).toHaveLength(2);
+      expect(requiredBetaFeatures).toEqual(['structured-outputs-2025-11-13']);
+    });
+
+    it('should combine multiple beta features correctly', () => {
+      const strictTool: Anthropic.Tool & { strict: boolean } = {
+        name: 'calculate',
+        description: 'Perform calculation',
+        strict: true,
+        input_schema: {
+          type: 'object',
+          properties: { expression: { type: 'string' } },
+          required: ['expression'],
+          additionalProperties: false,
+        },
+      };
+
+      const webFetchTool: WebFetchToolConfig = {
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+        max_uses: 5,
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([
+        strictTool,
+        webFetchTool,
+      ]);
+
+      expect(processedTools).toHaveLength(2);
+      expect(requiredBetaFeatures).toContain('structured-outputs-2025-11-13');
+      expect(requiredBetaFeatures).toContain('web-fetch-2025-09-10');
+      expect(requiredBetaFeatures).toHaveLength(2);
+    });
+
+    it('should process web_fetch_20260309 tool with use_cache (GA, no beta header)', () => {
+      const webFetchToolV2: WebFetchToolConfigV2 = {
+        type: 'web_fetch_20260309',
+        name: 'web_fetch',
+        max_uses: 3,
+        use_cache: false,
+        allowed_domains: ['example.com'],
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([webFetchToolV2]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(processedTools[0]).toMatchObject({
+        type: 'web_fetch_20260309',
+        name: 'web_fetch',
+        max_uses: 3,
+        use_cache: false,
+        allowed_domains: ['example.com'],
+      });
+      expect(requiredBetaFeatures).toEqual([]);
+    });
+
+    it('should process web_fetch_20260309 tool with all optional parameters', () => {
+      const webFetchToolV2: WebFetchToolConfigV2 = {
+        type: 'web_fetch_20260309',
+        name: 'web_fetch',
+        allowed_callers: ['direct'],
+        max_uses: 10,
+        allowed_domains: ['docs.example.com'],
+        blocked_domains: ['ads.example.com'],
+        citations: { enabled: true },
+        defer_loading: true,
+        max_content_tokens: 50000,
+        cache_control: { type: 'ephemeral' },
+        use_cache: true,
+      };
+
+      const { processedTools } = processAnthropicTools([webFetchToolV2]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(processedTools[0]).toMatchObject({
+        type: 'web_fetch_20260309',
+        name: 'web_fetch',
+        allowed_callers: ['direct'],
+        max_uses: 10,
+        allowed_domains: ['docs.example.com'],
+        blocked_domains: ['ads.example.com'],
+        citations: { enabled: true },
+        defer_loading: true,
+        max_content_tokens: 50000,
+        cache_control: { type: 'ephemeral' },
+        use_cache: true,
+      });
+    });
+
+    it('should process web_fetch_20260209 tool with supported options', () => {
+      const webFetchTool: WebFetchToolConfig20260209 = {
+        type: 'web_fetch_20260209',
+        name: 'web_fetch',
+        allowed_callers: ['direct'],
+        allowed_domains: ['docs.example.com'],
+        defer_loading: true,
+        max_uses: 2,
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([webFetchTool]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(processedTools[0]).toMatchObject({
+        type: 'web_fetch_20260209',
+        name: 'web_fetch',
+        allowed_callers: ['direct'],
+        allowed_domains: ['docs.example.com'],
+        defer_loading: true,
+        max_uses: 2,
+      });
+      expect(requiredBetaFeatures).toEqual([]);
+    });
+
+    it('should process web_search_20260209 tool with supported options', () => {
+      const webSearchTool: WebSearchToolConfig20260209 = {
+        type: 'web_search_20260209',
+        name: 'web_search',
+        allowed_callers: ['direct'],
+        blocked_domains: ['ads.example.com'],
+        defer_loading: true,
+        max_uses: 4,
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([webSearchTool]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(processedTools[0]).toMatchObject({
+        type: 'web_search_20260209',
+        name: 'web_search',
+        allowed_callers: ['direct'],
+        blocked_domains: ['ads.example.com'],
+        defer_loading: true,
+        max_uses: 4,
+      });
+      expect(requiredBetaFeatures).toEqual([]);
+    });
+
+    it('should pass through web_fetch_20260318 with the latest SDK options', () => {
+      const webFetchTool: Anthropic.Messages.WebFetchTool20260318 = {
+        type: 'web_fetch_20260318',
+        name: 'web_fetch',
+        allowed_callers: ['code_execution_20260521'],
+        allowed_domains: ['docs.example.com'],
+        max_uses: 2,
+        response_inclusion: 'excluded',
+        use_cache: false,
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([webFetchTool]);
+
+      expect(processedTools).toEqual([webFetchTool]);
+      expect(requiredBetaFeatures).toEqual([]);
+    });
+
+    it('should pass through web_search_20260318 with the latest SDK options', () => {
+      const webSearchTool: Anthropic.Messages.WebSearchTool20260318 = {
+        type: 'web_search_20260318',
+        name: 'web_search',
+        allowed_callers: ['code_execution_20260521'],
+        blocked_domains: ['ads.example.com'],
+        max_uses: 3,
+        response_inclusion: 'excluded',
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([webSearchTool]);
+
+      expect(processedTools).toEqual([webSearchTool]);
+      expect(requiredBetaFeatures).toEqual([]);
+    });
+
+    it('should add structured-outputs beta for strict server tools', () => {
+      const webSearchTool: WebSearchToolConfig = {
+        type: 'web_search_20250305',
+        name: 'web_search',
+        strict: true,
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([webSearchTool]);
+
+      expect(processedTools).toHaveLength(1);
+      expect(processedTools[0]).toMatchObject({
+        type: 'web_search_20250305',
+        name: 'web_search',
+        strict: true,
+      });
+      expect(requiredBetaFeatures).toEqual(['structured-outputs-2025-11-13']);
+    });
+
+    it('should handle mix of v1 and v2 web fetch tools', () => {
+      const v1Tool: WebFetchToolConfig = {
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+      };
+      const v2Tool: WebFetchToolConfigV2 = {
+        type: 'web_fetch_20260309',
+        name: 'web_fetch',
+        use_cache: false,
+      };
+
+      const { processedTools, requiredBetaFeatures } = processAnthropicTools([v1Tool, v2Tool]);
+
+      expect(processedTools).toHaveLength(2);
+      // Only v1 (web_fetch_20250910) requires the beta header; v2 (20260309) is GA
+      expect(requiredBetaFeatures).toEqual(['web-fetch-2025-09-10']);
+    });
+  });
+
+  describe('getTokenUsage', () => {
+    it('should return basic token usage', () => {
+      const data = { usage: { input_tokens: 100, output_tokens: 50 } };
+      const result = getTokenUsage(data, false);
+      expect(result).toEqual({ total: 150, prompt: 100, completion: 50 });
+    });
+
+    it('should preserve Anthropic thinking token usage', () => {
+      const data = {
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          output_tokens_details: { thinking_tokens: 20 },
+        },
+      };
+      const result = getTokenUsage(data, false);
+      expect(result).toEqual({
+        total: 150,
+        prompt: 100,
+        completion: 50,
+        completionDetails: { reasoning: 20 },
+      });
+    });
+
+    it('should merge thinking tokens with cache details into one completionDetails object', () => {
+      const data = {
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          output_tokens_details: { thinking_tokens: 20 },
+          cache_read_input_tokens: 80,
+          cache_creation_input_tokens: 0,
+        },
+      };
+      const result = getTokenUsage(data, false);
+      expect(result).toEqual({
+        total: 230,
+        prompt: 180,
+        completion: 50,
+        completionDetails: {
+          reasoning: 20,
+          cacheReadInputTokens: 80,
+          cacheCreationInputTokens: 0,
+        },
+      });
+    });
+
+    it('should preserve a zero thinking token count', () => {
+      const data = {
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          output_tokens_details: { thinking_tokens: 0 },
+        },
+      };
+      const result = getTokenUsage(data, false);
+      expect(result).toEqual({
+        total: 150,
+        prompt: 100,
+        completion: 50,
+        completionDetails: { reasoning: 0 },
+      });
+    });
+
+    it('should omit completionDetails when output_tokens_details is null', () => {
+      // The live API returns output_tokens_details: null for non-thinking responses
+      const data = {
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          output_tokens_details: null,
+        },
+      };
+      const result = getTokenUsage(data, false);
+      expect(result).toEqual({ total: 150, prompt: 100, completion: 50 });
+    });
+
+    it('should not report thinking tokens for cached responses', () => {
+      const data = {
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          output_tokens_details: { thinking_tokens: 20 },
+        },
+      };
+      const result = getTokenUsage(data, true);
+      expect(result).toEqual({ cached: 150, total: 150 });
+    });
+
+    it('should return cached token usage', () => {
+      const data = { usage: { input_tokens: 100, output_tokens: 50 } };
+      const result = getTokenUsage(data, true);
+      expect(result).toEqual({ cached: 150, total: 150 });
+    });
+
+    it('should return empty object when no usage data', () => {
+      const result = getTokenUsage({}, false);
+      expect(result).toEqual({});
+    });
+
+    it('should include cache tokens in total and prompt counts', () => {
+      const data = {
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_read_input_tokens: 80,
+          cache_creation_input_tokens: 0,
+        },
+      };
+      const result = getTokenUsage(data, false);
+      // total input = input_tokens + cache_read + cache_creation = 100 + 80 + 0 = 180
+      expect(result).toEqual({
+        total: 230, // 180 input + 50 output
+        prompt: 180, // 100 uncached + 80 cache_read + 0 cache_creation
+        completion: 50,
+        completionDetails: {
+          cacheReadInputTokens: 80,
+          cacheCreationInputTokens: 0,
+        },
+      });
+    });
+
+    it('should include cache_creation_input_tokens in totals', () => {
+      const data = {
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 60,
+        },
+      };
+      const result = getTokenUsage(data, false);
+      // total input = 100 + 0 + 60 = 160
+      expect(result).toEqual({
+        total: 210, // 160 input + 50 output
+        prompt: 160, // 100 uncached + 0 cache_read + 60 cache_creation
+        completion: 50,
+        completionDetails: {
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 60,
+        },
+      });
+    });
+
+    it('should not include completionDetails when no cache tokens', () => {
+      const data = { usage: { input_tokens: 100, output_tokens: 50 } };
+      const result = getTokenUsage(data, false);
+      expect(result.completionDetails).toBeUndefined();
+    });
+  });
+
+  describe('getRefusalDetails', () => {
+    it('should return undefined for non-refusal responses', () => {
+      const message = {
+        id: 'msg_1',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Hello' }],
+        model: 'claude-sonnet-4-6',
+        stop_reason: 'end_turn',
+        stop_details: null,
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 5 },
+      } as unknown as Anthropic.Messages.Message;
+      expect(getRefusalDetails(message)).toBeUndefined();
+    });
+
+    it('should return details for refusal with category and explanation', () => {
+      const message = {
+        id: 'msg_1',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: '' }],
+        model: 'claude-sonnet-4-6',
+        stop_reason: 'refusal',
+        stop_details: {
+          type: 'refusal',
+          category: 'cyber',
+          explanation: 'This request involves prohibited cyber activities',
+        },
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 0 },
+      } as unknown as Anthropic.Messages.Message;
+      const result = getRefusalDetails(message);
+      expect(result).toContain('Content refused by Anthropic safety filters');
+      expect(result).toContain('category: cyber');
+      expect(result).toContain('explanation: This request involves prohibited cyber activities');
+    });
+
+    it('should preserve the general_harms refusal category added in SDK 0.112.5', () => {
+      const message = {
+        id: 'msg_1',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: '' }],
+        model: 'claude-sonnet-4-6',
+        stop_reason: 'refusal',
+        stop_details: {
+          type: 'refusal',
+          category: 'general_harms',
+          explanation: 'The request may involve a harmful area',
+        },
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 0 },
+      } as unknown as Anthropic.Messages.Message;
+
+      expect(getRefusalDetails(message)).toContain('category: general_harms');
+    });
+
+    it('should handle refusal with null category and explanation', () => {
+      const message = {
+        id: 'msg_1',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: '' }],
+        model: 'claude-sonnet-4-6',
+        stop_reason: 'refusal',
+        stop_details: {
+          type: 'refusal',
+          category: null,
+          explanation: null,
+        },
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 0 },
+      } as unknown as Anthropic.Messages.Message;
+      const result = getRefusalDetails(message);
+      expect(result).toBe('Content refused by Anthropic safety filters');
+    });
+
+    it('should handle refusal with bio category', () => {
+      const message = {
+        id: 'msg_1',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: '' }],
+        model: 'claude-sonnet-4-6',
+        stop_reason: 'refusal',
+        stop_details: {
+          type: 'refusal',
+          category: 'bio',
+          explanation: null,
+        },
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 0 },
+      } as unknown as Anthropic.Messages.Message;
+      const result = getRefusalDetails(message);
+      expect(result).toContain('category: bio');
+    });
+  });
+
+  describe('calculateAnthropicCost for claude-mythos-preview', () => {
+    it('should calculate cost for claude-mythos-preview', () => {
+      const cost = calculateAnthropicCost('claude-mythos-preview', {}, 1000, 500);
+      // $25/MTok input, $125/MTok output
+      expect(cost).toBeCloseTo(0.025 + 0.0625, 6); // 0.000025 * 1000 + 0.000125 * 500
+    });
+
+    it('should calculate cost with cache tokens for claude-mythos-preview', () => {
+      const cost = calculateAnthropicCost('claude-mythos-preview', {}, 1000, 500, 200, 100);
+      // uncached: 1000 * 25/1e6 = 0.025
+      // cache read: 200 * 25/1e6 * 0.1 = 0.0005
+      // cache creation: 100 * 25/1e6 * 1.25 = 0.003125
+      // output: 500 * 125/1e6 = 0.0625
+      expect(cost).toBeCloseTo(0.025 + 0.0005 + 0.003125 + 0.0625, 6);
+    });
+  });
+
+  describe.each(['claude-fable-5', 'claude-mythos-5'])('calculateAnthropicCost for %s', (model) => {
+    it('uses Claude 5 input and output pricing', () => {
+      expect(calculateAnthropicCost(model, {}, 1000, 500)).toBeCloseTo(0.035, 6);
+    });
+
+    it('applies prompt cache pricing', () => {
+      expect(calculateAnthropicCost(model, {}, 1000, 500, 200, 100)).toBeCloseTo(0.03645, 6);
+    });
+
+    it('applies the Bedrock regional endpoint premium', () => {
+      expect(calculateAnthropicCost(`anthropic.${model}`, {}, 1000, 500)).toBeCloseTo(0.0385, 6);
+      // Every geo prefix that normalizeAnthropicModelName can price bills at the
+      // same 10% regional premium; only the `global.` endpoint bills at base rate.
+      for (const geo of ['us', 'eu', 'jp', 'au']) {
+        expect(calculateAnthropicCost(`${geo}.anthropic.${model}`, {}, 1000, 500)).toBeCloseTo(
+          0.0385,
+          6,
+        );
+      }
+      expect(calculateAnthropicCost(`global.anthropic.${model}`, {}, 1000, 500)).toBeCloseTo(
+        0.035,
+        6,
+      );
+    });
+
+    it('suppresses the Bedrock regional premium when user cost overrides are set', () => {
+      // A flat config.cost is used verbatim for both sides — no 1.1x multiplier:
+      // 1000 * 20e-6 + 500 * 20e-6 = 0.03
+      expect(
+        calculateAnthropicCost(`anthropic.${model}`, { cost: 20 / 1e6 }, 1000, 500),
+      ).toBeCloseTo(0.03, 6);
+      // Explicit inputCost/outputCost also win over the premium-adjusted defaults:
+      // 1000 * 1e-6 + 500 * 2e-6 = 0.002
+      expect(
+        calculateAnthropicCost(
+          `anthropic.${model}`,
+          { inputCost: 1 / 1e6, outputCost: 2 / 1e6 },
+          1000,
+          500,
+        ),
+      ).toBeCloseTo(0.002, 6);
+    });
+
+    it('applies prompt cache pricing at the premium-multiplied regional rates', () => {
+      // Regional rates are $11/$55 per MTok ($10/$50 base * 1.1). Cache reads bill
+      // at 0.1x and cache writes at 1.25x the premium input rate:
+      // 1000*11e-6 + 200*1.1e-6 + 100*13.75e-6 + 500*55e-6 = 0.040095
+      expect(calculateAnthropicCost(`anthropic.${model}`, {}, 1000, 500, 200, 100)).toBeCloseTo(
+        0.040095,
+        8,
+      );
+    });
+
+    it('composes the regional premium with standard Sonnet 4.6 pricing above 200k tokens', () => {
+      // Sonnet 4.6 bills its full 1M context at standard rates; the regional premium
+      // applies as a flat 1.1x multiplier regardless of prompt size.
+      expect(
+        calculateAnthropicCost('us.anthropic.claude-sonnet-4-6', {}, 300_000, 20_000),
+      ).toBeCloseTo(((300_000 / 1e6) * 3 + (20_000 / 1e6) * 15) * 1.1, 6);
+      // <=200K regional bills at 1.1x the same $3/$15 standard rate.
+      expect(
+        calculateAnthropicCost('eu.anthropic.claude-sonnet-4-6', {}, 150_000, 10_000),
+      ).toBeCloseTo(((150_000 / 1e6) * 3 + (10_000 / 1e6) * 15) * 1.1, 6);
+      // The global endpoint bills at the standard rate with no premium.
+      expect(
+        calculateAnthropicCost('global.anthropic.claude-sonnet-4-6', {}, 300_000, 20_000),
+      ).toBeCloseTo((300_000 / 1e6) * 3 + (20_000 / 1e6) * 15, 6);
+    });
+  });
+
+  describe('sampling-params-deprecated model detection', () => {
+    it('detects Claude Opus 4.8 across provider naming schemes', () => {
+      for (const id of [
+        'claude-opus-4-8',
+        'anthropic:messages:claude-opus-4-8',
+        'anthropic.claude-opus-4-8',
+        'us.anthropic.claude-opus-4-8',
+        'eu.anthropic.claude-opus-4-8',
+        'jp.anthropic.claude-opus-4-8',
+        'global.anthropic.claude-opus-4-8',
+      ]) {
+        expect(isSamplingParamsDeprecatedClaudeModel(id)).toBe(true);
+        expect(getClaudeModelWarningName(id)).toBe('Claude Opus 4.7 and 4.8');
+      }
+    });
+
+    it('does not treat other models as Opus 4.8', () => {
+      // The 4.7/4.8 family must not claim these. 4.7 shares 4.8's warning name, so it is
+      // checked via the pattern boundary below rather than by warning name.
+      for (const id of [
+        'claude-opus-4-6',
+        'claude-sonnet-4-6',
+        // Boundary: a hypothetical higher-numbered "4.80" must not match "4.8".
+        'claude-opus-4-80',
+      ]) {
+        expect(getClaudeModelWarningName(id)).not.toBe('Claude Opus 4.7 and 4.8');
+      }
+      // `claude-opus-4-80` is not a recognized family at all, and keeps sampling params.
+      expect(getClaudeModelWarningName('claude-opus-4-80')).toBeUndefined();
+      expect(isSamplingParamsDeprecatedClaudeModel('claude-opus-4-80')).toBe(false);
+    });
+
+    it('still detects dated Opus 4.8 snapshots', () => {
+      // A trailing date/region suffix is a real, supported form and must match.
+      expect(isSamplingParamsDeprecatedClaudeModel('claude-opus-4-8-20260528')).toBe(true);
+      expect(getClaudeModelWarningName('claude-opus-4-8-20260528')).toBe('Claude Opus 4.7 and 4.8');
+    });
+
+    it('treats both Opus 4.7 and 4.8 as temperature-deprecated', () => {
+      expect(isSamplingParamsDeprecatedClaudeModel('claude-opus-4-7')).toBe(true);
+      expect(isSamplingParamsDeprecatedClaudeModel('claude-opus-4-7-20260416')).toBe(true);
+      expect(isSamplingParamsDeprecatedClaudeModel('claude-opus-4-8')).toBe(true);
+      expect(isSamplingParamsDeprecatedClaudeModel('us.anthropic.claude-opus-4-8')).toBe(true);
+    });
+
+    it('detects Fable 5 and Mythos 5 across provider naming schemes', () => {
+      for (const id of [
+        'claude-fable-5',
+        'anthropic:messages:claude-mythos-5',
+        'anthropic.claude-fable-5',
+        'vertex:claude-mythos-5',
+      ]) {
+        expect(isClaudeFableOrMythos5Model(id)).toBe(true);
+        expect(isAlwaysOnAdaptiveThinkingClaudeModel(id)).toBe(true);
+        expect(isSamplingParamsDeprecatedClaudeModel(id)).toBe(true);
+      }
+    });
+
+    it('does not match hypothetical Claude 50 or suffix-collision model IDs', () => {
+      for (const id of ['claude-fable-50', 'claude-mythos-51', 'claude-fable-5x']) {
+        expect(isClaudeFableOrMythos5Model(id)).toBe(false);
+      }
+    });
+
+    it('does not treat temperature-supporting models as deprecated', () => {
+      for (const id of [
+        'claude-opus-4-6',
+        'claude-opus-4-6-20260205',
+        'claude-sonnet-4-6',
+        'claude-opus-4-5-20251101',
+      ]) {
+        expect(isSamplingParamsDeprecatedClaudeModel(id)).toBe(false);
+      }
+    });
+
+    it('raises max_tokens above a manual thinking budget', () => {
+      // Anthropic rejects max_tokens <= thinking.budget_tokens with a 400. Only the Vertex
+      // path used to enforce this, so the same config errored on the direct API.
+      expect(clampMaxTokensForThinkingBudget(2048, { type: 'enabled', budget_tokens: 8000 })).toBe(
+        9024,
+      );
+    });
+
+    it('leaves max_tokens alone when it already clears the budget', () => {
+      expect(clampMaxTokensForThinkingBudget(9000, { type: 'enabled', budget_tokens: 8000 })).toBe(
+        9000,
+      );
+    });
+
+    it('leaves max_tokens alone when there is no manual budget to clear', () => {
+      for (const thinking of [
+        undefined,
+        { type: 'adaptive' },
+        { type: 'disabled' },
+        { type: 'enabled' },
+      ]) {
+        expect(clampMaxTokensForThinkingBudget(1024, thinking as any)).toBe(1024);
+      }
+    });
+
+    it('future-proofs sampling deprecation for unlisted Claude 5+ model families', () => {
+      for (const id of [
+        'claude-haiku-5',
+        'anthropic:messages:claude-haiku-5-20260801',
+        'us.anthropic.claude-research-preview-5',
+        'arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-haiku-5',
+        'vertex:claude-sonnet-6',
+        'global.anthropic.claude-opus-10',
+        'claude-haiku-99',
+      ]) {
+        expect(isSamplingParamsDeprecatedClaudeModel(id)).toBe(true);
+      }
+    });
+
+    it('does not mistake legacy or lookalike model IDs for Claude 5+', () => {
+      for (const id of [
+        'claude-3-5-sonnet-20241022',
+        'claude-opus-4-50',
+        'claude-sonnet-5x',
+        'notclaude-opus-5',
+        'claude-prod-20260811',
+        'claude-release-2026',
+        'arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/claude-prod-5',
+        'arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/claude-prod-25',
+        'arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/claude-team-blue-12',
+        'arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/claude-prod-20260811',
+      ]) {
+        expect(isSamplingParamsDeprecatedClaudeModel(id)).toBe(false);
+      }
+    });
+
+    it('matches the generation fallback in linear time on adversarial model IDs', () => {
+      // The family-name segment matcher is bounded so a long run of `claude-` segments cannot
+      // force a scan to end of input from every candidate start. The unbounded form took ~28s
+      // on this input; the bounded form finishes in single-digit milliseconds.
+      const adversarial = '-claude-a'.repeat(50_000);
+      const start = performance.now();
+      expect(isSamplingParamsDeprecatedClaudeModel(adversarial)).toBe(false);
+      expect(performance.now() - start).toBeLessThan(1_000);
+    });
+
+    it('still matches Claude families with several name segments', () => {
+      expect(isSamplingParamsDeprecatedClaudeModel('claude-research-preview-5')).toBe(true);
+      expect(isSamplingParamsDeprecatedClaudeModel('claude-a-b-c-d-e-5')).toBe(true);
+    });
+
+    it('disables generation fallback for alias-based Claude providers', () => {
+      expect(
+        isSamplingParamsDeprecatedClaudeModel('claude-prod-5', { allowGenerationFallback: false }),
+      ).toBe(false);
+      expect(
+        isSamplingParamsDeprecatedClaudeModel('claude-prod-25', { allowGenerationFallback: false }),
+      ).toBe(false);
+      expect(
+        isSamplingParamsDeprecatedClaudeModel('claude-team-blue-12', {
+          allowGenerationFallback: false,
+        }),
+      ).toBe(false);
+      expect(
+        isSamplingParamsDeprecatedClaudeModel('claude-opus-5', { allowGenerationFallback: false }),
+      ).toBe(true);
+    });
+
+    it('detects Claude Sonnet 5 across provider naming schemes', () => {
+      for (const id of [
+        'claude-sonnet-5',
+        'anthropic:messages:claude-sonnet-5',
+        'anthropic.claude-sonnet-5',
+        'us.anthropic.claude-sonnet-5',
+        'eu.anthropic.claude-sonnet-5',
+        'global.anthropic.claude-sonnet-5',
+        // A trailing date snapshot is a real, supported form and must match.
+        'claude-sonnet-5-20260630',
+      ]) {
+        expect(isClaudeSonnet5Model(id)).toBe(true);
+        // Sonnet 5 deprecates sampling params (verified against the live API)...
+        expect(isSamplingParamsDeprecatedClaudeModel(id)).toBe(true);
+        // ...but is NOT always-on adaptive thinking (thinking can still be disabled).
+        expect(isAlwaysOnAdaptiveThinkingClaudeModel(id)).toBe(false);
+      }
+    });
+
+    it('detects Claude Opus 5 across provider naming schemes', () => {
+      for (const id of [
+        'claude-opus-5',
+        'anthropic:messages:claude-opus-5',
+        'anthropic.claude-opus-5',
+        'us.anthropic.claude-opus-5',
+        'eu.anthropic.claude-opus-5',
+        'jp.anthropic.claude-opus-5',
+        'global.anthropic.claude-opus-5',
+        // A trailing date snapshot is a real, supported form and must match.
+        'claude-opus-5-20260724',
+      ]) {
+        expect(isClaudeOpus5Model(id)).toBe(true);
+        // Opus 5 keeps the Opus 4.7+ sampling-param deprecation...
+        expect(isSamplingParamsDeprecatedClaudeModel(id)).toBe(true);
+        // ...and thinks by default, but is NOT always-on: `disabled` is still accepted
+        // at effort `high` or below.
+        expect(isThinkingOnByDefaultClaudeModel(id)).toBe(true);
+        expect(isAlwaysOnAdaptiveThinkingClaudeModel(id)).toBe(false);
+      }
+    });
+
+    it('does not treat Opus 4.x or hypothetical Opus 50 as Opus 5', () => {
+      for (const id of [
+        'claude-opus-4-5',
+        'claude-opus-4-5-20251101',
+        'claude-opus-4-6',
+        'claude-opus-4-7',
+        'claude-opus-4-8',
+        // Boundary: a hypothetical higher-numbered "50" must not match "5".
+        'claude-opus-50',
+      ]) {
+        expect(isClaudeOpus5Model(id)).toBe(false);
+      }
+      // Opus 4.7/4.8 keep their own warning name and are not thinking-on-by-default.
+      expect(isThinkingOnByDefaultClaudeModel('claude-opus-4-8')).toBe(false);
+      expect(isThinkingOnByDefaultClaudeModel('claude-sonnet-5')).toBe(false);
+    });
+
+    it('rejects disabled thinking on Opus 5 only above effort "high"', () => {
+      // The API returns 400 for thinking:{disabled} + effort xhigh/max on Opus 5.
+      for (const effort of ['xhigh', 'max'] as const) {
+        expect(isDisabledThinkingRejectedAtEffort('claude-opus-5', effort)).toBe(true);
+        expect(isDisabledThinkingRejectedAtEffort('us.anthropic.claude-opus-5', effort)).toBe(true);
+      }
+      // At or below `high` — and when effort is unset (the API default is `high`) —
+      // disabling thinking is valid.
+      for (const effort of ['low', 'medium', 'high', undefined, null] as const) {
+        expect(isDisabledThinkingRejectedAtEffort('claude-opus-5', effort)).toBe(false);
+      }
+      // Other Claude families have no such cap.
+      for (const id of ['claude-opus-4-8', 'claude-sonnet-5', 'claude-fable-5']) {
+        expect(isDisabledThinkingRejectedAtEffort(id, 'max')).toBe(false);
+      }
+    });
+
+    it('does not treat Sonnet 4.x or hypothetical Sonnet 50 as Sonnet 5', () => {
+      for (const id of [
+        'claude-sonnet-4-5',
+        'claude-sonnet-4-5-20250929',
+        'claude-sonnet-4-6',
+        // Boundary: a hypothetical higher-numbered "50" must not match "5".
+        'claude-sonnet-50',
+      ]) {
+        expect(isClaudeSonnet5Model(id)).toBe(false);
+      }
+      // Sonnet 4.5/4.6 keep sampling-param support.
+      expect(isSamplingParamsDeprecatedClaudeModel('claude-sonnet-4-6')).toBe(false);
+    });
+
+    it('flags Claude 4.5+ models for the regional endpoint premium but not earlier releases', () => {
+      // Sonnet 4.5, Haiku 4.5, Opus 4.5, and every later model (4.6/4.7/4.8 + Claude 5).
+      for (const id of [
+        'claude-sonnet-5',
+        'us.anthropic.claude-sonnet-5',
+        'claude-opus-5',
+        'us.anthropic.claude-opus-5',
+        'claude-fable-5',
+        'claude-mythos-5',
+        'claude-opus-4-8',
+        'claude-opus-4-7',
+        'claude-opus-4-6',
+        'claude-opus-4-5-20251101',
+        'claude-sonnet-4-6',
+        'claude-sonnet-4-5-20250929',
+        'claude-haiku-4-5-20251001',
+      ]) {
+        expect(isClaudeRegionalPremiumModel(id)).toBe(true);
+      }
+      // Opus 4.1 and earlier + pre-4.5 Sonnet/Haiku retain base pricing on all endpoints.
+      for (const id of [
+        'claude-opus-4-1-20250805',
+        'claude-opus-4-20250514',
+        'claude-sonnet-4-20250514',
+        'claude-sonnet-4-0',
+        'claude-3-7-sonnet-20250219',
+        'claude-3-5-haiku-20241022',
+      ]) {
+        expect(isClaudeRegionalPremiumModel(id)).toBe(false);
+      }
+    });
+
+    it('reports whether thinking will consume output tokens', () => {
+      // Explicitly-on thinking consumes tokens on every family.
+      for (const t of [{ type: 'enabled' }, { type: 'adaptive' }]) {
+        expect(claudeThinkingConsumesTokens('claude-opus-4-8', t)).toBe(true);
+        expect(claudeThinkingConsumesTokens('claude-opus-5', t)).toBe(true);
+      }
+      // Always-on models consume tokens no matter what the config says.
+      expect(claudeThinkingConsumesTokens('claude-fable-5', undefined)).toBe(true);
+      // An omitted config consumes tokens only on thinks-by-default models — this is the
+      // case that sizes the default max_tokens and truncates answers when it is wrong.
+      expect(claudeThinkingConsumesTokens('claude-opus-5', undefined)).toBe(true);
+      expect(claudeThinkingConsumesTokens('claude-opus-5', null)).toBe(true);
+      expect(claudeThinkingConsumesTokens('claude-opus-4-8', undefined)).toBe(false);
+      expect(claudeThinkingConsumesTokens('claude-sonnet-5', undefined)).toBe(false);
+      // Explicitly disabled never consumes tokens (except on always-on models, where the
+      // API rejects `disabled` and normalization strips it before this is called).
+      expect(claudeThinkingConsumesTokens('claude-opus-5', { type: 'disabled' })).toBe(false);
+      expect(claudeThinkingConsumesTokens('claude-opus-4-8', { type: 'disabled' })).toBe(false);
+    });
+
+    it('normalizes thinking configs per model family and effort', () => {
+      // Manual budget thinking converts to adaptive on every sampling-deprecated family,
+      // preserving `display`.
+      expect(
+        normalizeClaudeThinkingConfig(
+          'claude-opus-5',
+          { type: 'enabled', budget_tokens: 8000, display: 'summarized' } as any,
+          undefined,
+        ),
+      ).toEqual({ type: 'adaptive', display: 'summarized' });
+      expect(
+        normalizeClaudeThinkingConfig(
+          'claude-haiku-5',
+          { type: 'enabled', budget_tokens: 8000 } as any,
+          undefined,
+        ),
+      ).toEqual({ type: 'adaptive' });
+      expect(
+        normalizeClaudeThinkingConfig(
+          'claude-prod-5',
+          { type: 'enabled', budget_tokens: 8000 } as any,
+          undefined,
+          { allowGenerationFallback: false },
+        ),
+      ).toEqual({ type: 'enabled', budget_tokens: 8000 });
+      expect(
+        normalizeClaudeThinkingConfig(
+          'claude-opus-5',
+          { type: 'enabled', budget_tokens: 8000 } as any,
+          undefined,
+          { allowGenerationFallback: false },
+        ),
+      ).toEqual({ type: 'adaptive' });
+
+      // Fable/Mythos reject `disabled` outright, at any effort.
+      expect(
+        normalizeClaudeThinkingConfig('claude-fable-5', { type: 'disabled' }, 'low'),
+      ).toBeUndefined();
+
+      // Opus 5 keeps `disabled` at effort `high` or below (and when effort is unset)...
+      for (const effort of [undefined, 'low', 'medium', 'high'] as const) {
+        expect(
+          normalizeClaudeThinkingConfig('claude-opus-5', { type: 'disabled' }, effort),
+        ).toEqual({ type: 'disabled' });
+      }
+      // ...but drops it at xhigh/max, where the pairing would 400.
+      for (const effort of ['xhigh', 'max'] as const) {
+        expect(
+          normalizeClaudeThinkingConfig('claude-opus-5', { type: 'disabled' }, effort),
+        ).toBeUndefined();
+      }
+
+      // Other families keep `disabled` regardless of effort.
+      expect(normalizeClaudeThinkingConfig('claude-opus-4-8', { type: 'disabled' }, 'max')).toEqual(
+        { type: 'disabled' },
+      );
+      expect(normalizeClaudeThinkingConfig('claude-sonnet-5', { type: 'disabled' }, 'max')).toEqual(
+        {
+          type: 'disabled',
+        },
+      );
+    });
+
+    it('resolves the user-facing warning name for recognized Claude families', () => {
+      expect(getClaudeModelWarningName('claude-sonnet-5')).toBe('Claude Sonnet 5');
+      expect(getClaudeModelWarningName('us.anthropic.claude-sonnet-5')).toBe('Claude Sonnet 5');
+      expect(getClaudeModelWarningName('claude-opus-5')).toBe('Claude Opus 5');
+      expect(getClaudeModelWarningName('global.anthropic.claude-opus-5')).toBe('Claude Opus 5');
+      expect(getClaudeModelWarningName('claude-opus-4-8')).toBe('Claude Opus 4.7 and 4.8');
+      expect(getClaudeModelWarningName('claude-opus-4-7')).toBe('Claude Opus 4.7 and 4.8');
+      expect(getClaudeModelWarningName('claude-fable-5')).toBe(
+        'Claude Fable 5 and Claude Mythos 5',
+      );
+      // Regional-premium-only tiers and unrecognized models have no warning name.
+      expect(getClaudeModelWarningName('claude-sonnet-4-6')).toBeUndefined();
+      expect(getClaudeModelWarningName('claude-3-7-sonnet-20250219')).toBeUndefined();
+    });
+  });
+});

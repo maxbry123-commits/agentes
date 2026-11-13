@@ -1,0 +1,65 @@
+name: patch_docs
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[1-9]+' # run this workflow when a new patch version is published
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  patch-docs:
+    runs-on: oracle-vm-2cpu-8gb-x86-64
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Set release version and target branch for vNext
+        if: github.event_name == 'push'
+        run: |
+          TAG="$(echo "${{ github.ref }}" | tr -d 'refs/tags/v')"
+          MAJOR_VERSION="$(echo "${TAG}" | cut -d '.' -f1)"
+          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> ${GITHUB_ENV}
+          MINOR_VERSION="$(echo "${TAG}" | cut -d '.' -f2)"
+          echo "MINOR_VERSION=${MINOR_VERSION}" >> ${GITHUB_ENV}
+          PATCH_VERSION="$(echo "${TAG}" | cut -d '.' -f3)"
+          echo "PATCH_VERSION=${PATCH_VERSION}" >> ${GITHUB_ENV}
+          echo "TAG=${TAG}" >> ${GITHUB_ENV}
+      
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Create release branch if needed # patched docs are always being merged to the master branch
+        run: |
+          git checkout master 
+      
+      - name: Create patch version docs
+        run: |
+          tags=$(git tag -l --sort=-v:refname)
+          versions=''
+          for tag in $tags; do
+            if echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              opa=$(curl https://raw.githubusercontent.com/open-policy-agent/gatekeeper/$tag/go.mod | grep /opa | awk '{print $2}')
+              if [ $opa ]; then
+                versions+="| \`$tag\`          | \`$opa\`   |\n"
+              fi
+            fi
+          done
+          make patch-version-docs NEWVERSION=v${MAJOR_VERSION}.${MINOR_VERSION}.x TAG=v${TAG} OLDVERSION=v${MAJOR_VERSION}.${MINOR_VERSION}.$((PATCH_VERSION-1)) OPA_VERSIONS="${versions}"
+      
+      - name: Create release pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          commit-message: "chore: Patch docs for ${{ env.TAG }} release"
+          title: "chore: Patch docs for ${{ env.TAG }} release"
+          branch: "patch-docs-${{ env.TAG }}"
+          base: "master"
+          signoff: true
+          labels: |
+            release-pr
+            ${{ github.event.inputs.release_version }}
+      

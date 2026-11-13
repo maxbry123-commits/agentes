@@ -1,0 +1,14 @@
+# Generated bazel lockfile.
+/MODULE.bazel.lock
+# Generated bazel symlinks.
+/bazel-*
+# Generated build event file.
+/.build_events.json
+# Generated repository.
+/repo
+/repo.key
+# Generate webhook admission.
+/test/kubernetes/gvisor-injection-admission-webhook.yaml
+# clangd compilation database
+/.cache/clangd
+/compile_commands.json

@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=../.jsonschema/CompileTestCase.schema.json
+---
+wantErrors:
+  - file: resource_policies/leave_request_20210210.yaml
+    error: invalid schema
+    description: |-
+      Failed to load principal schema "cerbos:///non_existent_principal.json": schema _schemas/non_existent_principal.json doesn't exist
+    position:
+      line: 10
+      column: 7
+      path: "$.resourcePolicy.schemas.principalSchema.ref"
+  - file: resource_policies/leave_request_20210210.yaml
+    error: invalid schema
+    description: |-
+      Failed to load resource schema "cerbos:///non_existent_leave_request.json": schema _schemas/non_existent_leave_request.json doesn't exist
+    position:
+      line: 12
+      column: 7
+      path: "$.resourcePolicy.schemas.resourceSchema.ref"
+mainDef: "resource_policies/leave_request_20210210.yaml"

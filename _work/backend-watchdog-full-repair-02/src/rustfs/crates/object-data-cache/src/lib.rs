@@ -1,0 +1,92 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Engine-only object body cache for RustFS.
+//!
+//! App-layer semantics and storage-specific read paths stay in the `rustfs`
+//! crate; this crate owns the key, the eviction backend and the metrics.
+//!
+//! # Correctness boundary
+//!
+//! An entry is keyed by object identity — bucket, object, version, etag, size
+//! and body variant — and every lookup runs after the caller has resolved fresh
+//! metadata from a read quorum. Serving a hit is therefore sound because the
+//! key matched metadata that was just read, not because the entry was recently
+//! invalidated. Invalidation is process-local and is **hygiene**: it frees
+//! capacity promptly, but the key is what keeps a stale body from being served.
+//!
+//! # Timing side channel
+//!
+//! A cache hit skips the erasure read, bitrot verification and decode, so it is
+//! reliably faster than a miss. Any principal authorized to read an object can
+//! therefore infer, by timing a single GET, whether *someone* read that object
+//! within the entry's lifetime (`ttl` / `time_to_idle`).
+//!
+//! This never crosses an authorization boundary: the probe requires read access
+//! to the exact bucket and object, which is checked before the cache is
+//! consulted. It does leak co-tenants' recent access patterns on objects the
+//! observer may already read. Deployments where access-pattern confidentiality
+//! matters — a bucket shared read-only between competing tenants — should leave
+//! the cache disabled for those buckets. Adding timing noise is not a viable
+//! mitigation: it would cost exactly the latency the cache exists to save.
+
+#[cfg(feature = "cache")]
+pub mod backend;
+#[cfg(feature = "cache")]
+pub mod cache;
+#[cfg(feature = "cache")]
+pub mod config;
+#[cfg(feature = "cache")]
+pub mod entry;
+#[cfg(feature = "cache")]
+pub mod error;
+#[cfg(feature = "cache")]
+pub mod index;
+#[cfg(feature = "cache")]
+pub mod key;
+#[cfg(feature = "cache")]
+pub mod memory;
+#[cfg(feature = "cache")]
+pub mod metrics;
+#[cfg(feature = "cache")]
+pub mod moka_backend;
+#[cfg(feature = "cache")]
+pub mod noop;
+#[cfg(feature = "runtime-memory")]
+mod runtime_memory;
+#[cfg(feature = "cache")]
+pub mod singleflight;
+#[cfg(feature = "cache")]
+pub mod starshard_index;
+#[cfg(feature = "cache")]
+pub mod stats;
+
+#[cfg(feature = "cache")]
+pub use cache::{
+    ObjectDataCache, ObjectDataCacheBodyReservation, ObjectDataCacheFillResult, ObjectDataCacheGetPlan,
+    ObjectDataCacheGetRequest, ObjectDataCacheInvalidationReason, ObjectDataCacheInvalidationResult, ObjectDataCacheLookup,
+    ObjectDataCacheReservedBody,
+};
+#[cfg(feature = "cache")]
+pub use config::{ObjectDataCacheConfig, ObjectDataCacheMode};
+#[cfg(feature = "cache")]
+pub use error::ObjectDataCacheConfigError;
+#[cfg(feature = "cache")]
+pub use key::{NULL_VERSION_ID, ObjectDataCacheBodyVariant, ObjectDataCacheIdentity, ObjectDataCacheKey};
+#[cfg(feature = "runtime-memory")]
+pub use runtime_memory::{
+    EffectiveMemory, MemoryBasis, effective_memory_from_system, resolve_effective_memory, select_effective_memory,
+};
+#[cfg(feature = "cache")]
+pub use stats::{ObjectDataCacheStats, ObjectDataCacheStatsSnapshot};

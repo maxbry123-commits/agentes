@@ -1,0 +1,30 @@
+[
+  {
+    "repo": "Helicone",
+    "path": "bifrost/public/static/blog/mintlify-founders.png",
+    "chunks_dir": "Helicone/bifrost/public/static/blog/mintlify-founders.png.chunks",
+    "bytes": 9013382,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Helicone",
+    "path": "bifrost/public/static/changelog/images/20240726-assistants-ui.gif",
+    "chunks_dir": "Helicone/bifrost/public/static/changelog/images/20240726-assistants-ui.gif.chunks",
+    "bytes": 26376391,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Helicone",
+    "path": "bifrost/public/static/changelog/images/20240911-sidebar.gif",
+    "chunks_dir": "Helicone/bifrost/public/static/changelog/images/20240911-sidebar.gif.chunks",
+    "bytes": 26927124,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Helicone",
+    "path": "bifrost/public/static/changelog/videos/pirate-prompt.mp4",
+    "chunks_dir": "Helicone/bifrost/public/static/changelog/videos/pirate-prompt.mp4.chunks",
+    "bytes": 8588989,
+    "chunk_bytes": 8388608
+  }
+]

@@ -1,0 +1,15 @@
+agent:
+  model:
+    name: openai/Qwen/Qwen3.5-2B
+    api_base: http://localhost:8123/v1
+    api_key: dummy
+    per_instance_cost_limit: 0
+    total_cost_limit: 0
+    per_instance_call_limit: 4
+    max_input_tokens: 0
+    max_output_tokens: 256
+    temperature: 0.0
+    top_p: 1.0
+  templates:
+    demonstrations: []
+  history_processors: []

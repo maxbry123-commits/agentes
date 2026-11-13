@@ -1,0 +1,113 @@
+// Package intigriti imports scope from Intigriti programs via the
+// external researcher API (https://api.intigriti.com/external/researcher/v1).
+//
+//	GET /programs/<slug>
+//
+// Requires a Bearer token from the researcher's Intigriti account.
+// The program response embeds a `domains` array with `type` + `endpoint`
+// fields; we map by type into our scope shape.
+package intigriti
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/scope"
+)
+
+// Client is a thin Intigriti API client.
+type Client struct {
+	http    *http.Client
+	baseURL string
+	token   string
+}
+
+// Config customises a Client.
+type Config struct {
+	Token   string        // OAuth2 bearer token from Intigriti
+	Timeout time.Duration // default 30s
+}
+
+// NewClient builds a client. Token is required.
+func NewClient(cfg Config) *Client {
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 30 * time.Second
+	}
+	return &Client{
+		http:    &http.Client{Timeout: cfg.Timeout},
+		baseURL: "https://api.intigriti.com/external/researcher/v1",
+		token:   cfg.Token,
+	}
+}
+
+// Platform implements importer.Importer.
+func (c *Client) Platform() string { return "intigriti" }
+
+// Import pulls the program definition and extracts in-scope domains.
+func (c *Client) Import(ctx context.Context, slug string) (*scope.ScopeDefinition, error) {
+	if c.token == "" {
+		return nil, fmt.Errorf("intigriti: API token required — store via 'pentestswarm init' or export INTIGRITI_API_TOKEN")
+	}
+	url := fmt.Sprintf("%s/programs/%s", c.baseURL, slug)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.token)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("intigriti transport: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("intigriti %d: %s", resp.StatusCode, string(body))
+	}
+
+	var program struct {
+		Domains []struct {
+			Endpoint string `json:"endpoint"`
+			Type     struct {
+				Value string `json:"value"`
+			} `json:"type"`
+			Tier struct {
+				Value string `json:"value"`
+			} `json:"tier"`
+			InScope bool `json:"inScope"`
+		} `json:"domains"`
+	}
+	if err := json.Unmarshal(body, &program); err != nil {
+		return nil, fmt.Errorf("parse intigriti response: %w", err)
+	}
+
+	def := &scope.ScopeDefinition{}
+	for _, d := range program.Domains {
+		if !d.InScope {
+			continue
+		}
+		ep := strings.TrimSpace(d.Endpoint)
+		if ep == "" {
+			continue
+		}
+		switch strings.ToLower(d.Type.Value) {
+		case "url", "wildcard", "domain", "api":
+			def.AllowedDomains = append(def.AllowedDomains, ep)
+		case "ip_range", "cidr":
+			def.AllowedCIDRs = append(def.AllowedCIDRs, ep)
+		case "ip":
+			if strings.Contains(ep, "/") {
+				def.AllowedCIDRs = append(def.AllowedCIDRs, ep)
+			} else {
+				def.AllowedCIDRs = append(def.AllowedCIDRs, ep+"/32")
+			}
+		}
+	}
+	return def, nil
+}

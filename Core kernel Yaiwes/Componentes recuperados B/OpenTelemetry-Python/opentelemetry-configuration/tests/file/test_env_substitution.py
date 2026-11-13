@@ -1,0 +1,135 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+import os
+import unittest
+from unittest.mock import patch
+
+import yaml
+
+from opentelemetry.configuration.file import substitute_env_vars
+
+
+class TestEnvSubstitution(unittest.TestCase):
+    """Test environment variable substitution."""
+
+    def test_simple_substitution(self):
+        """Test basic ${VAR} substitution."""
+        with patch.dict(os.environ, {"SERVICE_NAME": "my-service"}):
+            result = substitute_env_vars("name: ${SERVICE_NAME}")
+            self.assertEqual(result, "name: my-service")
+
+    def test_multiple_substitutions(self):
+        """Test multiple ${VAR} in same string."""
+        with patch.dict(os.environ, {"HOST": "localhost", "PORT": "8080"}):
+            result = substitute_env_vars("url: http://${HOST}:${PORT}")
+            self.assertEqual(result, "url: http://localhost:8080")
+
+    def test_substitution_with_default(self):
+        """Test ${VAR:-default} with missing variable."""
+        with patch.dict(os.environ, {}, clear=True):
+            result = substitute_env_vars("name: ${SERVICE_NAME:-default}")
+            self.assertEqual(result, "name: default")
+
+    def test_substitution_with_default_override(self):
+        """Test ${VAR:-default} with present variable."""
+        with patch.dict(os.environ, {"SERVICE_NAME": "actual"}):
+            result = substitute_env_vars("name: ${SERVICE_NAME:-default}")
+            self.assertEqual(result, "name: actual")
+
+    def test_missing_variable_without_default_substitutes_empty(self):
+        """An unset ${VAR} without a default is replaced with an empty value.
+
+        Per the declarative configuration spec, unset variables without
+        defaults are replaced with an empty value, which YAML then reads as
+        null. This matches the Java and Node.js implementations.
+        """
+        with patch.dict(os.environ, {}, clear=True):
+            result = substitute_env_vars("name: ${MISSING_VAR}")
+            self.assertEqual(result, "name: ")
+            self.assertIsNone(yaml.safe_load(result)["name"])
+
+    def test_dollar_sign_escape(self):
+        """Test $$ escapes to literal $."""
+        result = substitute_env_vars("price: $$100")
+        self.assertEqual(result, "price: $100")
+
+    def test_dollar_sign_escape_with_substitution(self):
+        """Test $$ with ${VAR} in same string."""
+        with patch.dict(os.environ, {"AMOUNT": "50"}):
+            result = substitute_env_vars("price: $$${AMOUNT}")
+            self.assertEqual(result, "price: $50")
+
+    def test_empty_default(self):
+        """Test ${VAR:-} with empty default value."""
+        with patch.dict(os.environ, {}, clear=True):
+            result = substitute_env_vars("name: ${VAR:-}")
+            self.assertEqual(result, "name: ")
+
+    def test_default_with_special_chars(self):
+        """Test default value containing special characters."""
+        with patch.dict(os.environ, {}, clear=True):
+            result = substitute_env_vars("url: ${URL:-http://localhost:8080}")
+            self.assertEqual(result, "url: http://localhost:8080")
+
+    def test_no_substitution_needed(self):
+        """Test string without any variables."""
+        result = substitute_env_vars("plain text without variables")
+        self.assertEqual(result, "plain text without variables")
+
+    def test_variable_name_with_underscores(self):
+        """Test variable names with underscores."""
+        with patch.dict(os.environ, {"MY_VAR_NAME": "value"}):
+            result = substitute_env_vars("key: ${MY_VAR_NAME}")
+            self.assertEqual(result, "key: value")
+
+    def test_variable_name_with_numbers(self):
+        """Test variable names with numbers."""
+        with patch.dict(os.environ, {"VAR_123": "value"}):
+            result = substitute_env_vars("key: ${VAR_123}")
+            self.assertEqual(result, "key: value")
+
+    def test_multiline_substitution(self):
+        """Test substitution across multiple lines."""
+        with patch.dict(os.environ, {"VAR1": "value1", "VAR2": "value2"}):
+            text = """line1: ${VAR1}
+line2: ${VAR2}"""
+            result = substitute_env_vars(text)
+            expected = """line1: value1
+line2: value2"""
+            self.assertEqual(result, expected)
+
+    def test_empty_string(self):
+        """Test empty string returns empty string."""
+        result = substitute_env_vars("")
+        self.assertEqual(result, "")
+
+    def test_only_dollar_signs(self):
+        """Test string with only escaped dollar signs."""
+        result = substitute_env_vars("$$$$")
+        self.assertEqual(result, "$$")
+
+    def test_newline_in_value_returned_verbatim(self):
+        """A newline in a value is returned as-is.
+
+        Substitution runs per configuration value after parsing, so it does
+        not escape or quote newlines; YAML injection is prevented structurally
+        (see the loader tests), not by rewriting the value here.
+        """
+        with patch.dict(os.environ, {"MULTI": "line1\nline2"}):
+            result = substitute_env_vars("${MULTI}")
+        self.assertEqual(result, "line1\nline2")
+
+    def test_carriage_return_in_value_returned_verbatim(self):
+        """A carriage return in a value is returned as-is, not escaped."""
+        with patch.dict(os.environ, {"VAL": "text\r\nmore"}):
+            result = substitute_env_vars("${VAL}")
+        self.assertEqual(result, "text\r\nmore")
+
+    def test_type_coercion_preserved_for_simple_values(self):
+        """Simple values without newlines still undergo YAML type coercion per spec."""
+        with patch.dict(os.environ, {"BOOL_VAL": "true", "INT_VAL": "42"}):
+            bool_result = yaml.safe_load(substitute_env_vars("key: ${BOOL_VAL}"))
+            int_result = yaml.safe_load(substitute_env_vars("key: ${INT_VAL}"))
+        self.assertIs(bool_result["key"], True)
+        self.assertEqual(int_result["key"], 42)

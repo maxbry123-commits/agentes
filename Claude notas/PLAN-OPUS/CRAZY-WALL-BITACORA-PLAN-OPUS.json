@@ -1,0 +1,68 @@
+{
+  "bitacora": "CRAZY WALL - PLAN OPUS",
+  "plan": "Claude notas/PLAN-MAESTRO-4-OBJETIVOS.md",
+  "handoff": "Claude notas/PLAN-OPUS/HANDOFF-PLAN-OPUS.md",
+  "dag": "Claude notas/PLAN-OPUS/PROMPT-DSL-DAG-PLAN-OPUS.yaml",
+  "reglas_de_escritura": [
+    "Solo se anade al final de entradas. Nunca se borra ni se edita una entrada anterior.",
+    "Una entrada por paso: antes de ejecutar (estado PLANEADO) y despues (PASS, GAP o BANDERA).",
+    "PASS solo con evidencia real: ruta + sha, run_id o salida real.",
+    "Claude revisa cada entrada y deja revision_claude."
+  ],
+  "formato_entrada": {
+    "id": "E-0001",
+    "fecha": "AAAA-MM-DDTHH:MM:SSZ",
+    "objetivo": "0 | 1 | 2 | 3 | 4",
+    "nodo": "id del nodo en el DAG",
+    "agente": "claude_code | codex | opencode | openhands | meta_code | ask_consul | claude",
+    "grupo_credential_ref": "nvidia/...",
+    "modelo": "",
+    "ask_consul": {"goal_entrada": "", "goal_salida": "", "modelos_consultados": [], "decision_consenso": ""},
+    "accion": "",
+    "estado": "PLANEADO | EN_CURSO | PASS | GAP | BANDERA",
+    "evidencia": {"rutas": [], "sha": [], "run_id": null, "sha256": null},
+    "bandera_motivo": null,
+    "revision_claude": null
+  },
+  "estado_grupos": {
+    "grupo_objetivo_1": {"credential_ref": "nvidia/digi-maxbry", "ejecuta": "claude_code", "audita": "codex", "estado": "WAITING_SIGNAL"},
+    "grupo_objetivo_2": {"credential_ref": "nvidia/movistar-briseida", "ejecuta": "opencode", "audita": "openhands", "repara": "meta_code", "estado": "WAITING_SIGNAL"},
+    "grupo_objetivo_3": {"credential_ref": "nvidia/wow-maxbry", "ejecuta": "opencode", "audita": "openhands", "repara": "meta_code", "estado": "WAITING_SIGNAL"},
+    "grupo_objetivo_4": {"credential_ref": "nvidia/wow-brisa", "ejecuta": "opencode", "audita": "openhands", "repara": "meta_code", "estado": "WAITING_SIGNAL"}
+  },
+  "banderas_abiertas": [
+    {"id": "B-001", "motivo": "banco-nvidia-equipo.b64 no esta en ningun repo y falta la contrasena del Director. Ningun grupo puede llamar a NVIDIA hasta tenerlo.", "bloquea": ["todos los nodos con modelo"]}
+  ],
+  "entradas": [
+    {
+      "id": "E-0001",
+      "fecha": "2026-09-21T04:07:00Z",
+      "objetivo": "0",
+      "nodo": "P0-MONTAJE",
+      "agente": "claude",
+      "grupo_credential_ref": null,
+      "modelo": null,
+      "ask_consul": null,
+      "accion": "Montado PLAN-OPUS: handoff, esta bitacora, memoria por agente (5), prompt DSL DAG. Swaps a aider/smolagents anulados; equipo = los 5 del Director.",
+      "estado": "PASS",
+      "evidencia": {"rutas": ["Claude notas/PLAN-OPUS/HANDOFF-PLAN-OPUS.md"], "sha": ["d5300f7c811736b7a48e318b1b54a6efd0d10d79"], "run_id": null, "sha256": null},
+      "bandera_motivo": null,
+      "revision_claude": "Montaje en papel. Ningun agente ha ejecutado todavia."
+    },
+    {
+      "id": "E-0002",
+      "fecha": "2026-09-21T03:30:46Z",
+      "objetivo": "0",
+      "nodo": "P0-PRUEBA-PROVEEDOR",
+      "agente": "claude",
+      "grupo_credential_ref": null,
+      "modelo": "groq: openai/gpt-oss-120b, openai/gpt-oss-20b, groq/compound",
+      "ask_consul": null,
+      "accion": "Test real del proveedor desde Actions (wordflow-groq-test.yml). No es NVIDIA; el Director pidio solo NVIDIA.",
+      "estado": "PASS",
+      "evidencia": {"rutas": ["seals_core/tests/evidencia_runs/ultimo_run_console.txt"], "sha": ["c0dbdabe1785f6fa3fb51c4e988ad679d2acc8d3"], "run_id": 35557704586, "sha256": null},
+      "bandera_motivo": null,
+      "revision_claude": "Prueba el camino kernel -> LLM real. GROQ_API_KEY_1 da 401."
+    }
+  ]
+}

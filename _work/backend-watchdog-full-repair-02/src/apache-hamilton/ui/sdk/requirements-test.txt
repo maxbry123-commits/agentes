@@ -1,0 +1,10 @@
+ibis-framework
+langchain_core
+numpy
+polars
+pyarrow>=14.0.1
+pyarrow_hotfix
+pydantic
+pyspark
+pytest
+ray; python_version < "3.14"

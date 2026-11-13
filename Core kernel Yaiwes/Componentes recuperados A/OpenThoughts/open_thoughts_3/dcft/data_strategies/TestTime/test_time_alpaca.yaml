@@ -1,0 +1,87 @@
+operators:
+  - id: load_alpaca
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/stackexchange_astronomy
+      split: train
+  - id: sample
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample
+      function_config:
+        num_samples: 10
+    input_ids:
+      - load_alpaca
+  - id: duplicate
+    config:
+      type: function
+      function: data_strategies.TestTime.generator.duplicate_rows
+      function_config:
+        n_copies: 10
+    input_ids:
+      - sample
+  - id: annotate_instruction
+    config:
+      type: completions
+      map: chat
+      map_config:
+        user_message_column: instruction
+        output_column: completion
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+    input_ids:
+      - duplicate
+  - id: add_critique
+    config:
+      type: completions
+      map: critic
+      map_config:
+        query_column: instruction
+        responses_column: completion
+        output_column: critique
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+    input_ids:
+      - annotate_instruction
+  - id: merge_together
+    config:
+      type: function
+      function: data_strategies.TestTime.generator.merge_duplicate_rows
+      function_config:
+        diff_columns: 
+          - completion
+          - critique
+    input_ids:
+      - add_critique
+  - id: ranker
+    config:
+      type: completions
+      map: ranker
+      map_config:
+        query_column: instruction
+        responses_column: completion
+        critic_column: critique
+        output_column: ranking
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+    input_ids:
+      - merge_together
+  - id: fuser
+    config:
+      type: completions
+      map: fuser
+      map_config:
+        query_column: instruction
+        responses_column: completion
+        critic_column: critique
+        ranking_column: ranking
+        output_column: fused_response
+        top_percent: 0.3
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+    input_ids:
+      - ranker

@@ -1,0 +1,37 @@
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+name: inlined-ignores
+
+permissions: {}
+
+jobs:
+  artipacked-ignored:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # zizmor: ignore[artipacked]
+
+  insecure-commands-ignored:
+    runs-on: ubuntu-latest
+    env:
+      ACTIONS_ALLOW_UNSECURE_COMMANDS: yes # zizmor: ignore[insecure-commands]
+    steps:
+      - run: echo "I shall pass!"
+
+  hardcoded-credentials-ignored:
+    runs-on: ubuntu-latest
+    container:
+      image: fake.example.com/example # zizmor: ignore[unpinned-images]
+      credentials:
+        username: user
+        password: hackme # zizmor: ignore[hardcoded-container-credentials]
+    steps:
+      - run: echo 'This is a honeypot actually!'
+
+  unpinned-uses-ignored:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: something/random@v1 # zizmor: ignore[unpinned-uses]

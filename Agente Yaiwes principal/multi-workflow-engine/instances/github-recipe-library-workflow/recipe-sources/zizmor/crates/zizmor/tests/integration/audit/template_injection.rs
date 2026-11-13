@@ -1,0 +1,1259 @@
+use crate::common::{WorkspaceBuilder, input_under_test, zizmor};
+use anyhow::Result;
+
+#[test]
+fn test_template_injection_static_matrix() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test(
+                "template-injection/template-injection-static-matrix.yml"
+            ))
+            .args(["--persona=auditor"])
+            .run()?,
+        @r#"
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:25:36
+       |
+    24 |         run: |
+       |         --- this run block
+    25 |           echo "issue created: ${{ matrix.frob }}"
+       |                                    ^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    1 finding: 0 informational, 1 low, 0 medium, 0 high
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_template_injection_dynamic_matrix() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test(
+                "template-injection/template-injection-dynamic-matrix.yml"
+            ))
+            .args(["--persona=auditor"])
+            .run()?,
+        @r#"
+    warning[template-injection]: code injection via template expansion
+      --> @@INPUT@@:26:36
+       |
+    25 |         run: |
+       |         --- this run block
+    26 |           echo "doing a thing: ${{ matrix.dynamic }}"
+       |                                    ^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → Medium
+       = note: this finding has an auto-fix
+
+    1 findings (1 unsafe fixes): 0 informational, 0 low, 1 medium, 0 high
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_issue_22_repro() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/issue-22-repro.yml"))
+            .run()?,
+        @"No findings to report. Good job! (6 suppressed)"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_pr_317_repro() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/pr-317-repro.yml"))
+            .run()?,
+        @"
+    warning[template-injection]: code injection via template expansion
+      --> @@INPUT@@:28:20
+       |
+    27 |       - run: |
+       |         --- this run block
+    28 |           echo ${{ matrix.bar }}
+       |                    ^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → Medium
+       = note: this finding has an auto-fix
+
+    2 findings (1 suppressed, 1 unsafe fixes): 0 informational, 0 low, 1 medium, 0 high
+    "
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_static_env() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/static-env.yml"))
+            .run()?,
+        @"
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:43:20
+       |
+    42 |         run: |
+       |         --- this run block
+    43 |           echo ${{ env.bar }}
+       |                    ^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+       = note: this finding has an auto-fix
+
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:50:20
+       |
+    49 |         run: |
+       |         --- this run block
+    50 |           echo ${{ env.foo }}
+       |                    ^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+       = note: this finding has an auto-fix
+
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:55:20
+       |
+    54 |         run: |
+       |         --- this run block
+    55 |           echo ${{ env.quux }}
+       |                    ^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+       = note: this finding has an auto-fix
+
+    7 findings (4 suppressed, 3 unsafe fixes): 0 informational, 3 low, 0 medium, 0 high
+    "
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_issue_339_repro() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/issue-339-repro.yml"))
+            .run()?,
+        @r#"
+    info[template-injection]: code injection via template expansion
+      --> @@INPUT@@:30:28
+       |
+    29 |         run: |
+       |         --- this run block
+    30 |           echo "run-id=${{ fromJson(steps.runs.outputs.data).workflow_runs[0].id }}" >> "$GITHUB_OUTPUT"
+       |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → Low
+
+    2 findings (1 suppressed): 1 informational, 0 low, 0 medium, 0 high
+    "#
+    );
+
+    Ok(())
+}
+
+/// Regression test for #418.
+///
+/// Fully static `${{ env.FOO }}` references should not be reported.
+#[test]
+fn test_issue_418_repro() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/issue-418-repro.yml"))
+            .run()?,
+        @"No findings to report. Good job! (2 suppressed)"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_pr_425_backstop_action() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test(
+                "template-injection/pr-425-backstop/action.yml"
+            ))
+            .run()?,
+        @r#"
+    error[template-injection]: code injection via template expansion
+      --> @@INPUT@@:14:19
+       |
+    13 |       run: |
+       |       --- this run block
+    14 |         hello ${{ inputs.expandme }}
+       |                   ^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+       = note: this finding has an auto-fix
+
+    error[template-injection]: code injection via template expansion
+      --> @@INPUT@@:20:29
+       |
+    18 |       uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+       |       -------------------------------------------------------------------- action accepts arbitrary code
+    19 |       with:
+    20 |         script: return "${{ inputs.expandme }}"
+       |         ------              ^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |         |
+       |         via this input
+       |
+       = note: audit confidence → High
+
+    error[template-injection]: code injection via template expansion
+      --> @@INPUT@@:26:27
+       |
+    23 |       uses: azure/cli@089eac9d8cc39f5d003e94f8b65efc51076c9cbd
+       |       -------------------------------------------------------- action accepts arbitrary code
+    24 |       with:
+    25 |         inlineScript: |
+       |         ------------ via this input
+    26 |           echo "hello ${{ inputs.expandme }}"
+       |                           ^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    error[template-injection]: code injection via template expansion
+      --> @@INPUT@@:31:56
+       |
+    29 |       uses: azure/powershell@whatever
+       |       ------------------------------- action accepts arbitrary code
+    30 |       with:
+    31 |         inlineScript: Get-AzVM -ResourceGroupName "${{ inputs.expandme }}"
+       |         ------------ via this input                    ^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    error[unpinned-uses]: unpinned action reference
+      --> @@INPUT@@:29:13
+       |
+    29 |       uses: azure/powershell@whatever
+       |             ^^^^^^^^^^^^^^^^^^^^^^^^^ action is not pinned to a hash (required by blanket policy)
+       |
+       = note: audit confidence → High
+
+    5 findings (1 unsafe fixes): 0 informational, 0 low, 0 medium, 5 high
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_false_positive_menagerie() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test(
+                "template-injection/false-positive-menagerie.yml"
+            ))
+            .run()?,
+        @"No findings to report. Good job! (7 suppressed)"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_issue_749_repro() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/issue-749-repro.yml"))
+            .run()?,
+        @"No findings to report. Good job! (2 suppressed)"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_codeql_sinks() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/codeql-sinks.yml"))
+            .run()?,
+        @"
+    error[template-injection]: code injection via template expansion
+      --> @@INPUT@@:17:20
+       |
+    15 |       - uses: mikefarah/yq@b534aa9ee5d38001fba3cd8fe254a037e4847b37 # v4.45.4
+       |         ----------------------------------------------------------- action accepts arbitrary code
+    16 |         with:
+    17 |           cmd: ${{ github.event.pull_request.title }}
+       |           ---      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |           |
+       |           via this input
+       |
+       = note: audit confidence → High
+
+    2 findings (1 suppressed): 0 informational, 0 low, 0 medium, 1 high
+    "
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_pwsh_script() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/pwsh-script.yml"))
+            .run()?,
+        @r#"
+    error[template-injection]: code injection via template expansion
+      --> @@INPUT@@:16:61
+       |
+    13 |       - uses: Amadevus/pwsh-script@97a8b211a5922816aa8a69ced41fa32f23477186 # v2.0.3
+       |         ------------------------------------------------------------------- action accepts arbitrary code
+    14 |         with:
+    15 |           script: |
+       |           ------ via this input
+    16 |             Write-ActionDebug "Running for pull request ${{ github.event.pull_request.title }}"
+       |                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    2 findings (1 suppressed): 0 informational, 0 low, 0 medium, 1 high
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_issue_883_repro_action() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test(
+                "template-injection/issue-883-repro/action.yml"
+            ))
+            .run()?,
+        @r#"
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:48:53
+       |
+    34 |       uses: jannekem/run-python-script-action@bbfca66c612a28f3eeca0ae40e1f810265e2ea68 # v1.7
+       |       -------------------------------------------------------------------------------- action accepts arbitrary code
+    ...
+    39 |         script: |
+       |         ------ via this input
+    ...
+    48 |           chango_instance = get_chango_instance(${{ inputs.pyproject-toml }})
+       |                                                     ^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → Low
+
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:56:26
+       |
+    34 |       uses: jannekem/run-python-script-action@bbfca66c612a28f3eeca0ae40e1f810265e2ea68 # v1.7
+       |       -------------------------------------------------------------------------------- action accepts arbitrary code
+    ...
+    39 |         script: |
+       |         ------ via this input
+    ...
+    56 |               ${{ toJson(env.CUSTOM_OUTPUT) }}
+       |                          ^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:57:29
+       |
+    34 |       uses: jannekem/run-python-script-action@bbfca66c612a28f3eeca0ae40e1f810265e2ea68 # v1.7
+       |       -------------------------------------------------------------------------------- action accepts arbitrary code
+    ...
+    39 |         script: |
+       |         ------ via this input
+    ...
+    57 |               or ${{ toJson(env.DEFAULT_OUTPUT) }}
+       |                             ^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:60:19
+       |
+    34 |       uses: jannekem/run-python-script-action@bbfca66c612a28f3eeca0ae40e1f810265e2ea68 # v1.7
+       |       -------------------------------------------------------------------------------- action accepts arbitrary code
+    ...
+    39 |         script: |
+       |         ------ via this input
+    ...
+    60 |               ${{ inputs.data }}
+       |                   ^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → Low
+
+    error[template-injection]: code injection via template expansion
+      --> @@INPUT@@:65:32
+       |
+    34 |       uses: jannekem/run-python-script-action@bbfca66c612a28f3eeca0ae40e1f810265e2ea68 # v1.7
+       |       -------------------------------------------------------------------------------- action accepts arbitrary code
+    ...
+    39 |         script: |
+       |         ------ via this input
+    ...
+    65 |               event=${{ toJson(github.event) }},
+       |                                ^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    help[template-injection]: code injection via template expansion
+       --> @@INPUT@@:110:33
+        |
+    104 |       uses: jannekem/run-python-script-action@bbfca66c612a28f3eeca0ae40e1f810265e2ea68 # v1.7
+        |       -------------------------------------------------------------------------------- action accepts arbitrary code
+    105 |       with:
+    106 |         script: |
+        |         ------ via this input
+    ...
+    110 |           file_path = Path("${{ env.CHANGE_NOTE_PATH }}")
+        |                                 ^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+        |
+        = note: audit confidence → High
+
+    help[template-injection]: code injection via template expansion
+       --> @@INPUT@@:111:34
+        |
+    104 |       uses: jannekem/run-python-script-action@bbfca66c612a28f3eeca0ae40e1f810265e2ea68 # v1.7
+        |       -------------------------------------------------------------------------------- action accepts arbitrary code
+    105 |       with:
+    106 |         script: |
+        |         ------ via this input
+    ...
+    111 |           encoded_content = "${{ env.CHANGE_NOTE_CONTENT }}"
+        |                                  ^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+        |
+        = note: audit confidence → High
+
+    7 findings: 0 informational, 6 low, 0 medium, 1 high
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_multiline_expression_pedantic() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test(
+                "template-injection/multiline-expression.yml"
+            ))
+            .args(["--persona=pedantic"])
+            .run()?,
+        @r#"
+    info[template-injection]: code injection via template expansion
+      --> @@INPUT@@:19:16
+       |
+    16 |       - run: |
+       |         --- this run block
+    ...
+    19 |             && foo.bar
+       |                ^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → Low
+
+    info[template-injection]: code injection via template expansion
+      --> @@INPUT@@:20:16
+       |
+    16 |       - run: |
+       |         --- this run block
+    ...
+    20 |             || baz.qux
+       |                ^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → Low
+
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:26:15
+       |
+    24 |           run: |
+       |           --- this run block
+    25 |             echo "TSAN_OPTIONS=log_path=${GITHUB_WORKSPACE}/tsan_log suppressions=${GITHUB_WORKSPACE}/Tools/tsan/suppressions${{
+    26 | /               fromJSON(inputs.free-threading)
+    27 | |               && '_free_threading'
+    28 | |               || ''
+       | |___________________^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    3 findings: 2 informational, 1 low, 0 medium, 0 high
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_issue_988_repro_pedantic() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/issue-988-repro.yml"))
+            .args(["--persona=pedantic"])
+            .run()?,
+        @r#"
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:19:29
+       |
+    16 |         run: |
+       |         --- this run block
+    ...
+    19 |             event_name="${{ github.event_name }}"
+       |                             ^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:30:57
+       |
+    28 |         run: |
+       |         --- this run block
+    29 |           curl -X POST https://api.example.com -H "Content-type: application/json" \
+    30 |             -d "{\"text\":\"ドドド: https://github.com/${{ github.repository }}\"}"
+       |                                                            ^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    2 findings: 0 informational, 2 low, 0 medium, 0 high
+    "#
+    );
+
+    Ok(())
+}
+
+/// Repro case for #1638: `github.triggering_actor` should not be considered an
+/// injection risk in the default persona.
+///
+/// See: <https://github.com/zizmorcore/zizmor/issues/1638>
+#[test]
+fn test_issue_1638() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/issue-1638-repro.yml"))
+            .run()?,
+        @"No findings to report. Good job! (1 suppressed)"
+    );
+
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/issue-1638-repro.yml"))
+            .args(["--persona=pedantic"])
+            .run()?,
+        @r#"
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:19:24
+       |
+    19 |         run: echo "${{ github.triggering_actor }}"
+       |         ---            ^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |         |
+       |         this run block
+       |
+       = note: audit confidence → High
+
+    1 finding: 0 informational, 1 low, 0 medium, 0 high
+    "#
+    );
+
+    Ok(())
+}
+
+/// Repro case for #1664: expressions that span mulitiple lines within a folded YAML
+/// block should have their subfeatures extracted correctly, without crashing.
+///
+/// See: <https://github.com/zizmorcore/zizmor/issues/1664>
+#[test]
+fn test_issue_1664() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/issue-1664-repro.yml"))
+            .args(["--persona=pedantic"])
+            .run()?,
+        @r#"
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:17:15
+       |
+    16 |           run: >
+       |           --- this run block
+    17 |             ${{ secrets.MY_SECRET
+       |  _______________^
+    18 | |           && 'true'
+    19 | |           || 'echo "fallback"' }}
+       | |______________________________^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    help[concurrency-limits]: insufficient job-level concurrency limits
+      --> @@INPUT@@:3:1
+       |
+     3 | / "on":
+     4 | |   push:
+     5 | |     branches:
+     6 | |       - main
+       | |____________^ workflow is missing concurrency setting
+    ...
+    12 |       name: Repro
+       |       ----------- job affected by missing workflow concurrency
+       |
+       = note: audit confidence → High
+
+    3 findings (1 suppressed): 0 informational, 2 low, 0 medium, 0 high
+    "#
+    );
+
+    Ok(())
+}
+
+/// Repro case for #1802: `needs.*.result` expressions should not be considered injection risks in the default persona.
+///
+/// See: <https://github.com/zizmorcore/zizmor/issues/1802>
+#[test]
+fn test_issue_1802() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/issue-1802-repro.yml"))
+            .run()?,
+        @"No findings to report. Good job! (3 suppressed)"
+    );
+
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/issue-1802-repro.yml"))
+            .args(["--persona=pedantic"])
+            .run()?,
+        @r#"
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:20:21
+       |
+    19 |       - run: |
+       |         --- this run block
+    20 |           test "${{ needs.test-matrix.result }}" = "success"
+       |                     ^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:21:21
+       |
+    19 |       - run: |
+       |         --- this run block
+    20 |           test "${{ needs.test-matrix.result }}" = "success"
+    21 |           test "${{ needs['test-matrix']['result'] }}" = "success"
+       |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    help[template-injection]: code injection via template expansion
+      --> @@INPUT@@:22:21
+       |
+    19 |       - run: |
+       |         --- this run block
+    ...
+    22 |           test "${{ needs.TEST_MATRIX['result'] }}" = "success"
+       |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |
+       = note: audit confidence → High
+
+    3 findings: 0 informational, 3 low, 0 medium, 0 high
+    "#
+    );
+
+    Ok(())
+}
+
+/// Repro case for #1903: parenthesized compound expressions in context
+/// position (e.g. `(a || b).foo`) should not crash zizmor.
+///
+/// See: <https://github.com/zizmorcore/zizmor/issues/1903>
+#[test]
+fn test_issue_1903() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/issue-1903-repro.yml"))
+            .run()?,
+        @r#"
+    info[template-injection]: code injection via template expansion
+      --> @@INPUT@@:21:24
+       |
+    21 |       - run: echo "${{ (github.event.pull_request || github.event.issue).number }}"
+       |         ---            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ may expand into attacker-controllable code
+       |         |
+       |         this run block
+       |
+       = note: audit confidence → Low
+
+    1 finding: 1 informational, 0 low, 0 medium, 0 high
+    "#
+    );
+
+    Ok(())
+}
+
+/// Repro case for #2197: `steps.*.outcome` contexts should not be considered injection
+/// risks in the default persona.
+///
+/// See: <https://github.com/zizmorcore/zizmor/issues/2197>
+#[test]
+fn test_issue_2197() -> Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("template-injection/issue-2197-repro.yml"))
+            .run()?,
+        @"No findings to report. Good job! (1 suppressed)"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fix_github_ref_name() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Template Injection
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vulnerable step
+        run: echo "Branch is ${{ github.ref_name }}"
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .args(["--fix=all"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @r#"
+    @@ -8,2 +8,2 @@
+           - name: Vulnerable step
+    -        run: echo "Branch is ${{ github.ref_name }}"
+    +        run: echo "Branch is ${GITHUB_REF_NAME}"
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fix_github_actor() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Template Injection
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vulnerable step
+        run: |
+          echo "Hello ${{ github.actor }}"
+          echo "Processing user input"
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .args(["--fix=all"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @r#"
+    @@ -9,3 +9,3 @@
+             run: |
+    -          echo "Hello ${{ github.actor }}"
+    +          echo "Hello ${GITHUB_ACTOR}"
+               echo "Processing user input"
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fix_with_existing_env_name() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Template Injection
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vulnerable step with existing env
+        run: echo "Event name is ${{ github.event.head_commit.message }}"
+        env:
+          EXISTING_VAR: "existing_value"
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .args(["--fix=all"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @r#"
+    @@ -8,4 +8,5 @@
+           - name: Vulnerable step with existing env
+    -        run: echo "Event name is ${{ github.event.head_commit.message }}"
+    +        run: echo "Event name is ${GITHUB_EVENT_HEAD_COMMIT_MESSAGE}"
+             env:
+               EXISTING_VAR: "existing_value"
+    +          GITHUB_EVENT_HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fix_multiple_expressions() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Multiple Template Injections
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Multiple vulnerable expressions
+        # All expressions are replaced and environment variables are created in a single comprehensive fix
+        run: |
+          echo "User: ${{ github.actor }}"
+          echo "Ref: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.event.head_commit.message }}"
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .args(["--fix=all"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @r#"
+    @@ -10,4 +10,6 @@
+             run: |
+    -          echo "User: ${{ github.actor }}"
+    -          echo "Ref: ${{ github.ref_name }}"
+    -          echo "Commit: ${{ github.event.head_commit.message }}"
+    +          echo "User: ${GITHUB_ACTOR}"
+    +          echo "Ref: ${GITHUB_REF_NAME}"
+    +          echo "Commit: ${GITHUB_EVENT_HEAD_COMMIT_MESSAGE}"
+    +        env:
+    +          GITHUB_EVENT_HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fix_duplicate_expressions() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Duplicate Template Injections
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Duplicate vulnerable expressions
+        run: |
+          echo "User: ${{ github.actor }}"
+          echo "User again: ${{ github.actor }}"
+          echo "Ref: ${{ github.ref_name }}"
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .args(["--fix=all"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @r#"
+    @@ -9,4 +9,4 @@
+             run: |
+    -          echo "User: ${{ github.actor }}"
+    -          echo "User again: ${{ github.actor }}"
+    -          echo "Ref: ${{ github.ref_name }}"
+    +          echo "User: ${GITHUB_ACTOR}"
+    +          echo "User again: ${GITHUB_ACTOR}"
+    +          echo "Ref: ${GITHUB_REF_NAME}"
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fix_equivalent_expressions() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Duplicate Template Injections
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Equivalent vulnerable expressions
+        run: |
+          echo "User: ${{ github.actor }}"
+          echo "User: ${{ env.GITHUB_ACTOR }}"
+          echo "User: ${{ env['GITHUB_ACTOR'] }}"
+          echo "User: ${{ env['github_actor'] }}"
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .output(crate::common::OutputMode::Both)
+                .args(["--fix=all", "--persona=pedantic"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @r#"
+    @@ -9,5 +9,5 @@
+             run: |
+    -          echo "User: ${{ github.actor }}"
+    -          echo "User: ${{ env.GITHUB_ACTOR }}"
+    -          echo "User: ${{ env['GITHUB_ACTOR'] }}"
+    -          echo "User: ${{ env['github_actor'] }}"
+    +          echo "User: ${GITHUB_ACTOR}"
+    +          echo "User: ${GITHUB_ACTOR}"
+    +          echo "User: ${GITHUB_ACTOR}"
+    +          echo "User: ${github_actor}"
+    "#
+    );
+
+    Ok(())
+}
+
+/// Testcase for #1052.
+///
+/// See: <https://github.com/zizmorcore/zizmor/issues/1052>
+#[test]
+fn test_fix_no_env_overcorrection_issue_1052() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Duplicate Template Injections
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Equivalent vulnerable expressions
+        run: |
+          echo "User: ${{ env.THIS_IS_NOT_A_DEFAULT }}"
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .output(crate::common::OutputMode::Both)
+                .args(["--fix=all", "--persona=pedantic"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @r#"
+    @@ -9,2 +9,2 @@
+             run: |
+    -          echo "User: ${{ env.THIS_IS_NOT_A_DEFAULT }}"
+    +          echo "User: ${THIS_IS_NOT_A_DEFAULT}"
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fix_bash_shell_full_path() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Template Injection - Bash
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vulnerable step with bash shell
+        shell: /bin/bash
+        run: echo "User is ${{ github.actor }}"
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .output(crate::common::OutputMode::Both)
+                .args(["--fix=all", "--persona=pedantic"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @r#"
+    @@ -9,2 +9,2 @@
+             shell: /bin/bash
+    -        run: echo "User is ${{ github.actor }}"
+    +        run: echo "User is ${GITHUB_ACTOR}"
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fix_cmd_shell() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Template Injection - CMD
+on: push
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Vulnerable step with cmd shell
+        shell: cmd
+        run: echo User is ${{ github.actor }}
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .output(crate::common::OutputMode::Both)
+                .args(["--fix=all", "--persona=pedantic"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @"
+    @@ -9,2 +9,2 @@
+             shell: cmd
+    -        run: echo User is ${{ github.actor }}
+    +        run: echo User is %GITHUB_ACTOR%
+    "
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fix_pwsd_shell() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Template Injection - PowerShell
+on: push
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Vulnerable step with pwsh shell
+        shell: pwsh
+        run: Write-Host "User is ${{ github.actor }}"
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .output(crate::common::OutputMode::Both)
+                .args(["--fix=all", "--persona=pedantic"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @r#"
+    @@ -9,2 +9,2 @@
+             shell: pwsh
+    -        run: Write-Host "User is ${{ github.actor }}"
+    +        run: Write-Host "User is $env:GITHUB_ACTOR"
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fix_default_shell_ubuntu() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Template Injection - Default Shell Ubuntu
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vulnerable step with default shell
+        run: echo "User is ${{ github.actor }}"
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .output(crate::common::OutputMode::Both)
+                .args(["--fix=all", "--persona=pedantic"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @r#"
+    @@ -8,2 +8,2 @@
+           - name: Vulnerable step with default shell
+    -        run: echo "User is ${{ github.actor }}"
+    +        run: echo "User is ${GITHUB_ACTOR}"
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fix_default_shell_windows() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Template Injection - Default Shell Windows
+on: push
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Vulnerable step with default shell
+        run: Write-Host "User is ${{ github.actor }}"
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .output(crate::common::OutputMode::Both)
+                .args(["--fix=all", "--persona=pedantic"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @r#"
+    @@ -8,2 +8,2 @@
+           - name: Vulnerable step with default shell
+    -        run: Write-Host "User is ${{ github.actor }}"
+    +        run: Write-Host "User is $env:GITHUB_ACTOR"
+    "#
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fix_cmd_shell_with_custom_env() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Test Template Injection - CMD with Custom Env
+on: push
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Vulnerable step with custom context
+        shell: cmd
+        run: echo PR title is ${{ github.event.pull_request.title }}
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .output(crate::common::OutputMode::Both)
+                .args(["--fix=all", "--persona=pedantic"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @"
+    @@ -9,2 +9,4 @@
+             shell: cmd
+    -        run: echo PR title is ${{ github.event.pull_request.title }}
+    +        run: echo PR title is %GITHUB_EVENT_PULL_REQUEST_TITLE%
+    +        env:
+    +          GITHUB_EVENT_PULL_REQUEST_TITLE: ${{ github.event.pull_request.title }}
+    "
+    );
+
+    Ok(())
+}
+
+/// Reproducer for #1580.
+///
+/// See: <https://github.com/zizmorcore/zizmor/issues/1580>
+#[test]
+fn test_fix_unicode_in_script() -> anyhow::Result<()> {
+    let workflow_content = r#"
+name: Repro issue #1580
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  repro:
+    runs-on: ubuntu-latest
+    steps:
+      - shell: bash
+        run: |
+          echo "✓ ${{ github.event.comment.body }}"
+
+      - shell: bash
+        run: echo ok
+"#;
+
+    let workspace = WorkspaceBuilder::new().is_git_repo(true).build()?;
+    workspace.add_file(".github/workflows/test.yml", workflow_content);
+
+    insta::assert_snapshot!(
+        &workspace.diff(".github/workflows/test.yml", |workspace| {
+            zizmor()
+                .output(crate::common::OutputMode::Both)
+                .args(["--fix=all", "--persona=pedantic"])
+                .input(workspace.path())
+                .run()
+        })?,
+        @r#"
+    @@ -11,3 +11,5 @@
+             run: |
+    -          echo "✓ ${{ github.event.comment.body }}"
+    +          echo "✓ ${GITHUB_EVENT_COMMENT_BODY}"
+    +        env:
+    +          GITHUB_EVENT_COMMENT_BODY: ${{ github.event.comment.body }}
+    "#
+    );
+
+    Ok(())
+}

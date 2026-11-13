@@ -1,0 +1,394 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Nothing here publishes anything. upload-artifact needs no write scope.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }} / go${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        # 1.25 is the minimum the CLI module's go.mod declares (mcp-go v0.58
+        # requires it), so it stays in the matrix to keep that promise
+        # honest. 1.26.7 is the toolchain the released binaries are built
+        # with; every stdlib advisory govulncheck reported against 1.26.1 is
+        # fixed at 1.26.6 or earlier.
+        go: ["1.25", "1.26.7"]
+
+    steps:
+      # Actions are pinned by commit SHA. A tag like @v4 points at whatever
+      # commit its owner last moved it to; the version comment is for humans,
+      # the SHA is what runs.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go ${{ matrix.go }}
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      # Release preparation advances the CLI's library requirement before the
+      # new root tag exists. go.work still loads that version while it constructs
+      # the workspace graph, so point it at the exact checkout under test. The
+      # runner is ephemeral and the published go.mod remains replace-free;
+      # release.yml separately gates installation through the real tags.
+      - name: Source-replace the library into the CLI module
+        working-directory: cmd/graymatter
+        run: go mod edit -replace github.com/angelnicolasc/graymatter=../..
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      # 600s, not the 300s the other suites use: pkg/memory under -race is the
+      # slowest gated suite on a Windows runner, measuring 119-173s across green
+      # runs (162s on run 33846765301). That is under 2x headroom, and a loaded
+      # runner has twice crossed it with nothing wrong - run 33842978778 (PR #90)
+      # and run 33899489378 (main at 5e79f7b), both windows-latest/go1.25, both
+      # timing out at exactly 300.1s with the package still progressing. The
+      # remaining 300s suites keep theirs: they measure 4-37s, an 8-75x margin.
+      - name: Test core library with coverage
+        shell: bash
+        run: go test -race -count=1 -timeout=600s -coverprofile=coverage-core.out -covermode=atomic ./pkg/memory/...
+
+      - name: Test CLI module with coverage
+        working-directory: cmd/graymatter
+        shell: bash
+        run: go test -race -count=1 -timeout=300s -coverprofile=../../coverage-cli.out -covermode=atomic ./internal/harness/... ./internal/kg/... ./internal/server/... ./internal/plugin/... ./internal/mcp/... ./internal/session/... ./internal/daemon/... ./internal/httpauth/...
+
+      # The two coverage steps above enumerate packages explicitly, which left
+      # the root package and the CLI entrypoint untested on every platform:
+      # `graymatter` itself is the public API surface, and `cmd/graymatter`
+      # holds init, doctor, the TUI and the store handles. Both are run here
+      # rather than folded into the steps above so the coverage gates keep
+      # measuring the same thing they always have.
+      - name: Test root package
+        shell: bash
+        run: go test -race -count=1 -timeout=300s .
+
+      - name: Test CLI entrypoint package
+        working-directory: cmd/graymatter
+        shell: bash
+        run: go test -race -count=1 -timeout=300s .
+
+      # ./benchmarks/... was missing from every step above, so the tests that
+      # guard published numbers never ran in CI at all. They are the gates that
+      # keep README.md and docs/benchmarks.md matching what the benchmarks
+      # actually print, and that reject a corpus whose gold IDs no longer
+      # resolve — both of which fail silently by producing a plausible wrong
+      # number, which is the failure mode they exist to prevent.
+      # 600s ceiling: consolidation-gate and README-table tests run real
+      # recall+consolidation cycles under -race; on loaded windows runners
+      # they intermittently exceed 180s (observed 3/6 runs in one evening),
+      # which reads as a quality regression when it is only runner slowness.
+      #
+      # 1200s, not 600: on the slowest runners retrieval_quality alone costs
+      # ~360 s under -race; the 600 s default timed it out with nothing wrong
+      # (windows-latest / go1.25, run 33120309321).
+      #
+      # hook_latency is deliberately NOT in this blocking step: it is a
+      # timing measurement, and timing measurements on shared runners are a
+      # lottery multiplied by this matrix — four consecutive runs failed on
+      # a different runner each time (proxy drift, macOS 170 ms, Windows
+      # timeout, macOS noise) while the same tree passed everywhere else.
+      # The deterministic gates for the hot path (ordering, parity, receipt
+      # arithmetic) live in the test job and stay blocking; the timing
+      # measurement runs report-only in the bench job below, where a breach
+      # is visible without blocking merges.
+      - name: Test benchmark packages
+        shell: bash
+        run: go test -race -count=1 -timeout=1200s ./benchmarks/token_count/... ./benchmarks/retrieval_quality/... ./benchmarks/revision_currency/...
+
+      - name: Coverage gate — core library (≥70%)
+        shell: bash
+        run: |
+          TOTAL=$(go tool cover -func=coverage-core.out \
+            | grep '^total:' | awk '{print $3}' | tr -d '%')
+          echo "Core coverage: ${TOTAL}%"
+          if awk "BEGIN{exit !($TOTAL < 70)}"; then
+            echo "::error::Core coverage ${TOTAL}% is below the 70% threshold."
+            exit 1
+          fi
+
+      - name: Coverage gate — CLI module (≥65%)
+        shell: bash
+        run: |
+          TOTAL=$(go tool cover -func=coverage-cli.out \
+            | grep '^total:' | awk '{print $3}' | tr -d '%')
+          echo "CLI coverage: ${TOTAL}%"
+          if awk "BEGIN{exit !($TOTAL < 65)}"; then
+            echo "::error::CLI coverage ${TOTAL}% is below the 65% threshold."
+            exit 1
+          fi
+
+      - name: Build (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: CGO_ENABLED=0 go build -ldflags="-s -w" -o /dev/null ./cmd/graymatter
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $env:CGO_ENABLED = "0"
+          go build -ldflags="-s -w" -o NUL ./cmd/graymatter
+
+      # Coverage is uploaded from every platform, not just ubuntu: the union
+      # computed by the coverage-union job below is the honest number. A
+      # Windows-only file's tests (the DACL suite) are invisible to a
+      # Linux-only profile, and vice versa for unix sockets.
+      - name: Rename coverage profiles per platform
+        if: always()
+        shell: bash
+        run: |
+          [ -f coverage-core.out ] && cp coverage-core.out "coverage-core.${{ matrix.os }}.out"
+          [ -f coverage-cli.out ] && cp coverage-cli.out "coverage-cli.${{ matrix.os }}.out"
+          exit 0
+
+      - name: Upload coverage profiles
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-${{ matrix.os }}
+          path: |
+            coverage-core.*.out
+            coverage-cli.*.out
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # Statement coverage measured on one operating system systematically
+  # undercounts this repository: platform-split files (Windows ACLs, unix
+  # sockets) only execute their own OS's tests. This job merges the per-OS
+  # profiles into one union and gates on that — the number where "covered"
+  # means "tested somewhere in the matrix", not "tested on Linux".
+  coverage-union:
+    name: Coverage union (all platforms)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.26.7"
+
+      - name: Source-replace the library into the CLI module
+        working-directory: cmd/graymatter
+        run: go mod edit -replace github.com/angelnicolasc/graymatter=../..
+
+      - name: Download per-platform profiles
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        with:
+          path: cov
+          pattern: coverage-*
+          merge-multiple: true
+
+      - name: Merge into union profiles
+        run: |
+          go run ./tools/covmerge -o union-core.out cov/coverage-core.*.out
+          go run ./tools/covmerge -o union-cli.out cov/coverage-cli.*.out
+
+      - name: Coverage gate — core union (≥82%)
+        run: |
+          TOTAL=$(go tool cover -func=union-core.out \
+            | grep '^total:' | awk '{print $3}' | tr -d '%')
+          echo "Core union coverage: ${TOTAL}%"
+          if awk "BEGIN{exit !($TOTAL < 82)}"; then
+            echo "::error::Core union coverage ${TOTAL}% is below the 82% threshold."
+            exit 1
+          fi
+
+      - name: Coverage gate — CLI union (≥72%, ratcheted after phase-2 tests)
+        run: |
+          TOTAL=$(go tool cover -func=union-cli.out \
+            | grep '^total:' | awk '{print $3}' | tr -d '%')
+          echo "CLI union coverage: ${TOTAL}%"
+          if awk "BEGIN{exit !($TOTAL < 72)}"; then
+            echo "::error::CLI union coverage ${TOTAL}% is below the 72% threshold."
+            exit 1
+          fi
+
+      - name: Upload union profiles
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-union
+          path: |
+            union-core.out
+            union-cli.out
+          retention-days: 14
+
+  # The CLI and the MCP server each carried their own version string, and they
+  # disagreed for four releases: a v0.12.1 binary introduced itself to every
+  # MCP client as 0.10.0. Unit tests cover each half; only building the binary
+  # and asking both surfaces catches a wrong value handed over at the call
+  # site, which is where the original defect lived.
+  version-consistency:
+    name: Version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.26.7"
+          cache: true
+
+      # This job is the standalone-build check, so it runs GOWORK=off for
+      # every step: the CLI module with the library source-replaced to this
+      # checkout — the exact tree that ships together at tag time. Building
+      # against the proxy-pinned version instead failed on every push that
+      # moved the library surface ahead of the last tag (the 0.16.x cycle
+      # needed three re-tags; the v0.17.0 prep broke outright). The replace
+      # is applied ONCE after setup-go and never reverted: the later steps
+      # (version-injected build, MCP handshake) build the same standalone
+      # tree, and reverting mid-job re-enabled a workspace graph fetch of a
+      # library version that does not exist on the proxy yet
+      # (run 33130062871). The pinned-proxy property is enforced where it is
+      # real: the release workflow's install-smoke runs
+      # `go install cmd/graymatter@<tag>` against the actual published tag.
+      - name: Source-replace the library into the CLI module
+        working-directory: cmd/graymatter
+        env:
+          GOWORK: "off"
+        run: go mod edit -replace github.com/angelnicolasc/graymatter=../..
+
+      - name: The CLI module must build without the workspace
+        working-directory: cmd/graymatter
+        env:
+          GOWORK: "off"
+        run: go build -o /dev/null ./...
+
+      - name: Build with an injected version
+        working-directory: cmd/graymatter
+        env:
+          GOWORK: "off"
+        run: go build -ldflags="-X main.version=9.9.9-ci" -o "${RUNNER_TEMP}/graymatter" .
+
+      - name: The CLI and the MCP handshake must report the same version
+        run: |
+          set -euo pipefail
+          GM="${RUNNER_TEMP}/graymatter"
+          STORE="${RUNNER_TEMP}/version-check-store"
+          mkdir -p "$STORE"
+
+          cli="$("$GM" --version | awk '{print $NF}')"
+
+          req='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}'
+          mcp="$(printf '%s\n' "$req" \
+            | timeout 60 "$GM" mcp serve --no-daemon --quiet --dir "$STORE" \
+            | head -1 \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["serverInfo"]["version"])')"
+
+          echo "--version:     $cli"
+          echo "MCP handshake: $mcp"
+
+          if [ "$cli" != "9.9.9-ci" ]; then
+            echo "::error::-ldflags set main.version=9.9.9-ci but --version reports ${cli}"
+            exit 1
+          fi
+          if [ "$cli" != "$mcp" ]; then
+            echo "::error::the CLI reports ${cli} while the MCP server announces ${mcp}"
+            exit 1
+          fi
+
+  # A blocking gate, not a report. govulncheck only flags advisories with a
+  # call path reachable from this code, so a failure here means a vulnerability
+  # someone can actually reach, not a version-number mismatch.
+  vulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.26.7"
+          cache: true
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+
+      - name: Source-replace the library into the CLI module
+        working-directory: cmd/graymatter
+        run: go mod edit -replace github.com/angelnicolasc/graymatter=../..
+
+      - name: Scan core library
+        run: govulncheck ./...
+
+      - name: Scan CLI module
+        working-directory: cmd/graymatter
+        run: govulncheck ./...
+
+  bench:
+    name: Benchmarks (non-blocking)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.26.7"
+          cache: true
+
+      # Apply the release source replacement before the first benchmark so
+      # workspace-mode commands and the GOWORK=off hook measurement both use
+      # the checkout under test.
+      - name: Source-replace the library into the CLI module
+        working-directory: cmd/graymatter
+        run: go mod edit -replace github.com/angelnicolasc/graymatter=../..
+
+      - name: Run benchmarks (core)
+        shell: bash
+        run: go test -bench=. -benchmem -benchtime=3s -run='^$' ./pkg/memory/...
+        continue-on-error: true
+
+      # The hooks' hot-path timing, report-only (see the note on the blocking
+      # benchmark step above). A breach here is a signal to look at, not a
+      # merge blocker: the deterministic hot-path gates run blocking in the
+      # test job, and absolute/delta timings on a shared runner carry the
+      # runner's own noise floor with them.
+      - name: Run hooks hot-path measurement
+        shell: bash
+        env:
+          GOWORK: "off"
+        run: go test -count=1 -timeout=900s -v ./benchmarks/hook_latency/
+        continue-on-error: true
+
+      # Printed into the CI log so the quality numbers are visible on every
+      # run rather than only when someone remembers to look. Non-blocking:
+      # the correctness gates for these fixtures live in the test job above.
+      - name: Token efficiency
+        shell: bash
+        run: go run ./benchmarks/token_count
+        continue-on-error: true
+
+      - name: Retrieval quality
+        shell: bash
+        run: go run ./benchmarks/retrieval_quality
+        continue-on-error: true
+
+      # Revision currency is the cross-session question: after a value was
+      # corrected, does the caller get the one that holds? Printed here for
+      # visibility; the structural claims it makes — every retired fact kept
+      # out of the caller's block, currency settled on every probe — are
+      # asserted blocking in the test job above, because a regression there is
+      # a correctness bug rather than a slower number.
+      - name: Revision currency
+        shell: bash
+        run: go run ./benchmarks/revision_currency
+        continue-on-error: true

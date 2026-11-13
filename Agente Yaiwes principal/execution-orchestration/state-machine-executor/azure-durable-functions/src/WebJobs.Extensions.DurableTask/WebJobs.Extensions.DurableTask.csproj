@@ -1,0 +1,106 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <AssemblyName>Microsoft.Azure.WebJobs.Extensions.DurableTask</AssemblyName>
+    <RootNamespace>Microsoft.Azure.WebJobs.Extensions.DurableTask</RootNamespace>
+    <MajorVersion>3</MajorVersion>
+    <MinorVersion>15</MinorVersion>
+    <PatchVersion>0</PatchVersion>
+    <VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
+    <FileVersion>$(MajorVersion).$(MinorVersion).$(PatchVersion)</FileVersion>
+    <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
+    <Company>Microsoft Corporation</Company>
+    <LangVersion>9.0</LangVersion>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>..\..\sign.snk</AssemblyOriginatorKeyFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <DebugType>embedded</DebugType>
+    <!-- See https://github.com/Azure/azure-functions-durable-extension/issues/1433 -->
+    <!-- NU1510: Suppress package pruning warnings for legacy packages that are conditionally included -->
+    <NoWarn>NU5125;SA0001;NU1510</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$(VersionSuffix) == ''">
+    <Version>$(MajorVersion).$(MinorVersion).$(PatchVersion)</Version>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(VersionSuffix) != ''">
+    <Version>$(MajorVersion).$(MinorVersion).$(PatchVersion)-$(VersionSuffix)</Version>
+  </PropertyGroup>
+
+  <!-- NuGet Publishing Metadata -->
+  <PropertyGroup>
+    <Title>Azure Functions Durable Task Extension</Title>
+    <Authors>Microsoft</Authors>
+    <Description>Azure WebJobs SDK Extension for the Durable Task Framework</Description>
+    <PackageReleaseNotes>https://github.com/Azure/azure-functions-durable-extension/releases/</PackageReleaseNotes>
+    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
+    <PackageTags>Microsoft Azure WebJobs Durable Extension Orchestration Workflow Functions</PackageTags>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageIcon>functions.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/Azure/azure-functions-durable-extension</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Azure/azure-functions-durable-extension/</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Grpc/Protos/**/*.proto" GrpcServices="Both" Access="Internal" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="Microsoft.Azure.WebJobs" />
+    <PackageReference Include="Microsoft.Azure.WebJobs.Logging.ApplicationInsights" />
+    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.Rpc" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Core" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.AzureStorage" />
+    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask.Analyzers" />
+    <PackageReference Include="Microsoft.Extensions.Azure" />
+    <PackageReference Include="Microsoft.Extensions.Http" Condition="'$(TargetFramework)' != 'net10.0'" VersionOverride="8.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.WebApiCompatShim" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.ApplicationInsights" />
+    <!-- Build-time dependencies -->
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+    <PackageReference Include="StyleCop.Analyzers" PrivateAssets="All" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
+    <PackageReference Include="System.Text.RegularExpressions" Condition="'$(TargetFramework)' != 'net10.0'" />
+  </ItemGroup>
+
+  <!-- Pin net8.0 to servicing patch versions; on net10.0 these are provided by the shared framework -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="Microsoft.Extensions.Options" VersionOverride="8.0.2" />
+    <PackageReference Include="System.Text.Json" VersionOverride="8.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\functions.png" Pack="true" PackagePath="\" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- StyleCop artifacts (CONSDER: we should remove stylecop and standardize on .editorconfig) -->
+    <AdditionalFiles Include="..\..\.stylecop\stylecop.json" />
+    <Compile Include="..\..\.stylecop\GlobalSuppressions.cs" Link="GlobalSuppressions.cs" />
+  </ItemGroup>
+
+  <!-- Release build settings -->
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsAsErrors />
+    <StyleCopTreatErrorsAsWarnings>true</StyleCopTreatErrorsAsWarnings>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(Configuration)'=='Release'">
+    <Content Include="..\..\_manifest\**">
+      <Pack>true</Pack>
+      <PackagePath>content/SBOM</PackagePath>
+    </Content>
+  </ItemGroup>
+</Project>

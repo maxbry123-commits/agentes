@@ -1,0 +1,78 @@
+{
+  "name": "@safedb/safedb-mcp",
+  "mcpName": "io.github.narekmalk/safedb-mcp",
+  "version": "0.5.0",
+  "description": "A secure MCP server that lets AI agents query databases safely.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "postgres",
+    "postgresql",
+    "mysql",
+    "mariadb",
+    "sqlite",
+    "sql",
+    "database",
+    "read-only",
+    "security",
+    "pii",
+    "audit-log",
+    "ai-agents"
+  ],
+  "homepage": "https://github.com/narekmalk/safedb-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/narekmalk/safedb-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/narekmalk/safedb-mcp/issues"
+  },
+  "bin": {
+    "safedb-mcp": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "docs",
+    "examples"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "check": "npm run build && npm run test && npm run lint",
+    "prepack": "npm run check"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.13.0",
+    "commander": "^12.1.0",
+    "mysql2": "^3.22.3",
+    "node-sql-parser": "^5.4.0",
+    "pg": "^8.13.1",
+    "pgsql-ast-parser": "^12.0.2",
+    "sql.js": "^1.14.1",
+    "yaml": "^2.6.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "@types/sql.js": "^1.4.11",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.19.1",
+    "vitest": "^2.1.8"
+  }
+}

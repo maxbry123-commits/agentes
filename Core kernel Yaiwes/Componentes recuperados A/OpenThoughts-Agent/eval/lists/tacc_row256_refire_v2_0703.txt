@@ -1,0 +1,2 @@
+# TACC row-256 clean re-fire 2026-07-03 — dev_set_v2 preset — supersedes broken auto-reg f61755ce (87.0% valid / 12% nb-err SandboxBuildFailed+Daytona; cap-full transient, since relieved)
+laion/exp-uns-r2egym-2_1x_glm_4_7_traces_jupiter_cleaned

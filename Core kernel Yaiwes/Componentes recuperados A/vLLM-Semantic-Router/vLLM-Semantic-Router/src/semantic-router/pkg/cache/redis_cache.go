@@ -1,0 +1,668 @@
+package cache
+
+import (
+	"context"
+	"crypto/md5"
+	"encoding/binary"
+	"fmt"
+	"math"
+	"os"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+	"sigs.k8s.io/yaml"
+
+	candle_binding "github.com/vllm-project/semantic-router/candle-binding"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/config"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/observability/logging"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/observability/metrics"
+)
+
+// RedisCache provides a scalable semantic cache implementation using Redis with vector search
+type RedisCache struct {
+	client              *redis.Client
+	searchFn            func(context.Context, string, string, *redis.FTSearchOptions) (redis.FTSearchResult, error)
+	config              *config.RedisConfig
+	indexName           string
+	similarityThreshold float32
+	ttlSeconds          int
+	enabled             bool
+	hitCount            int64
+	missCount           int64
+	lastCleanupTime     *time.Time
+	mu                  sync.RWMutex
+	embeddingModel      string // "bert", "qwen3", "gemma", "mmbert", or "multimodal"
+}
+
+// RedisCacheOptions contains configuration parameters for Redis cache initialization
+type RedisCacheOptions struct {
+	SimilarityThreshold float32
+	TTLSeconds          int
+	Enabled             bool
+	Config              *config.RedisConfig
+	ConfigPath          string
+	EmbeddingModel      string
+
+	// closeClient is a test seam for constructor cleanup.
+	closeClient func(*redis.Client)
+}
+
+// NewRedisCache initializes a new Redis-backed semantic cache instance
+func NewRedisCache(options RedisCacheOptions) (*RedisCache, error) {
+	if !options.Enabled {
+		logging.Debugf("RedisCache: disabled, returning stub")
+		return &RedisCache{
+			enabled: false,
+		}, nil
+	}
+
+	// (Fallback) Load Redis configuration from a separated configuration file
+	var err error
+	var redisConfig *config.RedisConfig
+	if options.Config == nil {
+		logging.Warnf("(Deprecated) RedisCache: loading config from %s", options.ConfigPath)
+		redisConfig, err = loadRedisConfig(options.ConfigPath)
+		if err != nil {
+			logging.Debugf("RedisCache: failed to load config: %v", err)
+			return nil, fmt.Errorf("failed to load Redis config: %w", err)
+		}
+	} else {
+		redisConfig = options.Config
+	}
+	// Normalize the metric type to uppercase, matching the Valkey cache, the
+	// Valkey vector store and the agentic memory store. initializeIndex matches
+	// on the uppercase spellings, so without this a config using e.g. "l2"
+	// would build a COSINE index while similarity scores were read back with
+	// the L2 formula.
+	redisConfig.Index.VectorField.MetricType = strings.ToUpper(redisConfig.Index.VectorField.MetricType)
+	logging.Debugf("RedisCache: config loaded - host=%s:%d, index=%s, dimension=%d",
+		redisConfig.Connection.Host, redisConfig.Connection.Port, redisConfig.Index.Name,
+		semanticCacheEmbeddingDimension(redisConfig.Index.VectorField.Dimension, options.EmbeddingModel))
+
+	// Establish connection to Redis server
+	resolvedHost := normalizeLocalHostForContainerRuntimes(redisConfig.Connection.Host)
+	logging.Debugf("RedisCache: connecting to Redis at %s:%d (configured host=%s)",
+		resolvedHost, redisConfig.Connection.Port, redisConfig.Connection.Host)
+
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     fmt.Sprintf("%s:%d", resolvedHost, redisConfig.Connection.Port),
+		Password: redisConfig.Connection.Password,
+		DB:       redisConfig.Connection.Database,
+		Protocol: 2, // Use RESP2 protocol for compatibility
+	})
+
+	embeddingModel := normalizeEmbeddingModel(options.EmbeddingModel)
+
+	cache := &RedisCache{
+		client:              redisClient,
+		config:              redisConfig,
+		indexName:           redisConfig.Index.Name,
+		similarityThreshold: options.SimilarityThreshold,
+		ttlSeconds:          options.TTLSeconds,
+		enabled:             options.Enabled,
+		embeddingModel:      embeddingModel,
+	}
+
+	releaseClient := func() { _ = redisClient.Close() }
+	if options.closeClient != nil {
+		releaseClient = func() { options.closeClient(redisClient) }
+	}
+
+	// Test connection using the new CheckConnection method
+	if err := releaseOnFailure(
+		func() error { return cache.CheckConnection(context.Background()) },
+		releaseClient,
+	); err != nil {
+		logging.Debugf("RedisCache: failed to connect: %v", err)
+		return nil, err
+	}
+	logging.Debugf("RedisCache: successfully connected to Redis")
+
+	// Set up the index for vector search
+	logging.Debugf("RedisCache: initializing index '%s'", redisConfig.Index.Name)
+	if err := releaseOnFailure(cache.initializeIndex, releaseClient); err != nil {
+		logging.Debugf("RedisCache: failed to initialize index: %v", err)
+		return nil, fmt.Errorf("failed to initialize index: %w", err)
+	}
+	logging.Debugf("RedisCache: initialization complete")
+
+	return cache, nil
+}
+
+// loadRedisConfig reads and parses the Redis configuration from a file (Deprecated)
+func loadRedisConfig(configPath string) (*config.RedisConfig, error) {
+	if configPath == "" {
+		return nil, fmt.Errorf("redis config path is required")
+	}
+
+	logging.Debugf("Loading Redis config from: %s", configPath)
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var redisConfig *config.RedisConfig
+	if err := yaml.Unmarshal(data, &redisConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	logging.Debugf("Redis config loaded: index=%s, dimension=%d, metric=%s",
+		redisConfig.Index.Name, redisConfig.Index.VectorField.Dimension, redisConfig.Index.VectorField.MetricType)
+
+	// Apply defaults
+	if redisConfig.Index.VectorField.Name == "" {
+		redisConfig.Index.VectorField.Name = "embedding"
+		logging.Warnf("VectorField.Name not specified, using default: embedding")
+	}
+	if redisConfig.Index.VectorField.MetricType == "" {
+		redisConfig.Index.VectorField.MetricType = "COSINE"
+	}
+	if redisConfig.Index.IndexType == "" {
+		redisConfig.Index.IndexType = "HNSW"
+	}
+	if redisConfig.Index.Prefix == "" {
+		redisConfig.Index.Prefix = "doc:"
+	}
+	// Validate index params for HNSW
+	if redisConfig.Index.IndexType == "HNSW" {
+		if redisConfig.Index.Params.M == 0 {
+			redisConfig.Index.Params.M = 16
+		}
+		if redisConfig.Index.Params.EfConstruction == 0 {
+			redisConfig.Index.Params.EfConstruction = 64
+		}
+	}
+	if redisConfig.Search.TopK == 0 {
+		redisConfig.Search.TopK = 1
+	}
+
+	return redisConfig, nil
+}
+
+// initializeIndex sets up the Redis index for vector search
+func (c *RedisCache) initializeIndex() error {
+	ctx := context.Background()
+
+	// Check if index exists
+	_, err := c.client.FTInfo(ctx, c.indexName).Result()
+	indexExists := err == nil
+
+	// Handle development mode index reset
+	if c.config.Development.DropIndexOnStartup && indexExists {
+		if err := c.client.FTDropIndexWithArgs(ctx, c.indexName, &redis.FTDropIndexOptions{
+			DeleteDocs: true,
+		}).Err(); err != nil {
+			logging.Debugf("RedisCache: failed to drop index: %v", err)
+			return fmt.Errorf("failed to drop index: %w", err)
+		}
+		indexExists = false
+		logging.Debugf("RedisCache: dropped existing index '%s' for development", c.indexName)
+		logging.LogEvent("index_dropped", map[string]interface{}{
+			"backend": "redis",
+			"index":   c.indexName,
+			"reason":  "development_mode",
+		})
+	}
+
+	// Create index if it doesn't exist
+	if !indexExists {
+		if !c.config.Development.AutoCreateIndex {
+			return fmt.Errorf("index %s does not exist and auto-creation is disabled", c.indexName)
+		}
+
+		if err := c.createIndex(); err != nil {
+			logging.Debugf("RedisCache: failed to create index: %v", err)
+			return fmt.Errorf("failed to create index: %w", err)
+		}
+		logging.Debugf("RedisCache: created new index '%s' with dimension %d",
+			c.indexName, c.config.Index.VectorField.Dimension)
+		logging.LogEvent("index_created", map[string]interface{}{
+			"backend":   "redis",
+			"index":     c.indexName,
+			"dimension": c.config.Index.VectorField.Dimension,
+		})
+	}
+
+	return nil
+}
+
+// getEmbedding generates an embedding based on the configured embedding model.
+// Cancellation is best-effort here; see ctxErr.
+func (c *RedisCache) getEmbedding(ctx context.Context, text string) ([]float32, error) {
+	if err := ctxErr(ctx); err != nil {
+		return nil, err
+	}
+	modelName := c.embeddingModel
+
+	switch modelName {
+	case "qwen3":
+		// Use GetEmbeddingBatched for Qwen3 with batching support
+		output, err := candle_binding.GetEmbeddingBatched(text, modelName, c.embeddingDimension())
+		if err != nil {
+			return nil, err
+		}
+		return output.Embedding, nil
+	case "gemma":
+		// Use GetEmbeddingWithModelType for Gemma
+		output, err := candle_binding.GetEmbeddingWithModelType(text, modelName, c.embeddingDimension())
+		if err != nil {
+			return nil, err
+		}
+		return output.Embedding, nil
+	case "mmbert":
+		output, err := candle_binding.GetEmbeddingWithModelType(text, modelName, c.embeddingDimension())
+		if err != nil {
+			return nil, err
+		}
+		return output.Embedding, nil
+	case "multimodal":
+		output, err := candle_binding.GetEmbeddingWithModelType(text, modelName, c.embeddingDimension())
+		if err != nil {
+			return nil, err
+		}
+		return output.Embedding, nil
+	case "bert":
+		// Use traditional GetEmbedding for BERT (default)
+		return candle_binding.GetEmbedding(text, 0)
+	default:
+		return nil, fmt.Errorf("unsupported embedding model: %s (must be 'bert', 'qwen3', 'gemma', 'mmbert', or 'multimodal')", c.embeddingModel)
+	}
+}
+
+func (c *RedisCache) embeddingDimension() int {
+	if c == nil || c.config == nil {
+		return semanticCacheEmbeddingDimension(0, "")
+	}
+	return semanticCacheEmbeddingDimension(c.config.Index.VectorField.Dimension, c.embeddingModel)
+}
+
+// createIndex builds the Redis index with the appropriate schema
+func (c *RedisCache) createIndex() error {
+	ctx := context.Background()
+
+	actualDimension := c.embeddingDimension()
+	c.config.Index.VectorField.Dimension = actualDimension
+
+	logging.Debugf("RedisCache.createIndex: using embedding dimension: %d", actualDimension)
+
+	// Determine distance metric for Redis
+	var distanceMetric string
+	switch c.config.Index.VectorField.MetricType {
+	case "L2":
+		distanceMetric = "L2"
+	case "IP":
+		distanceMetric = "IP"
+	case "COSINE":
+		distanceMetric = "COSINE"
+	default:
+		logging.Warnf("RedisCache: unknown metric type '%s', defaulting to COSINE", c.config.Index.VectorField.MetricType)
+		distanceMetric = "COSINE"
+	}
+
+	// Create vector field arguments based on index type
+	var vectorArgs *redis.FTVectorArgs
+	if c.config.Index.IndexType == "HNSW" {
+		vectorArgs = &redis.FTVectorArgs{
+			HNSWOptions: &redis.FTHNSWOptions{
+				Type:                   "FLOAT32",
+				Dim:                    actualDimension,
+				DistanceMetric:         distanceMetric,
+				MaxEdgesPerNode:        c.config.Index.Params.M,
+				MaxAllowedEdgesPerNode: c.config.Index.Params.EfConstruction,
+			},
+		}
+	} else {
+		vectorArgs = &redis.FTVectorArgs{
+			FlatOptions: &redis.FTFlatOptions{
+				Type:           "FLOAT32",
+				Dim:            actualDimension,
+				DistanceMetric: distanceMetric,
+			},
+		}
+	}
+
+	// Create the index with proper schema
+	_, err := c.client.FTCreate(ctx,
+		c.indexName,
+		&redis.FTCreateOptions{
+			OnHash: true,
+			Prefix: []interface{}{c.config.Index.Prefix},
+		},
+		&redis.FieldSchema{
+			FieldName: "request_id",
+			FieldType: redis.SearchFieldTypeText,
+		},
+		&redis.FieldSchema{
+			FieldName: "model",
+			FieldType: redis.SearchFieldTypeTag,
+		},
+		&redis.FieldSchema{
+			FieldName: "query",
+			FieldType: redis.SearchFieldTypeText,
+		},
+		&redis.FieldSchema{
+			FieldName: "request_body",
+			FieldType: redis.SearchFieldTypeText,
+			NoIndex:   true, // Don't index large text fields
+		},
+		&redis.FieldSchema{
+			FieldName: "response_body",
+			FieldType: redis.SearchFieldTypeText,
+			NoIndex:   true, // Don't index large text fields
+		},
+		&redis.FieldSchema{
+			FieldName:  c.config.Index.VectorField.Name,
+			FieldType:  redis.SearchFieldTypeVector,
+			VectorArgs: vectorArgs,
+		},
+		&redis.FieldSchema{
+			FieldName: "timestamp",
+			FieldType: redis.SearchFieldTypeNumeric,
+		},
+	).Result()
+	if err != nil {
+		return fmt.Errorf("failed to create Redis index: %w", err)
+	}
+
+	return nil
+}
+
+// IsEnabled returns the current cache activation status
+func (c *RedisCache) IsEnabled() bool {
+	return c.enabled
+}
+
+// CheckConnection verifies the Redis connection is healthy
+func (c *RedisCache) CheckConnection(ctx context.Context) error {
+	if !c.enabled {
+		return nil
+	}
+
+	if c.client == nil {
+		return fmt.Errorf("redis client is not initialized")
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if c.config != nil && c.config.Connection.Timeout > 0 {
+		timeout := time.Duration(c.config.Connection.Timeout) * time.Second
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	if err := c.client.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("redis connection check failed: %w", err)
+	}
+
+	return nil
+}
+
+// AddPendingRequest stores a request that is awaiting its response
+func (c *RedisCache) AddPendingRequest(requestID string, model string, query string, requestBody []byte, ttlSeconds int) error {
+	start := time.Now()
+
+	if !c.enabled {
+		return nil
+	}
+
+	// Handle TTL=0: skip caching entirely
+	if ttlSeconds == 0 {
+		logging.Debugf("RedisCache.AddPendingRequest: skipping cache (ttl_seconds=0)")
+		return nil
+	}
+
+	// Store incomplete entry for later completion with response
+	err := c.addEntry(context.Background(), "", requestID, model, query, requestBody, nil, ttlSeconds)
+
+	if err != nil {
+		metrics.RecordCacheOperation("redis", "add_pending", "error", time.Since(start).Seconds())
+	} else {
+		metrics.RecordCacheOperation("redis", "add_pending", "success", time.Since(start).Seconds())
+	}
+
+	return err
+}
+
+// UpdateWithResponse completes a pending request by adding the response
+func (c *RedisCache) UpdateWithResponse(requestID string, responseBody []byte, ttlSeconds int) error {
+	ctx := context.Background()
+	start := time.Now()
+
+	if !c.enabled {
+		return nil
+	}
+
+	logging.Debugf("RedisCache.UpdateWithResponse: updating pending entry (request_id: %s, response_size: %d, ttl_seconds=%d)",
+		requestID, len(responseBody), ttlSeconds)
+
+	// Find the pending entry by request_id
+	// Search for documents with matching request_id using TEXT field syntax (exact match with quotes)
+	// TAG syntax with {} doesn't work well with UUIDs containing hyphens
+	query := fmt.Sprintf("@request_id:\"%s\"", requestID)
+	logging.Infof("UpdateWithResponse: searching with query: %s", query)
+
+	results, err := c.client.FTSearchWithArgs(ctx,
+		c.indexName,
+		query,
+		&redis.FTSearchOptions{
+			Return: []redis.FTSearchReturn{
+				{FieldName: "model"},
+				{FieldName: "query"},
+				{FieldName: "request_body"},
+			},
+			LimitOffset: 0,
+			Limit:       1,
+		},
+	).Result()
+	if err != nil {
+		logging.Infof("RedisCache.UpdateWithResponse: search failed with query '%s': %v", query, err)
+		metrics.RecordCacheOperation("redis", "update_response", "error", time.Since(start).Seconds())
+		return fmt.Errorf("failed to search pending entry: %w", err)
+	}
+
+	if results.Total == 0 {
+		logging.Infof("RedisCache.UpdateWithResponse: no pending entry found with request_id=%s", requestID)
+		metrics.RecordCacheOperation("redis", "update_response", "error", time.Since(start).Seconds())
+		return fmt.Errorf("no pending entry found")
+	}
+
+	logging.Infof("UpdateWithResponse: found %d result(s) for request_id=%s", results.Total, requestID)
+
+	doc := results.Docs[0]
+	model := fmt.Sprint(doc.Fields["model"])
+	queryStr := fmt.Sprint(doc.Fields["query"])
+	requestBodyStr := fmt.Sprint(doc.Fields["request_body"])
+
+	// Extract document ID from the result
+	docID := doc.ID
+
+	logging.Debugf("RedisCache.UpdateWithResponse: found pending entry, updating (id: %s, model: %s)", docID, model)
+
+	// Update the document with response body and TTL
+	err = c.addEntry(ctx, docID, requestID, model, queryStr, []byte(requestBodyStr), responseBody, ttlSeconds)
+	if err != nil {
+		metrics.RecordCacheOperation("redis", "update_response", "error", time.Since(start).Seconds())
+		return fmt.Errorf("failed to update entry: %w", err)
+	}
+
+	logging.Debugf("RedisCache.UpdateWithResponse: successfully updated entry with response")
+	metrics.RecordCacheOperation("redis", "update_response", "success", time.Since(start).Seconds())
+
+	return nil
+}
+
+// AddEntry stores a complete request-response pair in the cache
+func (c *RedisCache) AddEntry(ctx context.Context, requestID string, model string, query string, requestBody, responseBody []byte, ttlSeconds int) error {
+	start := time.Now()
+
+	if !c.enabled {
+		return nil
+	}
+
+	// Handle TTL=0: skip caching entirely
+	if ttlSeconds == 0 {
+		logging.Debugf("RedisCache.AddEntry: skipping cache (ttl_seconds=0)")
+		return nil
+	}
+
+	err := c.addEntry(ctx, "", requestID, model, query, requestBody, responseBody, ttlSeconds)
+
+	if err != nil {
+		metrics.RecordCacheOperation("redis", "add_entry", "error", time.Since(start).Seconds())
+	} else {
+		metrics.RecordCacheOperation("redis", "add_entry", "success", time.Since(start).Seconds())
+	}
+
+	return err
+}
+
+// floatsToBytes converts float32 slice to byte array for Redis vector storage
+func floatsToBytes(fs []float32) []byte {
+	buf := make([]byte, len(fs)*4)
+	for i, f := range fs {
+		u := math.Float32bits(f)
+		binary.LittleEndian.PutUint32(buf[i*4:], u)
+	}
+	return buf
+}
+
+// addEntry handles the internal logic for storing entries in Redis
+func (c *RedisCache) addEntry(ctx context.Context, id string, requestID string, model string, query string, requestBody, responseBody []byte, ttlSeconds int) error {
+	logging.Infof("addEntry called: id='%s', requestID='%s', requestBody_len=%d, responseBody_len=%d, ttl_seconds=%d",
+		id, requestID, len(requestBody), len(responseBody), ttlSeconds)
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// Determine effective TTL: use provided value or fall back to cache default
+	effectiveTTL := ttlSeconds
+	if ttlSeconds == -1 {
+		effectiveTTL = c.ttlSeconds
+	}
+
+	// Generate semantic embedding for the query
+	embedding, err := c.getEmbedding(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to generate embedding: %w", err)
+	}
+
+	// Generate unique ID if not provided
+	if id == "" {
+		id = fmt.Sprintf("%x", md5.Sum(fmt.Appendf(nil, "%s_%s_%d", model, query, time.Now().UnixNano())))
+	}
+
+	// Convert embedding to bytes
+	embeddingBytes := floatsToBytes(embedding)
+
+	// Prepare document key with prefix (check if already prefixed to avoid double prefix)
+	var docKey string
+	if strings.HasPrefix(id, c.config.Index.Prefix) {
+		docKey = id // Already has prefix, use as-is
+		logging.Infof("ID already has prefix, using as-is: %s", docKey)
+	} else {
+		docKey = c.config.Index.Prefix + id // Add prefix
+		logging.Infof("Adding prefix to ID: %s -> %s", id, docKey)
+	}
+
+	responseBodyStr := string(responseBody)
+	logging.Infof("Setting response_body field: len=%d, isEmpty=%v", len(responseBodyStr), responseBodyStr == "")
+
+	// Prepare hash fields including ttl_seconds
+	hashFields := map[string]interface{}{
+		"request_id":                    requestID,
+		"model":                         model,
+		"query":                         query,
+		"request_body":                  string(requestBody),
+		"response_body":                 responseBodyStr,
+		c.config.Index.VectorField.Name: embeddingBytes,
+		"timestamp":                     time.Now().Unix(),
+		"ttl_seconds":                   effectiveTTL,
+	}
+
+	// Store as Redis hash
+	err = c.client.HSet(ctx, docKey, hashFields).Err()
+	if err != nil {
+		logging.Debugf("RedisCache.addEntry: HSet failed: %v", err)
+		return fmt.Errorf("failed to store cache entry: %w", err)
+	}
+
+	// Set TTL if configured (Redis native TTL)
+	if effectiveTTL > 0 {
+		c.client.Expire(ctx, docKey, time.Duration(effectiveTTL)*time.Second)
+	}
+
+	logging.Debugf("RedisCache.addEntry: successfully added entry to Redis (key: %s, embedding_dim: %d, request_size: %d, response_size: %d, ttl=%d)",
+		docKey, len(embedding), len(requestBody), len(responseBody), effectiveTTL)
+	logging.LogEvent("cache_entry_added", map[string]interface{}{
+		"backend":             "redis",
+		"index":               c.indexName,
+		"request_id":          requestID,
+		"query":               query,
+		"model":               model,
+		"embedding_dimension": len(embedding),
+	})
+	return nil
+}
+
+// FindSimilar searches for semantically similar cached requests
+func (c *RedisCache) FindSimilar(model string, query string) ([]byte, bool, error) {
+	return c.FindSimilarWithThreshold(model, query, c.similarityThreshold)
+}
+
+// Close releases all resources held by the cache
+func (c *RedisCache) Close() error {
+	if c.client != nil {
+		return c.client.Close()
+	}
+	return nil
+}
+
+// GetStats provides current cache performance metrics
+func (c *RedisCache) GetStats() CacheStats {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	hits := atomic.LoadInt64(&c.hitCount)
+	misses := atomic.LoadInt64(&c.missCount)
+	total := hits + misses
+
+	var hitRatio float64
+	if total > 0 {
+		hitRatio = float64(hits) / float64(total)
+	}
+
+	// Retrieve index statistics from Redis
+	totalEntries := 0
+	if c.enabled && c.client != nil {
+		ctx := context.Background()
+		info, err := c.client.FTInfo(ctx, c.indexName).Result()
+		if err == nil {
+			// Extract document count from FTInfoResult
+			totalEntries = info.NumDocs
+			logging.Debugf("RedisCache.GetStats: index '%s' contains %d entries",
+				c.indexName, totalEntries)
+		} else {
+			logging.Debugf("RedisCache.GetStats: failed to get index stats: %v", err)
+		}
+	}
+
+	cacheStats := CacheStats{
+		TotalEntries: totalEntries,
+		HitCount:     hits,
+		MissCount:    misses,
+		HitRatio:     hitRatio,
+	}
+
+	if c.lastCleanupTime != nil {
+		cacheStats.LastCleanupTime = c.lastCleanupTime
+	}
+
+	return cacheStats
+}

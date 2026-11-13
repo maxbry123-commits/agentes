@@ -1,0 +1,27 @@
+import { FC } from "react";
+import ApiKeys from "@/components/Settings/ApiKeys";
+import usePermissionsUtil from "@/hooks/usePermissionsUtils";
+import Callout from "@/ui/Callout";
+
+const ApiKeysPage: FC = () => {
+  const permissionsUtils = usePermissionsUtil();
+  if (
+    !permissionsUtils.canCreateApiKey() &&
+    !permissionsUtils.canDeleteApiKey()
+  ) {
+    return (
+      <div className="container pagecontents">
+        <Callout status="error">
+          You do not have access to view this page.
+        </Callout>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container-fluid pagecontents">
+      <ApiKeys />
+    </div>
+  );
+};
+export default ApiKeysPage;

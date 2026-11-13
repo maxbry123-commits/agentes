@@ -1,0 +1,172 @@
+import { Node } from '~/queries/schema/schema-general'
+import {
+    isAccountsQuery,
+    isAccountsTableQuery,
+    isActorsQuery,
+    isEndpointsUsageTableQuery,
+    isEventsQuery,
+    isGroupsQuery,
+    isHogQLQuery,
+    isMarketingAnalyticsTableQuery,
+    isNonIntegratedConversionsTableQuery,
+    isPersonsNode,
+    isSessionAttributionExplorerQuery,
+    isSessionsQuery,
+    isTracesQuery,
+    isWebBotsTableQuery,
+    isWebExternalClicksQuery,
+    isWebGoalsQuery,
+    isWebOverviewQuery,
+    isWebStatsTableQuery,
+} from '~/queries/utils'
+
+export enum QueryFeature {
+    columnsInResponse,
+    eventActionsColumn,
+    dateRangePicker,
+    eventNameFilter,
+    eventPropertyFilters,
+    personPropertyFilters,
+    groupPropertyFilters,
+    sessionPropertyFilters,
+    linkDataButton,
+    personsSearch,
+    groupsSearch,
+    tracesSearch,
+    savedEventsQueries,
+    columnConfigurator,
+    resultIsArrayOfArrays,
+    selectAndOrderByColumns,
+    displayResponseError,
+    hideLoadNextButton,
+    testAccountFilters,
+    supportTracesFilters,
+    highlightExceptionEventRows,
+    /** Enables cell and row actions for non-integrated conversions mapping */
+    nonIntegratedConversionsActions,
+    showCount,
+}
+
+export function getQueryFeatures(query: Node): Set<QueryFeature> {
+    const features = new Set<QueryFeature>()
+
+    if (isHogQLQuery(query) || isEventsQuery(query) || isSessionAttributionExplorerQuery(query)) {
+        features.add(QueryFeature.dateRangePicker)
+        features.add(QueryFeature.columnsInResponse)
+        features.add(QueryFeature.eventPropertyFilters)
+        features.add(QueryFeature.resultIsArrayOfArrays)
+        features.add(QueryFeature.displayResponseError)
+        features.add(QueryFeature.testAccountFilters)
+    }
+
+    if (isSessionsQuery(query)) {
+        features.add(QueryFeature.dateRangePicker)
+        features.add(QueryFeature.columnsInResponse)
+        features.add(QueryFeature.sessionPropertyFilters)
+        features.add(QueryFeature.eventNameFilter)
+        features.add(QueryFeature.eventPropertyFilters)
+        features.add(QueryFeature.resultIsArrayOfArrays)
+        features.add(QueryFeature.displayResponseError)
+        features.add(QueryFeature.testAccountFilters)
+        features.add(QueryFeature.columnConfigurator)
+        features.add(QueryFeature.selectAndOrderByColumns)
+    }
+
+    if (isEventsQuery(query)) {
+        features.add(QueryFeature.eventActionsColumn)
+        features.add(QueryFeature.eventNameFilter)
+        features.add(QueryFeature.savedEventsQueries)
+        features.add(QueryFeature.columnConfigurator)
+        features.add(QueryFeature.selectAndOrderByColumns)
+    }
+
+    if (isPersonsNode(query) || isActorsQuery(query)) {
+        features.add(QueryFeature.personPropertyFilters)
+        features.add(QueryFeature.personsSearch)
+        features.add(QueryFeature.columnConfigurator)
+
+        if (isActorsQuery(query)) {
+            features.add(QueryFeature.selectAndOrderByColumns)
+            features.add(QueryFeature.columnsInResponse)
+            features.add(QueryFeature.resultIsArrayOfArrays)
+            features.add(QueryFeature.showCount)
+            features.add(QueryFeature.displayResponseError)
+
+            if (!query.source) {
+                // A source-less ActorsQuery is the persons list. When there's an insight
+                // source, that source query carries its own filterTestAccounts toggle.
+                features.add(QueryFeature.testAccountFilters)
+            }
+        }
+    }
+
+    if (isGroupsQuery(query)) {
+        features.add(QueryFeature.groupPropertyFilters)
+        features.add(QueryFeature.groupsSearch)
+        features.add(QueryFeature.selectAndOrderByColumns)
+        features.add(QueryFeature.columnsInResponse)
+        features.add(QueryFeature.resultIsArrayOfArrays)
+        features.add(QueryFeature.columnConfigurator)
+        features.add(QueryFeature.linkDataButton)
+        features.add(QueryFeature.showCount)
+        features.add(QueryFeature.displayResponseError)
+    }
+
+    if (
+        isWebOverviewQuery(query) ||
+        isWebExternalClicksQuery(query) ||
+        isWebBotsTableQuery(query) ||
+        isWebStatsTableQuery(query) ||
+        isWebGoalsQuery(query)
+    ) {
+        features.add(QueryFeature.columnsInResponse)
+        features.add(QueryFeature.resultIsArrayOfArrays)
+        features.add(QueryFeature.hideLoadNextButton)
+        features.add(QueryFeature.displayResponseError)
+    }
+
+    if (isMarketingAnalyticsTableQuery(query)) {
+        features.add(QueryFeature.columnsInResponse)
+        features.add(QueryFeature.resultIsArrayOfArrays)
+        features.add(QueryFeature.displayResponseError)
+        features.add(QueryFeature.selectAndOrderByColumns)
+    }
+
+    if (isNonIntegratedConversionsTableQuery(query)) {
+        features.add(QueryFeature.columnsInResponse)
+        features.add(QueryFeature.resultIsArrayOfArrays)
+        features.add(QueryFeature.displayResponseError)
+        features.add(QueryFeature.selectAndOrderByColumns)
+        features.add(QueryFeature.nonIntegratedConversionsActions)
+    }
+
+    if (isTracesQuery(query)) {
+        features.add(QueryFeature.dateRangePicker)
+        features.add(QueryFeature.eventPropertyFilters)
+        features.add(QueryFeature.testAccountFilters)
+        features.add(QueryFeature.supportTracesFilters)
+        features.add(QueryFeature.columnConfigurator)
+        features.add(QueryFeature.displayResponseError)
+        features.add(QueryFeature.tracesSearch)
+    }
+
+    if (isEndpointsUsageTableQuery(query)) {
+        features.add(QueryFeature.columnsInResponse)
+        features.add(QueryFeature.resultIsArrayOfArrays)
+        features.add(QueryFeature.displayResponseError)
+        features.add(QueryFeature.hideLoadNextButton)
+    }
+
+    if (isAccountsQuery(query)) {
+        features.add(QueryFeature.columnsInResponse)
+        features.add(QueryFeature.resultIsArrayOfArrays)
+        features.add(QueryFeature.displayResponseError)
+        features.add(QueryFeature.selectAndOrderByColumns)
+    }
+
+    if (isAccountsTableQuery(query)) {
+        features.add(QueryFeature.displayResponseError)
+    }
+
+    return features
+}

@@ -1,0 +1,194 @@
+import { TriggerWorkflowForm } from '../workflows/$workflow/components/trigger-workflow-form';
+import { DeleteCron } from './components/delete-cron';
+import { columns } from './components/recurring-columns';
+import {
+  CronColumn,
+  workflowKey,
+  metadataKey,
+} from './components/recurring-columns';
+import { useCrons } from './hooks/use-crons';
+import { DataTable } from '@/components/v1/molecules/data-table/data-table';
+import {
+  ToolbarFilters,
+  ToolbarType,
+} from '@/components/v1/molecules/data-table/data-table-toolbar';
+import { EmptyState } from '@/components/v1/molecules/empty-state/empty-state';
+import { WorkflowsGuard } from '@/components/v1/molecules/empty-state/workflows-guard';
+import { Button } from '@/components/v1/ui/button';
+import useCanWrite from '@/hooks/use-can-write';
+import { useLocalStorageState } from '@/hooks/use-local-storage-state';
+import { useCurrentTenantId } from '@/hooks/use-tenant';
+import { CronWorkflows } from '@/lib/api';
+import { docsPages } from '@/lib/generated/docs';
+import { VisibilityState } from '@tanstack/react-table';
+import { useMemo, useState } from 'react';
+
+export default function CronsPage() {
+  return (
+    <WorkflowsGuard
+      title="No recurring runs found"
+      description="Recurring runs trigger workflows automatically on a cron schedule."
+      docs={{
+        href: docsPages.v1['cron-runs'].href,
+        description: 'Learn about cron jobs',
+      }}
+    >
+      <CronsTable />
+    </WorkflowsGuard>
+  );
+}
+
+function CronsTable() {
+  const { tenantId } = useCurrentTenantId();
+  const canWrite = useCanWrite();
+  const [triggerWorkflow, setTriggerWorkflow] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+
+  const [columnVisibility, setColumnVisibility] =
+    useLocalStorageState<VisibilityState>('hatchet:columns:recurring', {});
+
+  const {
+    crons,
+    numPages,
+    isLoading,
+    refetch,
+    error,
+    pagination,
+    setPagination,
+    setPageSize,
+    columnFilters,
+    setColumnFilters,
+    workflowKeyFilters,
+    isRefetching,
+    resetFilters,
+    updateCron,
+    isUpdatePending,
+    updatingCronId,
+    triggerNow,
+  } = useCrons({
+    key: 'table',
+  });
+
+  const [showDeleteCron, setShowDeleteCron] = useState<
+    CronWorkflows | undefined
+  >();
+
+  const handleDeleteClick = (cron: CronWorkflows) => {
+    setShowDeleteCron(cron);
+  };
+
+  const onEnableClick = (cron: CronWorkflows) => {
+    updateCron(cron.tenantId, cron.metadata.id, {
+      enabled: !cron.enabled,
+    });
+  };
+
+  const handleConfirmDelete = () => {
+    if (showDeleteCron) {
+      setShowDeleteCron(undefined);
+      refetch();
+    }
+  };
+
+  const tableColumns = useMemo(
+    () =>
+      columns({
+        tenantId,
+        onDeleteClick: handleDeleteClick,
+        onEnableClick,
+        onTriggerClick: (cron) => triggerNow(cron.metadata.id),
+        selectedJobId,
+        setSelectedJobId,
+        isUpdatePending,
+        updatingCronId,
+        canWrite,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      tenantId,
+      selectedJobId,
+      isUpdatePending,
+      updatingCronId,
+      triggerNow,
+      canWrite,
+    ],
+  );
+
+  const filters: ToolbarFilters = [
+    {
+      columnId: workflowKey,
+      title: CronColumn.workflow,
+      options: workflowKeyFilters,
+      type: ToolbarType.Radio,
+    },
+    {
+      columnId: metadataKey,
+      title: CronColumn.metadata,
+      type: ToolbarType.KeyValue,
+    },
+  ];
+
+  const actions = canWrite
+    ? [
+        <Button
+          key="create-cron"
+          onClick={() => setTriggerWorkflow(true)}
+          variant="cta"
+        >
+          Create Cron Job
+        </Button>,
+      ]
+    : [];
+
+  return (
+    <>
+      {showDeleteCron && (
+        <DeleteCron
+          cron={showDeleteCron}
+          setShowCronRevoke={setShowDeleteCron}
+          onSuccess={handleConfirmDelete}
+        />
+      )}
+      <TriggerWorkflowForm
+        defaultTimingOption="cron"
+        defaultWorkflow={undefined}
+        show={triggerWorkflow}
+        onClose={() => setTriggerWorkflow(false)}
+      />
+
+      <DataTable
+        error={error}
+        isLoading={isLoading}
+        columns={tableColumns}
+        data={crons}
+        filters={filters}
+        showColumnToggle={true}
+        columnVisibility={columnVisibility}
+        setColumnVisibility={setColumnVisibility}
+        columnFilters={columnFilters}
+        setColumnFilters={setColumnFilters}
+        pagination={pagination}
+        setPagination={setPagination}
+        onSetPageSize={setPageSize}
+        pageCount={numPages}
+        rightActions={actions}
+        getRowId={(row) => row.metadata.id}
+        columnKeyToName={CronColumn}
+        refetchProps={{
+          isRefetching,
+          onRefetch: refetch,
+        }}
+        onResetFilters={resetFilters}
+        showSelectedRows={false}
+        emptyState={
+          <EmptyState
+            title="No recurring runs found"
+            description="Recurring runs trigger workflows automatically on a cron schedule."
+            docPage={docsPages.v1['cron-runs']}
+            docLabel="Learn about cron jobs"
+          />
+        }
+      />
+    </>
+  );
+}

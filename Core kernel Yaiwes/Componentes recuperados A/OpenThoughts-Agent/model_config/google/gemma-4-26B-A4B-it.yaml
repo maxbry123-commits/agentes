@@ -1,0 +1,13 @@
+max_model_len: 32768
+trust_remote_code: false
+limit_mm_per_prompt: '{"image":0,"video":0}'
+reasoning_parser: gemma4
+model: google/gemma-4-26B-A4B-it
+subsystems:
+  eval:
+    conda_env: eval-qwen35
+    tensor_parallel_size: 1
+    data_parallel_size: 1
+    agent_kwargs:
+    - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+    extra_args: --chat-template /app/eval/configs/gemma4_chat_template.jinja --enable-prefix-caching

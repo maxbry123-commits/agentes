@@ -1,0 +1,340 @@
+import pytest
+from _pytest.main import ExitCode
+from flask import Response
+
+import schemathesis
+from schemathesis.python._constants.registry import default_registry
+
+
+def _serve_schema(ctx, cli, app_runner, schema: dict, routes):
+    app = ctx.openapi.make_flask_app_from_schema(schema)
+
+    for method, path, handler in routes:
+        app.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
+
+    return app_runner.openapi_url(app)
+
+
+def test_missing_auth_warning_with_fail_on_true(ctx, cli, tmp_path, monkeypatch):
+    api = ctx.openapi.apps.basic()
+    # Given a config file that fails on all warnings
+    config_file = tmp_path / "schemathesis.toml"
+    config_file.write_text("""
+[warnings]
+fail-on = true
+""")
+    monkeypatch.chdir(tmp_path)
+
+    # When running tests without proper auth (will trigger missing_auth warning)
+    result = cli.run_and_assert(api.schema_url, exit_code=ExitCode.TESTS_FAILED)
+    # And warnings should be displayed
+    assert "WARNINGS" in result.stdout
+    assert "Authentication failed" in result.stdout
+
+
+def test_missing_auth_warning_with_fail_on_specific(ctx, cli, tmp_path, monkeypatch):
+    api = ctx.openapi.apps.basic()
+    # Given a config file that fails only on missing_auth warnings
+    config_file = tmp_path / "schemathesis.toml"
+    config_file.write_text("""
+[warnings]
+fail-on = ["missing_auth"]
+""")
+    monkeypatch.chdir(tmp_path)
+
+    # When running tests without proper auth (will trigger missing_auth warning)
+    result = cli.run_and_assert(api.schema_url, exit_code=ExitCode.TESTS_FAILED)
+    # And warnings should be displayed
+    assert "WARNINGS" in result.stdout
+    assert "Authentication failed" in result.stdout
+
+
+@pytest.mark.snapshot(replace_reproduce_with=True)
+def test_missing_deserializer_warning_grouped_by_media_type(cli, ctx, snapshot_cli):
+    html = {"text/html": {"schema": {"type": "object", "properties": {"id": {"type": "integer"}}}}}
+    msgpack = {"application/msgpack": {"schema": {"type": "object", "properties": {"id": {"type": "integer"}}}}}
+    schema_path = ctx.openapi.write_schema(
+        {
+            "/users": {
+                "get": {
+                    "responses": {
+                        "200": {"description": "Success", "content": html},
+                        "404": {"description": "Not Found", "content": html},
+                    }
+                }
+            },
+            "/orders": {
+                "get": {
+                    "responses": {
+                        "200": {"description": "Success", "content": html},
+                        "404": {"description": "Not Found", "content": {**html, **msgpack}},
+                    }
+                }
+            },
+        }
+    )
+
+    api = ctx.openapi.apps.success()
+    assert cli.run(str(schema_path), f"--url={api.base_url}/api", "--max-examples=1") == snapshot_cli
+
+
+def test_missing_deserializer_warning_with_fail_on(cli, ctx, tmp_path, monkeypatch):
+    # Given a schema with a custom media type and config that fails on missing deserializer
+    schema_path = ctx.openapi.write_schema(
+        {
+            "/users": {
+                "get": {
+                    "responses": {
+                        "200": {
+                            "description": "Success",
+                            "content": {
+                                "application/msgpack": {
+                                    "schema": {"type": "object", "properties": {"id": {"type": "integer"}}}
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        }
+    )
+
+    config_file = tmp_path / "schemathesis.toml"
+    config_file.write_text("""
+[warnings]
+fail-on = ["missing_deserializer"]
+""")
+    monkeypatch.chdir(tmp_path)
+
+    api = ctx.openapi.apps.success()
+    result = cli.run_and_assert(
+        str(schema_path), f"--url={api.base_url}/api", "--max-examples=1", exit_code=ExitCode.TESTS_FAILED
+    )
+
+    # Then the warning should be displayed and test should fail
+    assert "WARNINGS" in result.stdout
+    assert "Schema validation skipped" in result.stdout
+
+
+def test_warnings_off_via_cli(cli, ctx):
+    # When --warnings=off is used, warnings should not be displayed
+    schema_path = ctx.openapi.write_schema(
+        {
+            "/users": {
+                "get": {
+                    "responses": {
+                        "200": {
+                            "description": "Success",
+                            "content": {
+                                "application/msgpack": {
+                                    "schema": {"type": "object", "properties": {"id": {"type": "integer"}}}
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        }
+    )
+
+    api = ctx.openapi.apps.success()
+    result = cli.run(str(schema_path), f"--url={api.base_url}/api", "--warnings=off", "--max-examples=1")
+
+    # Then no warnings should be displayed
+    assert "WARNINGS" not in result.stdout
+    assert "Schema validation skipped" not in result.stdout
+
+
+def test_warnings_specific_type_via_cli(cli, ctx):
+    # When --warnings=missing_deserializer is used, only that warning type is shown
+    schema_path = ctx.openapi.write_schema(
+        {
+            "/users": {
+                "get": {
+                    "responses": {
+                        "200": {
+                            "description": "Success",
+                            "content": {
+                                "application/msgpack": {
+                                    "schema": {"type": "object", "properties": {"id": {"type": "integer"}}}
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        }
+    )
+
+    api = ctx.openapi.apps.success()
+    result = cli.run(
+        str(schema_path), f"--url={api.base_url}/api", "--warnings=missing_deserializer", "--max-examples=1"
+    )
+
+    # Then the specified warning should be displayed
+    assert "WARNINGS" in result.stdout
+    assert "Schema validation skipped" in result.stdout
+
+
+def test_warnings_multiple_types_via_cli(ctx, cli):
+    api = ctx.openapi.apps.basic()
+    # When --warnings with comma-separated values is used
+    result = cli.run(api.schema_url, "--warnings=missing_auth,missing_test_data", "--max-examples=1")
+
+    # Then warnings can still be triggered for specified types
+    # (This just validates the flag is parsed correctly - actual warnings depend on test conditions)
+    assert result.exit_code in (ExitCode.OK, ExitCode.TESTS_FAILED)
+
+
+@pytest.mark.snapshot(replace_reproduce_with=True)
+def test_final_line_counts_all_warning_kinds_in_run(cli, ctx, app_runner, snapshot_cli):
+    # Regression test: the footer "N warnings in Xs" should count warning *kinds*, not just missing_auth operations
+    schema = ctx.openapi.build_schema(
+        {
+            "/auth": {
+                "get": {
+                    "responses": {
+                        "200": {"description": "OK", "content": {"application/json": {"schema": {"type": "object"}}}}
+                    }
+                }
+            },
+            "/missing": {
+                "get": {
+                    "responses": {
+                        "200": {"description": "OK", "content": {"application/json": {"schema": {"type": "object"}}}}
+                    }
+                }
+            },
+        }
+    )
+
+    def auth():  # type: ignore[no-untyped-def]
+        return Response(status=401)
+
+    def missing():  # type: ignore[no-untyped-def]
+        return Response(status=404)
+
+    schema_url = _serve_schema(ctx, cli, app_runner, schema, [("GET", "/auth", auth), ("GET", "/missing", missing)])
+    assert cli.run(schema_url, "--checks=not_a_server_error", "--max-examples=1") == snapshot_cli
+
+
+def test_warning_on_unauthorized(ctx, cli, snapshot_cli):
+    api = ctx.openapi.apps.basic()
+    # When endpoint returns only 401
+    # Then the output should contain a warning about it
+    assert (
+        cli.run(
+            api.schema_url,
+            "-c not_a_server_error",
+            "--mode=positive",
+            "--phases=fuzzing",
+            "--mode=positive",
+            "-n 10",
+        )
+        == snapshot_cli
+    )
+
+
+def test_warning_on_no_2xx(ctx, cli, snapshot_cli):
+    api = ctx.openapi.apps.always_incorrect()
+    # When endpoint does not return 2xx at all
+    # Then the output should contain a warning about it
+    assert (
+        cli.run(
+            api.schema_url,
+            "-c not_a_server_error",
+            "--phases=fuzzing",
+            "--mode=positive",
+            "-n 10",
+        )
+        == snapshot_cli
+    )
+
+
+def test_warning_on_no_2xx_options_only(ctx, cli, snapshot_cli):
+    api = ctx.openapi.apps.always_incorrect()
+    assert (
+        cli.run(
+            api.schema_url,
+            "--mode=all",
+            "--phases=coverage",
+            "-c not_a_server_error",
+            "--phases=coverage",
+            "--mode=negative",
+            "-n 10",
+        )
+        == snapshot_cli
+    )
+
+
+@pytest.mark.parametrize(
+    ["args", "kwargs"],
+    [
+        ((), {}),
+        (("--warnings=off",), {}),
+        (("--warnings=missing_test_data",), {}),
+        (
+            (),
+            {
+                "config": {
+                    "operations": [
+                        {"include-name": "GET /api/failure", "warnings": False},
+                    ],
+                }
+            },
+        ),
+    ],
+    ids=["default", "selected", "disabled-all", "disabled-operation"],
+)
+def test_warning_on_all_not_found(ctx, cli, snapshot_cli, args, kwargs):
+    api = ctx.openapi.apps.success_and_failure()
+    # When all endpoints return 404
+    # Then the output should contain a warning about it
+    assert (
+        cli.run(
+            api.schema_url,
+            f"--url={api.base_url}/v4/",
+            "-c not_a_server_error",
+            "--phases=fuzzing",
+            "--mode=positive",
+            "-n 10",
+            *args,
+            **kwargs,
+        )
+        == snapshot_cli
+    )
+
+
+def test_warning_on_many_operations(ctx, cli, snapshot_cli):
+    api = ctx.openapi.apps.success_failure_multiple_failures_custom_format()
+    assert (
+        cli.run(
+            api.schema_url,
+            f"--url={api.base_url}/v4/",
+            "-c not_a_server_error",
+            "--phases=fuzzing",
+            "--mode=positive",
+            "-n 10",
+        )
+        == snapshot_cli
+    )
+
+
+@pytest.fixture
+def _clean_registry():
+    default_registry().clear()
+    yield
+    default_registry().clear()
+
+
+@pytest.mark.usefixtures("_clean_registry")
+def test_constants_extraction_warning_displayed(cli, ctx):
+    @schemathesis.python.constants
+    def broken_source():
+        raise RuntimeError("boom in source")
+
+    api = ctx.openapi.apps.success()
+    result = cli.run(api.schema_url, "--max-examples=1")
+
+    assert "WARNINGS" in result.stdout
+    assert "broken_source" in result.stdout

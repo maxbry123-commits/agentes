@@ -1,0 +1,65 @@
+[tool.poetry]
+name = "private-packges_v2"
+version = "0.1.0"
+description = "packages from aternative package repositories"
+authors = ["Your Name <you@example.com>"]
+
+
+# see https://python-poetry.org/docs/repositories/
+
+# HOWTO
+# 1. add the needed host names to your `/etc/hosts` file:
+#    `127.0.0.1    pysrc1.example.local pysrc2.example.local pysrc3.example.local pysrc4.example.local
+# 2. run the `//tests/_data/infiles/_helpers/pypi-proxy.py 8080` to setup a PyPI proxy
+# 3. lock: `poetry lock`
+
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "supplemental"
+
+
+[[tool.poetry.source]]
+name = "primary-src"
+url = "http://user:password@pysrc1.example.local:8080/simple/"
+priority = "primary"
+
+
+[[tool.poetry.source]]
+name = "explicit-src"
+url = "http://user:password@pysrc2.example.local:8080/simple/"
+priority = "explicit"
+
+
+[[tool.poetry.source]]
+name = "supplemental-src"
+url = "http://user:password@pysrc3.example.local:8080/simple/"
+priority = "supplemental"
+
+
+[[tool.poetry.source]]
+name = "testpypi"
+url = "https://user:password@test.pypi.org/simple/"
+priority = "explicit"
+
+
+
+[[tool.poetry.source]]
+name = "jax-src"
+url = "https://storage.googleapis.com/jax-releases/jax_releases.html"
+priority = "primary"
+
+
+
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.13"
+jax = { version = "0.4.20", source = "jax-src" }
+toml = { version = "*", source = "explicit-src" }
+colorama = "*"
+six = { url = 'https://user:password@files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl' }
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

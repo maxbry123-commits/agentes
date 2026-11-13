@@ -1,0 +1,189 @@
+# Prefect UI v2 - React Migration
+
+This is the new React-based Prefect UI, migrating from the legacy Vue application with minimal visual and functional changes.
+
+## Project Structure
+
+```
+prefect/ui-v2/
+├── src/
+│   ├── api/           # API queries, mutations, and mocks
+│   ├── auth/          # Authentication state, AuthProvider, useAuth hook
+│   ├── components/    # React components organized by domain
+│   ├── graphs/        # Pixi.js run graph rendering engine (ported from @prefecthq/graphs)
+│   ├── hooks/         # Custom hooks for common patterns
+│   ├── lib/           # Utility functions and shared code
+│   ├── mocks/         # Mock data factories
+│   ├── routes/        # Tanstack Router route definitions
+│   ├── storybook/     # Storybook utilities and decorators
+│   └── utils/         # Helper functions and utilities
+├── tests/             # Test utilities and configuration
+├── .storybook/        # Storybook configuration
+└── public/            # Static assets
+```
+
+## Tech Stack
+
+- **React** with TypeScript
+- **Tailwind CSS** - styling
+- **shadcn/ui** - UI component library
+- **Tanstack Query** - API state management
+- **Tanstack Router** - routing
+- **Tanstack Table** - table state management
+- **react-hook-form** - form state management
+- **Recharts** - charts and data visualization
+- **Pixi.js** - WebGL canvas rendering for run graphs (`src/graphs/`)
+- **Vitest** - testing framework
+- **Storybook** - component development and documentation
+- **MSW** - API mocking
+
+## General Principles
+
+- Prefer using functionality from third party libraries over custom implementations
+- Prefer to colocate components in the same file as long as the file is less than 750 lines
+
+## Development Workflow
+
+### Development Process
+
+1. **Start development server**: `npm run dev` (runs on http://localhost:5173/)
+2. **Write tests first** for new components and hooks before implementation
+3. **Implement** the component/hook following existing patterns
+4. **Create Storybook story** to document component variants
+5. **Verify functionality** in the browser at http://localhost:5173/
+6. **Compare with legacy Vue** implementation at http://localhost:4200/ for consistency
+
+### Pre-commit Checklist
+
+Before committing any changes, always run:
+
+1. **Format and lint**: `npm run check` (Biome formatting and linting)
+2. **Additional linting**: `npm run lint` (ESLint rules)
+3. **Build verification**: `npm run build` (ensure no build errors)
+4. **Test verification**: `npm test` (run relevant tests)
+
+### Performance Tips
+
+- Run **single tests** for faster feedback: `npm test -- ComponentName`
+- Run **lint on single files** for performance: `npx eslint src/path/to/file.ts --fix`
+- Use **Storybook** for isolated component development: `npm run storybook`
+
+### Browser Testing
+
+- **Primary development**: http://localhost:5173/
+- **Legacy comparison**: http://localhost:4200/
+- **Component documentation**: http://localhost:6006/ (Storybook)
+
+## Common Commands
+
+- `npm run dev` - Start development server
+- `npm run build` - Build production bundle
+- `npm run test` - Run tests
+- `npm run check` - Run linter and formatter (Biome)
+- `npm run lint` - Run ESLint
+- `npm run storybook` - Start Storybook
+- `npm run service-sync` - Sync API types from backend
+
+## Code Organization
+
+- **Flat structure**: Components, tests, and stories live together
+- **Index exports**: Each directory exports public APIs via `index.ts`
+- **Domain organization**: Components organized by Prefect domain (flows, deployments, etc.)
+- **Namespace awareness**: Component names consider their directory context
+
+## Quality Standards
+
+- **Always write tests** for new components and hooks
+- **Always create Storybook stories** for new components
+- **Run `npm run check`** after creating components/hooks
+- **Check functionality** in browser during development
+- **Mock all API calls** using MSW
+
+## API Integration
+
+- Use **`useSuspenseQuery`** over `useQuery` for declarative code; use `useQuery` when the component must silently return `null` while loading rather than suspend the tree (e.g., optional or promotional components that should disappear rather than show a skeleton)
+- **Query factories** in `/api` directories with standardized key patterns
+- **Mutation hooks** in `/api` directories
+- **No data transformation** in query factories - do it in components
+- **Duration fields** (`estimated_run_time`, `total_run_time`, etc.) are returned in **seconds** by the API. Prefer `secondsToApproximateString`/`secondsToString` from `@/utils/seconds` for display — they take raw seconds directly. `humanizeDuration` and similar JS libraries expect milliseconds instead, so multiply by 1000 before passing to them
+
+## Forms
+
+- **react-hook-form** for form state
+- **zod** for validation
+- **Form** and **FormField** components from shadcn/ui
+- **Stepper** component for wizard flows
+- **Forms bound to refetched queries**: Entity queries (deployments, etc.) refetch on a 30-second interval and on window focus, returning new object references each time. Use `useState` lazy initializers to capture default values once — do not sync form state via `useEffect`, which overwrites in-flight user edits on every refetch. Add `key={entity.id}` on the form component so it fully resets when the entity changes.
+- **Zod v4**: `z.record()` requires an explicit key schema — `z.record(z.string(), z.unknown())`, not the v3-style `z.record(z.unknown())`. `ZodError` instances expose `.issues`, not the removed `.errors`.
+
+## Testing
+
+- **Vitest** with **@testing-library/react**
+- All API calls mocked with **MSW**
+- Mock factories using **@ngneat/falso**
+- Run single tests for performance: `npm test -- ComponentName`
+
+## Git Workflow
+
+- Branch naming: `ui-v2/feature-description`
+- Succinct commit messages
+- PR descriptions mention "Related to #15512"
+- Never commit directly to `main`
+
+## Styling for Light and Dark Mode
+
+The UI supports both light and dark themes. To ensure components render correctly in both modes:
+
+### Use Semantic Color Tokens
+
+Always use Tailwind's semantic color classes that automatically adapt to the current theme instead of hardcoded color values:
+
+| Instead of | Use |
+|------------|-----|
+| `bg-gray-100`, `bg-gray-200` | `bg-muted` |
+| `bg-white` | `bg-background` or `bg-card` |
+| `text-gray-500`, `text-gray-600` | `text-muted-foreground` |
+| `text-gray-900`, `text-black` | `text-foreground` |
+| `border-gray-200`, `border-gray-300` | `border-border` or `border-muted` |
+
+### For Dividers and Subtle Elements
+
+Use opacity modifiers with semantic colors for subtle visual elements like dividers:
+- `bg-muted-foreground/30` for subtle divider lines
+- `border-border` for standard borders
+
+### Prose Content in Dark Mode
+
+Tailwind's `prose` class (`@tailwindcss/typography`) does **not** automatically invert in dark mode. Any element using `prose` must also include `dark:prose-invert`:
+
+```tsx
+<div className="prose dark:prose-invert">...</div>
+```
+
+### CodeMirror Editors
+
+`@uiw/react-codemirror` does not follow the app theme automatically. Any component using `useCodeMirror` must explicitly read and pass the theme:
+
+```tsx
+const { resolvedTheme } = useTheme(); // from "next-themes"
+useCodeMirror({ theme: resolvedTheme === "dark" ? "dark" : "light", ... });
+```
+
+### Avoid Hardcoded Colors
+
+Never use hardcoded gray scale colors (e.g., `bg-gray-100`, `text-gray-500`) as these will not adapt to dark mode and can make text unreadable or create jarring visual contrast.
+
+### Testing Dark Mode
+
+Always verify components in both light and dark mode:
+1. Use the theme toggle in Settings to switch between modes
+2. Check that all text remains readable
+3. Verify backgrounds blend appropriately with the overall theme
+4. Ensure sufficient contrast for interactive elements
+
+## Architecture Notes
+
+- **Suspense-first**: Use suspense queries to avoid loading states
+- **Type safety**: Never use `as unknown` or disable ESLint
+- **Pure functions**: Keep utilities side-effect free
+- **Composition**: Prefer composition over complex inheritance

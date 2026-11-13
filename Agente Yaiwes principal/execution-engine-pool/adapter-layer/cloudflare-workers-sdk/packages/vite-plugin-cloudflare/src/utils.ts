@@ -1,0 +1,266 @@
+import * as nodePath from "node:path";
+import * as util from "node:util";
+import { createHeaders, sendResponse } from "@remix-run/node-fetch-server";
+import {
+	CoreHeaders,
+	Request as MiniflareRequest,
+	Response as MiniflareResponse,
+} from "miniflare";
+import semverGte from "semver/functions/gte";
+import { version as viteVersion } from "vite";
+import * as vite from "vite";
+import { PROXY_SHARED_SECRET } from "./constants";
+import { warnIfQuickTunnelSseResponse } from "./plugins/tunnel";
+import type { PluginContext } from "./context";
+import type * as http from "node:http";
+
+export const debuglog = util.debuglog("@cloudflare:vite-plugin");
+
+/**
+ * Creates an internal plugin to be used inside the main `vite-plugin-cloudflare` plugin.
+ * The provided `name` will be prefixed with `vite-plugin-cloudflare:`.
+ */
+export function createPlugin(
+	name: string,
+	pluginFactory: (ctx: PluginContext) => Omit<vite.Plugin, "name">
+): (ctx: PluginContext) => vite.Plugin {
+	return (ctx) => {
+		return {
+			name: `vite-plugin-cloudflare:${name}`,
+			sharedDuringBuild: true,
+			...pluginFactory(ctx),
+		};
+	};
+}
+
+export function getOutputDirectory(
+	userConfig: vite.UserConfig,
+	environmentName: string
+) {
+	const rootOutputDirectory = userConfig.build?.outDir ?? "dist";
+
+	return (
+		userConfig.environments?.[environmentName]?.build?.outDir ??
+		nodePath.join(rootOutputDirectory, environmentName)
+	);
+}
+
+const postfixRE = /[?#].*$/;
+export function cleanUrl(url: string): string {
+	return url.replace(postfixRE, "");
+}
+
+export type Optional<T, K extends keyof T> = Omit<T, K> & Pick<Partial<T>, K>;
+
+export type MaybePromise<T> = Promise<T> | T;
+
+export type Defined<T> = Exclude<T, undefined>;
+
+export function withTrailingSlash(path: string): string {
+	return path.endsWith("/") ? path : `${path}/`;
+}
+
+export function createRequestHandler(
+	handler: (
+		request: MiniflareRequest,
+		req: vite.Connect.IncomingMessage
+	) => Promise<MiniflareResponse>
+): (
+	req: vite.Connect.IncomingMessage,
+	res: http.ServerResponse,
+	next: vite.Connect.NextFunction
+) => Promise<void> {
+	return async (req, res, next) => {
+		let request: Request | undefined;
+
+		try {
+			// Built in vite middleware trims out the base path when passing in the request
+			// We can restore it by using the `originalUrl` property
+			// This makes sure the worker receives the correct url in both dev using vite and production
+			if (req.originalUrl) {
+				req.url = req.originalUrl;
+			}
+			// Honor the `X-Forwarded-Proto` header on the incoming request so that
+			// `request.url` reflects the protocol the original client used, not the
+			// HTTP connection between the proxy and the dev server. This is needed
+			// when the Vite dev server sits behind a TLS-terminating reverse proxy
+			// or tunnel (cloudflared, ngrok, etc.) so that frameworks performing
+			// Origin/Host checks (e.g. CSRF protection) see a consistent origin.
+			//
+			// We trust this unconditionally because the Vite dev server is a
+			// local-only dev tool and this header is the de-facto standard set by
+			// reverse proxies. Browser-mediated CSRF attacks cannot reach here:
+			// `X-Forwarded-Proto` is not a CORS-safelisted header, so a `fetch()`
+			// that sets it triggers a CORS preflight, and simple form-submitted
+			// POSTs cannot include custom headers at all.
+			//
+			// If the header is absent or invalid, `createRequest` falls back to the
+			// connection protocol (`req.socket.encrypted`).
+			const protocol = getForwardedProto(req);
+			request = createRequestForIncomingMessage(
+				req,
+				res,
+				protocol ? { protocol } : undefined
+			);
+
+			let response = await handler(toMiniflareRequest(request), req);
+
+			// Vite uses HTTP/2 when `server.https` or `preview.https` is enabled
+			if (req.httpVersionMajor === 2) {
+				response = new MiniflareResponse(response.body, response);
+				// HTTP/2 disallows use of the `transfer-encoding` header
+				response.headers.delete("transfer-encoding");
+			}
+
+			warnIfQuickTunnelSseResponse(response.headers.get("content-type"));
+
+			await sendResponse(res, response as unknown as Response);
+		} catch (error) {
+			if (request?.signal.aborted) {
+				// If the request was aborted, ignore the error
+				return;
+			}
+
+			next(error);
+		}
+	};
+}
+
+export function satisfiesMinimumViteVersion(minVersion: string): boolean {
+	return semverGte(viteVersion, minVersion);
+}
+
+function createRequestForIncomingMessage(
+	req: vite.Connect.IncomingMessage,
+	res: http.ServerResponse,
+	options?: { protocol?: "http:" | "https:"; host?: string }
+): Request {
+	const controller = new AbortController();
+	res.on("close", () => {
+		controller.abort();
+	});
+
+	const method = req.method ?? "GET";
+	const headers = createHeaders(req);
+	const protocol =
+		options?.protocol ??
+		("encrypted" in req.socket && req.socket.encrypted ? "https:" : "http:");
+	const host = options?.host ?? headers.get("Host") ?? "localhost";
+	const url = new URL(req.url ?? "/", `${protocol}//${host}`);
+	const init: RequestInit & { duplex?: "half" } = {
+		method,
+		headers,
+		signal: controller.signal,
+	};
+
+	if (method !== "GET" && method !== "HEAD") {
+		init.body = createCancellableRequestBody(req);
+		init.duplex = "half";
+	}
+
+	return new Request(url, init);
+}
+
+function createCancellableRequestBody(
+	req: vite.Connect.IncomingMessage
+): ReadableStream<Uint8Array> {
+	let cleanup: (() => void) | undefined;
+
+	return new ReadableStream<Uint8Array>({
+		start(controller) {
+			const onData = (chunk: Buffer) => {
+				try {
+					controller.enqueue(
+						new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+					);
+				} catch (error) {
+					if (
+						error instanceof TypeError &&
+						error.message.includes("Controller is already closed")
+					) {
+						cleanup?.();
+						req.resume();
+						return;
+					}
+					throw error;
+				}
+			};
+			const onEnd = () => {
+				cleanup?.();
+				controller.close();
+			};
+			const onError = (error: Error) => {
+				cleanup?.();
+				controller.error(error);
+			};
+
+			cleanup = () => {
+				req.off("data", onData);
+				req.off("end", onEnd);
+				req.off("error", onError);
+				cleanup = undefined;
+			};
+
+			req.on("data", onData);
+			req.on("end", onEnd);
+			req.on("error", onError);
+		},
+		cancel() {
+			cleanup?.();
+			req.resume();
+		},
+	});
+}
+
+function toMiniflareRequest(request: Request): MiniflareRequest {
+	const host = request.headers.get("Host");
+	const xForwardedHost = request.headers.get("X-Forwarded-Host");
+
+	if (host && !xForwardedHost) {
+		// Set the `x-forwarded-host` header to the host of the Vite server if it is not already set
+		// Note that the `host` header inside the Worker will contain the workerd host
+		// TODO: reconsider this when adopting `miniflare.dispatchFetch` as it may be possible to provide the Vite server host in the `host` header
+		request.headers.set("X-Forwarded-Host", host);
+	}
+
+	// Add the proxy shared secret to the request headers
+	// so the proxy worker can trust it and add host headers back
+	request.headers.set(CoreHeaders.PROXY_SHARED_SECRET, PROXY_SHARED_SECRET);
+
+	// Undici sets the `Sec-Fetch-Mode` header to `cors` so we capture it in a custom header to be converted back later.
+	const secFetchMode = request.headers.get("Sec-Fetch-Mode");
+	if (secFetchMode) {
+		request.headers.set(CoreHeaders.SEC_FETCH_MODE, secFetchMode);
+	}
+	return new MiniflareRequest(request.url, {
+		method: request.method,
+		headers: [["accept-encoding", "identity"], ...request.headers],
+		body: request.body,
+		duplex: "half",
+		signal: request.signal,
+	});
+}
+
+export const isRolldown = "rolldownVersion" in vite;
+
+/**
+ * Parses the `X-Forwarded-Proto` header from an incoming Node.js request.
+ *
+ * If multiple proxies are in the chain, the header may be a comma-separated
+ * list — the left-most value is the original client-facing protocol.
+ * Returns `undefined` if the header is missing or holds an unsupported value.
+ */
+export function getForwardedProto(req: {
+	headers: http.IncomingHttpHeaders;
+}): "http:" | "https:" | undefined {
+	const raw = req.headers["x-forwarded-proto"];
+	const value = Array.isArray(raw) ? raw[0] : raw;
+	if (!value) {
+		return undefined;
+	}
+	const first = value.split(",")[0]?.trim().toLowerCase();
+	if (first === "http" || first === "https") {
+		return `${first}:`;
+	}
+	return undefined;
+}

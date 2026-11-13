@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "Prometheus-Eval",
+    "path": "eval/benchmark/data/alpaca_eval.json",
+    "chunks_dir": "Prometheus-Eval/eval/benchmark/data/alpaca_eval.json.chunks",
+    "bytes": 12549988,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Prometheus-Eval",
+    "path": "eval/benchmark/data/preference_collection_ood_test.json",
+    "chunks_dir": "Prometheus-Eval/eval/benchmark/data/preference_collection_ood_test.json.chunks",
+    "bytes": 18668190,
+    "chunk_bytes": 8388608
+  }
+]

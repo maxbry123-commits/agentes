@@ -1,0 +1,100 @@
+# Enchufe Universal v2.0 — Ficha del módulo project_bootstrap
+# Módulo nativo de auto-conocimiento del kernel
+# PIPELINE A1 — Contrato del módulo
+
+artifact_id: "wordflow.kernel.project_bootstrap"
+version: "1.0.0"
+estado: "draft"
+categoria: "transversal"
+etapa: "P"
+
+contrato:
+  rol: "service"
+  consume:
+    datatype: "input_block"
+    schema_uri: "maxbry://schemas/input_block/v1"
+  expone:
+    datatype: "project_model"
+    schema_uri: "maxbry://schemas/project_model/v1"
+  input_map:
+    raw_input: "input_block"
+    documents: "document_list"
+  output_map:
+    project_model: "project_model"
+    tasks: "task_list"
+    goals: "goal_struct"
+
+ejecucion:
+  kind: "code"
+  transport: "importlib"
+  runtime_type: "compute"
+  llm_ratio: 0.05
+  idempotente: true
+  entry_point: "extensions.project_bootstrap.entrypoint:run"
+
+naturaleza:
+  determinista: true
+  idempotente: true
+  side_effects: ["write_project_docs", "update_traceability"]
+
+seguridad:
+  sandbox: "container"
+  allow_network: false
+  allow_fs_write: ["PROJECT/", "control/", "state/"]
+  secrets_required: []
+
+perfiles:
+  n0:
+    habilitada: true
+    iteraciones: 1
+    simulaciones: 0
+  n1:
+    habilitada: true
+    iteraciones: 1
+  n2:
+    habilitada: true
+    iteraciones: 2
+  n3:
+    habilitada: true
+    iteraciones: 2
+    criticas: 1
+  n4:
+    habilitada: false
+  n5:
+    habilitada: false
+
+repeticion:
+  max: 1
+  condicion: "si_memoria_cambia"
+
+presupuesto:
+  tokens_max: 8000
+  tiempo_max_s: 120
+  costo_max: 0.05
+
+telemetria:
+  metrics: ["goals_extracted", "tasks_created", "docs_normalized", "updates_incremental"]
+  spans: ["ktp.cycle", "normalizer.run", "input_handler.classify"]
+
+evidencia:
+  niveles: ["L1", "L2"]
+  destinos:
+    L1: "state/evidence/"
+    L2: "TRACEABILITY.md"
+
+failover:
+  sustituible_por: []
+  compensacion: "none"
+
+firma:
+  gpg_key_id: "PENDING"
+  revocation_list: "PENDING"
+
+salud:
+  health_endpoint: "internal"
+  heartbeat_interval_s: 60
+
+descripcion: >
+  Módulo nativo del kernel que gestiona el auto-conocimiento del sistema
+  mediante plantillas de documentos, Kernel Thought Protocol (emoji FSM),
+  Resource Brain y actualización incremental de proyectos.

@@ -1,0 +1,22 @@
+version: "3.8"
+services:
+  cognithor-test:
+    build:
+      context: ../..
+      dockerfile: tests/test_reallife/Dockerfile
+    environment:
+      JARVIS_TEST_MODE: "1"
+      JARVIS_LOG_LEVEL: "WARNING"
+      OLLAMA_HOST: "http://host.docker.internal:11434"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - test-data:/root/.jarvis
+    networks:
+      - test-net
+
+volumes:
+  test-data:
+
+networks:
+  test-net:

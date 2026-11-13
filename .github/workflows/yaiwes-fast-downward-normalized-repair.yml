@@ -1,0 +1,256 @@
+name: YAIWES Fast Downward Normalized Repair
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-fast-downward-normalized-repair.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-fast-downward-normalized-repair
+  cancel-in-progress: false
+
+jobs:
+  repair-and-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      MOTOR1: Motores/➡️📂 Motor de extracción zip/motor_1_extract_only.py
+      DEST: Core kernel Yaiwes/Fast-Downward
+      SOURCE_REPO: aibasel/downward
+    steps:
+      - name: Checkout locked extractor
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-fast-downward-normalized-repair.yml
+            /Motores/➡️📂 Motor de extracción zip/motor_1_extract_only.py
+            /Core kernel Yaiwes/Crack wall bitácora stated JSON/PLANNER-DECOMPOSER4-QUEUE-20260914.json
+
+      - name: Verify immutable Motor1
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$MOTOR1")" = 'a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500'
+          echo 'MOTOR1_LOCK=PASS'
+
+      - name: Acquire and normalize Fast Downward source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/fd-src /tmp/fd-work /tmp/fd-publish
+          GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 --filter=blob:none https://github.com/aibasel/downward.git /tmp/fd-src
+          git -C /tmp/fd-src rev-parse HEAD > /tmp/fd-source-commit
+          rm -rf /tmp/fd-src/.git
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,stat
+          root=pathlib.Path('/tmp/fd-src').resolve()
+          normalized=[]
+          for p in sorted(root.rglob('*')):
+              if not p.is_symlink():
+                  continue
+              rel=p.relative_to(root).as_posix()
+              raw=os.readlink(p)
+              target=(p.parent/raw).resolve()
+              try: target.relative_to(root)
+              except ValueError: raise SystemExit('SYMLINK_ESCAPES_SOURCE:'+rel+'->'+raw)
+              if not target.is_file(): raise SystemExit('SYMLINK_TARGET_NOT_FILE:'+rel+'->'+raw)
+              data=target.read_bytes()
+              p.unlink(); p.write_bytes(data)
+              normalized.append({'path':rel,'target':raw,'materialized_bytes':len(data)})
+          specials=[]
+          for p in sorted(root.rglob('*')):
+              if p.is_symlink(): specials.append(p.relative_to(root).as_posix()+':symlink'); continue
+              if p.is_file() and not stat.S_ISREG(p.stat().st_mode): specials.append(p.relative_to(root).as_posix()+':special')
+          if specials: raise SystemExit('SPECIALS_REMAIN:'+','.join(specials[:30]))
+          expected={'misc/releases/latest/Dockerfile','misc/releases/latest/Vagrantfile'}
+          got={x['path'] for x in normalized}
+          if got != expected: raise SystemExit('NORMALIZATION_SET_MISMATCH:'+json.dumps(sorted(got)))
+          pathlib.Path('/tmp/fd-normalized-symlinks.json').write_text(json.dumps(normalized,indent=2,sort_keys=True)+'\n')
+          print(json.dumps({'normalized':normalized},ensure_ascii=False))
+          PY
+
+      - name: Build bundle, extract with canonical Motor1, compare trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/fd-work/parts /tmp/fd-work/extracted /tmp/fd-publish/Fast-Downward/code /tmp/fd-publish/Fast-Downward/_archives
+          python3 - <<'PY'
+          import hashlib,json,pathlib,zipfile,shutil
+          src=pathlib.Path('/tmp/fd-src'); zpath=pathlib.Path('/tmp/fd-work/Fast-Downward.bundle.zip')
+          def sha(p):
+              h=hashlib.sha256()
+              with p.open('rb') as f:
+                  for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
+              return h.hexdigest()
+          def tree(root):
+              h=hashlib.sha256(); n=0; total=0; lfs=[]
+              for p in sorted((x for x in root.rglob('*') if x.is_file()), key=lambda x:x.relative_to(root).as_posix()):
+                  rel=p.relative_to(root).as_posix(); s=p.stat().st_size; d=sha(p)
+                  h.update(rel.encode()+b'\0'+d.encode()+b'\0'+str(s).encode()+b'\n'); n+=1; total+=s
+                  try:
+                      if p.open('rb').read(200).startswith(b'version https://git-lfs.github.com/spec/v1\n'): lfs.append(rel)
+                  except Exception: pass
+              return {'files':n,'bytes':total,'sha256':h.hexdigest(),'lfs_pointers':lfs}
+          st=tree(src)
+          with zipfile.ZipFile(zpath,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+              for p in sorted((x for x in src.rglob('*') if x.is_file()), key=lambda x:x.relative_to(src).as_posix()):
+                  rel=p.relative_to(src).as_posix(); info=zipfile.ZipInfo(rel); info.date_time=(1980,1,1,0,0,0); info.external_attr=(0o100644<<16)
+                  z.writestr(info,p.read_bytes(),compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+          part=12*1024*1024; parts=[]
+          with zpath.open('rb') as f:
+              i=1
+              while True:
+                  b=f.read(part)
+                  if not b: break
+                  p=pathlib.Path('/tmp/fd-work/parts')/f'Fast-Downward.bundle.zip.part-{i:04d}'; p.write_bytes(b)
+                  parts.append({'name':p.name,'bytes':len(b),'sha256':sha(p)}); i+=1
+          data={'source_tree':st,'bundle_bytes':zpath.stat().st_size,'bundle_sha256':sha(zpath),'parts':parts}
+          pathlib.Path('/tmp/fd-build.json').write_text(json.dumps(data,indent=2,sort_keys=True)+'\n')
+          PY
+          ARCHIVE_INPUT=/tmp/fd-work/parts DEST_DIR=/tmp/fd-work/extracted STATE_FILE=/tmp/fd-motor1-state.json BATCH_SIZE=100 python3 "$MOTOR1" | tee /tmp/fd-motor1-result.json
+          python3 - <<'PY'
+          import hashlib,json,pathlib,shutil
+          def sha(p):
+              h=hashlib.sha256()
+              with p.open('rb') as f:
+                  for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
+              return h.hexdigest()
+          def tree(root):
+              h=hashlib.sha256(); n=0; total=0
+              for p in sorted((x for x in root.rglob('*') if x.is_file()), key=lambda x:x.relative_to(root).as_posix()):
+                  rel=p.relative_to(root).as_posix(); s=p.stat().st_size; d=sha(p)
+                  h.update(rel.encode()+b'\0'+d.encode()+b'\0'+str(s).encode()+b'\n'); n+=1; total+=s
+              return {'files':n,'bytes':total,'sha256':h.hexdigest()}
+          build=json.loads(pathlib.Path('/tmp/fd-build.json').read_text())
+          m1=json.loads(pathlib.Path('/tmp/fd-motor1-result.json').read_text().strip().splitlines()[-1])
+          et=tree(pathlib.Path('/tmp/fd-work/extracted'))
+          st={k:build['source_tree'][k] for k in ('files','bytes','sha256')}
+          if m1.get('verdict')!='VERIFIED_CLOSED': raise SystemExit('MOTOR1_NOT_CLOSED')
+          if st!=et: raise SystemExit('TREE_MISMATCH:'+json.dumps({'source':st,'extracted':et}))
+          pub=pathlib.Path('/tmp/fd-publish/Fast-Downward')
+          shutil.copytree('/tmp/fd-work/extracted',pub/'code',dirs_exist_ok=True)
+          for p in pathlib.Path('/tmp/fd-work/parts').iterdir(): shutil.copy2(p,pub/'_archives'/p.name)
+          manifest={
+            'schema':'yaiwes.kernel.normalized-download-extract/v1',
+            'slug':'Fast-Downward',
+            'source_repo':'aibasel/downward',
+            'source_ref':'HEAD',
+            'source_commit':pathlib.Path('/tmp/fd-source-commit').read_text().strip(),
+            'normalization':'materialize_internal_symlinks',
+            'normalized_symlinks':json.loads(pathlib.Path('/tmp/fd-normalized-symlinks.json').read_text()),
+            'source_tree':st,'extracted_tree':et,
+            'source_files':st['files'],'source_bytes':st['bytes'],
+            'bundle_bytes':build['bundle_bytes'],'bundle_sha256':build['bundle_sha256'],'parts':build['parts'],
+            'lfs_pointers':build['source_tree']['lfs_pointers'],'no_lfs':not bool(build['source_tree']['lfs_pointers']),
+            'extraction_verified':True,'reconstruction_verified':True,
+            'extractor':{'path':'Motores/➡️📂 Motor de extracción zip/motor_1_extract_only.py','blob_sha':'a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500','verdict':'VERIFIED_CLOSED'}
+          }
+          (pub/'DOWNLOAD_EXTRACT_MANIFEST.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n')
+          pathlib.Path('/tmp/fd-manifest.keep.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n')
+          print(json.dumps({'source_tree':st,'extracted_tree':et,'normalized':manifest['normalized_symlinks']},ensure_ascii=False))
+          PY
+
+      - name: Publish normalized Fast Downward with race-safe retries
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in $(seq 1 20); do
+            git fetch origin +refs/heads/main:refs/remotes/origin/main
+            git reset --hard origin/main
+            rm -rf "$DEST"
+            mkdir -p "$(dirname "$DEST")"
+            cp -a /tmp/fd-publish/Fast-Downward "$DEST"
+            git add -f --sparse -- "$DEST"
+            git commit -m 'build(yaiwes): publish normalized Fast-Downward bundle and extracted tree'
+            commit=$(git rev-parse HEAD)
+            if git push origin HEAD:main; then echo "$commit" > /tmp/fd-publish-commit; exit 0; fi
+            sleep $((attempt * 2))
+          done
+          exit 1
+
+      - name: Deep read-back and final 4-of-4 gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/fd-readback
+          git clone --depth 1 --filter=blob:none --sparse https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git /tmp/fd-readback
+          git -C /tmp/fd-readback sparse-checkout set --no-cone '/Core kernel Yaiwes/Fast-Downward/' '/Core kernel Yaiwes/Unified-Planning/DOWNLOAD_EXTRACT_MANIFEST.json' '/Core kernel Yaiwes/Pyperplan/DOWNLOAD_EXTRACT_MANIFEST.json' '/Core kernel Yaiwes/GTPyhop/DOWNLOAD_EXTRACT_MANIFEST.json'
+          python3 - <<'PY'
+          import hashlib,json,pathlib
+          root=pathlib.Path('/tmp/fd-readback/Core kernel Yaiwes')
+          def sha(p):
+              h=hashlib.sha256()
+              with p.open('rb') as f:
+                  for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
+              return h.hexdigest()
+          def tree(r):
+              h=hashlib.sha256(); n=0; total=0
+              for p in sorted((x for x in r.rglob('*') if x.is_file()),key=lambda x:x.relative_to(r).as_posix()):
+                  rel=p.relative_to(r).as_posix(); s=p.stat().st_size; d=sha(p)
+                  h.update(rel.encode()+b'\0'+d.encode()+b'\0'+str(s).encode()+b'\n'); n+=1; total+=s
+              return {'files':n,'bytes':total,'sha256':h.hexdigest()}
+          expected={
+            'Fast-Downward':'aibasel/downward',
+            'Unified-Planning':'aiplan4eu/unified-planning',
+            'Pyperplan':'aibasel/pyperplan',
+            'GTPyhop':'dananau/GTPyhop'}
+          closed=[]; gaps=[]
+          for slug,repo in expected.items():
+              mp=root/slug/'DOWNLOAD_EXTRACT_MANIFEST.json'
+              if not mp.exists(): gaps.append({'slug':slug,'gap':'MANIFEST_MISSING'}); continue
+              d=json.loads(mp.read_text())
+              if d.get('source_repo')!=repo: gaps.append({'slug':slug,'gap':'SOURCE_PROVENANCE_MISMATCH','actual':d.get('source_repo')}); continue
+              if d.get('extraction_verified') is not True: gaps.append({'slug':slug,'gap':'EXTRACTION_NOT_VERIFIED'}); continue
+              st=d.get('source_tree') or {}; et=d.get('extracted_tree') or {}
+              if st.get('sha256')!=et.get('sha256') or st.get('files')!=et.get('files'): gaps.append({'slug':slug,'gap':'MANIFEST_TREE_MISMATCH'}); continue
+              if slug=='Fast-Downward':
+                  rb=tree(root/slug/'code')
+                  if {k:st.get(k) for k in ('files','bytes','sha256')} != rb: gaps.append({'slug':slug,'gap':'DEEP_READBACK_TREE_MISMATCH','actual':rb}); continue
+                  parts=d.get('parts') or []
+                  for part in parts:
+                      pp=root/slug/'_archives'/part['name']
+                      if not pp.exists() or sha(pp)!=part['sha256']: gaps.append({'slug':slug,'gap':'ARCHIVE_PART_READBACK_GAP','part':part['name']}); break
+                  else:
+                      closed.append({'slug':slug,'source_commit':d.get('source_commit'),'files':st.get('files'),'tree_sha256':st.get('sha256')})
+                      continue
+                  continue
+              closed.append({'slug':slug,'source_commit':d.get('source_commit'),'files':st.get('files'),'tree_sha256':st.get('sha256')})
+          result={'schema':'yaiwes.kernel.planner-decomposer4.final-gate/v2','total':4,'closed':closed,'gaps':gaps,'global_verified':len(closed)==4 and not gaps}
+          pathlib.Path('/tmp/planner-decomposer4-final-gate-v2.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(result,ensure_ascii=False))
+          if not result['global_verified']: raise SystemExit(1)
+          print('PLANNER_DECOMPOSER4=VERIFIED_CLOSED_4_OF_4')
+          PY
+
+      - name: Persist final gate evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /tmp/planner-decomposer4-final-gate-v2.json
+          cp /tmp/planner-decomposer4-final-gate-v2.json /tmp/final-gate.keep.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          out='Core kernel Yaiwes/Crack wall bitácora stated JSON/PLANNER-DECOMPOSER4-FINAL-GATE-V2-20260914.json'
+          for attempt in $(seq 1 15); do
+            git fetch origin +refs/heads/main:refs/remotes/origin/main
+            git reset --hard origin/main
+            mkdir -p "$(dirname "$out")"; cp /tmp/final-gate.keep.json "$out"
+            git add -f --sparse -- "$out"
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'watchdog(yaiwes): persist planner decomposer4 final gate v2'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 2))
+          done
+          exit 1

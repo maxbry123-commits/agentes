@@ -1,0 +1,48 @@
+# ========== base ==========
+
+FROM node:24.13.0-trixie-slim AS base
+
+RUN npm install -g pnpm
+
+# ========== tensorzero-node-build-env ==========
+
+FROM rust:1.94.0 AS tensorzero-node-build-env
+
+RUN apt-get update && apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/*
+RUN npm install -g pnpm
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml /build/
+COPY crates/ /build/crates/
+WORKDIR /build/crates/tensorzero-node
+
+RUN pnpm install --frozen-lockfile && pnpm run build
+
+# ========== test-env ==========
+
+FROM base AS test-env
+
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY ui/package.json ./ui/
+COPY crates/tensorzero-node/package.json ./crates/tensorzero-node/
+
+# Install all dependencies (including dev dependencies for testing)
+RUN pnpm install --frozen-lockfile
+
+# Copy tensorzero-node binding
+COPY --from=tensorzero-node-build-env /build/crates/tensorzero-node/dist /app/crates/tensorzero-node/dist
+COPY --from=tensorzero-node-build-env /build/crates/tensorzero-node/index.cjs /app/crates/tensorzero-node/index.cjs
+COPY --from=tensorzero-node-build-env /build/crates/tensorzero-node/*linux*.node /app/crates/tensorzero-node/
+
+# Copy the rest of the code
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY crates/tensorzero-node/package.json ./crates/tensorzero-node/
+COPY ui/ ./ui/
+
+# Set CI environment variable for non-interactive mode
+ENV CI=true
+
+# Set the entrypoint to run UI tests non-interactively
+ENTRYPOINT ["pnpm", "ui:test", "--run"]

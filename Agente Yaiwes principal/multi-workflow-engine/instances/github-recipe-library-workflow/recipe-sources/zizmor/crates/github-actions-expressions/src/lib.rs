@@ -1,0 +1,2729 @@
+//! GitHub Actions expression parsing and analysis.
+
+#![deny(missing_docs)]
+
+use std::ops::Deref;
+
+use crate::{
+    call::{Call, Function},
+    context::Context,
+    identifier::Identifier,
+    literal::Literal,
+    op::{BinExpr, BinOp, UnOp},
+};
+
+pub mod call;
+pub mod context;
+pub mod identifier;
+mod lexer;
+pub mod literal;
+pub mod op;
+mod parser;
+
+/// Errors that can occur during expression parsing.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// The expression failed to parse according to the grammar.
+    #[error(transparent)]
+    Syntax(#[from] SyntaxError),
+    /// The expression exceeds the parser's maximum recursion depth.
+    #[error("expression exceeds maximum recursion depth")]
+    Depth,
+    /// The expression contains an invalid function call.
+    #[error("Invalid function call")]
+    Call(#[from] call::Error),
+}
+
+/// A syntax error encountered while parsing an expression.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("invalid expression syntax: {message} (at offset {offset})")]
+pub struct SyntaxError {
+    /// A human-readable description of the error.
+    pub message: &'static str,
+    /// The byte offset within the expression at which the error occurred.
+    pub offset: usize,
+}
+
+/// Represents the origin of an expression, including its source span
+/// and unparsed form.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Origin<'src> {
+    /// The expression's source span.
+    pub span: subfeature::Span,
+    /// The expression's unparsed form, as it appears in the source.
+    ///
+    /// This is recorded exactly as it appears in the source, *except*
+    /// that leading and trailing whitespace is stripped. This is stripped
+    /// because it's (1) non-semantic, and (2) can cause all kinds of issues
+    /// when attempting to map expressions back to YAML source features.
+    pub raw: &'src str,
+}
+
+impl<'a> Origin<'a> {
+    /// Create a new origin from the given span and raw form.
+    pub fn new(span: impl Into<subfeature::Span>, raw: &'a str) -> Self {
+        Self {
+            span: span.into(),
+            raw: raw.trim(),
+        }
+    }
+}
+
+/// An expression along with its source origin (span and unparsed form).
+///
+/// An expression's span covers exactly the bytes the expression
+/// was parsed from, with no surrounding whitespace. A parenthesized expression
+/// includes its parentheses, so every span is a balanced, self-contained slice
+/// of the source.
+///
+/// NOTE: `SpannedExpr` has a manual [`PartialEq`] implementation that only considers
+/// the underlying expression, not the span. In opther words, two `SpannedExpr` instances
+/// are equal if their ASTs are equal, even if their source spans are not.
+#[derive(Debug)]
+pub struct SpannedExpr<'src> {
+    /// The expression's source origin.
+    pub origin: Origin<'src>,
+    /// The expression itself.
+    pub inner: Expr<'src>,
+}
+
+impl<'a> SpannedExpr<'a> {
+    /// Creates a new `SpannedExpr` from an expression and its span.
+    pub(crate) fn new(origin: Origin<'a>, inner: Expr<'a>) -> Self {
+        Self { origin, inner }
+    }
+
+    /// Returns the contexts in this expression, along with their origins.
+    ///
+    /// This includes all contexts in the expression, even those that don't directly flow into
+    /// the evaluation. For example, `${{ foo.bar == 'abc' }}` returns `foo.bar` since it's a
+    /// context in the expression, even though it flows into a boolean evaluation rather than
+    /// directly into the output.
+    ///
+    /// For dataflow contexts, see [`SpannedExpr::dataflow_contexts`].
+    pub fn contexts(&self) -> Vec<(&Context<'a>, &Origin<'a>)> {
+        let mut contexts = vec![];
+
+        match self.deref() {
+            Expr::Index(expr) => contexts.extend(expr.contexts()),
+            Expr::Call(Call { func: _, args }) => {
+                for arg in args {
+                    contexts.extend(arg.contexts());
+                }
+            }
+            Expr::Context(ctx) => {
+                // Record the context itself.
+                contexts.push((ctx, &self.origin));
+
+                // The context's parts can also contain independent contexts,
+                // e.g. computed indices like `bar.baz` in `foo[bar.baz]`.
+                ctx.parts
+                    .iter()
+                    .for_each(|part| contexts.extend(part.contexts()));
+            }
+            Expr::BinExpr(BinExpr { lhs, op: _, rhs }) => {
+                contexts.extend(lhs.contexts());
+                contexts.extend(rhs.contexts());
+            }
+            Expr::UnExpr { op: _, expr } => contexts.extend(expr.contexts()),
+            _ => (),
+        }
+
+        contexts
+    }
+
+    /// Returns the contexts in this expression that directly flow into the
+    /// expression's evaluation.
+    ///
+    /// For example `${{ foo.bar }}` returns `foo.bar` since the value
+    /// of `foo.bar` flows into the evaluation. On the other hand,
+    /// `${{ foo.bar == 'abc' }}` returns no expanded contexts,
+    /// since the value of `foo.bar` flows into a boolean evaluation
+    /// that gets expanded.
+    pub fn dataflow_contexts(&self) -> Vec<(&Context<'a>, &Origin<'a>)> {
+        let mut contexts = vec![];
+
+        match self.deref() {
+            Expr::Call(Call { func, args }) => {
+                // These functions, when evaluated, produce an evaluation
+                // that includes some or all of the contexts listed in
+                // their arguments.
+                if matches!(func, Function::ToJSON | Function::Format | Function::Join) {
+                    for arg in args {
+                        contexts.extend(arg.dataflow_contexts());
+                    }
+                }
+            }
+            // NOTE: We intentionally don't handle the `func(...).foo.bar`
+            // case differently here, since a call followed by a
+            // context access *can* flow into the evaluation.
+            // For example, `${{ fromJSON(something) }}` evaluates to
+            // `Object` but `${{ fromJSON(something).foo }}` evaluates
+            // to the contents of `something.foo`.
+            Expr::Context(ctx) => contexts.push((ctx, &self.origin)),
+            Expr::BinExpr(BinExpr { lhs, op, rhs }) => match op {
+                // With && only the RHS can flow into the evaluation as a context
+                // (rather than a boolean).
+                BinOp::And => {
+                    contexts.extend(rhs.dataflow_contexts());
+                }
+                // With || either the LHS or RHS can flow into the evaluation as a context.
+                BinOp::Or => {
+                    contexts.extend(lhs.dataflow_contexts());
+                    contexts.extend(rhs.dataflow_contexts());
+                }
+                _ => (),
+            },
+            _ => (),
+        }
+
+        contexts
+    }
+
+    /// Returns all possible leaf expressions that could be the result
+    /// of evaluating this expression.
+    ///
+    /// Uses GitHub Actions' short-circuit semantics:
+    /// - `A && B`: only B can flow into the result (A is a condition)
+    /// - `A || B`: either A or B can be the result
+    ///
+    /// Leaf expressions are any non-`BinOp` expressions: literals, contexts,
+    /// function calls, etc.
+    ///
+    /// For example, `${{ foo.bar == 'true' && 'hello' || '' }}` returns
+    /// `['hello', '']` since those are the two possible evaluated values.
+    /// `${{ foo.abc || foo.def }}` returns `[foo.abc, foo.def]`.
+    pub fn leaf_expressions(&self) -> Vec<&Self> {
+        let mut leaves = vec![];
+
+        match self.deref() {
+            Expr::BinExpr(BinExpr { lhs, op, rhs }) => match op {
+                BinOp::And => {
+                    leaves.extend(rhs.leaf_expressions());
+                }
+                BinOp::Or => {
+                    leaves.extend(lhs.leaf_expressions());
+                    leaves.extend(rhs.leaf_expressions());
+                }
+                // Comparison operators produce booleans, not their operands.
+                _ => leaves.push(self),
+            },
+            _ => leaves.push(self),
+        }
+
+        leaves
+    }
+
+    /// Returns any computed indices in this expression.
+    ///
+    /// A computed index is any index operation with a non-literal
+    /// evaluation, e.g. `foo[a.b.c]`.
+    pub fn computed_indices(&self) -> Vec<&Self> {
+        let mut index_exprs = vec![];
+
+        match self.deref() {
+            Expr::Call(Call { func: _, args }) => {
+                for arg in args {
+                    index_exprs.extend(arg.computed_indices());
+                }
+            }
+            Expr::Index(spanned_expr)
+                // NOTE: We consider any non-literal, non-star index computed.
+                if !spanned_expr.is_literal() && !matches!(spanned_expr.inner, Expr::Star) => {
+                    index_exprs.push(self);
+                }
+            Expr::Context(context) => {
+                for part in &context.parts {
+                    index_exprs.extend(part.computed_indices());
+                }
+            }
+            Expr::BinExpr(BinExpr { lhs, op: _, rhs }) => {
+                index_exprs.extend(lhs.computed_indices());
+                index_exprs.extend(rhs.computed_indices());
+            }
+            Expr::UnExpr { op: _, expr } => {
+                index_exprs.extend(expr.computed_indices());
+            }
+            _ => {}
+        }
+
+        index_exprs
+    }
+
+    /// Like [`Expr::constant_reducible`], but for all subexpressions
+    /// rather than the top-level expression.
+    ///
+    /// This has slightly different semantics than `constant_reducible`:
+    /// it doesn't include "trivially" reducible expressions like literals,
+    /// since flagging these as reducible within a larger expression
+    /// would be misleading.
+    pub fn constant_reducible_subexprs(&self) -> Vec<&Self> {
+        if !self.is_literal() && self.constant_reducible() {
+            return vec![self];
+        }
+
+        let mut subexprs = vec![];
+
+        match self.deref() {
+            Expr::Call(Call { func: _, args }) => {
+                for arg in args {
+                    subexprs.extend(arg.constant_reducible_subexprs());
+                }
+            }
+            Expr::Context(ctx) => {
+                // contexts themselves are never reducible, but they might
+                // contains reducible index subexpressions.
+                for part in &ctx.parts {
+                    subexprs.extend(part.constant_reducible_subexprs());
+                }
+            }
+            Expr::BinExpr(BinExpr { lhs, op: _, rhs }) => {
+                subexprs.extend(lhs.constant_reducible_subexprs());
+                subexprs.extend(rhs.constant_reducible_subexprs());
+            }
+            Expr::UnExpr { op: _, expr } => subexprs.extend(expr.constant_reducible_subexprs()),
+
+            Expr::Index(expr) => subexprs.extend(expr.constant_reducible_subexprs()),
+            _ => {}
+        }
+
+        subexprs
+    }
+}
+
+impl<'a> Deref for SpannedExpr<'a> {
+    type Target = Expr<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<'doc> From<&SpannedExpr<'doc>> for subfeature::Fragment<'doc> {
+    fn from(expr: &SpannedExpr<'doc>) -> Self {
+        Self::new(expr.origin.raw)
+    }
+}
+
+impl PartialEq for SpannedExpr<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+/// Represents a GitHub Actions expression.
+#[derive(Debug, PartialEq)]
+pub enum Expr<'src> {
+    /// A literal value.
+    Literal(Literal<'src>),
+    /// The `*` literal within an index or context.
+    Star,
+    /// A function call.
+    Call(Call<'src>),
+    /// A context identifier component, e.g. `github` in `github.actor`.
+    Identifier(Identifier<'src>),
+    /// A context index component, e.g. `[0]` in `foo[0]`.
+    Index(Box<SpannedExpr<'src>>),
+    /// A full context reference.
+    Context(Context<'src>),
+    /// A binary expression, either logical or arithmetic.
+    BinExpr(BinExpr<'src>),
+    /// A unary expression. Negation (`!`) is currently the only `UnOp`.
+    UnExpr {
+        /// The unary operator.
+        op: UnOp,
+        /// The expression to apply the operator to.
+        expr: Box<SpannedExpr<'src>>,
+    },
+}
+
+impl<'src> Expr<'src> {
+    /// Convenience API for making an [`Expr::Identifier`].
+    fn ident(i: &'src str) -> Self {
+        Self::Identifier(Identifier(i))
+    }
+
+    /// Convenience API for making an [`Expr::Context`].
+    fn context(components: impl Into<Vec<SpannedExpr<'src>>>) -> Self {
+        Self::Context(Context::new(components))
+    }
+
+    /// Returns whether the expression is a literal.
+    pub fn is_literal(&self) -> bool {
+        matches!(self, Expr::Literal(_))
+    }
+
+    /// Returns whether the expression is constant reducible.
+    ///
+    /// "Constant reducible" is similar to "constant foldable" but with
+    /// meta-evaluation semantics: the expression `5` would not be
+    /// constant foldable in a normal program (because it's already
+    /// an atom), but is "constant reducible" in a GitHub Actions expression
+    /// because an expression containing it (e.g. `${{ 5 }}`) can be elided
+    /// entirely and replaced with `5`.
+    ///
+    /// There are three kinds of reducible expressions:
+    ///
+    /// 1. Literals, which reduce to their literal value;
+    /// 2. Binops/unops with reducible subexpressions, which reduce
+    ///    to their evaluation;
+    /// 3. Select function calls where the semantics of the function
+    ///    mean that reducible arguments make the call itself reducible.
+    ///
+    /// NOTE: This implementation is sound but not complete.
+    pub fn constant_reducible(&self) -> bool {
+        match self {
+            // Literals are always reducible.
+            Expr::Literal(_) => true,
+            // Binops are reducible if their LHS and RHS are reducible.
+            Expr::BinExpr(BinExpr { lhs, op: _, rhs }) => {
+                lhs.constant_reducible() && rhs.constant_reducible()
+            }
+            // Unops are reducible if their interior expression is reducible.
+            Expr::UnExpr { op: _, expr } => expr.constant_reducible(),
+            Expr::Call(Call { func, args }) => {
+                // These functions are reducible if their arguments are reducible.
+                // TODO(ww): `fromJSON` *is* frequently reducible, but
+                // doing so soundly with subexpressions is annoying.
+                // We overapproximate for now and consider it non-reducible.
+                if matches!(
+                    func,
+                    Function::Contains
+                        | Function::StartsWith
+                        | Function::EndsWith
+                        | Function::Format
+                        | Function::ToJSON
+                        | Function::Join // | Function::FromJSON
+                ) {
+                    args.iter().all(|e| e.constant_reducible())
+                } else {
+                    false
+                }
+            }
+            // Everything else is presumed non-reducible.
+            _ => false,
+        }
+    }
+
+    /// Parses the given string into an expression.
+    pub fn parse(expr: &'src str) -> Result<SpannedExpr<'src>, Error> {
+        parser::parse(expr)
+    }
+
+    /// Returns whether this expression 'commutatively matches' the given expression.
+    ///
+    /// For most expressions, this is the same as equivalence (i.e. `==`).
+    /// For binary expressions that are also commutative, this takes commutivity into account.
+    /// For example, `a == b` is considered to match `b == a`, but `a > b` is not
+    /// considered to match `b > a`. This check is recusive, i.e. two nested binary expressions
+    /// will be fully checked for commutative equivalence.
+    pub fn commutative_matches(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::BinExpr(sb), Self::BinExpr(ob)) => {
+                if sb.op != ob.op {
+                    return false;
+                }
+
+                // Same-position match (lhs/lhs, rhs/rhs); commutative ops
+                // additionally accept the swapped pairing below.
+                let positional = sb.lhs.inner.commutative_matches(&ob.lhs.inner)
+                    && sb.rhs.inner.commutative_matches(&ob.rhs.inner);
+
+                match sb.op {
+                    BinOp::And | BinOp::Or | BinOp::Eq | BinOp::Neq => {
+                        positional
+                            || (sb.lhs.inner.commutative_matches(&ob.rhs.inner)
+                                && sb.rhs.inner.commutative_matches(&ob.lhs.inner))
+                    }
+                    _ => positional,
+                }
+            }
+            _ => self == other,
+        }
+    }
+}
+
+impl<'src> From<&'src str> for Expr<'src> {
+    fn from(s: &'src str) -> Self {
+        Expr::Literal(Literal::String(s.into()))
+    }
+}
+
+impl From<String> for Expr<'_> {
+    fn from(s: String) -> Self {
+        Expr::Literal(Literal::String(s.into()))
+    }
+}
+
+impl From<f64> for Expr<'_> {
+    fn from(n: f64) -> Self {
+        Expr::Literal(Literal::Number(n))
+    }
+}
+
+impl From<bool> for Expr<'_> {
+    fn from(b: bool) -> Self {
+        Expr::Literal(Literal::Boolean(b))
+    }
+}
+
+/// The result of evaluating a GitHub Actions expression.
+///
+/// This type represents the possible values that can result from evaluating
+/// GitHub Actions expressions.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Evaluation {
+    /// A string value (includes both string literals and stringified other types).
+    String(String),
+    /// A numeric value.
+    Number(f64),
+    /// A boolean value.
+    Boolean(bool),
+    /// The null value.
+    Null,
+    /// An array value. Array evaluations can only be realized through `fromJSON`.
+    Array(Vec<Self>),
+    /// An object value. Object evaluations can only be realized through `fromJSON`.
+    Object(std::collections::HashMap<String, Self>),
+}
+
+impl TryFrom<serde_json::Value> for Evaluation {
+    type Error = ();
+
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        match value {
+            serde_json::Value::Null => Ok(Self::Null),
+            serde_json::Value::Bool(b) => Ok(Self::Boolean(b)),
+            serde_json::Value::Number(n) => {
+                if let Some(f) = n.as_f64() {
+                    Ok(Self::Number(f))
+                } else {
+                    Err(())
+                }
+            }
+            serde_json::Value::String(s) => Ok(Self::String(s)),
+            serde_json::Value::Array(arr) => {
+                let elements = arr
+                    .into_iter()
+                    .map(|elem| elem.try_into())
+                    .collect::<Result<_, _>>()?;
+                Ok(Self::Array(elements))
+            }
+            serde_json::Value::Object(obj) => {
+                let mut map = std::collections::HashMap::new();
+                for (key, value) in obj {
+                    map.insert(key, value.try_into()?);
+                }
+                Ok(Self::Object(map))
+            }
+        }
+    }
+}
+
+impl TryInto<serde_json::Value> for Evaluation {
+    type Error = ();
+
+    fn try_into(self) -> Result<serde_json::Value, Self::Error> {
+        match self {
+            Self::Null => Ok(serde_json::Value::Null),
+            Self::Boolean(b) => Ok(serde_json::Value::Bool(b)),
+            Self::Number(n) => {
+                // NOTE: serde_json has different internal representations
+                // for integers and floats, so we need to handle both cases
+                // to ensure we serialize integers without a decimal point.
+                if n.fract() == 0.0 {
+                    Ok(serde_json::Value::Number(serde_json::Number::from(
+                        n as i64,
+                    )))
+                } else if let Some(num) = serde_json::Number::from_f64(n) {
+                    Ok(serde_json::Value::Number(num))
+                } else {
+                    Err(())
+                }
+            }
+            Self::String(s) => Ok(serde_json::Value::String(s)),
+            Self::Array(arr) => {
+                let elements = arr
+                    .into_iter()
+                    .map(|elem| elem.try_into())
+                    .collect::<Result<_, _>>()?;
+                Ok(serde_json::Value::Array(elements))
+            }
+            Self::Object(obj) => {
+                let mut map = serde_json::Map::new();
+                for (key, value) in obj {
+                    map.insert(key, value.try_into()?);
+                }
+                Ok(serde_json::Value::Object(map))
+            }
+        }
+    }
+}
+
+impl Evaluation {
+    /// Convert to a boolean following GitHub Actions truthiness rules.
+    ///
+    /// GitHub Actions truthiness:
+    /// - false and null are falsy
+    /// - Numbers: 0 and NaN are falsy, everything else is truthy
+    /// - Strings: empty string is falsy, everything else is truthy
+    /// - Arrays and dictionaries are always truthy (non-empty objects)
+    pub fn as_boolean(&self) -> bool {
+        match self {
+            Self::Boolean(b) => *b,
+            Self::Null => false,
+            Self::Number(n) => *n != 0.0 && !n.is_nan(),
+            Self::String(s) => !s.is_empty(),
+            // Arrays and objects are always truthy, even if empty.
+            Self::Array(_) | Self::Object(_) => true,
+        }
+    }
+
+    /// Convert to a number following GitHub Actions conversion rules.
+    ///
+    /// See: <https://docs.github.com/en/actions/reference/workflows-and-actions/expressions#operators>
+    pub fn as_number(&self) -> f64 {
+        match self {
+            Self::String(s) => parse_number(s),
+            Self::Number(n) => *n,
+            Self::Boolean(b) => {
+                if *b {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Self::Null => 0.0,
+            Self::Array(_) | Self::Object(_) => f64::NAN,
+        }
+    }
+
+    /// Returns a wrapper around this evaluation that implements
+    /// GitHub Actions evaluation semantics.
+    pub fn sema(&self) -> EvaluationSema<'_> {
+        EvaluationSema(self)
+    }
+}
+
+/// Parse a string into a number following GitHub Actions coercion rules.
+///
+/// The string is trimmed and then parsed following the rules from the
+/// GitHub Action Runner:
+/// https://github.com/actions/runner/blob/9426c35fdaf2b2e00c3ef751a15c04fa8e2a9582/src/Sdk/Expressions/Sdk/ExpressionUtility.cs#L223
+fn parse_number(s: &str) -> f64 {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return 0.0;
+    }
+
+    // Decimal / scientific notation first
+    // Only accept finite results; infinity/NaN literals fall through.
+    if let Ok(value) = trimmed.parse::<f64>()
+        && value.is_finite()
+    {
+        return value;
+    }
+
+    // Hex: signed 32-bit.
+    // Values 0x80000000–0xFFFFFFFF wrap negative via two's complement.
+    if let Some(hex_digits) = trimmed.strip_prefix("0x") {
+        return u32::from_str_radix(hex_digits, 16)
+            .map(|n| (n as i32) as f64)
+            .unwrap_or(f64::NAN);
+    }
+
+    // Octal: signed 32-bit.
+    if let Some(oct_digits) = trimmed.strip_prefix("0o") {
+        return u32::from_str_radix(oct_digits, 8)
+            .map(|n| (n as i32) as f64)
+            .unwrap_or(f64::NAN);
+    }
+
+    // Explicit Infinity check — GH runner accepts full "infinity"
+    // (case-insensitive) but NOT the "inf" abbreviation.
+    let after_sign = trimmed
+        .strip_prefix(['+', '-'].as_slice())
+        .unwrap_or(trimmed);
+    if after_sign.eq_ignore_ascii_case("infinity") {
+        return if trimmed.starts_with('-') {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        };
+    }
+
+    f64::NAN
+}
+
+/// A wrapper around `Evaluation` that implements GitHub Actions
+/// various evaluation semantics (comparison, stringification, etc.).
+pub struct EvaluationSema<'a>(&'a Evaluation);
+
+impl EvaluationSema<'_> {
+    /// Converts a string to its uppercase form using GitHub Actions'
+    /// special rules.
+    /// See `toUpperSpecial`:
+    /// <https://github.com/actions/languageservices/blob/cc316ab/expressions/src/result.ts#L209>
+    fn upper_special(value: &str) -> String {
+        // Uppercase everything except the small dotless-ı (U+0131),
+        // which GitHub Actions preserves as-is.
+        let mut result = String::with_capacity(value.len());
+        let mut parts = value.split('ı');
+        if let Some(first) = parts.next() {
+            result.extend(first.chars().flat_map(char::to_uppercase));
+        }
+        for part in parts {
+            result.push('ı');
+            result.extend(part.chars().flat_map(char::to_uppercase));
+        }
+        result
+    }
+}
+
+impl PartialEq for EvaluationSema<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.0, other.0) {
+            (Evaluation::Null, Evaluation::Null) => true,
+            (Evaluation::Boolean(a), Evaluation::Boolean(b)) => a == b,
+            (Evaluation::Number(a), Evaluation::Number(b)) => a == b,
+            // GitHub Actions string comparisons are case-insensitive.
+            (Evaluation::String(a), Evaluation::String(b)) => {
+                Self::upper_special(a) == Self::upper_special(b)
+            }
+            // Coercion rules: all others convert to number and compare.
+            (a, b) => a.as_number() == b.as_number(),
+        }
+    }
+}
+
+impl PartialOrd for EvaluationSema<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self.0, other.0) {
+            (Evaluation::Null, Evaluation::Null) => Some(std::cmp::Ordering::Equal),
+            (Evaluation::Boolean(a), Evaluation::Boolean(b)) => a.partial_cmp(b),
+            (Evaluation::Number(a), Evaluation::Number(b)) => a.partial_cmp(b),
+            (Evaluation::String(a), Evaluation::String(b)) => {
+                // GitHub Actions string comparisons are case-insensitive.
+                Self::upper_special(a).partial_cmp(&Self::upper_special(b))
+            }
+            // Coercion rules: all others convert to number and compare.
+            (a, b) => a.as_number().partial_cmp(&b.as_number()),
+        }
+    }
+}
+
+impl std::fmt::Display for EvaluationSema<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            Evaluation::String(s) => write!(f, "{}", s),
+            Evaluation::Number(n) => {
+                // Format numbers like GitHub Actions does
+                if n == &f64::INFINITY {
+                    write!(f, "Infinity")
+                } else if n == &f64::NEG_INFINITY {
+                    write!(f, "-Infinity")
+                } else {
+                    // Format with 15 decimal places, parse back to f64 to
+                    // clean up trailing noise, then format normally.
+                    // See: https://github.com/actions/languageservices/blob/cc316ab/expressions/src/data/number.ts#L10
+                    let rounded: f64 = format!("{:.15}", n)
+                        .parse()
+                        .expect("impossible f64 round-trip error");
+                    if rounded.fract() == 0.0 {
+                        write!(f, "{}", rounded as i64)
+                    } else {
+                        write!(f, "{}", rounded)
+                    }
+                }
+            }
+            Evaluation::Boolean(b) => write!(f, "{}", b),
+            Evaluation::Null => write!(f, ""),
+            Evaluation::Array(_) => write!(f, "Array"),
+            Evaluation::Object(_) => write!(f, "Object"),
+        }
+    }
+}
+
+impl<'src> Expr<'src> {
+    /// Evaluates a constant-reducible expression to its literal value.
+    ///
+    /// Returns `Some(Evaluation)` if the expression can be constant-evaluated,
+    /// or `None` if the expression contains non-constant elements (like contexts or
+    /// non-reducible function calls).
+    ///
+    /// This implementation follows GitHub Actions' evaluation semantics as documented at:
+    /// https://docs.github.com/en/actions/reference/workflows-and-actions/expressions
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use github_actions_expressions::{Expr, Evaluation};
+    ///
+    /// let expr = Expr::parse("'hello'").unwrap();
+    /// let result = expr.consteval().unwrap();
+    /// assert_eq!(result.sema().to_string(), "hello");
+    ///
+    /// let expr = Expr::parse("true && false").unwrap();
+    /// let result = expr.consteval().unwrap();
+    /// assert_eq!(result, Evaluation::Boolean(false));
+    /// ```
+    pub fn consteval(&self) -> Option<Evaluation> {
+        match self {
+            Expr::Literal(literal) => Some(literal.consteval()),
+
+            Expr::BinExpr(BinExpr { lhs, op, rhs }) => {
+                let lhs_val = lhs.consteval()?;
+                let rhs_val = rhs.consteval()?;
+
+                match op {
+                    BinOp::And => {
+                        // GitHub Actions && semantics: if LHS is falsy, return LHS, else return RHS
+                        if lhs_val.as_boolean() {
+                            Some(rhs_val)
+                        } else {
+                            Some(lhs_val)
+                        }
+                    }
+                    BinOp::Or => {
+                        // GitHub Actions || semantics: if LHS is truthy, return LHS, else return RHS
+                        if lhs_val.as_boolean() {
+                            Some(lhs_val)
+                        } else {
+                            Some(rhs_val)
+                        }
+                    }
+                    BinOp::Eq => Some(Evaluation::Boolean(lhs_val.sema() == rhs_val.sema())),
+                    BinOp::Neq => Some(Evaluation::Boolean(lhs_val.sema() != rhs_val.sema())),
+                    BinOp::Lt => Some(Evaluation::Boolean(lhs_val.sema() < rhs_val.sema())),
+                    BinOp::Le => Some(Evaluation::Boolean(lhs_val.sema() <= rhs_val.sema())),
+                    BinOp::Gt => Some(Evaluation::Boolean(lhs_val.sema() > rhs_val.sema())),
+                    BinOp::Ge => Some(Evaluation::Boolean(lhs_val.sema() >= rhs_val.sema())),
+                }
+            }
+
+            Expr::UnExpr { op, expr } => {
+                let val = expr.consteval()?;
+                match op {
+                    UnOp::Not => Some(Evaluation::Boolean(!val.as_boolean())),
+                }
+            }
+
+            Expr::Call(call) => call.consteval(),
+
+            // Non-constant expressions
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use crate::{Error, Literal, context::Context};
+
+    use super::Expr;
+
+    #[test]
+    fn test_literal_string_borrows() {
+        let cases = &[
+            ("'foo'", true),
+            ("'foo bar'", true),
+            ("'foo '' bar'", false),
+            ("'foo''bar'", false),
+            ("'foo''''bar'", false),
+        ];
+
+        for (expr, borrows) in cases {
+            let Expr::Literal(Literal::String(s)) = &*Expr::parse(expr).unwrap() else {
+                panic!("expected a literal string expression for {expr}");
+            };
+
+            assert!(matches!(
+                (s, borrows),
+                (Cow::Borrowed(_), true) | (Cow::Owned(_), false)
+            ));
+        }
+    }
+
+    #[test]
+    fn test_literal_as_str() {
+        let cases = &[
+            ("'foo'", "foo"),
+            ("'foo '' bar'", "foo ' bar"),
+            ("123", "123"),
+            ("123.000", "123"),
+            ("0.0", "0"),
+            ("0.1", "0.1"),
+            ("0.12345", "0.12345"),
+            ("true", "true"),
+            ("false", "false"),
+            ("null", "null"),
+        ];
+
+        for (expr, expected) in cases {
+            let Expr::Literal(expr) = &*Expr::parse(expr).unwrap() else {
+                panic!("expected a literal expression for {expr}");
+            };
+
+            assert_eq!(expr.as_str(), *expected);
+        }
+    }
+
+    #[test]
+    fn test_parse_string_rule() {
+        // Each case maps a source literal to its unescaped value.
+        let cases = &[
+            ("''", ""),
+            ("' '", " "),
+            ("''''", "'"),
+            ("'test'", "test"),
+            ("'spaces are ok'", "spaces are ok"),
+            ("'escaping '' works'", "escaping ' works"),
+        ];
+
+        for (case, expected) in cases {
+            let Expr::Literal(Literal::String(s)) = &*Expr::parse(case).unwrap() else {
+                panic!("expected a literal string expression for {case}");
+            };
+
+            assert_eq!(s, expected);
+        }
+    }
+
+    #[test]
+    fn test_parse_context_rule() {
+        let cases = &[
+            "foo.bar",
+            "github.action_path",
+            "inputs.foo-bar",
+            "inputs.also--valid",
+            "inputs.this__too",
+            "inputs.this__too",
+            "secrets.GH_TOKEN",
+            "foo.*.bar",
+            "github.event.issue.labels.*.name",
+        ];
+
+        for case in cases {
+            assert!(
+                Context::parse(case).is_some(),
+                "{case:?} should parse as a context"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_call_rule() {
+        // Function call syntax, exercised with real (known) functions so
+        // that `Expr::parse`'s arity/name validation is satisfied.
+        let cases = &[
+            "success()",
+            "fromJSON(bar)",
+            "toJSON(fromJSON(bar))",
+            "fromJSON(1.23)",
+            "contains(1,2)",
+            "contains(1, 2)",
+            "format('{0} {1}', 1, secret.GH_TOKEN)",
+            "success(   )",
+            "fromJSON(inputs.free-threading)",
+        ];
+
+        for case in cases {
+            assert!(Expr::parse(case).is_ok(), "{case:?} should parse");
+        }
+    }
+
+    #[test]
+    fn test_parse_expr_rule() -> Result<(), Error> {
+        // Ensures that we parse multi-line expressions correctly.
+        let multiline = "github.repository_owner == 'Homebrew' &&
+        ((github.event_name == 'pull_request_review' && github.event.review.state == 'approved') ||
+        (github.event_name == 'pull_request_target' &&
+        (github.event.action == 'ready_for_review' || github.event.label.name == 'automerge-skip')))";
+
+        let multiline2 = "foo.bar.baz[
+        0
+        ]";
+
+        let cases = &[
+            "true",
+            "fromJSON(inputs.free-threading) && '--disable-gil' || ''",
+            "foo || bar || baz",
+            "foo || bar && baz || foo && 1 && 2 && 3 || 4",
+            "(github.actor != 'github-actions[bot]' && github.actor) || 'BrewTestBot'",
+            "(true || false) == true",
+            "!(!true || false)",
+            "!(!true || false) == true",
+            "(true == false) == true",
+            "(true == (false || true && (true || false))) == true",
+            "(github.actor != 'github-actions[bot]' && github.actor) == 'BrewTestBot'",
+            "fromJSON(bar)[0]",
+            "fromJson(steps.runs.outputs.data).workflow_runs[0].id",
+            multiline,
+            "'a' == 'b' && 'c' || 'd'",
+            "github.event['a']",
+            "github.event['a' == 'b']",
+            "github.event['a' == 'b' && 'c' || 'd']",
+            "github['event']['inputs']['dry-run']",
+            "github[format('{0}', 'event')]",
+            "github['event']['inputs'][github.event.inputs.magic]",
+            "github['event']['inputs'].*",
+            "1 == 1",
+            "1 > 1",
+            "1 >= 1",
+            "matrix.node_version >= 20",
+            "true||false",
+            // Hex literals
+            "0xFF",
+            "0xff",
+            "0x0",
+            "0xFF == 255",
+            // Octal literals
+            "0o10",
+            "0o77",
+            "0o0",
+            // Scientific notation
+            "1e2",
+            "1.5E-3",
+            "1.2e+2",
+            "5e0",
+            // NaN and Infinity literals
+            "NaN",
+            "Infinity",
+            "+Infinity",
+            "-Infinity",
+            "NaN == NaN",
+            "Infinity == Infinity",
+            // Parenthesized compound expressions
+            "2 <= (3 == true)",
+            "0 > (0 < 1)",
+            "(foo || bar) == baz",
+            // Signed numbers
+            "+42",
+            "-42",
+            // Leading/trailing dot
+            ".5",
+            "123.",
+            // Whitespace handling
+            multiline2,
+            "fromJSON( github.event.inputs.hmm ) [ 0 ]",
+            // Parens around a call
+            "(fromJson('{\"one\": \"one val\"}')).one",
+            "(fromJson('[\"one\", \"two\"]'))[1]",
+        ];
+
+        for case in cases {
+            Expr::parse(case).unwrap_or_else(|e| panic!("{case:?} should parse, but failed: {e}"));
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_expr_rule_rejects() {
+        let cases = &[
+            // "Inf" is not a valid number form; only "Infinity" is accepted.
+            "-Inf", "+Inf",
+        ];
+
+        for case in cases {
+            assert!(
+                Expr::parse(case).is_err(),
+                "{case:?} should not parse as a valid expression"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_snapshot() -> Result<(), Error> {
+        // These cases pin the parser's exact AST shape and byte-range origins.
+
+        insta::assert_debug_snapshot!(Expr::parse("!true || false || true")?, @r#"
+        SpannedExpr {
+            origin: Origin {
+                span: Span {
+                    start: 0,
+                    end: 22,
+                },
+                raw: "!true || false || true",
+            },
+            inner: BinExpr(
+                BinExpr {
+                    lhs: SpannedExpr {
+                        origin: Origin {
+                            span: Span {
+                                start: 0,
+                                end: 14,
+                            },
+                            raw: "!true || false",
+                        },
+                        inner: BinExpr(
+                            BinExpr {
+                                lhs: SpannedExpr {
+                                    origin: Origin {
+                                        span: Span {
+                                            start: 0,
+                                            end: 5,
+                                        },
+                                        raw: "!true",
+                                    },
+                                    inner: UnExpr {
+                                        op: Not,
+                                        expr: SpannedExpr {
+                                            origin: Origin {
+                                                span: Span {
+                                                    start: 1,
+                                                    end: 5,
+                                                },
+                                                raw: "true",
+                                            },
+                                            inner: Literal(
+                                                Boolean(
+                                                    true,
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                },
+                                op: Or,
+                                rhs: SpannedExpr {
+                                    origin: Origin {
+                                        span: Span {
+                                            start: 9,
+                                            end: 14,
+                                        },
+                                        raw: "false",
+                                    },
+                                    inner: Literal(
+                                        Boolean(
+                                            false,
+                                        ),
+                                    ),
+                                },
+                            },
+                        ),
+                    },
+                    op: Or,
+                    rhs: SpannedExpr {
+                        origin: Origin {
+                            span: Span {
+                                start: 18,
+                                end: 22,
+                            },
+                            raw: "true",
+                        },
+                        inner: Literal(
+                            Boolean(
+                                true,
+                            ),
+                        ),
+                    },
+                },
+            ),
+        }
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("'foo '' bar'")?, @r#"
+        SpannedExpr {
+            origin: Origin {
+                span: Span {
+                    start: 0,
+                    end: 12,
+                },
+                raw: "'foo '' bar'",
+            },
+            inner: Literal(
+                String(
+                    "foo ' bar",
+                ),
+            ),
+        }
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("('foo '' bar')")?, @r#"
+        SpannedExpr {
+            origin: Origin {
+                span: Span {
+                    start: 0,
+                    end: 14,
+                },
+                raw: "('foo '' bar')",
+            },
+            inner: Literal(
+                String(
+                    "foo ' bar",
+                ),
+            ),
+        }
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("((('foo '' bar')))")?, @r#"
+        SpannedExpr {
+            origin: Origin {
+                span: Span {
+                    start: 0,
+                    end: 18,
+                },
+                raw: "((('foo '' bar')))",
+            },
+            inner: Literal(
+                String(
+                    "foo ' bar",
+                ),
+            ),
+        }
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("format('{0} {1}', 2, 3)")?, @r#"
+        SpannedExpr {
+            origin: Origin {
+                span: Span {
+                    start: 0,
+                    end: 23,
+                },
+                raw: "format('{0} {1}', 2, 3)",
+            },
+            inner: Call(
+                Call {
+                    func: Format,
+                    args: [
+                        SpannedExpr {
+                            origin: Origin {
+                                span: Span {
+                                    start: 7,
+                                    end: 16,
+                                },
+                                raw: "'{0} {1}'",
+                            },
+                            inner: Literal(
+                                String(
+                                    "{0} {1}",
+                                ),
+                            ),
+                        },
+                        SpannedExpr {
+                            origin: Origin {
+                                span: Span {
+                                    start: 18,
+                                    end: 19,
+                                },
+                                raw: "2",
+                            },
+                            inner: Literal(
+                                Number(
+                                    2.0,
+                                ),
+                            ),
+                        },
+                        SpannedExpr {
+                            origin: Origin {
+                                span: Span {
+                                    start: 21,
+                                    end: 22,
+                                },
+                                raw: "3",
+                            },
+                            inner: Literal(
+                                Number(
+                                    3.0,
+                                ),
+                            ),
+                        },
+                    ],
+                },
+            ),
+        }
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("foo.bar.baz")?, @r#"
+        SpannedExpr {
+            origin: Origin {
+                span: Span {
+                    start: 0,
+                    end: 11,
+                },
+                raw: "foo.bar.baz",
+            },
+            inner: Context(
+                Context {
+                    parts: [
+                        SpannedExpr {
+                            origin: Origin {
+                                span: Span {
+                                    start: 0,
+                                    end: 3,
+                                },
+                                raw: "foo",
+                            },
+                            inner: Identifier(
+                                Identifier(
+                                    "foo",
+                                ),
+                            ),
+                        },
+                        SpannedExpr {
+                            origin: Origin {
+                                span: Span {
+                                    start: 4,
+                                    end: 7,
+                                },
+                                raw: "bar",
+                            },
+                            inner: Identifier(
+                                Identifier(
+                                    "bar",
+                                ),
+                            ),
+                        },
+                        SpannedExpr {
+                            origin: Origin {
+                                span: Span {
+                                    start: 8,
+                                    end: 11,
+                                },
+                                raw: "baz",
+                            },
+                            inner: Identifier(
+                                Identifier(
+                                    "baz",
+                                ),
+                            ),
+                        },
+                    ],
+                },
+            ),
+        }
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("foo.bar.baz[1][2]"), @r#"
+        Ok(
+            SpannedExpr {
+                origin: Origin {
+                    span: Span {
+                        start: 0,
+                        end: 17,
+                    },
+                    raw: "foo.bar.baz[1][2]",
+                },
+                inner: Context(
+                    Context {
+                        parts: [
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 0,
+                                        end: 3,
+                                    },
+                                    raw: "foo",
+                                },
+                                inner: Identifier(
+                                    Identifier(
+                                        "foo",
+                                    ),
+                                ),
+                            },
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 4,
+                                        end: 7,
+                                    },
+                                    raw: "bar",
+                                },
+                                inner: Identifier(
+                                    Identifier(
+                                        "bar",
+                                    ),
+                                ),
+                            },
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 8,
+                                        end: 11,
+                                    },
+                                    raw: "baz",
+                                },
+                                inner: Identifier(
+                                    Identifier(
+                                        "baz",
+                                    ),
+                                ),
+                            },
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 11,
+                                        end: 14,
+                                    },
+                                    raw: "[1]",
+                                },
+                                inner: Index(
+                                    SpannedExpr {
+                                        origin: Origin {
+                                            span: Span {
+                                                start: 12,
+                                                end: 13,
+                                            },
+                                            raw: "1",
+                                        },
+                                        inner: Literal(
+                                            Number(
+                                                1.0,
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            },
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 14,
+                                        end: 17,
+                                    },
+                                    raw: "[2]",
+                                },
+                                inner: Index(
+                                    SpannedExpr {
+                                        origin: Origin {
+                                            span: Span {
+                                                start: 15,
+                                                end: 16,
+                                            },
+                                            raw: "2",
+                                        },
+                                        inner: Literal(
+                                            Number(
+                                                2.0,
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            },
+                        ],
+                    },
+                ),
+            },
+        )
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("foo.bar.baz[*]"), @r#"
+        Ok(
+            SpannedExpr {
+                origin: Origin {
+                    span: Span {
+                        start: 0,
+                        end: 14,
+                    },
+                    raw: "foo.bar.baz[*]",
+                },
+                inner: Context(
+                    Context {
+                        parts: [
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 0,
+                                        end: 3,
+                                    },
+                                    raw: "foo",
+                                },
+                                inner: Identifier(
+                                    Identifier(
+                                        "foo",
+                                    ),
+                                ),
+                            },
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 4,
+                                        end: 7,
+                                    },
+                                    raw: "bar",
+                                },
+                                inner: Identifier(
+                                    Identifier(
+                                        "bar",
+                                    ),
+                                ),
+                            },
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 8,
+                                        end: 11,
+                                    },
+                                    raw: "baz",
+                                },
+                                inner: Identifier(
+                                    Identifier(
+                                        "baz",
+                                    ),
+                                ),
+                            },
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 11,
+                                        end: 14,
+                                    },
+                                    raw: "[*]",
+                                },
+                                inner: Index(
+                                    SpannedExpr {
+                                        origin: Origin {
+                                            span: Span {
+                                                start: 12,
+                                                end: 13,
+                                            },
+                                            raw: "*",
+                                        },
+                                        inner: Star,
+                                    },
+                                ),
+                            },
+                        ],
+                    },
+                ),
+            },
+        )
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("vegetables.*.ediblePortions"), @r#"
+        Ok(
+            SpannedExpr {
+                origin: Origin {
+                    span: Span {
+                        start: 0,
+                        end: 27,
+                    },
+                    raw: "vegetables.*.ediblePortions",
+                },
+                inner: Context(
+                    Context {
+                        parts: [
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 0,
+                                        end: 10,
+                                    },
+                                    raw: "vegetables",
+                                },
+                                inner: Identifier(
+                                    Identifier(
+                                        "vegetables",
+                                    ),
+                                ),
+                            },
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 11,
+                                        end: 12,
+                                    },
+                                    raw: "*",
+                                },
+                                inner: Star,
+                            },
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 13,
+                                        end: 27,
+                                    },
+                                    raw: "ediblePortions",
+                                },
+                                inner: Identifier(
+                                    Identifier(
+                                        "ediblePortions",
+                                    ),
+                                ),
+                            },
+                        ],
+                    },
+                ),
+            },
+        )
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("github.ref == 'refs/heads/main' && 'value_for_main_branch' || 'value_for_other_branches'"), @r#"
+        Ok(
+            SpannedExpr {
+                origin: Origin {
+                    span: Span {
+                        start: 0,
+                        end: 88,
+                    },
+                    raw: "github.ref == 'refs/heads/main' && 'value_for_main_branch' || 'value_for_other_branches'",
+                },
+                inner: BinExpr(
+                    BinExpr {
+                        lhs: SpannedExpr {
+                            origin: Origin {
+                                span: Span {
+                                    start: 0,
+                                    end: 58,
+                                },
+                                raw: "github.ref == 'refs/heads/main' && 'value_for_main_branch'",
+                            },
+                            inner: BinExpr(
+                                BinExpr {
+                                    lhs: SpannedExpr {
+                                        origin: Origin {
+                                            span: Span {
+                                                start: 0,
+                                                end: 31,
+                                            },
+                                            raw: "github.ref == 'refs/heads/main'",
+                                        },
+                                        inner: BinExpr(
+                                            BinExpr {
+                                                lhs: SpannedExpr {
+                                                    origin: Origin {
+                                                        span: Span {
+                                                            start: 0,
+                                                            end: 10,
+                                                        },
+                                                        raw: "github.ref",
+                                                    },
+                                                    inner: Context(
+                                                        Context {
+                                                            parts: [
+                                                                SpannedExpr {
+                                                                    origin: Origin {
+                                                                        span: Span {
+                                                                            start: 0,
+                                                                            end: 6,
+                                                                        },
+                                                                        raw: "github",
+                                                                    },
+                                                                    inner: Identifier(
+                                                                        Identifier(
+                                                                            "github",
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                                SpannedExpr {
+                                                                    origin: Origin {
+                                                                        span: Span {
+                                                                            start: 7,
+                                                                            end: 10,
+                                                                        },
+                                                                        raw: "ref",
+                                                                    },
+                                                                    inner: Identifier(
+                                                                        Identifier(
+                                                                            "ref",
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                            ],
+                                                        },
+                                                    ),
+                                                },
+                                                op: Eq,
+                                                rhs: SpannedExpr {
+                                                    origin: Origin {
+                                                        span: Span {
+                                                            start: 14,
+                                                            end: 31,
+                                                        },
+                                                        raw: "'refs/heads/main'",
+                                                    },
+                                                    inner: Literal(
+                                                        String(
+                                                            "refs/heads/main",
+                                                        ),
+                                                    ),
+                                                },
+                                            },
+                                        ),
+                                    },
+                                    op: And,
+                                    rhs: SpannedExpr {
+                                        origin: Origin {
+                                            span: Span {
+                                                start: 35,
+                                                end: 58,
+                                            },
+                                            raw: "'value_for_main_branch'",
+                                        },
+                                        inner: Literal(
+                                            String(
+                                                "value_for_main_branch",
+                                            ),
+                                        ),
+                                    },
+                                },
+                            ),
+                        },
+                        op: Or,
+                        rhs: SpannedExpr {
+                            origin: Origin {
+                                span: Span {
+                                    start: 62,
+                                    end: 88,
+                                },
+                                raw: "'value_for_other_branches'",
+                            },
+                            inner: Literal(
+                                String(
+                                    "value_for_other_branches",
+                                ),
+                            ),
+                        },
+                    },
+                ),
+            },
+        )
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("(true || false) == true"), @r#"
+        Ok(
+            SpannedExpr {
+                origin: Origin {
+                    span: Span {
+                        start: 0,
+                        end: 23,
+                    },
+                    raw: "(true || false) == true",
+                },
+                inner: BinExpr(
+                    BinExpr {
+                        lhs: SpannedExpr {
+                            origin: Origin {
+                                span: Span {
+                                    start: 0,
+                                    end: 15,
+                                },
+                                raw: "(true || false)",
+                            },
+                            inner: BinExpr(
+                                BinExpr {
+                                    lhs: SpannedExpr {
+                                        origin: Origin {
+                                            span: Span {
+                                                start: 1,
+                                                end: 5,
+                                            },
+                                            raw: "true",
+                                        },
+                                        inner: Literal(
+                                            Boolean(
+                                                true,
+                                            ),
+                                        ),
+                                    },
+                                    op: Or,
+                                    rhs: SpannedExpr {
+                                        origin: Origin {
+                                            span: Span {
+                                                start: 9,
+                                                end: 14,
+                                            },
+                                            raw: "false",
+                                        },
+                                        inner: Literal(
+                                            Boolean(
+                                                false,
+                                            ),
+                                        ),
+                                    },
+                                },
+                            ),
+                        },
+                        op: Eq,
+                        rhs: SpannedExpr {
+                            origin: Origin {
+                                span: Span {
+                                    start: 19,
+                                    end: 23,
+                                },
+                                raw: "true",
+                            },
+                            inner: Literal(
+                                Boolean(
+                                    true,
+                                ),
+                            ),
+                        },
+                    },
+                ),
+            },
+        )
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("!(!true || false)"), @r#"
+        Ok(
+            SpannedExpr {
+                origin: Origin {
+                    span: Span {
+                        start: 0,
+                        end: 17,
+                    },
+                    raw: "!(!true || false)",
+                },
+                inner: UnExpr {
+                    op: Not,
+                    expr: SpannedExpr {
+                        origin: Origin {
+                            span: Span {
+                                start: 1,
+                                end: 17,
+                            },
+                            raw: "(!true || false)",
+                        },
+                        inner: BinExpr(
+                            BinExpr {
+                                lhs: SpannedExpr {
+                                    origin: Origin {
+                                        span: Span {
+                                            start: 2,
+                                            end: 7,
+                                        },
+                                        raw: "!true",
+                                    },
+                                    inner: UnExpr {
+                                        op: Not,
+                                        expr: SpannedExpr {
+                                            origin: Origin {
+                                                span: Span {
+                                                    start: 3,
+                                                    end: 7,
+                                                },
+                                                raw: "true",
+                                            },
+                                            inner: Literal(
+                                                Boolean(
+                                                    true,
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                },
+                                op: Or,
+                                rhs: SpannedExpr {
+                                    origin: Origin {
+                                        span: Span {
+                                            start: 11,
+                                            end: 16,
+                                        },
+                                        raw: "false",
+                                    },
+                                    inner: Literal(
+                                        Boolean(
+                                            false,
+                                        ),
+                                    ),
+                                },
+                            },
+                        ),
+                    },
+                },
+            },
+        )
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("foobar[format('{0}', 'event')]"), @r#"
+        Ok(
+            SpannedExpr {
+                origin: Origin {
+                    span: Span {
+                        start: 0,
+                        end: 30,
+                    },
+                    raw: "foobar[format('{0}', 'event')]",
+                },
+                inner: Context(
+                    Context {
+                        parts: [
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 0,
+                                        end: 6,
+                                    },
+                                    raw: "foobar",
+                                },
+                                inner: Identifier(
+                                    Identifier(
+                                        "foobar",
+                                    ),
+                                ),
+                            },
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 6,
+                                        end: 30,
+                                    },
+                                    raw: "[format('{0}', 'event')]",
+                                },
+                                inner: Index(
+                                    SpannedExpr {
+                                        origin: Origin {
+                                            span: Span {
+                                                start: 7,
+                                                end: 29,
+                                            },
+                                            raw: "format('{0}', 'event')",
+                                        },
+                                        inner: Call(
+                                            Call {
+                                                func: Format,
+                                                args: [
+                                                    SpannedExpr {
+                                                        origin: Origin {
+                                                            span: Span {
+                                                                start: 14,
+                                                                end: 19,
+                                                            },
+                                                            raw: "'{0}'",
+                                                        },
+                                                        inner: Literal(
+                                                            String(
+                                                                "{0}",
+                                                            ),
+                                                        ),
+                                                    },
+                                                    SpannedExpr {
+                                                        origin: Origin {
+                                                            span: Span {
+                                                                start: 21,
+                                                                end: 28,
+                                                            },
+                                                            raw: "'event'",
+                                                        },
+                                                        inner: Literal(
+                                                            String(
+                                                                "event",
+                                                            ),
+                                                        ),
+                                                    },
+                                                ],
+                                            },
+                                        ),
+                                    },
+                                ),
+                            },
+                        ],
+                    },
+                ),
+            },
+        )
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("github.actor_id == '49699333'"), @r#"
+        Ok(
+            SpannedExpr {
+                origin: Origin {
+                    span: Span {
+                        start: 0,
+                        end: 29,
+                    },
+                    raw: "github.actor_id == '49699333'",
+                },
+                inner: BinExpr(
+                    BinExpr {
+                        lhs: SpannedExpr {
+                            origin: Origin {
+                                span: Span {
+                                    start: 0,
+                                    end: 15,
+                                },
+                                raw: "github.actor_id",
+                            },
+                            inner: Context(
+                                Context {
+                                    parts: [
+                                        SpannedExpr {
+                                            origin: Origin {
+                                                span: Span {
+                                                    start: 0,
+                                                    end: 6,
+                                                },
+                                                raw: "github",
+                                            },
+                                            inner: Identifier(
+                                                Identifier(
+                                                    "github",
+                                                ),
+                                            ),
+                                        },
+                                        SpannedExpr {
+                                            origin: Origin {
+                                                span: Span {
+                                                    start: 7,
+                                                    end: 15,
+                                                },
+                                                raw: "actor_id",
+                                            },
+                                            inner: Identifier(
+                                                Identifier(
+                                                    "actor_id",
+                                                ),
+                                            ),
+                                        },
+                                    ],
+                                },
+                            ),
+                        },
+                        op: Eq,
+                        rhs: SpannedExpr {
+                            origin: Origin {
+                                span: Span {
+                                    start: 19,
+                                    end: 29,
+                                },
+                                raw: "'49699333'",
+                            },
+                            inner: Literal(
+                                String(
+                                    "49699333",
+                                ),
+                            ),
+                        },
+                    },
+                ),
+            },
+        )
+        "#);
+
+        insta::assert_debug_snapshot!(Expr::parse("(fromJSON('[]'))[1]"), @r#"
+        Ok(
+            SpannedExpr {
+                origin: Origin {
+                    span: Span {
+                        start: 0,
+                        end: 19,
+                    },
+                    raw: "(fromJSON('[]'))[1]",
+                },
+                inner: Context(
+                    Context {
+                        parts: [
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 0,
+                                        end: 16,
+                                    },
+                                    raw: "(fromJSON('[]'))",
+                                },
+                                inner: Call(
+                                    Call {
+                                        func: FromJSON,
+                                        args: [
+                                            SpannedExpr {
+                                                origin: Origin {
+                                                    span: Span {
+                                                        start: 10,
+                                                        end: 14,
+                                                    },
+                                                    raw: "'[]'",
+                                                },
+                                                inner: Literal(
+                                                    String(
+                                                        "[]",
+                                                    ),
+                                                ),
+                                            },
+                                        ],
+                                    },
+                                ),
+                            },
+                            SpannedExpr {
+                                origin: Origin {
+                                    span: Span {
+                                        start: 16,
+                                        end: 19,
+                                    },
+                                    raw: "[1]",
+                                },
+                                inner: Index(
+                                    SpannedExpr {
+                                        origin: Origin {
+                                            span: Span {
+                                                start: 17,
+                                                end: 18,
+                                            },
+                                            raw: "1",
+                                        },
+                                        inner: Literal(
+                                            Number(
+                                                1.0,
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            },
+                        ],
+                    },
+                ),
+            },
+        )
+        "#);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_expr_constant_reducible() -> Result<(), Error> {
+        for (expr, reducible) in &[
+            ("'foo'", true),
+            ("1", true),
+            ("true", true),
+            ("null", true),
+            // boolean and unary expressions of all literals are
+            // always reducible.
+            ("!true", true),
+            ("!null", true),
+            ("true && false", true),
+            ("true || false", true),
+            ("null && !null && true", true),
+            // formats/contains/startsWith/endsWith are reducible
+            // if all of their arguments are reducible.
+            ("format('{0} {1}', 'foo', 'bar')", true),
+            ("format('{0} {1}', 1, 2)", true),
+            ("format('{0} {1}', 1, '2')", true),
+            ("contains('foo', 'bar')", true),
+            ("startsWith('foo', 'bar')", true),
+            ("endsWith('foo', 'bar')", true),
+            ("startsWith(some.context, 'bar')", false),
+            ("endsWith(some.context, 'bar')", false),
+            // Nesting works as long as the nested call is also reducible.
+            ("format('{0} {1}', '1', format('{0}', null))", true),
+            ("format('{0} {1}', '1', startsWith('foo', 'foo'))", true),
+            ("format('{0} {1}', '1', startsWith(foo.bar, 'foo'))", false),
+            ("foo", false),
+            ("foo.bar", false),
+            ("foo.bar[1]", false),
+            ("foo.bar == 'bar'", false),
+            ("foo.bar || bar || baz", false),
+            ("foo.bar && bar && baz", false),
+        ] {
+            let expr = Expr::parse(expr)?;
+            assert_eq!(expr.constant_reducible(), *reducible);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_evaluate_constant_complex_expressions() -> Result<(), Error> {
+        use crate::Evaluation;
+
+        let test_cases = &[
+            // Nested operations
+            ("!false", Evaluation::Boolean(true)),
+            ("!true", Evaluation::Boolean(false)),
+            ("!(true && false)", Evaluation::Boolean(true)),
+            // Complex boolean logic
+            ("true && (false || true)", Evaluation::Boolean(true)),
+            ("false || (true && false)", Evaluation::Boolean(false)),
+            // Mixed function calls
+            (
+                "contains(format('{0} {1}', 'hello', 'world'), 'world')",
+                Evaluation::Boolean(true),
+            ),
+            (
+                "startsWith(format('prefix_{0}', 'test'), 'prefix')",
+                Evaluation::Boolean(true),
+            ),
+        ];
+
+        for (expr_str, expected) in test_cases {
+            let expr = Expr::parse(expr_str)?;
+            let result = expr.consteval().unwrap();
+            assert_eq!(result, *expected, "Failed for expression: {}", expr_str);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_case_insensitive_string_comparison() -> Result<(), Error> {
+        use crate::Evaluation;
+
+        let test_cases = &[
+            // == is case-insensitive for strings
+            ("'hello' == 'hello'", Evaluation::Boolean(true)),
+            ("'hello' == 'HELLO'", Evaluation::Boolean(true)),
+            ("'Hello' == 'hELLO'", Evaluation::Boolean(true)),
+            ("'abc' == 'def'", Evaluation::Boolean(false)),
+            // != is case-insensitive for strings
+            ("'hello' != 'HELLO'", Evaluation::Boolean(false)),
+            ("'abc' != 'def'", Evaluation::Boolean(true)),
+            // Comparison operators are case-insensitive for strings
+            ("'abc' < 'DEF'", Evaluation::Boolean(true)),
+            ("'ABC' < 'def'", Evaluation::Boolean(true)),
+            ("'abc' >= 'ABC'", Evaluation::Boolean(true)),
+            ("'ABC' <= 'abc'", Evaluation::Boolean(true)),
+            // Greek sigma: ς (final) and σ (non-final) both uppercase to Σ.
+            // This is why we use to_uppercase() instead of to_lowercase().
+            ("'\u{03C3}' == '\u{03C2}'", Evaluation::Boolean(true)), // σ == ς
+            ("'\u{03A3}' == '\u{03C3}'", Evaluation::Boolean(true)), // Σ == σ
+            ("'\u{03A3}' == '\u{03C2}'", Evaluation::Boolean(true)), // Σ == ς
+            // Array contains with case-insensitive string matching
+            (
+                "contains(fromJSON('[\"Hello\", \"World\"]'), 'hello')",
+                Evaluation::Boolean(true),
+            ),
+            (
+                "contains(fromJSON('[\"hello\", \"world\"]'), 'WORLD')",
+                Evaluation::Boolean(true),
+            ),
+            (
+                "contains(fromJSON('[\"ABC\"]'), 'abc')",
+                Evaluation::Boolean(true),
+            ),
+            (
+                "contains(fromJSON('[\"abc\"]'), 'def')",
+                Evaluation::Boolean(false),
+            ),
+        ];
+
+        for (expr_str, expected) in test_cases {
+            let expr = Expr::parse(expr_str)?;
+            let result = expr.consteval().unwrap();
+            assert_eq!(result, *expected, "Failed for expression: {}", expr_str);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_evaluation_sema_display() {
+        use crate::Evaluation;
+
+        let test_cases = &[
+            (Evaluation::String("hello".to_string()), "hello"),
+            (Evaluation::Number(42.0), "42"),
+            (Evaluation::Number(3.14), "3.14"),
+            (Evaluation::Boolean(true), "true"),
+            (Evaluation::Boolean(false), "false"),
+            (Evaluation::Null, ""),
+        ];
+
+        for (result, expected) in test_cases {
+            assert_eq!(result.sema().to_string(), *expected);
+        }
+    }
+
+    #[test]
+    fn test_evaluation_result_to_boolean() {
+        use crate::Evaluation;
+
+        let test_cases = &[
+            (Evaluation::Boolean(true), true),
+            (Evaluation::Boolean(false), false),
+            (Evaluation::Null, false),
+            (Evaluation::Number(0.0), false),
+            (Evaluation::Number(1.0), true),
+            (Evaluation::Number(-1.0), true),
+            (Evaluation::Number(f64::NAN), false), // NaN is falsy in GitHub Actions
+            (Evaluation::String("".to_string()), false),
+            (Evaluation::String("hello".to_string()), true),
+            (Evaluation::Array(vec![]), true), // Arrays are always truthy
+            (Evaluation::Object(std::collections::HashMap::new()), true), // Dictionaries are always truthy
+        ];
+
+        for (result, expected) in test_cases {
+            assert_eq!(result.as_boolean(), *expected);
+        }
+    }
+
+    #[test]
+    fn test_evaluation_result_to_number() {
+        use crate::Evaluation;
+
+        // Non-string types
+        let test_cases = &[
+            (Evaluation::Number(42.0), 42.0),
+            (Evaluation::Number(0.0), 0.0),
+            (Evaluation::Boolean(true), 1.0),
+            (Evaluation::Boolean(false), 0.0),
+            (Evaluation::Null, 0.0),
+        ];
+
+        for (eval, expected) in test_cases {
+            assert_eq!(eval.as_number(), *expected, "as_number() for {:?}", eval);
+        }
+
+        let string_cases: &[(&str, f64)] = &[
+            // Empty / whitespace-only
+            ("", 0.0),
+            ("   ", 0.0),
+            ("\t", 0.0),
+            // Whitespace trimming
+            ("   123   ", 123.0),
+            (" 42 ", 42.0),
+            ("   1   ", 1.0),
+            ("\t5\n", 5.0),
+            ("  \t123\t  ", 123.0),
+            // Basic decimal
+            ("42", 42.0),
+            ("3.14", 3.14),
+            // Hex
+            ("0xff", 255.0),
+            ("0xfF", 255.0),
+            ("0xFF", 255.0),
+            (" 0xff ", 255.0),
+            ("0x0", 0.0),
+            ("0x11", 17.0),
+            // Hex: signed 32-bit two's complement wrapping
+            ("0x7FFFFFFF", 2147483647.0),
+            ("0x80000000", -2147483648.0),
+            ("0xFFFFFFFF", -1.0),
+            // Octal
+            ("0o10", 8.0),
+            (" 0o10 ", 8.0),
+            ("0o0", 0.0),
+            ("0o11", 9.0),
+            // Octal: signed 32-bit two's complement wrapping
+            ("0o17777777777", 2147483647.0),
+            ("0o20000000000", -2147483648.0),
+            // Scientific notation
+            ("1.2e2", 120.0),
+            ("1.2E2", 120.0),
+            ("1.2e-2", 0.012),
+            (" 1.2e2 ", 120.0),
+            ("1.2e+2", 120.0),
+            ("5e0", 5.0),
+            ("1e3", 1000.0),
+            ("123e-1", 12.3),
+            (" +1.2e2 ", 120.0),
+            (" -1.2E+2 ", -120.0),
+            // Signs
+            ("+42", 42.0),
+            ("  -42  ", -42.0),
+            ("  3.14  ", 3.14),
+            ("+0", 0.0),
+            ("-0", 0.0),
+            (" +123456.789 ", 123456.789),
+            (" -123456.789 ", -123456.789),
+            // Leading zeros -> decimal
+            ("0123", 123.0),
+            ("00", 0.0),
+            ("007", 7.0),
+            ("010", 10.0),
+            // Trailing/leading dot
+            ("123.", 123.0),
+            (".5", 0.5),
+        ];
+
+        for (input, expected) in string_cases {
+            let eval = Evaluation::String(input.to_string());
+            assert_eq!(eval.as_number(), *expected, "as_number() for {:?}", input);
+        }
+
+        // Infinity cases
+        let infinity_cases: &[(&str, f64)] = &[
+            ("Infinity", f64::INFINITY),
+            (" Infinity ", f64::INFINITY),
+            ("+Infinity", f64::INFINITY),
+            ("-Infinity", f64::NEG_INFINITY),
+            (" -Infinity ", f64::NEG_INFINITY),
+        ];
+
+        for (input, expected) in infinity_cases {
+            let eval = Evaluation::String(input.to_string());
+            assert_eq!(eval.as_number(), *expected, "as_number() for {:?}", input);
+        }
+
+        // NaN cases: all verified against GitHub Actions CI.
+        let nan_cases: &[&str] = &[
+            // Invalid strings
+            "hello",
+            "abc",
+            " abc ",
+            " NaN ",
+            // Partial/malformed numerics
+            "123abc",
+            "abc123",
+            "100a",
+            "12.3.4",
+            "1e2e3",
+            "1 2",
+            "1_000",
+            "+",
+            "-",
+            ".",
+            // Binary notation
+            "0b1010",
+            "0B1010",
+            "0b0",
+            "0b1",
+            "0b11",
+            " 0b11 ",
+            // Uppercase prefixes are NOT supported
+            "0XFF",
+            "0O10",
+            // Signed prefixed numbers are NOT supported
+            "-0xff",
+            "+0xff",
+            "-0o10",
+            "+0o10",
+            "-0b11",
+            // Empty prefixes (no digits after prefix)
+            "0x",
+            "0o",
+            "0b",
+            // Invalid digits for the base
+            "0xZZ",
+            "0o89",
+            "0b23",
+            // Hex/octal values exceeding 32-bit
+            "0x100000000",
+            "0o40000000000",
+            // "inf" abbreviation rejected by GH runner
+            "inf",
+            "Inf",
+            "INF",
+            "+inf",
+            "-inf",
+            " inf ",
+        ];
+
+        for input in nan_cases {
+            let eval = Evaluation::String(input.to_string());
+            assert!(
+                eval.as_number().is_nan(),
+                "as_number() for {:?} should be NaN",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_github_actions_logical_semantics() -> Result<(), Error> {
+        use crate::Evaluation;
+
+        // Test GitHub Actions-specific && and || semantics
+        let test_cases = &[
+            // && returns the first falsy value, or the last value if all are truthy
+            ("false && 'hello'", Evaluation::Boolean(false)),
+            ("null && 'hello'", Evaluation::Null),
+            ("'' && 'hello'", Evaluation::String("".to_string())),
+            (
+                "'hello' && 'world'",
+                Evaluation::String("world".to_string()),
+            ),
+            ("true && 42", Evaluation::Number(42.0)),
+            // || returns the first truthy value, or the last value if all are falsy
+            ("true || 'hello'", Evaluation::Boolean(true)),
+            (
+                "'hello' || 'world'",
+                Evaluation::String("hello".to_string()),
+            ),
+            ("false || 'hello'", Evaluation::String("hello".to_string())),
+            ("null || false", Evaluation::Boolean(false)),
+            ("'' || null", Evaluation::Null),
+            ("!NaN", Evaluation::Boolean(true)),
+            ("!!NaN", Evaluation::Boolean(false)),
+        ];
+
+        for (expr_str, expected) in test_cases {
+            let expr = Expr::parse(expr_str)?;
+            let result = expr.consteval().unwrap();
+            assert_eq!(result, *expected, "Failed for expression: {}", expr_str);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_expr_has_constant_reducible_subexpr() -> Result<(), Error> {
+        for (expr, reducible) in &[
+            // Literals are not considered reducible subexpressions.
+            ("'foo'", false),
+            ("1", false),
+            ("true", false),
+            ("null", false),
+            // Non-reducible expressions with reducible subexpressions
+            (
+                "format('{0}, {1}', github.event.number, format('{0}', 'abc'))",
+                true,
+            ),
+            ("foobar[format('{0}', 'event')]", true),
+        ] {
+            let expr = Expr::parse(expr)?;
+            assert_eq!(!expr.constant_reducible_subexprs().is_empty(), *reducible);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_expr_contexts() -> Result<(), Error> {
+        // A single context.
+        let expr = Expr::parse("foo.bar.baz[1].qux")?;
+        assert_eq!(
+            expr.contexts().iter().map(|t| t.1.raw).collect::<Vec<_>>(),
+            ["foo.bar.baz[1].qux",]
+        );
+
+        // Multiple contexts.
+        let expr = Expr::parse("foo.bar[1].baz || abc.def")?;
+        assert_eq!(
+            expr.contexts().iter().map(|t| t.1.raw).collect::<Vec<_>>(),
+            ["foo.bar[1].baz", "abc.def",]
+        );
+
+        // Two contexts, one as part of a computed index.
+        let expr = Expr::parse("foo.bar[abc.def]")?;
+        assert_eq!(
+            expr.contexts().iter().map(|t| t.1.raw).collect::<Vec<_>>(),
+            ["foo.bar[abc.def]", "abc.def",]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_expr_dataflow_contexts() -> Result<(), Error> {
+        // Trivial cases.
+        let expr = Expr::parse("foo.bar")?;
+        assert_eq!(
+            expr.dataflow_contexts()
+                .iter()
+                .map(|t| t.1.raw)
+                .collect::<Vec<_>>(),
+            ["foo.bar"]
+        );
+
+        let expr = Expr::parse("foo.bar[1]")?;
+        assert_eq!(
+            expr.dataflow_contexts()
+                .iter()
+                .map(|t| t.1.raw)
+                .collect::<Vec<_>>(),
+            ["foo.bar[1]"]
+        );
+
+        // No dataflow due to a boolean expression.
+        let expr = Expr::parse("foo.bar == 'bar'")?;
+        assert!(expr.dataflow_contexts().is_empty());
+
+        // ||: all contexts potentially expand into the evaluation.
+        let expr = Expr::parse("foo.bar || abc || d.e.f")?;
+        assert_eq!(
+            expr.dataflow_contexts()
+                .iter()
+                .map(|t| t.1.raw)
+                .collect::<Vec<_>>(),
+            ["foo.bar", "abc", "d.e.f"]
+        );
+
+        // &&: only the RHS context(s) expand into the evaluation.
+        let expr = Expr::parse("foo.bar && abc && d.e.f")?;
+        assert_eq!(
+            expr.dataflow_contexts()
+                .iter()
+                .map(|t| t.1.raw)
+                .collect::<Vec<_>>(),
+            ["d.e.f"]
+        );
+
+        let expr = Expr::parse("foo.bar == 'bar' && foo.bar || 'false'")?;
+        assert_eq!(
+            expr.dataflow_contexts()
+                .iter()
+                .map(|t| t.1.raw)
+                .collect::<Vec<_>>(),
+            ["foo.bar"]
+        );
+
+        let expr = Expr::parse("foo.bar == 'bar' && foo.bar || foo.baz")?;
+        assert_eq!(
+            expr.dataflow_contexts()
+                .iter()
+                .map(|t| t.1.raw)
+                .collect::<Vec<_>>(),
+            ["foo.bar", "foo.baz"]
+        );
+
+        let expr = Expr::parse("fromJson(steps.runs.outputs.data).workflow_runs[0].id")?;
+        assert_eq!(
+            expr.dataflow_contexts()
+                .iter()
+                .map(|t| t.1.raw)
+                .collect::<Vec<_>>(),
+            ["fromJson(steps.runs.outputs.data).workflow_runs[0].id"]
+        );
+
+        let expr = Expr::parse("format('{0} {1} {2}', foo.bar, tojson(github), toJSON(github))")?;
+        assert_eq!(
+            expr.dataflow_contexts()
+                .iter()
+                .map(|t| t.1.raw)
+                .collect::<Vec<_>>(),
+            ["foo.bar", "github", "github"]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_spannedexpr_computed_indices() -> Result<(), Error> {
+        for (expr, computed_indices) in &[
+            ("foo.bar", vec![]),
+            ("foo.bar[1]", vec![]),
+            ("foo.bar[*]", vec![]),
+            ("foo.bar[abc]", vec!["[abc]"]),
+            (
+                "foo.bar[format('{0}', 'foo')]",
+                vec!["[format('{0}', 'foo')]"],
+            ),
+            ("foo.bar[abc].def[efg]", vec!["[abc]", "[efg]"]),
+        ] {
+            let expr = Expr::parse(expr)?;
+
+            assert_eq!(
+                expr.computed_indices()
+                    .iter()
+                    .map(|e| e.origin.raw)
+                    .collect::<Vec<_>>(),
+                *computed_indices
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_fragment_from_expr() {
+        for (expr, expected) in &[
+            ("foo==bar", "foo==bar"),
+            ("foo    ==   bar", r"foo\s+==\s+bar"),
+            ("foo == bar", r"foo\s+==\s+bar"),
+            ("fromJSON('{}')", "fromJSON('{}')"),
+            ("fromJSON('{ }')", r"fromJSON\('\{\s+\}'\)"),
+            ("fromJSON ('{ }')", r"fromJSON\s+\('\{\s+\}'\)"),
+            ("a . b . c . d", r"a\s+\.\s+b\s+\.\s+c\s+\.\s+d"),
+            ("true \n && \n false", r"true\s+\&\&\s+false"),
+        ] {
+            let expr = Expr::parse(expr).unwrap();
+            match subfeature::Fragment::from(&expr) {
+                subfeature::Fragment::Raw(actual) => assert_eq!(actual, *expected),
+                subfeature::Fragment::Regex(actual) => assert_eq!(actual.as_str(), *expected),
+            };
+        }
+    }
+
+    #[test]
+    fn test_leaf_expressions() -> Result<(), Error> {
+        // A single literal is its own leaf.
+        let expr = Expr::parse("'hello'")?;
+        let leaves = expr.leaf_expressions();
+        assert_eq!(leaves.len(), 1);
+        assert!(matches!(&leaves[0].inner, Expr::Literal(Literal::String(s)) if s == "hello"));
+
+        // A single context is its own leaf.
+        let expr = Expr::parse("foo.bar")?;
+        let leaves = expr.leaf_expressions();
+        assert_eq!(leaves.len(), 1);
+        assert!(matches!(&leaves[0].inner, Expr::Context(_)));
+
+        // `A || B` returns both sides.
+        let expr = Expr::parse("foo.abc || foo.def")?;
+        let leaves = expr.leaf_expressions();
+        assert_eq!(leaves.len(), 2);
+        assert!(matches!(&leaves[0].inner, Expr::Context(_)));
+        assert!(matches!(&leaves[1].inner, Expr::Context(_)));
+
+        // `A && B` returns only B.
+        let expr = Expr::parse("foo.bar && 'hello'")?;
+        let leaves = expr.leaf_expressions();
+        assert_eq!(leaves.len(), 1);
+        assert!(matches!(&leaves[0].inner, Expr::Literal(Literal::String(s)) if s == "hello"));
+
+        // Conditional pattern: `cond && 'value' || 'fallback'`
+        let expr = Expr::parse("foo.bar == 'true' && 'redis:7' || ''")?;
+        let leaves = expr.leaf_expressions();
+        assert_eq!(leaves.len(), 2);
+        assert!(matches!(&leaves[0].inner, Expr::Literal(Literal::String(s)) if s == "redis:7"));
+        assert!(matches!(&leaves[1].inner, Expr::Literal(Literal::String(s)) if s.is_empty()));
+
+        // Comparison operators are leaves themselves (they produce booleans).
+        let expr = Expr::parse("foo.bar == 'abc'")?;
+        let leaves = expr.leaf_expressions();
+        assert_eq!(leaves.len(), 1);
+        assert!(matches!(&leaves[0].inner, Expr::BinExpr { .. }));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_upper_special() {
+        use super::EvaluationSema;
+
+        let cases = &[
+            ("", ""),
+            ("abc", "ABC"),
+            ("ıabc", "ıABC"),
+            ("ııabc", "ııABC"),
+            ("abcı", "ABCı"),
+            ("abcıı", "ABCıı"),
+            ("abcıdef", "ABCıDEF"),
+            ("abcııdef", "ABCııDEF"),
+            ("abcıdefıghi", "ABCıDEFıGHI"),
+        ];
+
+        for (input, want) in cases {
+            assert_eq!(
+                EvaluationSema::upper_special(input),
+                *want,
+                "input: {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_expr_commutative_matches() -> Result<(), Error> {
+        let cases = &[
+            // Identical expressions always match.
+            ("a == b", "a == b", true),
+            // Commutative operators match when swapped.
+            ("a == b", "b == a", true),
+            ("a != b", "b != a", true),
+            ("a && b", "b && a", true),
+            ("a || b", "b || a", true),
+            // Non-commutative operators don't match when swapped.
+            ("a > b", "b > a", false),
+            ("a >= b", "b >= a", false),
+            ("a < b", "b < a", false),
+            ("a <= b", "b <= a", false),
+            // Non-commutative operators still match positionally.
+            ("a > b", "a > b", true),
+            // Different operators never match.
+            ("a == b", "a != b", false),
+            ("a > b", "a < b", false),
+            // Recursive commutative matching through nested commutative ops.
+            ("(a == b) && (c == d)", "(d == c) && (b == a)", true),
+            ("(a == b) && (c == d)", "(c == d) && (a == b)", true),
+            // Recursion descends into non-commutative ops positionally.
+            ("(a == b) > (c == d)", "(b == a) > (d == c)", true),
+            ("(a == b) > (c == d)", "(c == d) > (a == b)", false),
+            // Non-binexpr fall-through uses equality.
+            ("'foo'", "'foo'", true),
+            ("'foo'", "'bar'", false),
+            // Mixed binexpr vs non-binexpr never matches.
+            ("a == b", "'foo'", false),
+        ];
+
+        for (lhs, rhs, expected) in cases {
+            let lhs_expr = Expr::parse(lhs)?;
+            let rhs_expr = Expr::parse(rhs)?;
+            assert_eq!(
+                lhs_expr.inner.commutative_matches(&rhs_expr.inner),
+                *expected,
+                "{lhs} <=> {rhs}",
+            );
+        }
+
+        Ok(())
+    }
+}

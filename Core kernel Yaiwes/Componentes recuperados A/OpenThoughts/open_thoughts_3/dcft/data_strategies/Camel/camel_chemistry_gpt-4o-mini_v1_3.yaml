@@ -1,0 +1,66 @@
+operators:
+- id: load_discipline
+  config:
+    type: function
+    function: data_strategies.commons.load_json_string_to_dataset
+    function_config:
+      json_string: '{"discipline": ["chemistry"], "expert": ["Chemist"], "num_topics": [25], "num_subtopics": [25], "num_questions": [32]}'
+
+- id: generate_topics
+  config:
+    type: completions
+    map: list # this uses structured output if available
+    map_config:
+      system_message: "You are a helpful assistant."
+      user_message: "Please list {{num_topics}} diverse {{discipline}} topics. Make sure the topics are {{discipline}} topics. No explanation." # number of topics
+      output_column: topic
+    model: gpt-4o-mini
+  input_ids:
+    - load_discipline
+
+- id: generate_subtopics
+  config:
+    type: completions
+    map: list # this uses structured output if available
+    map_config:
+      system_message: "You are a helpful assistant."
+      user_message: "List {{num_subtopics}} different {{discipline}} {{topic}} problem topics. Be precise and make sure the problems are {{topic}} problems." # number of subtopics per topic
+      output_column: subtopic
+    model: gpt-4o-mini
+  input_ids:
+    - generate_topics
+
+- id: generate_questions
+  config:
+    type: completions
+    map: list
+    map_config:
+      system_message: "You are a {{expert}}."
+      user_message: "From this {{discipline}} subject {{topic}} and this subtopic {{subtopic}} we need to write {{num_questions}} new questions for a {{discipline}} student to solve. Please write a precise problem for the student to solve." 
+      output_column: question
+    model: gpt-4o-mini
+  input_ids:
+    - generate_subtopics
+
+- id: generate_answers
+  config:
+    type: completions
+    map: chat
+    map_config:
+      system_message: "You are a {{expert}}."
+      user_message: "Solve the following question: {{question}}" 
+      output_column: answer
+    model: gpt-4o-mini
+  input_ids:
+    - generate_questions
+
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: question
+      input_response_column: answer
+      output_sharegpt_column: conversations
+  input_ids:
+    - generate_answers

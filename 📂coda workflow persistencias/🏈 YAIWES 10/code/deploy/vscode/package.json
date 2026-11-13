@@ -1,0 +1,94 @@
+{
+  "name": "pentestswarm",
+  "displayName": "pentestswarm — AI Penetration Testing",
+  "description": "Autonomous AI-powered penetration testing from your IDE. Scan targets, view findings inline, and generate reports.",
+  "version": "0.1.0",
+  "publisher": "armurai",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Armur-Ai/pentestswarm"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Testing", "Linters", "Other"],
+  "keywords": ["security", "penetration-testing", "vulnerability", "scanner", "pentest", "ai"],
+  "activationEvents": [
+    "onCommand:pentestswarm.scan",
+    "onCommand:pentestswarm.explain",
+    "workspaceContains:config.yaml",
+    "workspaceContains:pentestswarm.yaml"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "pentestswarm.scan",
+        "title": "PentestSwarm: Scan Target",
+        "category": "PentestSwarm"
+      },
+      {
+        "command": "pentestswarm.explain",
+        "title": "PentestSwarm: Explain Finding",
+        "category": "PentestSwarm"
+      },
+      {
+        "command": "pentestswarm.stop",
+        "title": "PentestSwarm: Stop Campaign",
+        "category": "PentestSwarm"
+      },
+      {
+        "command": "pentestswarm.viewReport",
+        "title": "PentestSwarm: View Report",
+        "category": "PentestSwarm"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pentestswarm",
+          "title": "PentestSwarm",
+          "icon": "$(shield)"
+        }
+      ]
+    },
+    "views": {
+      "pentestswarm": [
+        {
+          "id": "pentestswarm.findings",
+          "name": "Findings"
+        },
+        {
+          "id": "pentestswarm.campaigns",
+          "name": "Campaigns"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "PentestSwarm",
+      "properties": {
+        "pentestswarm.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:8080",
+          "description": "URL of the pentestswarm API server"
+        },
+        "pentestswarm.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for authentication"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}

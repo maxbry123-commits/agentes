@@ -1,0 +1,156 @@
+---
+id: anthropic
+title: Anthropic
+sidebar_label: Anthropic
+languages: [python, typescript]
+---
+
+`deepeval` supports using any Anthropic model for all evaluation metrics. To get started, you'll need to set up your Anthropic API key.
+
+### Setting Up Your API Key
+
+To use Anthropic for `deepeval`'s LLM-based evaluations (metrics evaluated using an LLM), provide your `ANTHROPIC_API_KEY` in the CLI:
+
+```bash
+export ANTHROPIC_API_KEY=<your-anthropic-api-key>
+
+```
+
+Alternatively, if you're working in a notebook environment (e.g., Jupyter or Colab), set your `ANTHROPIC_API_KEY` in a cell:
+
+```bash
+%env ANTHROPIC_API_KEY=<your-anthropic-api-key>
+```
+
+### In Code
+
+<Switch>
+
+<Case id="python">
+
+To use Anthropic models for `deepeval` metrics, define an `AnthropicModel` and specify the model you want to use. By default, the `model` is set to <DefaultLLMModel provider="anthropic" />.
+
+<Tabs items={["Python", "ENV"]}>
+<Tab value="Python">
+
+```python
+from deepeval.metrics import AnswerRelevancyMetric
+from deepeval.models import AnthropicModel
+
+model = AnthropicModel(
+    model="claude-3-7-sonnet-latest",
+    temperature=0
+)
+answer_relevancy = AnswerRelevancyMetric(model=model)
+```
+
+</Tab>
+<Tab value="ENV">
+
+To use any Anthropic model directly in `deepeval`, set the `USE_ANTHROPIC_MODEL=1` in your `env` and simply pass the name of your desired model in your metric initialization:
+
+```python
+from deepeval.metrics import AnswerRelevancyMetric
+
+answer_relevancy = AnswerRelevancyMetric(
+    model="claude-3-7-sonnet-latest",
+)
+```
+
+You should also set the other necessary vars like `ANTHROPIC_API_KEY` to be able to use the Anthropic models as shown above.
+
+</Tab>
+</Tabs>
+
+There are **ZERO** mandatory and **SIX** optional parameters when creating an `AnthropicModel`:
+
+- [Optional] `model`: A string specifying which Claude model to use. Defaults to `ANTHROPIC_MODEL_NAME` if not passed; falls back to <DefaultLLMModel provider="anthropic" /> if unset.
+- [Optional] `api_key`: A string specifying your Anthropic API key. Defaults to `ANTHROPIC_API_KEY` if not passed; raises an error at runtime if unset.
+- [Optional] `temperature`: A float specifying the model temperature. Defaults to `TEMPERATURE` if not passed; falls back to `0.0` if unset and raises if < 0.
+- [Optional] `cost_per_input_token`: A float specifying the cost for each input token for the provided model. Defaults to `ANTHROPIC_COST_PER_INPUT_TOKEN` if available in `deepeval`'s model cost registry, else `None`.
+- [Optional] `cost_per_output_token`: A float specifying the cost for each output token for the provided model. Defaults to `ANTHROPIC_COST_PER_OUTPUT_TOKEN` if available in `deepeval`'s model cost registry, else `None`.
+- [Optional] `generation_kwargs`: A dictionary of additional generation parameters forwarded to the Anthropic `messages.create(...)` call.
+
+Parameters may be explicitly passed to the model at initialization time, or configured with optional settings. The **mandatory** parameters are required at runtime, but you can provide them either explicitly as constructor arguments, **or** via `deepeval` settings / environment variables (constructor args take precedence). See [Environment variables and settings](/docs/evaluation-flags-and-configs#model-settings-anthropic) for the Anthropic-related environment variables.
+
+:::tip
+Pass generation parameters, such as `max_tokens`, via `generation_kwargs` (they are forwarded to `messages.create(...)`).
+
+Extra `**kwargs` passed to `AnthropicModel(...)` are forwarded to the underlying Anthropic client and are **not** treated as generation parameters.
+:::
+
+</Case>
+
+<Case id="typescript">
+
+To use Anthropic models for `deepeval` metrics, define an `AnthropicModel` and specify the model you want to use. By default, the `model` is set to <DefaultLLMModel provider="anthropic" />.
+
+<Tabs items={["TypeScript", "ENV"]}>
+<Tab value="TypeScript">
+
+```typescript
+import { AnswerRelevancyMetric } from "deepeval/metrics";
+import { AnthropicModel } from "deepeval/models";
+
+const model = new AnthropicModel({
+  model: "claude-sonnet-4-6",
+  temperature: 0,
+});
+const answerRelevancy = new AnswerRelevancyMetric({ model });
+```
+
+</Tab>
+<Tab value="ENV">
+
+Every option is backed by an environment variable, so you can set `ANTHROPIC_MODEL_NAME` and `ANTHROPIC_API_KEY` in your `env` and construct the model with no arguments:
+
+```typescript
+import { AnswerRelevancyMetric } from "deepeval/metrics";
+import { AnthropicModel } from "deepeval/models";
+
+const answerRelevancy = new AnswerRelevancyMetric({
+  model: new AnthropicModel(),
+});
+```
+
+</Tab>
+</Tabs>
+
+There are **ZERO** mandatory and **SIX** optional parameters when creating an `AnthropicModel`:
+
+- [Optional] `model`: A string specifying which Claude model to use. Defaults to `ANTHROPIC_MODEL_NAME` if not passed; falls back to <DefaultLLMModel provider="anthropic" /> if unset.
+- [Optional] `apiKey`: A string specifying your Anthropic API key. Defaults to `ANTHROPIC_API_KEY` if not passed; raises an error at runtime if unset.
+- [Optional] `temperature`: A number specifying the model temperature. Defaults to `0`. Pass `null` to omit it from the request entirely, which is required by reasoning models that reject it.
+- [Optional] `maxTokens`: A number specifying the maximum number of tokens to generate. Defaults to `4096`.
+- [Optional] `costPerInputToken`: A number specifying the cost for each input token for the provided model. Defaults to the price in `deepeval`'s model cost registry, else `null`.
+- [Optional] `costPerOutputToken`: A number specifying the cost for each output token for the provided model. Defaults to the price in `deepeval`'s model cost registry, else `null`.
+
+Any other key you pass is forwarded as-is to the Anthropic `messages.create(...)` call, so generation parameters with no first-class option go inline alongside the rest:
+
+```typescript
+const model = new AnthropicModel({
+  model: "claude-sonnet-4-6",
+  top_p: 0.9,
+  stop_sequences: ["\n\n"],
+});
+```
+
+</Case>
+
+</Switch>
+
+### Available Anthropic Models
+
+:::note
+This list only displays some of the available models. For a comprehensive list, refer to the Anthropic's official documentation.
+:::
+
+Below is a list of commonly used Anthropic models:
+
+- `claude-fable-5`
+- `claude-opus-4-8`
+- `claude-opus-4-7`
+- `claude-opus-4-5`
+- `claude-sonnet-4-6`
+- `claude-sonnet-4-5`
+- `claude-haiku-4-5`

@@ -1,0 +1,108 @@
+<tools>
+  <tool name="crtsh_search">
+    <description>Search Certificate Transparency logs for subdomains.</description>
+    <parameters>
+      <parameter name="domain" type="string" required="true">
+        <description>Target domain.</description>
+      </parameter>
+      <parameter name="include_expired" type="boolean" required="false">
+        <description>Include expired certs.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>subdomains, subdomain_count, certificates.</description>
+    </returns>
+    <examples>
+      <function=crtsh_search>
+        <parameter=domain>example.com</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="shodan_search">
+    <description>Search Shodan for exposed services and ports.</description>
+    <parameters>
+      <parameter name="query" type="string" required="true">
+        <description>IP, domain, or dork.</description>
+      </parameter>
+      <parameter name="search_type" type="string" required="false">
+        <description>host or search.</description>
+      </parameter>
+      <parameter name="max_results" type="integer" required="false">
+        <description>Max results.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>ports, products, versions, vulns, hostnames.</description>
+    </returns>
+    <examples>
+      <function=shodan_search>
+        <parameter=query>example.com</parameter>
+        <parameter=search_type>host</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="whois_lookup">
+    <description>WHOIS lookup for domain registration.</description>
+    <parameters>
+      <parameter name="domain" type="string" required="true">
+        <description>Domain.</description>
+      </parameter>
+      <parameter name="include_history" type="boolean" required="false">
+        <description>Historical data.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>registrar, creation_date, expiration_date, name_servers.</description>
+    </returns>
+    <examples>
+      <function=whois_lookup>
+        <parameter=domain>example.com</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="dns_enum">
+    <description>Enumerate DNS records.</description>
+    <parameters>
+      <parameter name="domain" type="string" required="true">
+        <description>Domain.</description>
+      </parameter>
+      <parameter name="record_types" type="list" required="false">
+        <description>Record types. Default: A, AAAA, MX, NS, TXT, CNAME, SOA.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>records, subdomains, record_count.</description>
+    </returns>
+    <examples>
+      <function=dns_enum>
+        <parameter=domain>example.com</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="github_dork">
+    <description>Search GitHub for leaked secrets.</description>
+    <parameters>
+      <parameter name="organization" type="string" required="false">
+        <description>Org name.</description>
+      </parameter>
+      <parameter name="domain" type="string" required="false">
+        <description>Domain to search.</description>
+      </parameter>
+      <parameter name="keywords" type="list" required="false">
+        <description>Additional keywords.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>results, total_count, queries_run.</description>
+    </returns>
+    <examples>
+      <function=github_dork>
+        <parameter=organization>targetcorp</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

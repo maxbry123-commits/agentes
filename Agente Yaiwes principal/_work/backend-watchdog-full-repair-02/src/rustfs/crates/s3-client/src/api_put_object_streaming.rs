@@ -1,0 +1,706 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_must_use)]
+#![allow(clippy::all)]
+
+use bytes::Bytes;
+use futures::future::join_all;
+use http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
+use std::io::Error;
+use std::sync::{Mutex, MutexGuard, RwLock};
+use std::{collections::HashMap, sync::Arc};
+use time::{OffsetDateTime, format_description};
+use tokio::io::AsyncReadExt;
+use tokio::{select, sync::mpsc};
+use tokio_util::sync::CancellationToken;
+use tracing::warn;
+use uuid::Uuid;
+
+use crate::checksum::{ChecksumMode, add_auto_checksum_headers, apply_auto_checksum, checksum_header_value};
+use crate::{
+    api_error_response::{err_invalid_argument, err_unexpected_eof, http_resp_to_error_response},
+    api_put_object::PutObjectOptions,
+    api_put_object_common::{is_object, optimal_part_info},
+    api_put_object_multipart::UploadPartParams,
+    api_s3_datatypes::{CompleteMultipartUpload, CompletePart, ObjectPart},
+    constants::ISO8601_DATEFORMAT,
+    transition_api::{ReaderImpl, RequestMetadata, TransitionClient, UploadInfo},
+};
+
+use crate::utils::base64_encode;
+use rustfs_utils::path::trim_etag;
+use s3s::header::X_AMZ_EXPIRATION;
+
+fn lock_md5_hasher(
+    md5_hasher: &Mutex<Option<rustfs_utils::hash::HashAlgorithm>>,
+) -> Result<MutexGuard<'_, Option<rustfs_utils::hash::HashAlgorithm>>, std::io::Error> {
+    md5_hasher
+        .lock()
+        .map_err(|_| std::io::Error::other("MD5 hasher state is unavailable"))
+}
+
+/// Read exactly `want` bytes for a single multipart part, or fewer if the reader
+/// reaches EOF first. Advances the reader so the next call returns the following
+/// part. Replaces the previous per-part `read_all()`/`to_vec()`, which drained
+/// the entire source into the first part and left later parts empty
+/// (rustfs/rustfs#4811).
+async fn read_multipart_part(reader: &mut ReaderImpl, want: usize) -> Result<Vec<u8>, std::io::Error> {
+    match reader {
+        ReaderImpl::Body(content_body) => {
+            let take = content_body.len().min(want);
+            Ok(content_body.split_to(take).to_vec())
+        }
+        ReaderImpl::ObjectBody(content_body) => {
+            let mut buf = vec![0u8; want];
+            let mut filled = 0;
+            while filled < want {
+                let n = content_body.read(&mut buf[filled..]).await?;
+                if n == 0 {
+                    break;
+                }
+                filled += n;
+            }
+            buf.truncate(filled);
+            Ok(buf)
+        }
+    }
+}
+
+impl TransitionClient {
+    pub async fn put_object_multipart_stream(
+        self: Arc<Self>,
+        bucket_name: &str,
+        object_name: &str,
+        reader: ReaderImpl,
+        size: i64,
+        opts: &PutObjectOptions,
+    ) -> Result<UploadInfo, std::io::Error> {
+        let info: UploadInfo;
+        if opts.concurrent_stream_parts && opts.num_threads > 1 {
+            info = self
+                .put_object_multipart_stream_parallel(bucket_name, object_name, reader, opts)
+                .await?;
+        } else if !is_object(&reader) && !opts.send_content_md5 {
+            info = self
+                .put_object_multipart_stream_from_readat(bucket_name, object_name, reader, size, opts)
+                .await?;
+        } else {
+            info = self
+                .put_object_multipart_stream_optional_checksum(bucket_name, object_name, reader, size, opts)
+                .await?;
+        }
+
+        Ok(info)
+    }
+
+    pub async fn put_object_multipart_stream_from_readat(
+        &self,
+        bucket_name: &str,
+        object_name: &str,
+        reader: ReaderImpl,
+        size: i64,
+        opts: &PutObjectOptions,
+    ) -> Result<UploadInfo, std::io::Error> {
+        let ret = optimal_part_info(size, opts.part_size)?;
+        let (total_parts_count, part_size, lastpart_size) = ret;
+        let mut opts = opts.clone();
+        if opts.checksum.is_set() {
+            opts.auto_checksum = opts.checksum.clone();
+        }
+
+        opts.user_metadata.remove("X-Amz-Checksum-Algorithm");
+
+        self.put_object_multipart_stream_optional_checksum(bucket_name, object_name, reader, size, &opts)
+            .await
+    }
+
+    pub async fn put_object_multipart_stream_optional_checksum(
+        &self,
+        bucket_name: &str,
+        object_name: &str,
+        mut reader: ReaderImpl,
+        size: i64,
+        opts: &PutObjectOptions,
+    ) -> Result<UploadInfo, std::io::Error> {
+        let mut opts = opts.clone();
+        if opts.checksum.is_set() {
+            opts.auto_checksum = opts.checksum.clone();
+            opts.send_content_md5 = false;
+        }
+
+        if !opts.send_content_md5 {
+            add_auto_checksum_headers(&mut opts);
+        }
+
+        let ret = optimal_part_info(size, opts.part_size)?;
+        let (total_parts_count, mut part_size, lastpart_size) = ret;
+        let upload_id = self.new_upload_id(bucket_name, object_name, &opts).await?;
+        opts.user_metadata.remove("X-Amz-Checksum-Algorithm");
+
+        let mut custom_header = opts.header().clone();
+
+        let mut total_uploaded_size: i64 = 0;
+
+        let mut parts_info = HashMap::<i64, ObjectPart>::new();
+
+        let mut md5_base64: String = "".to_string();
+        for part_number in 1..=total_parts_count {
+            if part_number == total_parts_count {
+                part_size = lastpart_size;
+            }
+
+            // Read exactly this part's bytes. Using `read_all()`/`to_vec()` here
+            // drained the whole source into the first part and left every later
+            // part empty, silently corrupting any multipart upload of a streamed
+            // (`ObjectBody`) source — e.g. ILM transitions of >128 MiB objects,
+            // which split into 128 MiB parts (rustfs/rustfs#4811).
+            let buf = read_multipart_part(&mut reader, part_size as usize).await?;
+            let length = buf.len();
+
+            if opts.send_content_md5 {
+                let mut md5_hasher = lock_md5_hasher(&self.md5_hasher)?;
+                let md5_hash = match md5_hasher.as_mut() {
+                    Some(hasher) => hasher,
+                    None => return Err(std::io::Error::other("MD5 hasher not initialized")),
+                };
+                let hash = md5_hash.hash_encode(&buf[..length]);
+                md5_base64 = base64_encode(hash.as_ref());
+            } else if opts.auto_checksum.is_set() {
+                let mut crc = opts.auto_checksum.hasher()?;
+                crc.update(&buf[..length]);
+                let csum = crc.finalize();
+
+                if let Ok(header_name) = HeaderName::from_bytes(opts.auto_checksum.key().as_bytes()) {
+                    if let Ok(header_value) = base64_encode(csum.as_ref()).parse() {
+                        custom_header.insert(header_name, header_value);
+                    } else {
+                        warn!("Failed to parse checksum value");
+                    }
+                } else {
+                    warn!("Invalid header name: {}", opts.auto_checksum.key());
+                }
+            }
+            // else: neither MD5 nor a concrete additional checksum was requested,
+            // so upload the part without a per-part checksum header. Guarding the
+            // branch on `is_set()` avoids calling `hasher()` on `ChecksumNone`,
+            // which errors with "unsupported checksum type" (rustfs/rustfs#4811).
+
+            let hooked = ReaderImpl::Body(Bytes::from(buf)); //newHook(BufferReader::new(buf), opts.progress);
+            let mut p = UploadPartParams {
+                bucket_name: bucket_name.to_string(),
+                object_name: object_name.to_string(),
+                upload_id: upload_id.clone(),
+                reader: hooked,
+                part_number,
+                md5_base64: md5_base64.clone(),
+                // Use the bytes actually read, not the planned part_size, so the
+                // uploaded Content-Length matches the body even on a short read.
+                size: length as i64,
+                //sse: opts.server_side_encryption,
+                stream_sha256: !opts.disable_content_sha256,
+                custom_header: custom_header.clone(),
+                sha256_hex: "".to_string(),
+                trailer: HeaderMap::new(),
+            };
+            let obj_part = self.upload_part(&mut p).await?;
+
+            parts_info.entry(part_number).or_insert(obj_part);
+
+            total_uploaded_size += length as i64;
+        }
+
+        if size > 0 && total_uploaded_size != size {
+            return Err(std::io::Error::other(err_unexpected_eof(
+                total_uploaded_size,
+                size,
+                bucket_name,
+                object_name,
+            )));
+        }
+
+        let mut compl_multipart_upload = CompleteMultipartUpload::default();
+
+        // Parts are keyed 1..=total_parts_count during upload; every one — including the last —
+        // must be collected. The previous exclusive `1..total_parts_count` bound dropped the final
+        // part, silently truncating the completed object (and produced zero parts for a single-part
+        // upload).
+        let mut all_parts = collect_complete_parts(&parts_info, total_parts_count)?;
+        for part in &all_parts {
+            compl_multipart_upload.parts.push(CompletePart {
+                etag: part.etag.clone(),
+                part_num: part.part_num,
+                checksum_crc32: part.checksum_crc32.clone(),
+                checksum_crc32c: part.checksum_crc32c.clone(),
+                checksum_sha1: part.checksum_sha1.clone(),
+                checksum_sha256: part.checksum_sha256.clone(),
+                checksum_crc64nvme: part.checksum_crc64nvme.clone(),
+            });
+        }
+
+        compl_multipart_upload.parts.sort();
+
+        let mut opts = PutObjectOptions {
+            //server_side_encryption: opts.server_side_encryption,
+            auto_checksum: opts.auto_checksum,
+            ..Default::default()
+        };
+        apply_auto_checksum(&mut opts, &mut all_parts);
+        let mut upload_info = self
+            .complete_multipart_upload(bucket_name, object_name, &upload_id, compl_multipart_upload, &opts)
+            .await?;
+
+        upload_info.size = total_uploaded_size;
+        Ok(upload_info)
+    }
+
+    pub async fn put_object_multipart_stream_parallel(
+        self: Arc<Self>,
+        bucket_name: &str,
+        object_name: &str,
+        mut reader: ReaderImpl, /*GetObjectReader*/
+        opts: &PutObjectOptions,
+    ) -> Result<UploadInfo, std::io::Error> {
+        let mut opts = opts.clone();
+        if opts.checksum.is_set() {
+            opts.send_content_md5 = false;
+            opts.auto_checksum = opts.checksum.clone();
+        }
+        if !opts.send_content_md5 {
+            add_auto_checksum_headers(&mut opts);
+        }
+
+        let ret = optimal_part_info(-1, opts.part_size)?;
+        let (total_parts_count, part_size, _) = ret;
+
+        let upload_id = self.new_upload_id(bucket_name, object_name, &opts).await?;
+        opts.user_metadata.remove("X-Amz-Checksum-Algorithm");
+
+        let mut total_uploaded_size: i64 = 0;
+        let parts_info = Arc::new(RwLock::new(HashMap::<i64, ObjectPart>::new()));
+
+        let n_buffers = opts.num_threads;
+        let (bufs_tx, mut bufs_rx) = mpsc::channel(n_buffers as usize);
+        //let all = Vec::<u8>::with_capacity(n_buffers as usize * part_size as usize);
+        for i in 0..n_buffers {
+            //bufs_tx.send(&all[i * part_size..i * part_size + part_size]);
+            bufs_tx.send(Vec::<u8>::with_capacity(part_size as usize));
+        }
+
+        let mut futures = Vec::with_capacity(total_parts_count as usize);
+        let (err_tx, mut err_rx) = mpsc::channel(opts.num_threads as usize);
+        let cancel_token = CancellationToken::new();
+
+        //reader = newHook(reader, opts.progress);
+
+        for part_number in 1..=total_parts_count {
+            let mut buf = Vec::<u8>::new();
+            select! {
+                buf1 = bufs_rx.recv() => {
+                    if let Some(buf1) = buf1 {
+                        buf = buf1;
+                    }
+                }
+                err = err_rx.recv() => {
+                    //cancel_token.cancel();
+                    return Err(err.unwrap_or_else(|| std::io::Error::other("Unknown error received from channel")));
+                }
+                else => (),
+            }
+
+            if buf.len() != part_size as usize {
+                return Err(std::io::Error::other(format!(
+                    "read buffer < {} than expected partSize: {}",
+                    buf.len(),
+                    part_size
+                )));
+            }
+
+            match &mut reader {
+                ReaderImpl::Body(content_body) => {
+                    buf = content_body.to_vec();
+                }
+                ReaderImpl::ObjectBody(content_body) => {
+                    buf = content_body.read_all().await?;
+                }
+            }
+            let length = buf.len();
+
+            let mut custom_header = HeaderMap::new();
+            if !opts.send_content_md5 {
+                let mut crc = opts.auto_checksum.hasher()?;
+                crc.update(&buf[..length]);
+                let csum = crc.finalize();
+
+                if let Ok(header_name) = HeaderName::from_bytes(opts.auto_checksum.key().as_bytes()) {
+                    if let Ok(header_value) = base64_encode(csum.as_ref()).parse() {
+                        custom_header.insert(header_name, header_value);
+                    } else {
+                        warn!("Failed to parse checksum value");
+                    }
+                } else {
+                    warn!("Invalid header name: {}", opts.auto_checksum.key());
+                }
+            }
+
+            let clone_bufs_tx = bufs_tx.clone();
+            let clone_parts_info = parts_info.clone();
+            let clone_upload_id = upload_id.clone();
+            let clone_self = self.clone();
+            let err_tx_clone = err_tx.clone();
+            futures.push(async move {
+                let mut md5_base64: String = "".to_string();
+
+                if opts.send_content_md5 {
+                    let mut md5_hasher = lock_md5_hasher(&clone_self.md5_hasher)?;
+                    let md5_hash = match md5_hasher.as_mut() {
+                        Some(hasher) => hasher,
+                        None => {
+                            //let _ = err_tx_clone.send(std::io::Error::other("MD5 hasher not initialized")).await;
+                            return Ok::<(), Error>(());
+                        }
+                    };
+                    let hash = md5_hash.hash_encode(&buf[..length]);
+                    md5_base64 = base64_encode(hash.as_ref());
+                }
+
+                //defer wg.Done()
+                let mut p = UploadPartParams {
+                    bucket_name: bucket_name.to_string(),
+                    object_name: object_name.to_string(),
+                    upload_id: clone_upload_id,
+                    reader: ReaderImpl::Body(Bytes::from(buf.clone())),
+                    part_number,
+                    md5_base64,
+                    size: length as i64,
+                    //sse:           opts.server_side_encryption,
+                    stream_sha256: !opts.disable_content_sha256,
+                    custom_header,
+                    sha256_hex: "".to_string(),
+                    trailer: HeaderMap::new(),
+                };
+                let obj_part = match clone_self.upload_part(&mut p).await {
+                    Ok(part) => part,
+                    Err(err) => {
+                        let _ = err_tx_clone.send(std::io::Error::other(err.to_string())).await;
+                        return Err::<(), Error>(err);
+                    }
+                };
+
+                {
+                    let mut clone_parts_info = clone_parts_info.write().unwrap();
+                    clone_parts_info.entry(part_number).or_insert(obj_part);
+                }
+
+                let _ = clone_bufs_tx.send(buf).await;
+                Ok::<(), Error>(())
+            });
+
+            total_uploaded_size += length as i64;
+        }
+
+        let results = join_all(futures).await;
+        for result in results {
+            result?;
+        }
+
+        select! {
+            err = err_rx.recv() => {
+                return Err(err.unwrap_or_else(|| std::io::Error::other("Unknown error received from channel")));
+            }
+            else => (),
+        }
+
+        let mut compl_multipart_upload = CompleteMultipartUpload::default();
+
+        // Same inclusive collection as the serial path: parts are keyed 1..=total_parts_count, so
+        // the exclusive `1..total_parts_count` bound dropped the final part (and produced zero
+        // parts for a single-part upload), silently truncating the object.
+        let parts_snapshot = parts_info.read().unwrap().clone();
+        let mut all_parts = collect_complete_parts(&parts_snapshot, total_parts_count)?;
+        for part in &all_parts {
+            compl_multipart_upload.parts.push(CompletePart {
+                etag: part.etag.clone(),
+                part_num: part.part_num,
+                checksum_crc32: part.checksum_crc32.clone(),
+                checksum_crc32c: part.checksum_crc32c.clone(),
+                checksum_sha1: part.checksum_sha1.clone(),
+                checksum_sha256: part.checksum_sha256.clone(),
+                checksum_crc64nvme: part.checksum_crc64nvme.clone(),
+                ..Default::default()
+            });
+        }
+
+        compl_multipart_upload.parts.sort();
+
+        let mut opts = PutObjectOptions {
+            //server_side_encryption: opts.server_side_encryption,
+            auto_checksum: opts.auto_checksum,
+            ..Default::default()
+        };
+        apply_auto_checksum(&mut opts, &mut all_parts);
+
+        let mut upload_info = self
+            .complete_multipart_upload(bucket_name, object_name, &upload_id, compl_multipart_upload, &opts)
+            .await?;
+
+        upload_info.size = total_uploaded_size;
+        Ok(upload_info)
+    }
+
+    pub async fn put_object_gcs(
+        &self,
+        bucket_name: &str,
+        object_name: &str,
+        reader: ReaderImpl,
+        size: i64,
+        opts: &PutObjectOptions,
+    ) -> Result<UploadInfo, std::io::Error> {
+        let mut opts = opts.clone();
+        if opts.checksum.is_set() {
+            opts.send_content_md5 = false;
+        }
+
+        let md5_base64: String = "".to_string();
+        let progress_reader = reader; //newHook(reader, opts.progress);
+
+        self.put_object_do(bucket_name, object_name, progress_reader, &md5_base64, "", size, &opts)
+            .await
+    }
+
+    pub async fn put_object_do(
+        &self,
+        bucket_name: &str,
+        object_name: &str,
+        reader: ReaderImpl,
+        md5_base64: &str,
+        sha256_hex: &str,
+        size: i64,
+        opts: &PutObjectOptions,
+    ) -> Result<UploadInfo, std::io::Error> {
+        let custom_header = opts.header();
+
+        let mut req_metadata = RequestMetadata {
+            bucket_name: bucket_name.to_string(),
+            object_name: object_name.to_string(),
+            custom_header,
+            content_body: reader,
+            content_length: size,
+            content_md5_base64: md5_base64.to_string(),
+            content_sha256_hex: sha256_hex.to_string(),
+            stream_sha256: !opts.disable_content_sha256,
+            bucket_location: Default::default(),
+            pre_sign_url: Default::default(),
+            query_values: Default::default(),
+            extra_pre_sign_header: Default::default(),
+            expires: Default::default(),
+            trailer: Default::default(),
+        };
+        let opts = opts.clone();
+
+        if opts.internal.source_version_id != "" {
+            if !opts.internal.source_version_id.is_empty() {
+                if let Err(err) = Uuid::parse_str(&opts.internal.source_version_id) {
+                    return Err(std::io::Error::other(err_invalid_argument(&err.to_string())));
+                }
+            }
+            let mut url_values = HashMap::new();
+            url_values.insert("versionId".to_string(), opts.internal.source_version_id);
+            req_metadata.query_values = url_values;
+        }
+
+        let resp = self.execute_method(http::Method::PUT, &mut req_metadata).await?;
+
+        let resp_status = resp.status();
+        let h = resp.headers().clone();
+
+        if resp.status() != StatusCode::OK {
+            return Err(std::io::Error::other(http_resp_to_error_response(
+                resp_status,
+                &h,
+                vec![],
+                bucket_name,
+                object_name,
+            )));
+        }
+
+        let exp_time = resp
+            .headers()
+            .get(X_AMZ_EXPIRATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| OffsetDateTime::parse(s, ISO8601_DATEFORMAT).ok())
+            .unwrap_or_else(OffsetDateTime::now_utc);
+        let rule_id = "".to_string();
+        let h = resp.headers();
+        Ok(UploadInfo {
+            bucket: bucket_name.to_string(),
+            key: object_name.to_string(),
+            etag: trim_etag(h.get("ETag").and_then(|v| v.to_str().ok()).unwrap_or("")),
+
+            version_id: self.legacy_remote_version_id(h)?,
+            size,
+            expiration: exp_time,
+            expiration_rule_id: rule_id,
+            checksum_crc32: checksum_header_value(h, ChecksumMode::ChecksumCRC32),
+            checksum_crc32c: checksum_header_value(h, ChecksumMode::ChecksumCRC32C),
+            checksum_sha1: checksum_header_value(h, ChecksumMode::ChecksumSHA1),
+            checksum_sha256: checksum_header_value(h, ChecksumMode::ChecksumSHA256),
+            checksum_crc64nvme: checksum_header_value(h, ChecksumMode::ChecksumCRC64NVME),
+            ..Default::default()
+        })
+    }
+}
+
+/// Collect the uploaded parts for CompleteMultipartUpload in ascending part order.
+///
+/// Parts are keyed `1..=total_parts_count` during upload (see the upload loop that inserts each
+/// part), so every one — including the final part — must be collected. The previous exclusive
+/// `1..total_parts_count` bound dropped the last part, silently truncating the completed object,
+/// and collected zero parts for a single-part upload.
+fn collect_complete_parts(parts_info: &HashMap<i64, ObjectPart>, total_parts_count: i64) -> Result<Vec<ObjectPart>, Error> {
+    let mut all_parts = Vec::with_capacity(parts_info.len());
+    for i in 1..=total_parts_count {
+        let part = parts_info
+            .get(&i)
+            .ok_or_else(|| Error::other(format!("missing uploaded part {i} of {total_parts_count}")))?;
+        all_parts.push(part.clone());
+    }
+    Ok(all_parts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ObjectPart, ReaderImpl, collect_complete_parts, lock_md5_hasher, read_multipart_part};
+    use crate::transition_api::ObjectReader;
+    use bytes::Bytes;
+    use rustfs_utils::hash::HashAlgorithm;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    // Drive a reader through the same per-part loop the multipart stream uses and
+    // collect the size of every part. Regression for rustfs/rustfs#4811: the old
+    // `read_all()` per part drained the whole source into part 1.
+    async fn collect_part_sizes(mut reader: ReaderImpl, total: usize, part_size: usize, last_part_size: usize) -> Vec<usize> {
+        let parts = total.div_ceil(part_size);
+        let mut sizes = Vec::new();
+        for part_number in 1..=parts {
+            let want = if part_number == parts { last_part_size } else { part_size };
+            let buf = read_multipart_part(&mut reader, want).await.unwrap();
+            sizes.push(buf.len());
+        }
+        // Nothing must remain after the planned parts are consumed.
+        assert!(read_multipart_part(&mut reader, part_size).await.unwrap().is_empty());
+        sizes
+    }
+
+    #[tokio::test]
+    async fn read_multipart_part_splits_streamed_object_body_evenly() {
+        // 250 bytes at part_size 100 -> parts [100, 100, 50], mirroring the
+        // >128 MiB / 128 MiB split from the bug report on a small deterministic
+        // stream.
+        let total = 250usize;
+        let (mut w, r) = tokio::io::duplex(64);
+        tokio::spawn(async move {
+            use tokio::io::AsyncWriteExt;
+            let data: Vec<u8> = (0..total).map(|i| i as u8).collect();
+            w.write_all(&data).await.unwrap();
+        });
+        let reader = ReaderImpl::ObjectBody(ObjectReader::new(r));
+
+        let sizes = collect_part_sizes(reader, total, 100, 50).await;
+        assert_eq!(sizes, vec![100, 100, 50]);
+    }
+
+    #[tokio::test]
+    async fn read_multipart_part_splits_in_memory_body_evenly() {
+        let total = 250usize;
+        let data: Vec<u8> = (0..total).map(|i| i as u8).collect();
+        let reader = ReaderImpl::Body(Bytes::from(data));
+
+        let sizes = collect_part_sizes(reader, total, 100, 50).await;
+        assert_eq!(sizes, vec![100, 100, 50]);
+    }
+
+    #[tokio::test]
+    async fn read_multipart_part_stops_at_eof_without_overrun() {
+        // Reader shorter than the requested part size must return only what is
+        // available, not block or pad.
+        let (mut w, r) = tokio::io::duplex(64);
+        tokio::spawn(async move {
+            use tokio::io::AsyncWriteExt;
+            w.write_all(&[1u8; 30]).await.unwrap();
+        });
+        let mut reader = ReaderImpl::ObjectBody(ObjectReader::new(r));
+        let buf = read_multipart_part(&mut reader, 100).await.unwrap();
+        assert_eq!(buf.len(), 30);
+    }
+
+    fn parts_map(n: i64) -> HashMap<i64, ObjectPart> {
+        let mut m = HashMap::new();
+        for i in 1..=n {
+            m.insert(
+                i,
+                ObjectPart {
+                    part_num: i,
+                    ..Default::default()
+                },
+            );
+        }
+        m
+    }
+
+    #[test]
+    fn collects_every_part_including_the_last() {
+        let collected: Vec<i64> = collect_complete_parts(&parts_map(3), 3)
+            .expect("all parts present")
+            .iter()
+            .map(|p| p.part_num)
+            .collect();
+        assert_eq!(collected, vec![1, 2, 3], "CompleteMultipartUpload must include the final part");
+    }
+
+    #[test]
+    fn single_part_upload_submits_one_part() {
+        let collected = collect_complete_parts(&parts_map(1), 1).expect("single part present");
+        assert_eq!(collected.len(), 1, "a single-part object must submit exactly one part, not zero");
+        assert_eq!(collected[0].part_num, 1);
+    }
+
+    #[test]
+    fn missing_part_is_an_error_not_a_panic() {
+        let mut m = parts_map(3);
+        m.remove(&2);
+        assert!(
+            collect_complete_parts(&m, 3).is_err(),
+            "a gap in the parts map must be an error, not a panic"
+        );
+    }
+
+    #[test]
+    fn poisoned_md5_state_fails_closed() {
+        let hasher = Arc::new(Mutex::new(Some(HashAlgorithm::Md5)));
+        let poison_target = Arc::clone(&hasher);
+        let _ = std::thread::spawn(move || {
+            let _guard = poison_target.lock().expect("fresh mutex should lock");
+            panic!("poison MD5 state");
+        })
+        .join();
+
+        let error = lock_md5_hasher(&hasher).expect_err("poisoned hash state must not be reused");
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+    }
+}

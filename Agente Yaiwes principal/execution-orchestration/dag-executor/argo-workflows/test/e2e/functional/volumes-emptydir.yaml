@@ -1,0 +1,29 @@
+# This example demonstrates the ability for a workflow to use an
+# emptyDir volume.
+#
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: volumes-emptydir-
+spec:
+  entrypoint: volumes-emptydir-example
+  volumes:
+  - name: workdir
+    emptyDir: {}
+
+  templates:
+  - name: volumes-emptydir-example
+    container:
+      image: alpine:3.23
+      command: ["/bin/sh", "-c"]
+      # Check /proc/mounts (the source of truth) rather than the `mount` command:
+      # busybox `mount` reads /etc/mtab and omits kubelet-created mounts when an
+      # image volume is also present (e.g. init-less pods), even though the volume
+      # is mounted and writable. Exit non-zero if it's genuinely not mounted.
+      args: ["
+        if grep -q /mnt/vol /proc/mounts; then echo \"Volume mounted and found\"; else echo \"Not found\"; exit 1; fi
+      "]
+      volumeMounts:
+      - name: workdir
+        mountPath: /mnt/vol
+

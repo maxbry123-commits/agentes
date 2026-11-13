@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "Prometheus-Evaluator-LM",
+    "path": "evaluation/benchmark/data/flask_eval.json",
+    "chunks_dir": "Prometheus-Evaluator-LM/evaluation/benchmark/data/flask_eval.json.chunks",
+    "bytes": 8395271,
+    "chunk_bytes": 8388608
+  }
+]

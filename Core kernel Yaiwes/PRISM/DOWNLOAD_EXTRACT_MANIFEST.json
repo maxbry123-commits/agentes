@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 936047,
+  "bundle_sha256": "bf4edf55f4db641698f6050687a9c47748b0e5873734f0e718dfa498d15b7932",
+  "extracted_tree": {
+    "bytes": 1317696,
+    "files": 69,
+    "sha256": "bf4a26b3d940c0b8f8fbf7326db6321f075d1a59078b962dca3a9c7fa38c3f88"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 936047,
+      "name": "PRISM.bundle.zip.part-0001",
+      "sha256": "bf4edf55f4db641698f6050687a9c47748b0e5873734f0e718dfa498d15b7932"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "PRISM",
+  "source_bytes": 1317696,
+  "source_commit": "fdc09e6bfe31f9c2852eb830ee07de1d750472f4",
+  "source_files": 69,
+  "source_ref": "HEAD",
+  "source_repo": "jingyip-cat/PRISM",
+  "source_tree": {
+    "bytes": 1317696,
+    "files": 69,
+    "sha256": "bf4a26b3d940c0b8f8fbf7326db6321f075d1a59078b962dca3a9c7fa38c3f88"
+  }
+}

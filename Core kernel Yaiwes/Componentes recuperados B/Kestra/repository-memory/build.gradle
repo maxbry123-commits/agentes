@@ -1,0 +1,11 @@
+configurations {
+    implementation.extendsFrom(micronaut)
+}
+
+dependencies {
+    testImplementation project(":core")
+    implementation("io.micronaut.sql:micronaut-jdbc-hikari")
+    api project(":jdbc")
+    implementation project(":jdbc-h2")
+    testImplementation project(":tests")
+}

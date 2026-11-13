@@ -1,0 +1,67 @@
+operators:
+- id: load_in_code
+  config:
+    type: load_preexisting
+    framework_name: load_in_code_0d
+- id: sample_dataset_final
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 31_600
+  input_ids:
+    - load_in_code
+- id: add_row_ids
+  config:
+    type: function
+    function: data_strategies.commons.add_row_ids
+    function_config:
+      column_name: id
+  input_ids:
+    - sample_dataset_final
+- id: duplicate
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.duplicate_rows
+    function_config:
+      n_copies: 1
+  input_ids:
+    - add_row_ids
+- id: annotate_r1
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: instruction_seed
+    model: deepseek-reasoner
+    batch: false
+    temperature: 1.0
+    require_all_responses: false
+    backend: openai
+    backend_params:
+      max_requests_per_minute: 500
+      max_tokens_per_minute: 1_000_000_000
+      base_url: "https://api.deepseek.com/"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - duplicate
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - convert_reasoning_trace_to_final

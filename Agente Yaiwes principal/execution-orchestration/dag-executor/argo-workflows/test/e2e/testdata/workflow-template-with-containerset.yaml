@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: containerset-with-retrystrategy
+  annotations:
+    workflows.argoproj.io/description: |
+      This workflow creates a container set with a retryStrategy.
+spec:
+  entrypoint: test
+  templates:
+    - name: test
+      containerSet:
+        retryStrategy:
+          retries: "2"
+        containers:
+          - name: c1
+            image: argoproj/argosay:v2
+            args: ["echo", "hi"]
+          - name: c2
+            image: argoproj/argosay:v2
+            command:
+              - invalid
+              - command
+          - name: c3
+            image: argoproj/argosay:v2
+            command: [ sh, -c ]
+            args: [ "echo intentional failure; exit 1" ]

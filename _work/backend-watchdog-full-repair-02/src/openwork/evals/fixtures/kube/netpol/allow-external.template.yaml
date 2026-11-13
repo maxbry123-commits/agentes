@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openwork-den-allow-eval-mock-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: openwork-ee
+      app.kubernetes.io/instance: openwork-ee
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - den-api
+          - den-web
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: ${OPENWORK_EVAL_KUBE_ALLOWED_HOST_IP}/32
+      ports:
+        - protocol: TCP
+          port: ${OPENWORK_EVAL_KUBE_ALLOWED_MOCK_PORT}

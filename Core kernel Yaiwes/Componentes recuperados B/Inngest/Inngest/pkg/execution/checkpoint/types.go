@@ -1,0 +1,103 @@
+package checkpoint
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+	"github.com/inngest/inngest/pkg/enums"
+	"github.com/inngest/inngest/pkg/execution/state/v2"
+	"github.com/inngest/inngest/pkg/inngest"
+	"github.com/oklog/ulid/v2"
+)
+
+type SyncCheckpoint struct {
+	RunID ulid.ULID               `json:"run_id"`
+	FnID  uuid.UUID               `json:"fn_id"`
+	AppID uuid.UUID               `json:"app_id"`
+	Steps []state.GeneratorOpcode `json:"steps"`
+
+	// Plus auth data added from auth.  This is never exposed via JSON,
+	// as this type us unmarshalled.
+	AccountID uuid.UUID `json:"-"`
+	EnvID     uuid.UUID `json:"-"`
+
+	// Optional metadata.  If not provided this will be loaded.
+	// This is never exposed via JSON, as this type us unmarshalled.
+	Metadata *state.Metadata `json:"-"`
+
+	// Optional function. When set, CheckpointSyncSteps skips loading it from the DB.
+	Function *inngest.Function `json:"-"`
+}
+
+func (s SyncCheckpoint) ID() state.ID {
+	return state.ID{
+		RunID:      s.RunID,
+		FunctionID: s.FnID,
+		Tenant: state.Tenant{
+			AccountID: s.AccountID,
+			EnvID:     s.EnvID,
+			AppID:     s.AppID,
+		},
+	}
+}
+
+type AsyncCheckpoint struct {
+	RunID ulid.ULID               `json:"run_id"`
+	FnID  uuid.UUID               `json:"fn_id"`
+	Steps []state.GeneratorOpcode `json:"steps"`
+	// QueueItemRef represents the queue item ID that's currently leased while
+	// executing the SDK.
+	QueueItemRef string `json:"qi_id"`
+	// RequestID is the dispatch ULID the SDK echoes back. It is logged and
+	// passed through for tracing; fencing is performed against GenerationID.
+	RequestID string `json:"request_id"`
+	// GenerationID is the dispatch generation the SDK echos back, which is used to ensure
+	// that checkpoints from stale dispatches aren't processed
+	GenerationID int `json:"generation_id,omitempty"`
+	// RequestStartedAt is the unix-millisecond epoch when the SDK began
+	// processing the dispatched request. See validateAsyncDispatch.
+	RequestStartedAt int64 `json:"request_started_at"`
+
+	// Plus auth data added from auth.  This is never exposed via JSON
+	// for security.
+	AccountID uuid.UUID `json:"-"`
+	EnvID     uuid.UUID `json:"-"`
+}
+
+func (s AsyncCheckpoint) ID() state.ID {
+	return state.ID{
+		RunID:      s.RunID,
+		FunctionID: s.FnID,
+		Tenant: state.Tenant{
+			AccountID: s.AccountID,
+			EnvID:     s.EnvID,
+		},
+	}
+}
+
+// MetricCardinality represents base IDs used within checkpoint metrics.
+type MetricCardinality struct {
+	AccountID uuid.UUID
+	EnvID     uuid.UUID
+	AppID     uuid.UUID
+	FnID      uuid.UUID
+}
+
+// MetricsProvider represents an interface for recording metrics
+// on checkpoint APIs.
+type MetricsProvider interface {
+	OnFnScheduled(ctx context.Context, m MetricCardinality)
+	OnStepFinished(ctx context.Context, m MetricCardinality, status enums.StepStatus)
+	OnFnFinished(ctx context.Context, m MetricCardinality, status enums.RunStatus)
+}
+
+type nilCheckpointMetrics struct{}
+
+func (nilCheckpointMetrics) OnFnScheduled(ctx context.Context, m MetricCardinality) {
+}
+
+func (nilCheckpointMetrics) OnStepFinished(ctx context.Context, m MetricCardinality, status enums.StepStatus) {
+}
+
+func (nilCheckpointMetrics) OnFnFinished(ctx context.Context, m MetricCardinality, status enums.RunStatus) {
+}

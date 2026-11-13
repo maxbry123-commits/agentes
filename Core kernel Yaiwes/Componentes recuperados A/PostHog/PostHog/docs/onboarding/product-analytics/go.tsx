@@ -1,0 +1,96 @@
+import { OnboardingComponentsContext, createInstallation } from 'scenes/onboarding/shared/OnboardingDocsContentWrapper'
+
+import { StepDefinition } from '../steps'
+
+export const getGoInstallSteps = (ctx: OnboardingComponentsContext): StepDefinition[] => {
+    const { CodeBlock, Markdown, dedent } = ctx
+
+    return [
+        {
+            title: 'Install the package',
+            badge: 'required',
+            content: (
+                <>
+                    <Markdown>Install the PostHog Go library:</Markdown>
+                    <CodeBlock
+                        blocks={[
+                            {
+                                language: 'bash',
+                                file: 'Terminal',
+                                code: dedent`
+                                go get "github.com/posthog/posthog-go"
+                            `,
+                            },
+                        ]}
+                    />
+                </>
+            ),
+        },
+        {
+            title: 'Configure PostHog',
+            badge: 'required',
+            content: (
+                <>
+                    <Markdown>Initialize the PostHog client with your project token and host:</Markdown>
+                    <CodeBlock
+                        blocks={[
+                            {
+                                language: 'go',
+                                file: 'main.go',
+                                code: dedent`
+                                package main
+
+                                import (
+                                    "github.com/posthog/posthog-go"
+                                )
+
+                                func main() {
+                                    client, _ := posthog.NewWithConfig("<ph_project_token>", posthog.Config{Endpoint: "<ph_client_api_host>"})
+                                    defer client.Close()
+                                }
+                            `,
+                            },
+                        ]}
+                    />
+                </>
+            ),
+        },
+    ]
+}
+
+export const getGoEventStep = (ctx: OnboardingComponentsContext): StepDefinition => {
+    const { CodeBlock, Markdown, dedent } = ctx
+
+    return {
+        title: 'Send events',
+        badge: 'recommended',
+        content: (
+            <>
+                <Markdown>Once installed, you can manually send events to test your integration:</Markdown>
+                <CodeBlock
+                    blocks={[
+                        {
+                            language: 'go',
+                            file: 'Go',
+                            code: dedent`
+                                client.Enqueue(posthog.Capture{
+                                    DistinctId: "user_123",
+                                    Event: "button_clicked",
+                                    Properties: posthog.NewProperties().
+                                        Set("button_name", "signup"),
+                                })
+                            `,
+                        },
+                    ]}
+                />
+            </>
+        ),
+    }
+}
+
+export const getGoSteps = (ctx: OnboardingComponentsContext): StepDefinition[] => [
+    ...getGoInstallSteps(ctx),
+    getGoEventStep(ctx),
+]
+
+export const GoInstallation = createInstallation(getGoSteps)

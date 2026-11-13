@@ -1,0 +1,3 @@
+.xref:index.adoc[CLI]
+* xref:cerbos.adoc[]
+* xref:cerbosctl.adoc[]

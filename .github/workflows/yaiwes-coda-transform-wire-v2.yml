@@ -1,0 +1,125 @@
+name: YAIWES CODA Transform Wire V2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-coda-transform-wire-v2.yml'
+      - '.github/scripts/yaiwes_coda_transform_wire_v2.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-coda-transform-wire-v2
+  cancel-in-progress: false
+
+jobs:
+  transform-wire:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      ROOT: '📂coda workflow persistencias'
+      MOTOR: 'Motores/📂Motor descarga de componentes y extracción de zip/hf_download_extract_engine.py'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout CODA transformation scope
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-coda-transform-wire-v2.yml
+            /.github/scripts/yaiwes_coda_transform_wire_v2.py
+            /Motores/📂Motor descarga de componentes y extracción de zip/
+            /📂coda workflow persistencias/
+
+      - name: Verify immutable acquisition engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$MOTOR")" = '91e6e4486692eab314be5c7130d8310d3c855397'
+          echo 'ENGINE_LOCK=PASS'
+
+      - name: Close missing PentAGI with existing motor
+        shell: bash
+        env:
+          SOURCE_REPO: vxcontrol/pentagi
+          SOURCE_REF: HEAD
+          SLUG: 06-PentAGI
+          DEST_REPO: maxbry123-commits/agentes
+          DEST_BRANCH: main
+          DEST_ROOT: '📂coda workflow persistencias'
+          PUBLISH: '1'
+        run: |
+          set -euo pipefail
+          if [ -d "$ROOT/06-PentAGI" ] || [ -d "$ROOT/🏈 06-PentAGI" ]; then
+            echo 'PENTAGI_ALREADY_PRESENT=PASS'
+          else
+            git config --global core.symlinks false
+            python3 "$MOTOR" | tee /tmp/pentagi-download.jsonl
+            git fetch origin main
+            git reset --hard origin/main
+            test -d "$ROOT/06-PentAGI"
+            echo 'PENTAGI_DOWNLOAD_EXTRACT=PASS'
+          fi
+
+      - name: Transform and wire all components
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/yaiwes_coda_transform_wire_v2.py
+
+      - name: Run persistence adapter tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=0
+          while IFS= read -r -d '' test_file; do
+            link_dir="$(dirname "$test_file")"
+            PYTHONPATH="$link_dir" python3 "$test_file"
+            count=$((count + 1))
+          done < <(find "$ROOT" -type f -path '*/code/coda_persistence/test_yaiwes_persistence_adapter.py' -print0 | sort -z)
+          echo "ADAPTER_TESTS=$count"
+          test "$count" -eq 24
+
+      - name: Verify 24 renamed components and READMEs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find "$ROOT" -maxdepth 1 -mindepth 1 -type d -name '🏈 *' ! -name '🏈 cancha deportiva de fútbol' | wc -l)" -eq 24
+          test "$(find "$ROOT/🏈 cancha deportiva de fútbol" -type f -name README.md -exec grep -l 'Swarm agent team Navy seals YAIWES' {} \; | wc -l)" -eq 24
+          python3 -m py_compile "$ROOT/Fables enchufe universal/yaiwes_fables_static_safe_bus.py"
+          echo 'STRUCTURE_README_FABLES=PASS'
+
+      - name: Commit transformation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- "$ROOT"
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(coda): convert 24 components to YAIWES persistence v2'
+            ok=0
+            for attempt in 1 2 3 4; do
+              if git push origin HEAD:main; then ok=1; break; fi
+              git fetch origin main
+              git rebase origin/main || { git rebase --abort || true; }
+              sleep $((attempt * 3))
+            done
+            test "$ok" -eq 1
+          fi
+
+      - name: Final readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          test -f "$ROOT/🏈 cancha deportiva de fútbol/YAIWES-SWARM-NAVY-SEALS-REGISTRY.json"
+          test "$(find "$ROOT" -maxdepth 1 -mindepth 1 -type d -name '🏈 *' ! -name '🏈 cancha deportiva de fútbol' | wc -l)" -eq 24
+          echo 'YAIWES_CODA_TRANSFORM_WIRE_V2=PASS_24_OF_24'

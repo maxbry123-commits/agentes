@@ -1,0 +1,265 @@
+name: CJS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'actions/setup/js/**'
+      - 'actions/setup/md/**'
+      - 'pkg/cli/data/models.json'
+      - 'scripts/**/*.js'
+      - 'scripts/check-cgo-cjs-workflow-purity.sh'
+      - 'Makefile'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/cjs.yml'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'actions/setup/js/**'
+      - 'actions/setup/md/**'
+      - 'pkg/cli/data/models.json'
+      - 'scripts/**/*.js'
+      - 'scripts/check-cgo-cjs-workflow-purity.sh'
+      - 'Makefile'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/cjs.yml'
+  workflow_dispatch:
+
+jobs:
+  checkout-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify CGO/CJS workflow purity
+        run: bash scripts/check-cgo-cjs-workflow-purity.sh
+      - name: Cache repository checkout
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .
+          key: checkout-cjs-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+
+  js-typecheck:
+    needs: [checkout-cache]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    concurrency:
+      group: ci-${{ github.ref }}-js-typecheck
+      cancel-in-progress: true
+    steps:
+      - name: Restore checkout
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .
+          key: checkout-cjs-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+          fail-on-cache-miss: true
+      - name: Set up Node.js
+        id: setup-node
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: actions/setup/js/package-lock.json
+      - name: Report Node cache status
+        run: |
+          if [ "${{ steps.setup-node.outputs.cache-hit }}" == "true" ]; then
+            echo "✅ Node cache hit" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Node cache miss" >> $GITHUB_STEP_SUMMARY
+          fi
+      - name: Install npm dependencies
+        run: cd actions/setup/js && npm ci
+
+      - name: Check runtime CJS syntax
+        run: make check-cjs-syntax
+
+      - name: Run typecheck
+        run: cd actions/setup/js && npm run typecheck
+
+  js-tests:
+    name: JS Tests (shard ${{ matrix.shard }}/4)
+    needs: [checkout-cache]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4]
+    concurrency:
+      group: ci-${{ github.ref }}-js-tests-${{ matrix.shard }}
+      cancel-in-progress: true
+    steps:
+      - name: Restore checkout
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .
+          key: checkout-cjs-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+          fail-on-cache-miss: true
+      - name: Set up Node.js
+        id: setup-node
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: actions/setup/js/package-lock.json
+      - name: Report Node cache status
+        run: |
+          if [ "${{ steps.setup-node.outputs.cache-hit }}" == "true" ]; then
+            echo "✅ Node cache hit" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Node cache miss" >> $GITHUB_STEP_SUMMARY
+          fi
+      - name: Install npm dependencies
+        run: cd actions/setup/js && npm ci
+      - name: Setup prompt templates for tests
+        run: |
+          mkdir -p ${{ runner.temp }}/gh-aw/prompts
+          cp actions/setup/md/*.md ${{ runner.temp }}/gh-aw/prompts/
+      - name: Run tests
+        # Keep no-file-parallelism so Vitest sharding has deterministic test scheduling per shard.
+        run: cd actions/setup/js && npm run test:js -- --no-file-parallelism --shard=${{ matrix.shard }}/4
+
+  impacted-js-tests:
+    needs: [checkout-cache]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    concurrency:
+      group: ci-${{ github.ref }}-impacted-js-tests
+      cancel-in-progress: true
+    steps:
+      - name: Restore checkout
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .
+          key: checkout-cjs-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+          fail-on-cache-miss: true
+      - name: Set up Node.js
+        id: setup-node
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: actions/setup/js/package-lock.json
+      - name: Run impacted JavaScript unit tests
+        run: make test-impacted-js BASE_REF=HEAD^
+
+  lint-js:
+    needs: [checkout-cache]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    concurrency:
+      group: ci-${{ github.ref }}-lint-js
+      cancel-in-progress: true
+    steps:
+      - name: Restore checkout
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .
+          key: checkout-cjs-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - name: Set up Node.js
+        id: setup-node
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: actions/setup/js/package-lock.json
+
+      - name: Report Node cache status
+        run: |
+          if [ "${{ steps.setup-node.outputs.cache-hit }}" == "true" ]; then
+            echo "✅ Node cache hit" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Node cache miss" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Install npm dependencies
+        run: cd actions/setup/js && npm ci
+
+      - name: Lint JavaScript files
+        run: make lint-cjs
+
+      - name: Check JSON formatting
+        run: make fmt-check-json
+
+      - name: Validate models.json mirror consistency
+        run: make validate-models-json-sync
+
+  artifact-integration:
+    name: Artifact API Integration
+    needs: [checkout-cache]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: ci-${{ github.ref }}-artifact-integration
+      cancel-in-progress: true
+    steps:
+      - name: Restore checkout
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .
+          key: checkout-cjs-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+          fail-on-cache-miss: true
+      - name: Set up Node.js
+        id: setup-node
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: actions/setup/js/package-lock.json
+      - name: Report Node cache status
+        run: |
+          if [ "${{ steps.setup-node.outputs.cache-hit }}" == "true" ]; then
+            echo "✅ Node cache hit" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Node cache miss" >> $GITHUB_STEP_SUMMARY
+          fi
+      - name: Install npm dependencies
+        run: cd actions/setup/js && npm ci
+      - name: Run artifact API integration tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cd actions/setup/js && npm run test:js-integration-artifact
+
+  cleanup-cache:
+    name: Cleanup checkout cache
+    needs:
+      - checkout-cache
+      - js-typecheck
+      - js-tests
+      - impacted-js-tests
+      - lint-js
+      - artifact-integration
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Delete checkout cache
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_KEY: checkout-cjs-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+        run: |
+          cache_id=$(gh cache list --key "$CACHE_KEY" --ref "$GITHUB_REF" --limit 1 --json id,key --jq '.[] | select(.key == env.CACHE_KEY) | .id')
+          if [ -n "$cache_id" ]; then
+            gh cache delete "$cache_id"
+          fi

@@ -1,0 +1,194 @@
+name: docs-build
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize]
+    paths:
+      - ".github/workflows/docs-build.yaml"
+      - "Makefile"
+      - "docs/**"
+      - "fern/**"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/normalize-fern-sdk-reference.mjs"
+      - "scripts/cache-fern-ref-sdk.mjs"
+      - "scripts/fern-ref-sdk-environment.mjs"
+      - "scripts/fern-ref-sdk-hooks/**"
+      - "scripts/run-fern-with-ref-sdk.mjs"
+      - "scripts/tests/**"
+      - "scripts/watch-fern-preview.mjs"
+      - "scripts/fix-empty-fern-links.mjs"
+  push:
+    branches: [develop]
+    tags:
+      - docs-v*
+      - v*
+    paths:
+      - ".github/workflows/docs-build.yaml"
+      - "Makefile"
+      - "docs/**"
+      - "fern/**"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/normalize-fern-sdk-reference.mjs"
+      - "scripts/cache-fern-ref-sdk.mjs"
+      - "scripts/fern-ref-sdk-environment.mjs"
+      - "scripts/fern-ref-sdk-hooks/**"
+      - "scripts/run-fern-with-ref-sdk.mjs"
+      - "scripts/tests/**"
+      - "scripts/watch-fern-preview.mjs"
+      - "scripts/fix-empty-fern-links.mjs"
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-docs:
+    name: Check Fern docs
+    if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: Install documentation dependencies
+        run: npm ci
+
+      - name: Test Fern documentation scripts
+        run: make test-docs-scripts
+
+      - name: Check Fern docs
+        env:
+          FERN_TOKEN: ${{ secrets.DOCS_FERN_TOKEN }}
+        run: make docs-fern-strict
+
+  preview-docs:
+    name: Publish Fern preview
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
+    needs: [build-docs]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: Install documentation dependencies
+        run: npm ci
+
+      - name: Restore historical SDK references
+        uses: actions/cache/restore@v6
+        with:
+          path: .fern-cache/fern-ref-sdk
+          key: fern-ref-sdk-${{ runner.os }}-${{ hashFiles('package.json', 'package-lock.json', 'fern/fern.config.json', 'fern/docs.yml', 'scripts/cache-fern-ref-sdk.mjs', 'scripts/fern-ref-sdk-environment.mjs', 'scripts/fern-ref-sdk-hooks/**', 'scripts/normalize-fern-sdk-reference.mjs') }}
+          restore-keys: |
+            fern-ref-sdk-${{ runner.os }}-
+
+      - name: Generate Python SDK reference
+        env:
+          FERN_TOKEN: ${{ secrets.DOCS_FERN_TOKEN }}
+        run: make docs-fern-generate-sdk
+
+      - name: Publish Fern preview
+        env:
+          FERN_TOKEN: ${{ secrets.DOCS_FERN_TOKEN }}
+          PREVIEW_ID: pr-${{ github.event.pull_request.number }}
+          FERN_DOCS_INSTANCE: nvidia-nemo-guardrails.docs.buildwithfern.com/nemo/guardrails
+        run: node scripts/run-fern-with-ref-sdk.mjs generate --docs --preview --id "${PREVIEW_ID}" --force --instance "${FERN_DOCS_INSTANCE}"
+
+      - name: Comment preview URL
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const previewUrl = `https://nvidia-preview-pr-${context.issue.number}.docs.buildwithfern.com/nemo/guardrails`;
+            const marker = '<!-- guardrails-fern-preview -->';
+            const body = `${marker}\nStaged Fern docs preview: ${previewUrl}`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+  publish-staging:
+    name: Publish Fern staging docs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: [build-docs]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: Install documentation dependencies
+        run: npm ci
+
+      - name: Restore historical SDK references
+        id: fern-sdk-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .fern-cache/fern-ref-sdk
+          key: fern-ref-sdk-${{ runner.os }}-${{ hashFiles('package.json', 'package-lock.json', 'fern/fern.config.json', 'fern/docs.yml', 'scripts/cache-fern-ref-sdk.mjs', 'scripts/fern-ref-sdk-environment.mjs', 'scripts/fern-ref-sdk-hooks/**', 'scripts/normalize-fern-sdk-reference.mjs') }}
+          restore-keys: |
+            fern-ref-sdk-${{ runner.os }}-
+
+      - name: Publish Fern staging docs
+        env:
+          FERN_TOKEN: ${{ secrets.DOCS_FERN_TOKEN }}
+        run: make docs-fern-publish-staging
+
+      - name: Save historical SDK references
+        if: steps.fern-sdk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .fern-cache/fern-ref-sdk
+          key: fern-ref-sdk-${{ runner.os }}-${{ hashFiles('package.json', 'package-lock.json', 'fern/fern.config.json', 'fern/docs.yml', 'scripts/cache-fern-ref-sdk.mjs', 'scripts/fern-ref-sdk-environment.mjs', 'scripts/fern-ref-sdk-hooks/**', 'scripts/normalize-fern-sdk-reference.mjs') }}

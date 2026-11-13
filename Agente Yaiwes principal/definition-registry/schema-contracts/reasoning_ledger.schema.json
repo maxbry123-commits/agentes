@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.reasoning_ledger.v1",
+  "title": "ReasoningLedgerFrame",
+  "description": "Append-only decision memory frame. Not full chat. 0% LLM store.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "frame_id",
+    "seq",
+    "lock_id",
+    "ts",
+    "goal",
+    "decision",
+    "prev_hash",
+    "frame_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "frame_id": { "type": "string" },
+    "seq": { "type": "integer", "minimum": 1 },
+    "lock_id": { "type": "string" },
+    "ts": { "type": "string" },
+    "goal": { "type": "string" },
+    "evidence": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "decision": { "type": "string" },
+    "alternatives": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "refutations": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "tools": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "confidence": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "checkpoint_id": { "type": ["string", "null"] },
+    "prev_hash": { "type": "string" },
+    "frame_hash": { "type": "string" }
+  }
+}

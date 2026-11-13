@@ -1,0 +1,16 @@
+operators:
+- id: hf_source
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/stratos_unverified_mix
+    split: train
+- id: load_extra_etash
+  config:
+    type: load_preexisting
+    framework_name: extra_puzzle_stratos_scale_annotated_with_answers
+- id: mix_subsets
+  config:
+    type: mix
+  input_ids:
+  - hf_source
+  - load_extra_etash

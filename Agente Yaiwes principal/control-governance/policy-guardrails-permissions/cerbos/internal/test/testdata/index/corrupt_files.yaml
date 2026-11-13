@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=../.jsonschema/IndexBuilderTestCase.schema.json
+---
+wantErrList:
+  loadFailures:
+    - file: invalid.json
+      error: "invalid document: contents are not valid YAML or JSON"
+      errorDetails:
+        kind: KIND_PARSE_ERROR
+        message: "invalid document: contents are not valid YAML or JSON"
+        position:
+          line: 1
+          column: 1
+          path: $
+
+    - file: invalid.yml
+      error: "invalid document: contents are not valid YAML or JSON"
+      errorDetails:
+        kind: KIND_PARSE_ERROR
+        message: "invalid document: contents are not valid YAML or JSON"
+        position:
+          line: 1
+          column: 1
+          path: $
+
+    - file: principal.json
+      error: 'unknown field "key"'
+      errorDetails:
+        kind: KIND_PARSE_ERROR
+        message: 'unknown field "key"'
+        position:
+          line: 1
+          column: 2
+          path: $.key
+
+    - file: resource.yaml
+      error: 'unknown field "some"'
+      errorDetails:
+        kind: KIND_PARSE_ERROR
+        message: 'unknown field "some"'
+        position:
+          line: 2
+          column: 1
+          path: $.some
+files:
+  "resource.yaml": |-
+    ---
+    some: key
+
+  "principal.json": |-
+    {"key": "value"}
+
+  "empty.yaml": ""
+
+  "empty_whitespace.yaml": "          "
+
+  "commented.yaml": |-
+    # I am commented out
+    # Foo
+
+  "invalid.yml": |-
+    wat
+
+  "empty.json": ""
+
+  "empty_whitespace.json": "           "
+
+  "invalid.json": |-
+    wat

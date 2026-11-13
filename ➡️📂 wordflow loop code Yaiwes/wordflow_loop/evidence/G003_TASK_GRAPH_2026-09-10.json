@@ -1,0 +1,34 @@
+{
+  "contract": "tel.workflow/v4",
+  "gap_id": "G-003",
+  "status": "CLOSED_VERIFIED_LOCAL",
+  "scope": "➡️📂 Wordflow LOOP Yaiwes/",
+  "decision": "REUSE existing deterministic DAGEngine; add only a task-contract compiler, not another orchestrator",
+  "implementation": {
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/code_task_graph.py",
+    "module_blob_sha": "91fd7779b2e8c27e3dd7f282847df1e2e4ab4f62",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_code_task_graph.py",
+    "tests_blob_sha": "882eb17b4289c747adf3850407e8a6a13b80ae65",
+    "reused_dag": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/dag_engine.py",
+    "reused_dag_blob_sha": "ed4361e9e2ca93e6744f9946d2334bf55b3ef63a"
+  },
+  "properties": [
+    "director_tasks and generated_tasks remain explicitly separate",
+    "task_id validation",
+    "missing dependencies fail closed",
+    "duplicate task_id fails closed",
+    "self dependency fails closed",
+    "priority/retry bounds",
+    "idempotency key normalized",
+    "manifest nodes compatible with DAGEngine",
+    "cycle rejection delegated to deterministic DAGEngine"
+  ],
+  "verification": {
+    "read_back": "PASS",
+    "local_equivalent_microtest": "PASS_5_OF_5_ASSERTIONS",
+    "repository_test_file_persisted": true,
+    "github_actions_or_external_runtime_test": "NOT_CLAIMED"
+  },
+  "external_auth": "AUTH_PROVIDER_TEST_PENDING",
+  "notes": "No HF touched. No agent added. No write outside authorized root."
+}

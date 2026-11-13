@@ -1,0 +1,6 @@
+{
+  "max_disparos_por_hora": 20,
+  "requiere_sha_no_procesado": true,
+  "presupuesto_maximo_llamadas_llm_por_ciclo": 200,
+  "si_limite_excedido": "PAUSAR_Y_REGISTRAR_GAP_NO_DETENER_PROYECTO"
+}

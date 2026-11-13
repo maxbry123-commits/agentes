@@ -1,0 +1,95 @@
+{
+  "artifact_id": "yaiwes.agent.ai_scientist",
+  "version": "1.0.0",
+  "estado": "active",
+  "contract_hash": "sha256:bfe982f08594728d9af06d61774769f190121173a39c7e463133299daba89bdb",
+  "tribunal_case_id": "YAIWES-N34-AI-SCIENTIST-STEP3",
+  "contrato": {
+    "rol": "transform",
+    "consume": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    },
+    "expone": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    }
+  },
+  "ejecucion": {
+    "kind": "code",
+    "transport": "sdk",
+    "runtime_type": "compute",
+    "entry_point": "Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist/yaiwes/ai_scientist_adapter.py:run_seed_idea_microtest",
+    "idempotente": true
+  },
+  "seguridad": {
+    "sandbox": "process",
+    "limites": {
+      "timeout_ms": 300000,
+      "deadline_ms": 300000
+    }
+  },
+  "firma": {
+    "gpg_key_id": "YAIWES-N34"
+  },
+  "categoria": "pipeline",
+  "etapa": "P",
+  "perfiles": {
+    "n0": {
+      "habilitada": true,
+      "iteraciones": 1,
+      "simulaciones": 0,
+      "criticas": 0,
+      "muestras_k": 1
+    }
+  },
+  "repeticion": {
+    "max": 1,
+    "condicion": "nunca"
+  },
+  "repite_en": [],
+  "activacion": {
+    "eventos": [
+      "kernel.v2.plugin.enchufed"
+    ],
+    "wake_words": [],
+    "condicion": ""
+  },
+  "presupuesto": {
+    "n0": {
+      "max_tokens": 1,
+      "max_ms": 300000,
+      "max_costo_usd": 0.0
+    }
+  },
+  "telemetria": {
+    "metricas": [
+      "tiempo",
+      "errores",
+      "health"
+    ],
+    "span_otel": true
+  },
+  "evidencia": {
+    "produce": [
+      "L2_build",
+      "L3_runtime",
+      "L4_feature"
+    ],
+    "destino": "Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist/yaiwes/"
+  },
+  "failover": {
+    "sustituible_por": [],
+    "compensacion": "fail_closed"
+  },
+  "salud": {
+    "metodo": "exec",
+    "heartbeat_interval_s": 30
+  }
+}

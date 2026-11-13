@@ -1,0 +1,35 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 06",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_source": "backend/pkg/resources/resources.go",
+  "workflow_symbol": "SaveToTemp",
+  "language": "go",
+  "source_decision": "RESTORE_BENIGN",
+  "source_sha256": "5c09a509e65b6e68ab31fafb0faa4d6a8805207f4b94cb9ba803f5972041bf54",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  },
+  "workflow_status": "COMPLETED",
+  "real_internal_workflow": true,
+  "engine": "GO_NATIVE_ISOLATED_ORIGINAL_SYMBOL",
+  "evidence": {
+    "engine": "GO_NATIVE_ISOLATED_ORIGINAL_SYMBOL",
+    "entered": true,
+    "status": "COMPLETED",
+    "command": [
+      "go",
+      "test",
+      "./...",
+      "-run",
+      "^TestYAIWESV61InternalWorkflow$",
+      "-count=1",
+      "-v"
+    ],
+    "output": "=== RUN   TestYAIWESV61InternalWorkflow\n    workflow_probe_test.go:8: YAIWES_GO_INTERNAL_WORKFLOW_ENTERED\n--- PASS: TestYAIWESV61InternalWorkflow (0.00s)\nPASS\nok  \tyaiwesprobe\t0.001s\n"
+  },
+  "checkpoint": "REAL_INTERNAL_WORKFLOW_EXECUTED",
+  "handoff": "YAIWES 07"
+}

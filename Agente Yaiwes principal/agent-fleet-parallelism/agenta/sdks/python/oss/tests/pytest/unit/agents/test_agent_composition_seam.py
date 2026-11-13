@@ -1,0 +1,754 @@
+"""the unified composition seam (`agenta.sdk.agents.handler.AgentComposition` /
+`make_agent_handler`) owns the five drifts that used to differ between the SDK's bare
+default and the agent service's re-implementation. Each test below drives the seam
+directly (no HTTP routing -- that cube is covered by
+`test_invoke_real_handlers_negotiation_routing.py`) and proves the DEFAULT composition
+now carries the safe behavior, and that a composition can still override it.
+"""
+
+from __future__ import annotations
+
+from typing import Any, AsyncIterator, Dict, List, Optional
+
+import pytest
+
+from agenta.sdk.agents import (
+    AgentResult,
+    HarnessKind,
+    InvalidHarnessKindError,
+    Message,
+)
+from agenta.sdk.agents.connections import (
+    ConnectionResolutionError,
+    ResolvedConnection,
+    UnsupportedDeploymentError,
+    UnsupportedProviderError,
+)
+from agenta.sdk.agents.handler import AgentComposition, make_agent_handler
+from agenta.sdk.agents.interfaces import Backend, Sandbox, Session
+from agenta.sdk.agents.streaming import AgentStream
+from agenta.sdk.agents.tools import (
+    CompiledTool,
+    ResolvedGatewayIntegration,
+    ResolvedGatewayPolicy,
+    ResolvedToolSet,
+)
+from agenta.sdk.agents.utils.wire import request_to_wire
+from agenta.sdk.models.workflows import WorkflowServiceRequest
+
+
+# --------------------------------------------------------------------------- #
+# Fakes (mirrors services/oss/tests/pytest/unit/agent/conftest.py's shape)
+# --------------------------------------------------------------------------- #
+class _FakeSandbox(Sandbox):
+    async def add_files(self, files) -> None:
+        return None
+
+    async def destroy(self) -> None:
+        return None
+
+
+class _FakeSession(Session):
+    def __init__(self, result: AgentResult) -> None:
+        self._result = result
+
+    @property
+    def id(self) -> Optional[str]:
+        return self._result.session_id
+
+    async def prompt(self, messages, *, on_event=None) -> AgentResult:
+        return self._result
+
+    def stream(self, messages) -> AgentStream:
+        result = self._result
+
+        async def _records() -> AsyncIterator[Dict[str, Any]]:
+            if result.events:
+                for event in result.events:
+                    yield {"kind": "event", "event": {"type": event.type, **event.data}}
+            elif result.output:
+                yield {
+                    "kind": "event",
+                    "event": {"type": "message", "text": result.output},
+                }
+            yield {
+                "kind": "result",
+                "result": {
+                    "ok": True,
+                    "output": result.output,
+                    "usage": result.usage,
+                    "sessionId": result.session_id,
+                },
+            }
+
+        return AgentStream(_records())
+
+    async def destroy(self) -> None:
+        return None
+
+
+class _FakeBackend(Backend):
+    supported_harnesses = frozenset({HarnessKind.PI, HarnessKind.CLAUDE})
+
+    def __init__(self, *, output: str = "hi") -> None:
+        self._output = output
+        self.created_run_contexts: List[Any] = []
+        self.created_effective_parameters: List[Any] = []
+        self.created_gateway_policies: List[Any] = []
+        # The per-harness config the adapter built. Capturing it alongside neutral backend
+        # arguments checks both sides of the composition boundary rather than one hop.
+        self.created_configs: List[Any] = []
+
+    async def create_sandbox(self) -> _FakeSandbox:
+        return _FakeSandbox()
+
+    async def create_session(
+        self,
+        sandbox,
+        config,
+        *,
+        harness,
+        secrets=None,
+        trace=None,
+        run_context=None,
+        session_id=None,
+        effective_parameters=None,
+        gateway_policy=None,
+    ) -> _FakeSession:
+        self.created_run_contexts.append(run_context)
+        self.created_effective_parameters.append(effective_parameters)
+        self.created_gateway_policies.append(gateway_policy)
+        self.created_configs.append(config)
+        return _FakeSession(AgentResult(output=self._output, events=[], usage={}))
+
+
+def _no_connection_result() -> ResolvedConnection:
+    return ResolvedConnection(
+        provider="openai", model="m", credential_mode="runtime_provided"
+    )
+
+
+async def _no_connection(*, model, context) -> ResolvedConnection:
+    return _no_connection_result()
+
+
+def _request(*, meta=None) -> WorkflowServiceRequest:
+    return WorkflowServiceRequest(meta=meta)
+
+
+def _params(harness="pi_core", *, model=None):
+    template: Dict[str, Any] = {"harness": {"kind": harness}}
+    if model is not None:
+        template["llm"] = model
+    return {"agent": template}
+
+
+# --------------------------------------------------------------------------- #
+# Drift 4: run_kind from `request.meta` must reach RunContext (not silently dropped)
+# --------------------------------------------------------------------------- #
+async def test_run_kind_from_wire_reaches_run_context():
+    backend = _FakeBackend()
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_no_connection,
+    )
+    handler = make_agent_handler(comp)
+
+    await handler(
+        request=_request(meta={"run_kind": "eval"}),
+        messages=[{"role": "user", "content": "hi"}],
+        parameters=_params(),
+    )
+
+    ctx = backend.created_run_contexts[0]
+    assert ctx is not None
+    assert ctx.to_wire() == {"run": {"kind": "eval"}}
+
+
+async def test_absent_run_kind_leaves_composition_run_context_untouched():
+    from agenta.sdk.agents.dtos import RunContext, RunContextTrace
+
+    backend = _FakeBackend()
+    base = RunContext(trace=RunContextTrace(trace_id="trace-1"))
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_no_connection,
+        run_context=lambda: base,
+    )
+    handler = make_agent_handler(comp)
+
+    await handler(
+        request=_request(meta={}),
+        messages=[{"role": "user", "content": "hi"}],
+        parameters=_params(),
+    )
+
+    ctx = backend.created_run_contexts[0]
+    assert ctx is base
+    assert ctx.to_wire() == {"trace": {"trace_id": "trace-1"}}
+
+
+async def test_handler_carries_the_effective_config_onto_the_session():
+    """The config the handler RAN with reaches the session, verbatim.
+
+    The normalizer hands the handler ``request.data.parameters`` after the resolver has
+    hydrated references (or kept the caller's inline draft), so this is the config a HITL gate
+    parked by this turn must be resumable under (effective-turn-config plan, T1). The wire
+    gates emission on ``session_id``; the handler always carries it.
+    """
+    backend = _FakeBackend()
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_no_connection,
+    )
+    handler = make_agent_handler(comp)
+    params = _params(model={"model": "anthropic/claude-sonnet-4-5"})
+
+    await handler(
+        request=_request(),
+        messages=[{"role": "user", "content": "hi"}],
+        parameters=params,
+    )
+
+    assert backend.created_effective_parameters[0] == params
+
+
+# --------------------------------------------------------------------------- #
+# Drift 1 + 2: capability and fail-closed resolution policy are the SEAM DEFAULT now
+# (previously a bare fallback in handler.py with neither).
+# --------------------------------------------------------------------------- #
+async def test_default_composition_rejects_unsupported_provider_pre_resolve():
+    """Claude + a non-anthropic provider must fail loud even with NO composition override."""
+    backend = _FakeBackend()
+
+    async def _must_not_run(*, model, context):
+        raise AssertionError("vault resolve must not run on a pre-resolve reject")
+
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_must_not_run,
+    )
+    handler = make_agent_handler(comp)
+
+    with pytest.raises(UnsupportedProviderError):
+        await handler(
+            request=_request(),
+            messages=[{"role": "user", "content": "hi"}],
+            parameters=_params(
+                "claude", model={"provider": "openai", "model": "gpt-5.5"}
+            ),
+        )
+
+
+async def test_default_composition_rejects_unconsumable_deployment_post_resolve():
+    """Pi resolving to bedrock must fail loud even with NO composition override."""
+    backend = _FakeBackend()
+
+    async def _resolve(*, model, context):
+        return ResolvedConnection(
+            provider="anthropic",
+            model="anthropic.claude-x",
+            deployment="bedrock",
+            credential_mode="env",
+            credentials=[
+                {
+                    "binding": {"kind": "environment", "name": "AWS_ACCESS_KEY_ID"},
+                    "value": "AKIA",
+                    "usage": "local_use",
+                }
+            ],
+        )
+
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_resolve,
+    )
+    handler = make_agent_handler(comp)
+
+    with pytest.raises(UnsupportedDeploymentError):
+        await handler(
+            request=_request(),
+            messages=[{"role": "user", "content": "hi"}],
+            parameters=_params(
+                "pi_core",
+                model={"provider": "anthropic", "model": "anthropic.claude-x"},
+            ),
+        )
+
+
+async def test_named_connection_defers_provider_reject_to_post_resolve():
+    """A named Agenta connection must NOT be rejected pre-resolve on an unknown-family provider
+    placeholder (the UI can store the connection slug as the provider). The vault normalizes it,
+    and Pi + openai + custom is an allowed pair, so the run proceeds."""
+    backend = _FakeBackend(output="ok")
+
+    async def _resolve(*, model, context):
+        # The vault record normalized the provider-less custom to openai + custom deployment.
+        return ResolvedConnection(
+            provider="openai",
+            model="qwen2.5-coder:7b",
+            deployment="custom",
+            credential_mode="env",
+            credentials=[
+                {
+                    "binding": {"kind": "environment", "name": "OPENAI_API_KEY"},
+                    "value": "sk-oai",
+                    "usage": "opaque_http",
+                }
+            ],
+            endpoint={"base_url": "https://93.184.216.34/v1"},
+        )
+
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_resolve,
+    )
+    handler = make_agent_handler(comp)
+
+    result = await handler(
+        request=_request(),
+        messages=[{"role": "user", "content": "hi"}],
+        # provider is the connection slug (no harness lists it); pre-resolve must defer it.
+        parameters=_params(
+            "pi_core",
+            model={
+                "provider": "my-ollama",
+                "model": "qwen2.5-coder:7b",
+                "connection": {"mode": "agenta", "slug": "my-ollama"},
+            },
+        ),
+    )
+    assert result == {"messages": [{"role": "assistant", "content": "ok"}]}
+
+
+async def test_pi_custom_with_non_openai_family_rejected_post_resolve():
+    """Pi + a non-openai family + custom is not an allowed pair (Pi's custom surface is
+    openai-only), so it must fail loud post-resolve even though anthropic is otherwise reachable
+    by Pi directly."""
+    backend = _FakeBackend()
+
+    async def _resolve(*, model, context):
+        return ResolvedConnection(
+            provider="anthropic",
+            model="some-model",
+            deployment="custom",
+            credential_mode="env",
+            credentials=[
+                {
+                    "binding": {"kind": "environment", "name": "ANTHROPIC_API_KEY"},
+                    "value": "sk-ant",
+                    "usage": "opaque_http",
+                }
+            ],
+            endpoint={"base_url": "https://93.184.216.34/v1"},
+        )
+
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_resolve,
+    )
+    handler = make_agent_handler(comp)
+
+    with pytest.raises(UnsupportedProviderError):
+        await handler(
+            request=_request(),
+            messages=[{"role": "user", "content": "hi"}],
+            parameters=_params(
+                "pi_core",
+                model={
+                    "provider": "my-gateway",
+                    "model": "some-model",
+                    "connection": {"mode": "agenta", "slug": "my-gateway"},
+                },
+            ),
+        )
+
+
+async def test_default_composition_fails_closed_on_connection_resolution_failure():
+    """A connection resolution failure fails closed, even with NO composition override
+    (the SDK default never degrades to an implicit runtime-provided fallback)."""
+    backend = _FakeBackend(output="echo")
+
+    async def _resolve(*, model, context):
+        raise ConnectionResolutionError("network unreachable")
+
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_resolve,
+    )
+    handler = make_agent_handler(comp)
+
+    with pytest.raises(ConnectionResolutionError, match="network unreachable"):
+        await handler(
+            request=_request(),
+            messages=[{"role": "user", "content": "hi"}],
+            parameters=_params(
+                "pi_core", model={"provider": "openai", "model": "gpt-5.5"}
+            ),
+        )
+
+
+async def test_a_config_persisted_with_an_unreadable_harness_is_refused_with_a_shape():
+    """F4: a config stored before the commit boundary existed must still fail with a code.
+
+    The gate's H1 cell persisted `harness.kind` as `12345` and the invoke that followed died on
+    the enum's bare `ValueError`, which the remap turned into a 500 whose body was the Python
+    repr. The refusal now happens where the handler reads the template, before it selects a
+    backend or resolves anything, and it carries the field, the value, and the harnesses that
+    exist.
+    """
+    backend = _FakeBackend()
+
+    async def _must_not_run(*, model, context):
+        raise AssertionError("resolution must not run on an unreadable harness")
+
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_must_not_run,
+    )
+    handler = make_agent_handler(comp)
+
+    with pytest.raises(InvalidHarnessKindError) as caught:
+        await handler(
+            request=_request(),
+            messages=[{"role": "user", "content": "hi"}],
+            parameters=_params(12345, model={"provider": "openai", "model": "gpt-5.5"}),
+        )
+
+    assert caught.value.code == 400
+    assert "harness.kind" in caught.value.message
+    # Nothing ran: no session was created, so no turn can be stored for a config that cannot run.
+    assert backend.created_configs == []
+
+
+async def test_a_run_configured_with_the_harness_enum_itself_actually_runs():
+    """The SDK's own `HarnessKind` member must be usable as input, end to end.
+
+    `HarnessKind` is a `str` Enum, so `str(member)` is "HarnessKind.CLAUDE". Stringifying the
+    caller's value lower-cased that to "harnesskind.claude", which `make_harness` then refused —
+    valid input, rejected by the parser that was supposed to accept it.
+    """
+    backend = _FakeBackend(output="hi")
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_no_connection,
+    )
+    handler = make_agent_handler(comp)
+
+    await handler(
+        request=_request(),
+        messages=[{"role": "user", "content": "hi"}],
+        parameters=_params(HarnessKind.CLAUDE),
+    )
+
+    # It reached the backend, which is what a mangled value never did.
+    assert len(backend.created_configs) == 1
+    assert backend.created_effective_parameters[0]["agent"]["harness"]["kind"] == (
+        HarnessKind.CLAUDE
+    )
+
+
+async def test_composition_override_replaces_default_gating():
+    """A composition MAY still fully replace resolve_session_connection (bare passthrough),
+    proving the seam stays injectable rather than hardcoding the gate."""
+    backend = _FakeBackend()
+    calls = []
+
+    async def _bare(model_ref, context):
+        calls.append((model_ref, context))
+        return _no_connection_result()
+
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_session_connection=_bare,
+    )
+    handler = make_agent_handler(comp)
+
+    # Claude + openai would be rejected by the default gate; the override bypasses it.
+    await handler(
+        request=_request(),
+        messages=[{"role": "user", "content": "hi"}],
+        parameters=_params("claude", model={"provider": "openai", "model": "gpt-5.5"}),
+    )
+
+    assert len(calls) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Drift 5: backend/template defaults are per-composition (deployment-specific),
+# proving the seam is request/composition-aware rather than hardcoding one source.
+# --------------------------------------------------------------------------- #
+async def test_composition_default_template_overrides_bare_sdk_default():
+    from agenta.sdk.agents.dtos import AgentTemplate
+
+    backend = _FakeBackend(output="echo")
+    seen_templates = []
+
+    def _select_backend(template):
+        seen_templates.append(template)
+        return backend
+
+    comp = AgentComposition(
+        default_template=lambda: AgentTemplate(
+            instructions="deployment-specific", model="openai/gpt-5.5"
+        ),
+        select_backend=_select_backend,
+        resolve_connection=_no_connection,
+    )
+    handler = make_agent_handler(comp)
+
+    await handler(
+        request=_request(),
+        messages=[{"role": "user", "content": "hi"}],
+        parameters=None,
+    )
+
+    assert seen_templates[0].instructions == "deployment-specific"
+    assert seen_templates[0].model == "openai/gpt-5.5"
+
+
+async def test_composition_select_backend_is_deployment_specific():
+    """`select_backend` is a per-composition field; two compositions can pick different
+    backends for the identical template, proving the seam does not hardcode one source."""
+    backend_a = _FakeBackend(output="a")
+    backend_b = _FakeBackend(output="b")
+
+    comp_a = AgentComposition(
+        select_backend=lambda template: backend_a, resolve_connection=_no_connection
+    )
+    comp_b = AgentComposition(
+        select_backend=lambda template: backend_b, resolve_connection=_no_connection
+    )
+
+    result_a = await make_agent_handler(comp_a)(
+        request=_request(),
+        messages=[{"role": "user", "content": "hi"}],
+        parameters=_params(),
+    )
+    result_b = await make_agent_handler(comp_b)(
+        request=_request(),
+        messages=[{"role": "user", "content": "hi"}],
+        parameters=_params(),
+    )
+
+    assert result_a["messages"][0]["content"] == "a"
+    assert result_b["messages"][0]["content"] == "b"
+
+
+# --------------------------------------------------------------------------- #
+# Local-sandbox gate is the bare SDK default too (a composition-free `agent_v0` gets
+# this protocol-level safety behavior for free, same as capability/MCP gating above).
+# --------------------------------------------------------------------------- #
+async def test_default_select_backend_refuses_local_sandbox_when_not_enabled(
+    monkeypatch,
+):
+    from agenta.sdk.agents import SandboxNotAllowedError
+    from agenta.sdk.agents.dtos import AgentTemplate
+
+    monkeypatch.setenv("AGENTA_RUNNER_ENABLED_SANDBOX_PROVIDERS", "daytona")
+    comp = AgentComposition(resolve_connection=_no_connection)
+    handler = make_agent_handler(comp)
+
+    with pytest.raises(SandboxNotAllowedError):
+        await handler(
+            request=_request(),
+            messages=[{"role": "user", "content": "hi"}],
+            parameters={
+                "agent": {"harness": {"kind": "pi_core"}, "sandbox": {"kind": "local"}}
+            },
+        )
+
+    # sanity: the template really did carry "local" through to select_backend's input.
+    assert AgentTemplate(sandbox="local").sandbox == "local"
+
+
+async def test_default_select_backend_allows_local_sandbox_by_default(monkeypatch):
+    from agenta.sdk.agents.errors import AgentRunnerConfigurationError
+
+    monkeypatch.delenv("AGENTA_RUNNER_ENABLED_SANDBOX_PROVIDERS", raising=False)
+    monkeypatch.delenv("AGENTA_RUNNER_DEFAULT_SANDBOX_PROVIDER", raising=False)
+    comp = AgentComposition(resolve_connection=_no_connection)
+    handler = make_agent_handler(comp)
+
+    # Past the gate, it hits the real SandboxAgentBackend construction, which fails on
+    # missing runner assets in this sandboxed test env -- proving the gate itself passed.
+    with pytest.raises(AgentRunnerConfigurationError):
+        await handler(
+            request=_request(),
+            messages=[{"role": "user", "content": "hi"}],
+            parameters={
+                "agent": {"harness": {"kind": "pi_core"}, "sandbox": {"kind": "local"}}
+            },
+        )
+
+
+async def test_default_select_backend_allows_daytona_sandbox_with_custom_backend(
+    monkeypatch,
+):
+    monkeypatch.delenv("AGENTA_RUNNER_ENABLED_SANDBOX_PROVIDERS", raising=False)
+    monkeypatch.delenv("AGENTA_RUNNER_DEFAULT_SANDBOX_PROVIDER", raising=False)
+    backend = _FakeBackend()
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_no_connection,
+    )
+    handler = make_agent_handler(comp)
+
+    result = await handler(
+        request=_request(),
+        messages=[{"role": "user", "content": "hi"}],
+        parameters={
+            "agent": {"harness": {"kind": "pi_core"}, "sandbox": {"kind": "daytona"}}
+        },
+    )
+    assert isinstance(result, dict)
+
+
+# --------------------------------------------------------------------------- #
+# SVC-1: the backend gate must fire BEFORE the expensive resolves
+# --------------------------------------------------------------------------- #
+async def test_backend_gate_fires_before_tool_mcp_and_vault_resolution():
+    """A rejected run must not first pay for tools, MCP servers, and the vault round trip.
+
+    `select_backend` carries the local-sandbox gate. It used to run AFTER resolve_tools /
+    resolve_mcp_servers / resolve_connection, so a doomed request did all that work first.
+    """
+    ran: List[str] = []
+
+    async def _spy_tools(tools, **kwargs):
+        ran.append("tools")
+        raise AssertionError("resolve_tools ran despite a rejected backend")
+
+    async def _spy_mcp(servers, **kwargs):
+        ran.append("mcp")
+        raise AssertionError("resolve_mcp_servers ran despite a rejected backend")
+
+    async def _spy_connection(*, model, context):
+        ran.append("connection")
+        raise AssertionError("resolve_connection ran despite a rejected backend")
+
+    def _rejecting_backend(template):
+        raise RuntimeError("sandbox 'local' is not allowed")
+
+    comp = AgentComposition(
+        select_backend=_rejecting_backend,
+        resolve_tools=_spy_tools,
+        resolve_mcp_servers=_spy_mcp,
+        resolve_connection=_spy_connection,
+    )
+    handler = make_agent_handler(comp)
+
+    with pytest.raises(RuntimeError, match="not allowed"):
+        await handler(
+            request=_request(),
+            messages=[{"role": "user", "content": "hi"}],
+            parameters=_params(model="openai/gpt-5.5"),
+        )
+
+    assert ran == []
+
+
+# --------------------------------------------------------------------------- #
+# The gateway connection propagation path: resolver -> SessionConfig -> backend -> wire
+# --------------------------------------------------------------------------- #
+def _gateway_policy() -> ResolvedGatewayPolicy:
+    return ResolvedGatewayPolicy(
+        integrations={
+            "github": ResolvedGatewayIntegration(
+                provider="composio",
+                connection="github-work",
+                toolkit_version="20250827_00",
+                tools={"GET_ISSUE": CompiledTool(permission="allow", read_only=True)},
+            )
+        }
+    )
+
+
+async def test_gateway_policy_and_mode_cross_from_the_resolver_to_the_run_request():
+    """Both propagation lines in the handler, checked end to end on the real wire payload.
+
+    The two are easy to drop and each fails SILENTLY rather than loudly:
+
+    - the agent-wide mode reaches the permission compiler only through the ``resolve_tools``
+      call, so losing it compiles the wrong policy while every unit test of the compiler
+      still passes;
+    - the compiled policy reaches the wire only through ``SessionConfig``, and the runner
+      reads an ABSENT policy as deny, so losing it looks like an agent whose tools quietly
+      stopped working.
+
+    Asserting on ``request_to_wire`` output rather than on an intermediate object is what
+    makes deleting either line fail here: the whole path is exercised, not one hop of it.
+    """
+    policy = _gateway_policy()
+    seen_modes: List[Any] = []
+    backend = _FakeBackend()
+
+    async def _tools_with_policy(tools, **kwargs):
+        seen_modes.append(kwargs.get("permission_default"))
+        return ResolvedToolSet(gateway_policy=policy)
+
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_no_connection,
+        resolve_tools=_tools_with_policy,
+    )
+    handler = make_agent_handler(comp)
+    params = _params()
+    # NOT the ``allow_reads`` default: a dropped kwarg would otherwise still read as "deny".
+    params["agent"]["runner"] = {"permissions": {"default": "deny"}}
+
+    await handler(
+        request=_request(),
+        messages=[{"role": "user", "content": "hi"}],
+        parameters=params,
+    )
+
+    # Line 1: the agent-wide mode reached the resolver, which hands it to the compiler.
+    assert seen_modes == ["deny"]
+
+    # Line 2: the compiled policy bypassed the harness config and reached the run request.
+    config = backend.created_configs[0]
+    assert not hasattr(config, "gateway_policy")
+    assert backend.created_gateway_policies == [policy]
+    payload = request_to_wire(
+        harness=HarnessKind.PI,
+        sandbox="local",
+        config=config,
+        messages=[Message(role="user", content="hi")],
+        gateway_policy=backend.created_gateway_policies[0],
+    )
+    assert payload["gatewayPolicy"] == policy.to_wire()
+    # The same mode also rides the coarse permission plan the harness gate reads.
+    assert payload["permissions"]["default"] == "deny"
+
+
+async def test_no_gateway_policy_leaves_the_run_request_field_absent():
+    """The other half: a resolver that reports no policy emits no field at all."""
+    backend = _FakeBackend()
+    comp = AgentComposition(
+        select_backend=lambda template: backend,
+        resolve_connection=_no_connection,
+    )
+    handler = make_agent_handler(comp)
+
+    await handler(
+        request=_request(),
+        messages=[{"role": "user", "content": "hi"}],
+        parameters=_params(),
+    )
+
+    config = backend.created_configs[0]
+    assert not hasattr(config, "gateway_policy")
+    assert backend.created_gateway_policies == [None]
+    payload = request_to_wire(
+        harness=HarnessKind.PI,
+        sandbox="local",
+        config=config,
+        messages=[Message(role="user", content="hi")],
+        gateway_policy=backend.created_gateway_policies[0],
+    )
+    assert "gatewayPolicy" not in payload
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-q"])

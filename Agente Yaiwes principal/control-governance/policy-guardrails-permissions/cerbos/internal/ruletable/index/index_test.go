@@ -1,0 +1,1217 @@
+// Copyright 2021-2026 Zenauth Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
+package index_test
+
+import (
+	"testing"
+
+	"cel.dev/cel-go/cel"
+	effectv1 "github.com/cerbos/cerbos/api/genpb/cerbos/effect/v1"
+	policyv1 "github.com/cerbos/cerbos/api/genpb/cerbos/policy/v1"
+	runtimev1 "github.com/cerbos/cerbos/api/genpb/cerbos/runtime/v1"
+	"github.com/cerbos/cerbos/internal/conditions"
+	"github.com/cerbos/cerbos/internal/namer"
+	"github.com/cerbos/cerbos/internal/ruletable/index"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/structpb"
+)
+
+func TestParentRoleIndex(t *testing.T) {
+	impl := index.New()
+
+	scopeParentRoles := map[string]*runtimev1.RuleTable_RoleParentRoles{
+		"acme": {
+			RoleParentRoles: map[string]*runtimev1.RuleTable_RoleParentRoles_ParentRoles{
+				"manager": {
+					Roles: []string{"employee"},
+				},
+				"employee": {
+					Roles: []string{"user"},
+				},
+			},
+		},
+		"acme.hr": {
+			RoleParentRoles: map[string]*runtimev1.RuleTable_RoleParentRoles_ParentRoles{
+				"manager": {
+					Roles: []string{"contractor"},
+				},
+			},
+		},
+	}
+
+	require.NoError(t, impl.IndexParentRoles(scopeParentRoles))
+
+	t.Run("transitive closure", func(t *testing.T) {
+		roles := impl.AddParentRoles([]string{"acme"}, []string{"manager"})
+		require.ElementsMatch(t, []string{"manager", "employee", "user"}, roles)
+	})
+
+	t.Run("scope union", func(t *testing.T) {
+		roles := impl.AddParentRoles([]string{"acme", "acme.hr"}, []string{"manager"})
+		require.ElementsMatch(t, []string{"manager", "employee", "user", "contractor"}, roles)
+	})
+
+	t.Run("replace existing parent role index", func(t *testing.T) {
+		require.NoError(t, impl.IndexParentRoles(map[string]*runtimev1.RuleTable_RoleParentRoles{}))
+
+		roles := impl.AddParentRoles([]string{"acme", "acme.hr"}, []string{"manager"})
+		require.Equal(t, []string{"manager"}, roles)
+	})
+}
+
+func TestParamsIndex(t *testing.T) {
+	t.Run("interns equivalent params", func(t *testing.T) {
+		impl := index.New()
+
+		ast, iss := conditions.Compile("1 + 1")
+		require.Nil(t, iss)
+		checkedExpr, err := cel.AstToCheckedExpr(ast)
+		require.NoError(t, err)
+
+		// identical content: the params cache should compile CEL programs only once and share the result.
+		params1 := &runtimev1.RuleTable_RuleRow_Params{
+			OrderedVariables: []*runtimev1.Variable{{
+				Name: "v",
+				Expr: &runtimev1.Expr{Original: "1 + 1", Checked: checkedExpr},
+			}},
+			Constants: map[string]*structpb.Value{"k": structpb.NewStringValue("v")},
+		}
+		params2 := &runtimev1.RuleTable_RuleRow_Params{
+			OrderedVariables: []*runtimev1.Variable{{
+				Name: "v",
+				Expr: &runtimev1.Expr{Original: "1 + 1", Checked: checkedExpr},
+			}},
+			Constants: map[string]*structpb.Value{"k": structpb.NewStringValue("v")},
+		}
+
+		docFQN := namer.ResourcePolicyFQN("document", "default", "")
+		rules := []*runtimev1.RuleTable_RuleRow{
+			{
+				OriginFqn:  docFQN,
+				PolicyKind: policyv1.Kind_KIND_RESOURCE,
+				Resource:   "document",
+				Role:       "viewer",
+				ActionSet:  &runtimev1.RuleTable_RuleRow_Action{Action: "view"},
+				Effect:     effectv1.Effect_EFFECT_ALLOW,
+				Version:    "default",
+				Params:     params1,
+			},
+			{
+				OriginFqn:  docFQN,
+				PolicyKind: policyv1.Kind_KIND_RESOURCE,
+				Resource:   "document",
+				Role:       "editor",
+				ActionSet:  &runtimev1.RuleTable_RuleRow_Action{Action: "edit"},
+				Effect:     effectv1.Effect_EFFECT_ALLOW,
+				Version:    "default",
+				Params:     params2,
+			},
+		}
+
+		require.NoError(t, impl.IndexRules(rules))
+
+		allRows := impl.GetAllRows()
+		require.Len(t, allRows, 2)
+
+		require.Same(t, allRows[0].Core.Params, allRows[1].Core.Params, "expected shared RowParams pointer from params interning")
+	})
+}
+
+func TestFunctionalChecksum(t *testing.T) {
+	fqnA := namer.ResourcePolicyFQN("document", "default", "")
+	fqnB := namer.ResourcePolicyFQN("document", "default", "acme")
+
+	t.Run("rows differing only in origin_fqn share a FunctionalCore", func(t *testing.T) {
+		impl := index.New()
+
+		rules := []*runtimev1.RuleTable_RuleRow{
+			makeRow(fqnA),
+			makeRow(fqnB),
+		}
+
+		require.NoError(t, impl.IndexRules(rules))
+
+		allRows := impl.GetAllRows()
+		require.Len(t, allRows, 2)
+		require.Same(t, allRows[0].Core, allRows[1].Core, "functionally identical rows should share a FunctionalCore")
+	})
+
+	t.Run("rows differing in condition are not deduplicated", func(t *testing.T) {
+		impl := index.New()
+
+		rules := []*runtimev1.RuleTable_RuleRow{
+			makeRow(fqnA),
+			makeRow(fqnB, func(r *runtimev1.RuleTable_RuleRow) {
+				r.Condition = &runtimev1.Condition{Op: &runtimev1.Condition_Expr{Expr: &runtimev1.Expr{Original: "true"}}}
+			}),
+		}
+
+		require.NoError(t, impl.IndexRules(rules))
+
+		allRows := impl.GetAllRows()
+		require.Len(t, allRows, 2)
+		require.NotSame(t, allRows[0].Core, allRows[1].Core, "rows with different conditions should not share a FunctionalCore")
+	})
+
+	t.Run("different emit_output prevents core sharing", func(t *testing.T) {
+		impl := index.New()
+
+		rules := []*runtimev1.RuleTable_RuleRow{
+			makeRow(fqnA),
+			makeRow(fqnB, func(r *runtimev1.RuleTable_RuleRow) {
+				r.EmitOutput = &runtimev1.Output{When: &runtimev1.Output_When{RuleActivated: &runtimev1.Expr{Original: "output"}}}
+			}),
+		}
+
+		require.NoError(t, impl.IndexRules(rules))
+
+		allRows := impl.GetAllRows()
+		require.Len(t, allRows, 2)
+		require.NotSame(t, allRows[0].Core, allRows[1].Core, "rows with different emit_output should not share a FunctionalCore")
+	})
+
+	t.Run("delete policy removes its bindings independently", func(t *testing.T) {
+		impl := index.New()
+
+		rules := []*runtimev1.RuleTable_RuleRow{
+			makeRow(fqnA),
+			makeRow(fqnB),
+		}
+
+		require.NoError(t, impl.IndexRules(rules))
+
+		allRows := impl.GetAllRows()
+		require.Len(t, allRows, 2)
+
+		require.NoError(t, impl.DeletePolicy(fqnA))
+
+		allRows = impl.GetAllRows()
+		require.Len(t, allRows, 1, "only fqnB's binding should remain")
+
+		require.NoError(t, impl.DeletePolicy(fqnB))
+
+		allRows = impl.GetAllRows()
+		require.Len(t, allRows, 0, "all bindings should be removed")
+	})
+
+	t.Run("delete policy removes orphaned binding when core is shared across different routing tuples", func(t *testing.T) {
+		impl := index.New()
+
+		// two distinct policies produce functionally identical rows (same effect, no condition)
+		// but with different resources, so they get different routing tuples and separate
+		// binding IDs, but share the same FunctionalCore
+		docPolicyFQN := namer.ResourcePolicyFQN("document", "default", "")
+		imgPolicyFQN := namer.ResourcePolicyFQN("image", "default", "")
+
+		rules := []*runtimev1.RuleTable_RuleRow{
+			makeRow(docPolicyFQN), // resource="document"
+			makeRow(imgPolicyFQN, func(r *runtimev1.RuleTable_RuleRow) {
+				r.Resource = "image"
+			}),
+		}
+
+		require.NoError(t, impl.IndexRules(rules))
+
+		docRows := impl.Query("default", "document", "", "", nil, 0, "", nil)
+		require.Len(t, docRows, 1)
+
+		imgRows := impl.Query("default", "image", "", "", nil, 0, "", nil)
+		require.Len(t, imgRows, 1)
+
+		// delete `docPolicyFQN`. Its "document" binding must be removed
+		// even though the shared core still has `imgPolicyFQN` in origins.
+		require.NoError(t, impl.DeletePolicy(docPolicyFQN))
+
+		docRows = impl.Query("default", "document", "", "", nil, 0, "", nil)
+		require.Len(t, docRows, 0, "orphaned binding for deleted policy should be removed from dimensions")
+
+		imgRows = impl.Query("default", "image", "", "", nil, 0, "", nil)
+		require.Len(t, imgRows, 1, "surviving policy's binding should remain")
+
+		require.NoError(t, impl.DeletePolicy(imgPolicyFQN))
+
+		allRows := impl.GetAllRows()
+		require.Len(t, allRows, 0, "all bindings should be removed after deleting all origins")
+	})
+
+	t.Run("rows with params differing only in origin_fqn share core and params", func(t *testing.T) {
+		// uses FromRolePolicy: false with non-nil Params to exercise the params compilation path.
+		// verifies that params interning doesn't interfere with functional checksumming.
+		impl := index.New()
+
+		withParams := func(r *runtimev1.RuleTable_RuleRow) {
+			r.FromRolePolicy = false
+			r.Params = &runtimev1.RuleTable_RuleRow_Params{
+				OrderedVariables: []*runtimev1.Variable{},
+				Constants:        map[string]*structpb.Value{},
+			}
+		}
+
+		rules := []*runtimev1.RuleTable_RuleRow{
+			makeRow(fqnA, withParams),
+			makeRow(fqnB, withParams),
+		}
+
+		require.NoError(t, impl.IndexRules(rules))
+
+		allRows := impl.GetAllRows()
+		require.Len(t, allRows, 2)
+		require.Same(t, allRows[0].Core, allRows[1].Core, "functionally identical rows should share a FunctionalCore")
+		require.NotNil(t, allRows[0].Core.Params, "shared core should have compiled params")
+	})
+
+	t.Run("incremental indexing shares cores across batches", func(t *testing.T) {
+		impl := index.New()
+
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(fqnA),
+		}))
+
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(fqnB),
+		}))
+
+		allRows := impl.GetAllRows()
+		require.Len(t, allRows, 2)
+		require.Same(t, allRows[0].Core, allRows[1].Core, "incremental indexing should share FunctionalCore")
+
+		require.NoError(t, impl.DeletePolicy(fqnA))
+
+		allRows = impl.GetAllRows()
+		require.Len(t, allRows, 1, "only fqnB's binding should remain")
+
+		require.NoError(t, impl.DeletePolicy(fqnB))
+
+		allRows = impl.GetAllRows()
+		require.Len(t, allRows, 0, "row should be removed after all origins deleted")
+	})
+}
+
+func TestDimensionAccessorsDropEmpty(t *testing.T) {
+	// Principal-policy noop rows carry no role/resource; those "" values must
+	// not leak into the role/resource/version dimension keys.
+	impl := index.New()
+	require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+		{
+			OriginFqn:  namer.PrincipalPolicyFQN("alice", "default", ""),
+			PolicyKind: policyv1.Kind_KIND_PRINCIPAL,
+			Principal:  "alice",
+			Version:    "default",
+			Params:     &runtimev1.RuleTable_RuleRow_Params{},
+		},
+		makeRow(namer.ResourcePolicyFQN("document", "default", "")),
+	}))
+
+	require.ElementsMatch(t, []string{"viewer"}, impl.GetRoles())
+	require.ElementsMatch(t, []string{"document"}, impl.GetResources())
+	require.ElementsMatch(t, []string{"default"}, impl.GetVersions())
+	require.ElementsMatch(t, []string{""}, impl.GetScopes(), "root scope is a legitimate empty-string key")
+}
+
+func TestGetVersions(t *testing.T) {
+	impl := index.New()
+	require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+		makeRow(namer.ResourcePolicyFQN("document", "v1", ""), func(r *runtimev1.RuleTable_RuleRow) { r.Version = "v1" }),
+		makeRow(namer.ResourcePolicyFQN("document", "v2", ""), func(r *runtimev1.RuleTable_RuleRow) { r.Version = "v2"; r.Role = "editor" }),
+	}))
+	require.ElementsMatch(t, []string{"v1", "v2"}, impl.GetVersions())
+}
+
+func TestGetActions(t *testing.T) {
+	impl := index.New()
+	require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+		makeRow(namer.ResourcePolicyFQN("document", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "view"}
+		}),
+		makeRow(namer.ResourcePolicyFQN("document", "default", "acme"), func(r *runtimev1.RuleTable_RuleRow) {
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "edit"}
+			r.Role = "editor"
+		}),
+	}))
+	require.ElementsMatch(t, []string{"view", "edit"}, impl.GetActions())
+}
+
+func TestGetResources(t *testing.T) {
+	impl := index.New()
+	require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+		makeRow(namer.ResourcePolicyFQN("document", "default", "")),
+		makeRow(namer.ResourcePolicyFQN("image", "default", ""), func(r *runtimev1.RuleTable_RuleRow) { r.Resource = "image"; r.Role = "editor" }),
+	}))
+	require.ElementsMatch(t, []string{"document", "image"}, impl.GetResources())
+}
+
+func TestResources(t *testing.T) {
+	impl := index.New()
+	require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+		makeRow(namer.ResourcePolicyFQN("document", "default", ""), func(r *runtimev1.RuleTable_RuleRow) { r.Scope = ""; r.Resource = "document" }),
+		makeRow(namer.ResourcePolicyFQN("image", "default", "acme"), func(r *runtimev1.RuleTable_RuleRow) { r.Scope = "acme"; r.Resource = "image" }),
+		makeRow(namer.ResourcePolicyFQN("report:*", "default", "acme"), func(r *runtimev1.RuleTable_RuleRow) { r.Scope = "acme"; r.Resource = "report:*" }),
+		makeRow(namer.ResourcePolicyFQN("ticket", "v2", "acme.hr"), func(r *runtimev1.RuleTable_RuleRow) { r.Scope = "acme.hr"; r.Version = "v2"; r.Resource = "ticket" }),
+	}))
+
+	t.Run("empty filters returns all resources", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"document", "image", "report:*", "ticket"}, impl.Resources(nil, nil))
+	})
+
+	t.Run("single scope returns resources in that scope", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"image", "report:*"}, impl.Resources(nil, []string{"acme"}))
+	})
+
+	t.Run("version filter restricts resources", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"ticket"}, impl.Resources([]string{"v2"}, nil))
+	})
+
+	t.Run("version filter includes glob resource alongside literals", func(t *testing.T) {
+		require.ElementsMatch(t,
+			[]string{"document", "image", "report:*"},
+			impl.Resources([]string{"default"}, nil),
+		)
+	})
+
+	t.Run("multi-version unions resources", func(t *testing.T) {
+		require.ElementsMatch(t,
+			[]string{"document", "image", "report:*", "ticket"},
+			impl.Resources([]string{"default", "v2"}, nil),
+		)
+	})
+
+	t.Run("multi-scope unions resources", func(t *testing.T) {
+		require.ElementsMatch(t,
+			[]string{"document", "image", "report:*"},
+			impl.Resources(nil, []string{"", "acme"}),
+		)
+	})
+
+	t.Run("version and scope intersect", func(t *testing.T) {
+		require.ElementsMatch(t,
+			[]string{"image", "report:*"},
+			impl.Resources([]string{"default"}, []string{"acme"}),
+		)
+	})
+
+	t.Run("disjoint filters return nothing", func(t *testing.T) {
+		require.Empty(t, impl.Resources([]string{"v2"}, []string{""}))
+	})
+
+	t.Run("principal-policy-only resource is filtered alongside resource-policy ones", func(t *testing.T) {
+		mixed := index.New()
+		require.NoError(t, mixed.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.ResourcePolicyFQN("doc", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.FromRolePolicy = false
+				r.Resource = "doc"
+				r.Role = "viewer"
+			}),
+			{
+				OriginFqn:  namer.PrincipalPolicyFQN("bob", "default", ""),
+				PolicyKind: policyv1.Kind_KIND_PRINCIPAL,
+				Principal:  "bob",
+				Role:       "*",
+				Version:    "default",
+				Resource:   "vault",
+				ActionSet:  &runtimev1.RuleTable_RuleRow_Action{Action: "open"},
+				Effect:     effectv1.Effect_EFFECT_ALLOW,
+				Params:     &runtimev1.RuleTable_RuleRow_Params{},
+			},
+		}))
+		require.ElementsMatch(t, []string{"doc"}, mixed.Resources(nil, nil))
+	})
+}
+
+func TestRoles(t *testing.T) {
+	// Roles routes through the same helper as Resources; the subtests here lock
+	// in behaviour specific to the role dimension: the synthetic "*" key from
+	// principal policies.
+
+	t.Run("returns role keys from indexed bindings", func(t *testing.T) {
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.ResourcePolicyFQN("document", "default", ""), func(r *runtimev1.RuleTable_RuleRow) { r.Role = "viewer" }),
+			makeRow(namer.ResourcePolicyFQN("image", "v2", "acme"), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Scope = "acme"
+				r.Version = "v2"
+				r.Resource = "image"
+				r.Role = "manager:*"
+			}),
+		}))
+		require.ElementsMatch(t, []string{"viewer", "manager:*"}, impl.Roles(nil, nil, nil))
+		require.ElementsMatch(t, []string{"manager:*"}, impl.Roles([]string{"v2"}, nil, nil))
+		require.ElementsMatch(t, []string{"viewer"}, impl.Roles(nil, nil, []string{"document"}))
+		require.ElementsMatch(t, []string{"manager:*"}, impl.Roles(nil, nil, []string{"image"}))
+	})
+
+	t.Run("principal-only index returns nothing", func(t *testing.T) {
+		principalOnly := index.New()
+		require.NoError(t, principalOnly.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			{
+				OriginFqn:  namer.PrincipalPolicyFQN("bob", "default", ""),
+				PolicyKind: policyv1.Kind_KIND_PRINCIPAL,
+				Principal:  "bob",
+				Role:       "*",
+				Version:    "default",
+				Resource:   "doc",
+				ActionSet:  &runtimev1.RuleTable_RuleRow_Action{Action: "read"},
+				Effect:     effectv1.Effect_EFFECT_ALLOW,
+				Params:     &runtimev1.RuleTable_RuleRow_Params{},
+			},
+		}))
+		require.Empty(t, principalOnly.Roles(nil, nil, nil))
+	})
+
+	t.Run("synthetic * is filtered alongside resource-policy roles", func(t *testing.T) {
+		mixed := index.New()
+		require.NoError(t, mixed.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.ResourcePolicyFQN("doc", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.FromRolePolicy = false
+				r.Resource = "doc"
+				r.Role = "viewer"
+			}),
+			{
+				OriginFqn:  namer.PrincipalPolicyFQN("bob", "default", ""),
+				PolicyKind: policyv1.Kind_KIND_PRINCIPAL,
+				Principal:  "bob",
+				Role:       "*",
+				Version:    "default",
+				Resource:   "doc",
+				ActionSet:  &runtimev1.RuleTable_RuleRow_Action{Action: "read"},
+				Effect:     effectv1.Effect_EFFECT_ALLOW,
+				Params:     &runtimev1.RuleTable_RuleRow_Params{},
+			},
+		}))
+		require.ElementsMatch(t, []string{"viewer"}, mixed.Roles(nil, nil, nil))
+	})
+}
+
+func TestScopes(t *testing.T) {
+	impl := index.New()
+	require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+		makeRow(namer.ResourcePolicyFQN("document", "default", ""), func(r *runtimev1.RuleTable_RuleRow) { r.Scope = ""; r.Resource = "document" }),
+		makeRow(namer.ResourcePolicyFQN("document", "default", "acme"), func(r *runtimev1.RuleTable_RuleRow) { r.Scope = "acme"; r.Resource = "document" }),
+		makeRow(namer.ResourcePolicyFQN("image", "v2", "acme.hr"), func(r *runtimev1.RuleTable_RuleRow) { r.Scope = "acme.hr"; r.Version = "v2"; r.Resource = "image" }),
+	}))
+
+	t.Run("empty filters returns all scopes", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"", "acme", "acme.hr"}, impl.Scopes(nil, nil))
+	})
+	t.Run("resource filter restricts scopes", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"", "acme"}, impl.Scopes(nil, []string{"document"}))
+	})
+	t.Run("version filter restricts scopes", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"acme.hr"}, impl.Scopes([]string{"v2"}, nil))
+	})
+	t.Run("version and resource intersect", func(t *testing.T) {
+		require.Empty(t, impl.Scopes([]string{"v2"}, []string{"document"}))
+	})
+	t.Run("unknown resource returns nothing", func(t *testing.T) {
+		require.Empty(t, impl.Scopes(nil, []string{"nope"}))
+	})
+}
+
+func TestVersions(t *testing.T) {
+	impl := index.New()
+	require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+		makeRow(namer.ResourcePolicyFQN("document", "default", "acme"), func(r *runtimev1.RuleTable_RuleRow) { r.Scope = "acme"; r.Resource = "document" }),
+		makeRow(namer.ResourcePolicyFQN("document", "v2", "acme"), func(r *runtimev1.RuleTable_RuleRow) { r.Scope = "acme"; r.Version = "v2"; r.Resource = "document" }),
+		makeRow(namer.ResourcePolicyFQN("image", "v3", ""), func(r *runtimev1.RuleTable_RuleRow) { r.Scope = ""; r.Version = "v3"; r.Resource = "image" }),
+	}))
+
+	t.Run("empty filters returns all versions", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"default", "v2", "v3"}, impl.Versions(nil, nil))
+	})
+	t.Run("resource filter restricts versions", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"default", "v2"}, impl.Versions(nil, []string{"document"}))
+	})
+	t.Run("scope filter restricts versions", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"default", "v2"}, impl.Versions([]string{"acme"}, nil))
+	})
+	t.Run("scope and resource intersect", func(t *testing.T) {
+		require.Empty(t, impl.Versions([]string{"acme"}, []string{"image"}))
+	})
+}
+
+func TestActions(t *testing.T) {
+	impl := index.New()
+	require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+		makeRow(namer.ResourcePolicyFQN("document", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.Resource = "document"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "view"}
+		}),
+		makeRow(namer.ResourcePolicyFQN("document", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.Resource = "document"
+			r.Role = "editor"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "edit"}
+		}),
+		makeRow(namer.ResourcePolicyFQN("report", "default", "acme"), func(r *runtimev1.RuleTable_RuleRow) {
+			r.Scope = "acme"
+			r.Resource = "report"
+			r.Role = "admin"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "delete"}
+		}),
+	}))
+
+	t.Run("empty filters returns all actions", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"view", "edit", "delete"}, impl.Actions(nil, nil, nil))
+	})
+	t.Run("resource filter restricts actions", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"view", "edit"}, impl.Actions(nil, nil, []string{"document"}))
+	})
+	t.Run("scope filter restricts actions", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"delete"}, impl.Actions(nil, []string{"acme"}, nil))
+	})
+}
+
+func TestActionsForResource(t *testing.T) {
+	impl := index.New()
+	require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+		makeRow(namer.ResourcePolicyFQN("document", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.FromRolePolicy = false
+			r.Scope = ""
+			r.Resource = "document"
+			r.Role = "viewer"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "view"}
+		}),
+		makeRow(namer.ResourcePolicyFQN("document", "default", "acme"), func(r *runtimev1.RuleTable_RuleRow) {
+			r.FromRolePolicy = false
+			r.Scope = "acme"
+			r.Resource = "document"
+			r.Role = "editor"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "edit"}
+		}),
+		makeRow(namer.ResourcePolicyFQN("document", "v2", "acme"), func(r *runtimev1.RuleTable_RuleRow) {
+			r.FromRolePolicy = false
+			r.Scope = "acme"
+			r.Version = "v2"
+			r.Resource = "document"
+			r.Role = "editor"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "archive"}
+		}),
+		makeRow(namer.RolePolicyFQN("acme::auditor", "default", "acme"), func(r *runtimev1.RuleTable_RuleRow) {
+			r.Scope = "acme"
+			r.Resource = "document"
+			r.Role = "acme::auditor"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+				AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{
+					Actions: map[string]*emptypb.Empty{"approve": {}, "reject": {}},
+				},
+			}
+		}),
+		makeRow(namer.RolePolicyFQN("widget_admin", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.Scope = ""
+			r.Resource = "widget"
+			r.Role = "widget_admin"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+				AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{
+					Actions: map[string]*emptypb.Empty{"configure": {}, "decommission": {}},
+				},
+			}
+		}),
+		makeRow(namer.ResourcePolicyFQN("image", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.FromRolePolicy = false
+			r.Scope = ""
+			r.Resource = "image"
+			r.Role = "viewer"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "render"}
+		}),
+		makeRow(namer.ResourcePolicyFQN("report:*", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.FromRolePolicy = false
+			r.Scope = ""
+			r.Resource = "report:*"
+			r.Role = "viewer"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "download"}
+		}),
+		{
+			OriginFqn:  namer.PrincipalPolicyFQN("alice", "default", "acme"),
+			PolicyKind: policyv1.Kind_KIND_PRINCIPAL,
+			Principal:  "alice",
+			Role:       "*",
+			Scope:      "acme",
+			Version:    "default",
+			Resource:   "document",
+			ActionSet:  &runtimev1.RuleTable_RuleRow_Action{Action: "principal_only"},
+			Effect:     effectv1.Effect_EFFECT_ALLOW,
+			Params:     &runtimev1.RuleTable_RuleRow_Params{},
+		},
+	}))
+
+	t.Run("returns resource-policy and role-policy actions", func(t *testing.T) {
+		require.ElementsMatch(t,
+			[]string{"view", "edit", "archive", "approve", "reject"},
+			impl.ActionsForResource("document", nil, nil),
+		)
+	})
+
+	t.Run("scope-bounded excludes other scopes", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"view"}, impl.ActionsForResource("document", nil, []string{""}))
+	})
+
+	t.Run("scope-bounded includes role-policy AllowActions", func(t *testing.T) {
+		require.ElementsMatch(t,
+			[]string{"edit", "approve", "reject"},
+			impl.ActionsForResource("document", []string{"default"}, []string{"acme"}),
+		)
+	})
+
+	t.Run("version filter excludes other-version role-policy AllowActions", func(t *testing.T) {
+		require.ElementsMatch(t,
+			[]string{"archive"},
+			impl.ActionsForResource("document", []string{"v2"}, []string{"acme"}),
+		)
+	})
+
+	t.Run("multi-version unions actions", func(t *testing.T) {
+		require.ElementsMatch(t,
+			[]string{"edit", "archive", "approve", "reject"},
+			impl.ActionsForResource("document", []string{"default", "v2"}, []string{"acme"}),
+		)
+	})
+
+	t.Run("different resource returns its own actions only", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"render"}, impl.ActionsForResource("image", nil, nil))
+	})
+
+	t.Run("literal resource matches glob-pattern binding", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"download"}, impl.ActionsForResource("report:weekly", nil, nil))
+	})
+
+	t.Run("glob-pattern resource value matches its own binding", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"download"}, impl.ActionsForResource("report:*", nil, nil))
+	})
+
+	t.Run("resource reached only via role-policy AllowActions", func(t *testing.T) {
+		require.ElementsMatch(t,
+			[]string{"configure", "decommission"},
+			impl.ActionsForResource("widget", nil, nil),
+		)
+	})
+
+	t.Run("unknown resource returns nothing", func(t *testing.T) {
+		require.Empty(t, impl.ActionsForResource("nope", nil, nil))
+	})
+
+	t.Run("unknown version on known resource returns nothing", func(t *testing.T) {
+		require.Empty(t, impl.ActionsForResource("document", []string{"vNope"}, nil))
+	})
+
+	t.Run("empty resource returns nothing", func(t *testing.T) {
+		require.Empty(t, impl.ActionsForResource("", nil, nil))
+	})
+
+	t.Run("principal-policy actions are excluded", func(t *testing.T) {
+		actions := impl.ActionsForResource("document", []string{"default"}, []string{"acme"})
+		require.NotContains(t, actions, "principal_only")
+	})
+}
+
+func TestActionsForResourceGlobAcrossVersions(t *testing.T) {
+	impl := index.New()
+	require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+		makeRow(namer.ResourcePolicyFQN("report:*", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.FromRolePolicy = false
+			r.Scope = ""
+			r.Resource = "report:*"
+			r.Role = "viewer"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "download"}
+		}),
+		makeRow(namer.ResourcePolicyFQN("report:*", "v2", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.FromRolePolicy = false
+			r.Scope = ""
+			r.Version = "v2"
+			r.Resource = "report:*"
+			r.Role = "viewer"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "archive"}
+		}),
+	}))
+
+	t.Run("default-version filter picks default-version glob action", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"download"}, impl.ActionsForResource("report:weekly", []string{"default"}, nil))
+	})
+
+	t.Run("v2 filter picks v2 glob action", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"archive"}, impl.ActionsForResource("report:weekly", []string{"v2"}, nil))
+	})
+}
+
+func TestQueryMulti(t *testing.T) {
+	impl := index.New()
+	require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+		makeRow(namer.ResourcePolicyFQN("document", "v1", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.Version = "v1"
+			r.Resource = "document"
+			r.Role = "viewer"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "view"}
+		}),
+		makeRow(namer.ResourcePolicyFQN("document", "v1", "acme"), func(r *runtimev1.RuleTable_RuleRow) {
+			r.Version = "v1"
+			r.Resource = "document"
+			r.Role = "editor"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "edit"}
+		}),
+		makeRow(namer.ResourcePolicyFQN("image", "v2", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.Version = "v2"
+			r.Resource = "image"
+			r.Role = "viewer"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "view"}
+		}),
+	}))
+
+	t.Run("all nil returns everything", func(t *testing.T) {
+		res := impl.QueryMulti(nil, nil, nil, nil, nil, false)
+		require.Len(t, res, 3)
+	})
+
+	t.Run("filter by version", func(t *testing.T) {
+		res := impl.QueryMulti([]string{"v1"}, nil, nil, nil, nil, false)
+		require.Len(t, res, 2)
+		for _, b := range res {
+			require.Equal(t, "v1", b.Version)
+		}
+	})
+
+	t.Run("filter by multiple roles", func(t *testing.T) {
+		res := impl.QueryMulti(nil, nil, nil, []string{"viewer", "editor"}, nil, false)
+		require.Len(t, res, 3)
+	})
+
+	t.Run("filter by action", func(t *testing.T) {
+		res := impl.QueryMulti(nil, nil, nil, nil, []string{"edit"}, false)
+		require.Len(t, res, 1)
+		require.Equal(t, "editor", res[0].Role)
+	})
+
+	t.Run("AND across dimensions", func(t *testing.T) {
+		res := impl.QueryMulti([]string{"v1"}, []string{"document"}, nil, []string{"viewer"}, []string{"view"}, false)
+		require.Len(t, res, 1)
+		require.Equal(t, "viewer", res[0].Role)
+		require.Equal(t, "document", res[0].Resource)
+	})
+
+	t.Run("no match returns nil", func(t *testing.T) {
+		res := impl.QueryMulti([]string{"v99"}, nil, nil, nil, nil, false)
+		require.Nil(t, res)
+	})
+
+	t.Run("unknown scope short-circuits", func(t *testing.T) {
+		res := impl.QueryMulti(nil, nil, []string{"never_indexed"}, nil, nil, false)
+		require.Nil(t, res)
+	})
+}
+
+func TestQueryMultiAllowActions(t *testing.T) {
+	impl := index.New()
+	require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+		makeRow(namer.ResourcePolicyFQN("document", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "view"}
+		}),
+		makeRow(namer.RolePolicyFQN("admin", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+			r.Role = "admin"
+			r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+				AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{
+					Actions: map[string]*emptypb.Empty{"view": {}, "edit": {}},
+				},
+			}
+		}),
+	}))
+
+	t.Run("action filter returns exact matches plus raw AllowActions bindings", func(t *testing.T) {
+		res := impl.QueryMulti(nil, nil, nil, nil, []string{"view"}, false)
+		require.Len(t, res, 2)
+	})
+
+	t.Run("no action filter returns all including AllowActions", func(t *testing.T) {
+		res := impl.QueryMulti(nil, nil, nil, nil, nil, false)
+		require.Len(t, res, 2)
+	})
+}
+
+func TestQueryMultiSynthesis(t *testing.T) {
+	t.Run("uncovered action produces unconditional DENY", func(t *testing.T) {
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{
+						Actions: map[string]*emptypb.Empty{"view": {}},
+					},
+				}
+			}),
+		}))
+
+		res := impl.QueryMulti(nil, []string{"document"}, nil, []string{"viewer"}, []string{"delete"}, true)
+		denies := collectDenies(res)
+		require.Len(t, denies, 1)
+		require.Equal(t, effectv1.Effect_EFFECT_DENY, denies[0].Core.Effect)
+		require.True(t, denies[0].Core.FromRolePolicy)
+		require.True(t, denies[0].NoMatchForScopePermissions)
+		require.Equal(t, "viewer", denies[0].Role)
+		require.Equal(t, "delete", denies[0].Action)
+	})
+
+	t.Run("unconditionally covered action yields no deny", func(t *testing.T) {
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{
+						Actions: map[string]*emptypb.Empty{"view": {}},
+					},
+				}
+			}),
+		}))
+
+		res := impl.QueryMulti(nil, []string{"document"}, nil, []string{"viewer"}, []string{"view"}, true)
+		require.Empty(t, collectDenies(res))
+	})
+
+	t.Run("conditional cover produces Condition_None-wrapped DENY", func(t *testing.T) {
+		impl := index.New()
+		cond := &runtimev1.Condition{
+			Op: &runtimev1.Condition_Expr{Expr: &runtimev1.Expr{Original: "request.resource.attr.public == true"}},
+		}
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.Condition = cond
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{
+						Actions: map[string]*emptypb.Empty{"view": {}},
+					},
+				}
+			}),
+		}))
+
+		res := impl.QueryMulti(nil, []string{"document"}, nil, []string{"viewer"}, []string{"view"}, true)
+		denies := collectDenies(res)
+		require.Len(t, denies, 1)
+		require.Equal(t, effectv1.Effect_EFFECT_DENY, denies[0].Core.Effect)
+		require.Equal(t, policyv1.ScopePermissions_SCOPE_PERMISSIONS_REQUIRE_PARENTAL_CONSENT_FOR_ALLOWS, denies[0].Core.ScopePermissions)
+		noneOp, ok := denies[0].Core.Condition.Op.(*runtimev1.Condition_None)
+		require.True(t, ok)
+		require.Equal(t, cond, noneOp.None.Expr[0])
+	})
+
+	t.Run("fans out across multiple target actions", func(t *testing.T) {
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{
+						Actions: map[string]*emptypb.Empty{"view": {}},
+					},
+				}
+			}),
+		}))
+
+		res := impl.QueryMulti(nil, []string{"document"}, nil, []string{"viewer"}, []string{"edit", "delete"}, true)
+		denies := collectDenies(res)
+		require.Len(t, denies, 2)
+		require.ElementsMatch(t, []string{"edit", "delete"}, []string{denies[0].Action, denies[1].Action})
+	})
+
+	t.Run("unconditional cover does not suppress conditional DENY for same action", func(t *testing.T) {
+		impl := index.New()
+		cond := &runtimev1.Condition{
+			Op: &runtimev1.Condition_Expr{Expr: &runtimev1.Expr{Original: "true"}},
+		}
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Name = "unconditional"
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{Actions: map[string]*emptypb.Empty{"view": {}}},
+				}
+			}),
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Name = "conditional"
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.Condition = cond
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{Actions: map[string]*emptypb.Empty{"view": {}}},
+				}
+			}),
+		}))
+
+		res := impl.QueryMulti(nil, []string{"document"}, nil, []string{"viewer"}, []string{"view"}, true)
+		denies := collectDenies(res)
+		require.Len(t, denies, 1)
+		noneOp, ok := denies[0].Core.Condition.Op.(*runtimev1.Condition_None)
+		require.True(t, ok)
+		require.Equal(t, cond, noneOp.None.Expr[0])
+	})
+
+	t.Run("glob AllowActions covers matching target action", func(t *testing.T) {
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{Actions: map[string]*emptypb.Empty{"view:*": {}}},
+				}
+			}),
+		}))
+
+		res := impl.QueryMulti(nil, []string{"document"}, nil, []string{"viewer"}, []string{"view:summary"}, true)
+		require.Empty(t, collectDenies(res))
+	})
+
+	t.Run("role has policy for other resource produces NoMatch DENY", func(t *testing.T) {
+		// viewer has a role policy for "document" but not for "image". Querying
+		// for "image" must still synthesise a deny: the role has a role policy
+		// somewhere, so implicit deny applies to any resource it doesn't cover.
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{Actions: map[string]*emptypb.Empty{"view": {}}},
+				}
+			}),
+		}))
+
+		res := impl.QueryMulti(nil, []string{"image"}, nil, []string{"viewer"}, []string{"view"}, true)
+		require.Len(t, res, 1)
+		require.Equal(t, effectv1.Effect_EFFECT_DENY, res[0].Core.Effect)
+		require.True(t, res[0].NoMatchForScopePermissions)
+		require.Equal(t, "image", res[0].Resource)
+		require.Equal(t, "view", res[0].Action)
+	})
+
+	t.Run("non-AllowActions rows don't trigger synthesis", func(t *testing.T) {
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.ResourcePolicyFQN("document", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.FromRolePolicy = false
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "view"}
+				r.Params = &runtimev1.RuleTable_RuleRow_Params{
+					OrderedVariables: []*runtimev1.Variable{},
+					Constants:        map[string]*structpb.Value{},
+				}
+			}),
+		}))
+
+		res := impl.QueryMulti(nil, []string{"document"}, nil, []string{"viewer"}, []string{"delete"}, true)
+		require.Empty(t, collectDenies(res))
+	})
+
+	t.Run("empty actions scopes synthesis to the resource's own actions", func(t *testing.T) {
+		// viewer has a role policy with allowActions=[view] for "document".
+		// "image" has its own resource policy with action=delete for editor.
+		// Querying for "document" with actions=[] must synthesise denies
+		// only for "document"'s own actions ([view] and [edit]) — "delete"
+		// belongs to "image" and must not leak in.
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.ResourcePolicyFQN("document", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Resource = "document"
+				r.Role = "editor"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "edit"}
+			}),
+			makeRow(namer.ResourcePolicyFQN("image", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Resource = "image"
+				r.Role = "editor"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_Action{Action: "delete"}
+			}),
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{Actions: map[string]*emptypb.Empty{"view": {}}},
+				}
+			}),
+		}))
+
+		res := impl.QueryMulti(nil, []string{"document"}, nil, []string{"viewer"}, nil, true)
+		denies := collectDenies(res)
+		require.Len(t, denies, 1)
+		require.Equal(t, "edit", denies[0].Action)
+		require.Equal(t, "document", denies[0].Resource)
+		require.True(t, denies[0].Core.FromRolePolicy)
+	})
+
+	t.Run("empty actions on resource with no rules synthesises nothing", func(t *testing.T) {
+		// Querying a resource that has no bindings at all must not synthesise
+		// denies — there are no actions to attribute them to.
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{Actions: map[string]*emptypb.Empty{"view": {}}},
+				}
+			}),
+		}))
+
+		res := impl.QueryMulti(nil, []string{"image"}, nil, []string{"viewer"}, nil, true)
+		require.Empty(t, collectDenies(res))
+	})
+
+	t.Run("multiple resources synthesise per-resource NoMatch denies", func(t *testing.T) {
+		// viewer has a policy for "document" only. Querying resources=[document,image]
+		// yields one deny for (image, delete) and one for (document, delete): both
+		// go via the NoMatch path but image hits the "no resource-matched bindings"
+		// branch while document hits the "action not in AllowActions" branch.
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{Actions: map[string]*emptypb.Empty{"view": {}}},
+				}
+			}),
+		}))
+
+		res := impl.QueryMulti(nil, []string{"document", "image"}, nil, []string{"viewer"}, []string{"delete"}, true)
+		denies := collectDenies(res)
+		require.Len(t, denies, 2)
+		resources := []string{denies[0].Resource, denies[1].Resource}
+		require.ElementsMatch(t, []string{"document", "image"}, resources)
+		for _, d := range denies {
+			require.True(t, d.NoMatchForScopePermissions)
+			require.Equal(t, "delete", d.Action)
+		}
+	})
+}
+
+func collectDenies(bindings []*index.Binding) []*index.Binding {
+	var denies []*index.Binding
+	for _, b := range bindings {
+		if b.Core.Effect == effectv1.Effect_EFFECT_DENY {
+			denies = append(denies, b)
+		}
+	}
+	return denies
+}
+
+func TestQueryAllowActionsSyntheticDeny(t *testing.T) {
+	t.Run("action not in AllowActions produces synthetic DENY", func(t *testing.T) {
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{
+						Actions: map[string]*emptypb.Empty{"view": {}, "list": {}},
+					},
+				}
+			}),
+		}))
+
+		res := impl.Query("default", "document", "", "delete", []string{"viewer"}, policyv1.Kind_KIND_RESOURCE, "", nil)
+		require.Len(t, res, 1)
+		require.Equal(t, effectv1.Effect_EFFECT_DENY, res[0].Core.Effect)
+		require.True(t, res[0].Core.FromRolePolicy)
+		require.True(t, res[0].NoMatchForScopePermissions)
+	})
+
+	t.Run("action in AllowActions without condition produces no synthetic DENY", func(t *testing.T) {
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{
+						Actions: map[string]*emptypb.Empty{"view": {}, "list": {}},
+					},
+				}
+			}),
+		}))
+
+		res := impl.Query("default", "document", "", "view", []string{"viewer"}, policyv1.Kind_KIND_RESOURCE, "", nil)
+		require.Len(t, res, 0)
+	})
+
+	t.Run("action in AllowActions with condition produces conditional synthetic DENY", func(t *testing.T) {
+		impl := index.New()
+		cond := &runtimev1.Condition{
+			Op: &runtimev1.Condition_Expr{Expr: &runtimev1.Expr{Original: "request.resource.attr.public == true"}},
+		}
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.Condition = cond
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{
+						Actions: map[string]*emptypb.Empty{"view": {}},
+					},
+				}
+			}),
+		}))
+
+		res := impl.Query("default", "document", "", "view", []string{"viewer"}, policyv1.Kind_KIND_RESOURCE, "", nil)
+		require.Len(t, res, 1)
+		require.Equal(t, effectv1.Effect_EFFECT_DENY, res[0].Core.Effect)
+		require.True(t, res[0].Core.FromRolePolicy)
+
+		// condition must be inverted (wrapped in Condition_None)
+		noneOp, ok := res[0].Core.Condition.Op.(*runtimev1.Condition_None)
+		require.True(t, ok, "condition should be wrapped in Condition_None")
+		require.Len(t, noneOp.None.Expr, 1)
+		require.Equal(t, cond, noneOp.None.Expr[0])
+	})
+
+	t.Run("multiple roles with different AllowActions sets", func(t *testing.T) {
+		impl := index.New()
+		require.NoError(t, impl.IndexRules([]*runtimev1.RuleTable_RuleRow{
+			makeRow(namer.RolePolicyFQN("viewer", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "viewer"
+				r.Resource = "document"
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{
+						Actions: map[string]*emptypb.Empty{"view": {}},
+					},
+				}
+			}),
+			makeRow(namer.RolePolicyFQN("editor", "default", ""), func(r *runtimev1.RuleTable_RuleRow) {
+				r.Role = "editor"
+				r.Resource = "document"
+				r.Effect = effectv1.Effect_EFFECT_DENY
+				r.ActionSet = &runtimev1.RuleTable_RuleRow_AllowActions_{
+					AllowActions: &runtimev1.RuleTable_RuleRow_AllowActions{
+						Actions: map[string]*emptypb.Empty{"view": {}, "edit": {}},
+					},
+				}
+			}),
+		}))
+
+		res := impl.Query("default", "document", "", "edit", []string{"viewer", "editor"}, policyv1.Kind_KIND_RESOURCE, "", nil)
+
+		// only viewer should get a synthetic DENY (edit is not in viewer's AllowActions).
+		// editor has edit in its AllowActions with no condition, so no synthetic DENY
+		require.Len(t, res, 1)
+		require.True(t, res[0].NoMatchForScopePermissions)
+		require.Equal(t, "viewer", index.HandleStr(res[0].Role))
+	})
+}
+
+func makeRow(fqn string, fn ...func(*runtimev1.RuleTable_RuleRow)) *runtimev1.RuleTable_RuleRow {
+	r := &runtimev1.RuleTable_RuleRow{
+		OriginFqn:      fqn,
+		PolicyKind:     policyv1.Kind_KIND_RESOURCE,
+		Resource:       "document",
+		Role:           "viewer",
+		ActionSet:      &runtimev1.RuleTable_RuleRow_Action{Action: "view"},
+		Effect:         effectv1.Effect_EFFECT_ALLOW,
+		Version:        "default",
+		FromRolePolicy: true,
+	}
+	for _, m := range fn {
+		m(r)
+	}
+	return r
+}

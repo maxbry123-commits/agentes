@@ -1,0 +1,101 @@
+{
+  "operations": {
+    "DELETE /v1/{name}": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Empty",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /v1/{name}": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/operations",
+          "resource": "Operation",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/operations/*/error",
+          "resource": "Status",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /v1/{name}:cancel": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Empty",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Empty": {
+      "fields": [],
+      "types": {}
+    },
+    "Operation": {
+      "fields": [
+        "done",
+        "error",
+        "metadata",
+        "name",
+        "response"
+      ],
+      "types": {
+        "done": [
+          "boolean"
+        ],
+        "error": [
+          "object"
+        ],
+        "metadata": [
+          "object"
+        ],
+        "name": [
+          "string"
+        ],
+        "response": [
+          "object"
+        ]
+      }
+    },
+    "Status": {
+      "fields": [
+        "code",
+        "details",
+        "message"
+      ],
+      "types": {
+        "code": [
+          "integer"
+        ],
+        "details": [
+          "array"
+        ],
+        "message": [
+          "string"
+        ]
+      }
+    }
+  }
+}

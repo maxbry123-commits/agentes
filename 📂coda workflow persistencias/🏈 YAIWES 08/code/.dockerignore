@@ -1,0 +1,20 @@
+# Shared build context for all app images (api, worker, web), which build from
+# the repo root so the uv workspace root + lock and the bun workspace are in
+# context. Each Dockerfile COPYs only what it needs; this keeps the context small.
+**/node_modules/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/dist/
+**/build/
+.git/
+.turbo/
+coverage/
+*.log
+.playwright-mcp/
+*.png
+docs/
+
+# local durability checkpoint store
+*.sqlite
+redcell-checkpoints.sqlite

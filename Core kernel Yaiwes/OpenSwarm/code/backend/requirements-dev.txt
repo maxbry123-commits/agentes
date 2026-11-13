@@ -1,0 +1,20 @@
+# Development-only dependencies. NOT installed by build-python-env.{sh,ps1},
+# so these never ship to production users (the embedded electron python-env
+# only installs requirements.txt).
+#
+# To install for local development:
+#   pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+#
+# CI test runs should also install both files.
+
+pytest==8.3.4
+pytest-asyncio==0.25.2
+
+# Used by linter/lint.py (the vulture dead-code check). watchfiles, also
+# needed by lint.py, already comes in transitively via uvicorn[standard].
+vulture==2.16
+
+# Used by linter/lint.py: ruff (scoped dead-code lint) + pyright (existence
+# checks). Both must be on PATH; pyright's config expects the venv at backend/.venv.
+ruff==0.15.19
+pyright==1.1.411

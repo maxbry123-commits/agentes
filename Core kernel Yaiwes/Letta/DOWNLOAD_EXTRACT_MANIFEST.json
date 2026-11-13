@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 23601,
+  "bundle_sha256": "e01aa8cb8aea0cb69f0f3d961a19c1ccc012efc05a4d160ec431db3e028d32d1",
+  "extracted_tree": {
+    "bytes": 60623,
+    "files": 12,
+    "sha256": "d20e9c384633fa8417c5f652ee8dc7115cd1ecf6a4ba1789d4e3887be5250b94"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 23601,
+      "name": "Letta.bundle.zip.part-0001",
+      "sha256": "e01aa8cb8aea0cb69f0f3d961a19c1ccc012efc05a4d160ec431db3e028d32d1"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Letta",
+  "source_bytes": 60623,
+  "source_commit": "5bcdd177d70fa2b31a754cfcd801e77b2e1ab16a",
+  "source_files": 12,
+  "source_ref": "HEAD",
+  "source_repo": "letta-ai/letta",
+  "source_tree": {
+    "bytes": 60623,
+    "files": 12,
+    "sha256": "d20e9c384633fa8417c5f652ee8dc7115cd1ecf6a4ba1789d4e3887be5250b94"
+  }
+}

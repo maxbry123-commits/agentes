@@ -1,0 +1,15 @@
+venv/
+docs/build
+__pycache__/
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.tox/
+*.pyc
+.idea/
+.vscode/
+.envrc
+build.sh
+total_downloads.py

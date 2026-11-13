@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.objective_echo.v1",
+  "title": "ObjectiveEcho",
+  "description": "Deterministic injection of GoalLock into engine prompt context.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "echo_id",
+    "lock_id",
+    "block",
+    "echo_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "echo_id": { "type": "string" },
+    "lock_id": { "type": "string" },
+    "block": { "type": "string", "minLength": 1 },
+    "fields": {
+      "type": "object",
+      "properties": {
+        "objective": { "type": "string" },
+        "success_criteria": { "type": "string" },
+        "constraints": { "type": "array", "items": { "type": "string" } },
+        "forbidden": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "echo_hash": { "type": "string" }
+  }
+}

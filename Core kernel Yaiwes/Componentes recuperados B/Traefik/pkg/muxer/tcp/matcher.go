@@ -1,0 +1,113 @@
+package tcp
+
+import (
+	"fmt"
+	"regexp"
+	"slices"
+	"strings"
+
+	"github.com/go-acme/lego/v5/challenge/tlsalpn01"
+	"github.com/rs/zerolog/log"
+	"github.com/traefik/traefik/v3/pkg/ip"
+	"github.com/traefik/traefik/v3/pkg/muxer"
+)
+
+var tcpFuncs = map[string]func(*matchersTree, ...string) error{
+	"ALPN":          expect1Parameter(alpn),
+	"ClientIP":      expect1Parameter(clientIP),
+	"HostSNI":       expect1Parameter(hostSNI),
+	"HostSNIRegexp": expect1Parameter(hostSNIRegexp),
+}
+
+func expect1Parameter(fn func(*matchersTree, ...string) error) func(*matchersTree, ...string) error {
+	return func(route *matchersTree, s ...string) error {
+		if len(s) != 1 {
+			return fmt.Errorf("unexpected number of parameters; got %d, expected 1", len(s))
+		}
+
+		return fn(route, s...)
+	}
+}
+
+// alpn checks if any of the connection ALPN protocols matches one of the matcher protocols.
+func alpn(tree *matchersTree, protos ...string) error {
+	proto := protos[0]
+
+	if proto == tlsalpn01.ACMETLS1Protocol {
+		return fmt.Errorf("invalid protocol value for ALPN matcher, %q is not allowed", proto)
+	}
+
+	tree.matcher = func(meta ConnData) bool {
+		return slices.Contains(meta.alpnProtos, proto)
+	}
+
+	return nil
+}
+
+func clientIP(tree *matchersTree, clientIP ...string) error {
+	checker, err := ip.NewChecker(clientIP)
+	if err != nil {
+		return fmt.Errorf("initializing IP checker for ClientIP matcher: %w", err)
+	}
+
+	tree.matcher = func(meta ConnData) bool {
+		ok, err := checker.Contains(meta.remoteIP)
+		if err != nil {
+			log.Warn().Err(err).Msg("ClientIP matcher: could not match remote address")
+			return false
+		}
+		return ok
+	}
+
+	return nil
+}
+
+var hostOrIP = regexp.MustCompile(`^(\*\.)?[[:word:]\.\-\:]+$`)
+
+// hostSNI checks if the SNI Host of the connection match the matcher host.
+func hostSNI(tree *matchersTree, hosts ...string) error {
+	hostExpr := hosts[0]
+
+	if hostExpr == "*" {
+		// Since a HostSNI(`*`) rule has been provided as catchAll for non-TLS TCP,
+		// it allows matching with an empty serverName or every serverName.
+		tree.matcher = func(meta ConnData) bool { return true }
+		return nil
+	}
+
+	if !hostOrIP.MatchString(hostExpr) {
+		return fmt.Errorf("invalid value for HostSNI matcher, %q is not a valid hostname", hostExpr)
+	}
+
+	hostExpr = strings.TrimSuffix(hostExpr, ".")
+
+	tree.matcher = func(meta ConnData) bool {
+		if meta.serverName == "" {
+			return false
+		}
+
+		return muxer.DomainMatchHostExpression(meta.serverName, hostExpr)
+	}
+
+	return nil
+}
+
+// hostSNIRegexp checks if the SNI Host of the connection matches the matcher host regexp.
+func hostSNIRegexp(tree *matchersTree, templates ...string) error {
+	template := templates[0]
+
+	if !muxer.IsASCII(template) {
+		return fmt.Errorf("invalid value for HostSNIRegexp matcher, %q is not a valid hostname", template)
+	}
+
+	re, err := regexp.Compile(template)
+	if err != nil {
+		return fmt.Errorf("compiling HostSNIRegexp matcher: %w", err)
+	}
+
+	tree.matcher = func(meta ConnData) bool {
+		return re.MatchString(meta.serverName)
+	}
+
+	return nil
+}

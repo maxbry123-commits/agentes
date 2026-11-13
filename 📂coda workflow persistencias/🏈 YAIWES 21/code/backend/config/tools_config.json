@@ -1,0 +1,22 @@
+{
+  "execute_python": {
+    "enabled": true,
+    "description": "Python代码沙箱执行",
+    "priority": 1
+  },
+  "query_knowledge": {
+    "enabled": true,
+    "description": "知识库查询",
+    "priority": 2
+  },
+  "nuclei_scan": {
+    "enabled": false,
+    "description": "Nuclei漏洞扫描（仅用于预处理）",
+    "priority": 3
+  },
+  "directory_scan": {
+    "enabled": true,
+    "description": "目录扫描",
+    "priority": 4
+  }
+}

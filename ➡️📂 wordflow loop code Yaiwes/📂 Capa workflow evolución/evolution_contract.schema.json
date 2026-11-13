@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "yaiwes://source-evolution/v1",
+  "type": "object",
+  "required": ["identity","requested-capability","source-provenance","license","rollback-plan"],
+  "properties": {
+    "identity":{"type":"string"}, "requested-capability":{"type":"string"},
+    "current-capability":{"type":"string"}, "source-provenance":{"type":"string","format":"uri"},
+    "license":{"type":"string"}, "security-history":{"type":"string"},
+    "network-behavior":{"type":"string"}, "public-contract":{"type":"string"},
+    "dependencies":{"type":"array","items":{"type":"string"}},
+    "reproducibility":{"type":"boolean"}, "observability":{"type":"boolean"},
+    "rollback-plan":{"type":"string"}, "knowledge_only":{"type":"boolean"},
+    "fixed_sequence":{"type":"boolean"}, "autonomous_memory":{"type":"boolean"},
+    "independent_reasoning":{"type":"boolean"}
+  },
+  "additionalProperties": false
+}

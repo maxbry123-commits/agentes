@@ -1,0 +1,113 @@
+[
+  {
+    "attempt": 0,
+    "cancel": null,
+    "createdAt": "2023-09-29T11:59:02.217335-04:00",
+    "groupID": "13bafd60-4cd1-4128-8c08-6e502ae30d0e",
+    "id": "01HBGTMCJ9Z8N4XGYC6HBBNR68",
+    "sleep": null,
+    "stepName": null,
+    "type": "FunctionStarted",
+    "url": null,
+    "waitForEvent": null,
+    "waitResult": null
+  },
+  {
+    "attempt": 0,
+    "cancel": null,
+    "createdAt": "2023-09-29T11:59:02.217593-04:00",
+    "groupID": "13bafd60-4cd1-4128-8c08-6e502ae30d0e",
+    "id": "01HBGTMCJ917WC4P3PPT4MNQZS",
+    "sleep": null,
+    "stepName": "step",
+    "type": "StepStarted",
+    "url": "http://localhost:3939/api/inngest?fnId=local-dev-times-out-waiting-for-event&stepId=step",
+    "waitForEvent": null,
+    "waitResult": null
+  },
+  {
+    "attempt": 0,
+    "cancel": null,
+    "createdAt": "2023-09-29T11:59:02.252524-04:00",
+    "groupID": "13bafd60-4cd1-4128-8c08-6e502ae30d0e",
+    "id": "01HBGTMCKC7QRM1GAKFC8VNRDA",
+    "sleep": null,
+    "stepName": "bar",
+    "type": "StepCompleted",
+    "url": "http://localhost:3939/api/inngest?fnId=local-dev-times-out-waiting-for-event&stepId=step",
+    "waitForEvent": null,
+    "waitResult": null
+  },
+  {
+    "attempt": 0,
+    "cancel": null,
+    "createdAt": "2023-09-29T11:59:02.254794-04:00",
+    "groupID": "13bafd60-4cd1-4128-8c08-6e502ae30d0e",
+    "id": "01HBGTMCKE17TQFSR4FWVXER3A",
+    "sleep": null,
+    "stepName": "bar",
+    "type": "StepWaiting",
+    "url": null,
+    "waitForEvent": {
+      "eventName": "bar",
+      "expression": null,
+      "timeout": "2023-09-29T11:59:12.254787-04:00"
+    },
+    "waitResult": null
+  },
+  {
+    "attempt": 0,
+    "cancel": null,
+    "createdAt": "2023-09-29T11:59:12.255798-04:00",
+    "groupID": "13bafd60-4cd1-4128-8c08-6e502ae30d0e",
+    "id": "01HBGTMPBZV4R2FN2T7RX2WRXJ",
+    "sleep": null,
+    "stepName": null,
+    "type": "StepCompleted",
+    "url": null,
+    "waitForEvent": null,
+    "waitResult": {
+      "eventID": null,
+      "timeout": true
+    }
+  },
+  {
+    "attempt": 0,
+    "cancel": null,
+    "createdAt": "2023-09-29T11:59:12.267377-04:00",
+    "groupID": "aaf550a7-622c-457f-b30c-c2a4d1276b25",
+    "id": "01HBGTMPCBSRPHMDC8MXHSRRWN",
+    "sleep": null,
+    "stepName": "step",
+    "type": "StepStarted",
+    "url": "http://localhost:3939/api/inngest?fnId=local-dev-times-out-waiting-for-event&stepId=step",
+    "waitForEvent": null,
+    "waitResult": null
+  },
+  {
+    "attempt": 0,
+    "cancel": null,
+    "createdAt": "2023-09-29T11:59:12.28016-04:00",
+    "groupID": "aaf550a7-622c-457f-b30c-c2a4d1276b25",
+    "id": "01HBGTMPCRABTDD5A6VJNFA3TC",
+    "sleep": null,
+    "stepName": "step",
+    "type": "StepCompleted",
+    "url": "http://localhost:3939/api/inngest?fnId=local-dev-times-out-waiting-for-event&stepId=step",
+    "waitForEvent": null,
+    "waitResult": null
+  },
+  {
+    "attempt": 0,
+    "cancel": null,
+    "createdAt": "2023-09-29T11:59:12.280806-04:00",
+    "groupID": "aaf550a7-622c-457f-b30c-c2a4d1276b25",
+    "id": "01HBGTMPCRVNZ9WG77RQP9E9HZ",
+    "sleep": null,
+    "stepName": null,
+    "type": "FunctionCompleted",
+    "url": null,
+    "waitForEvent": null,
+    "waitResult": null
+  }
+]

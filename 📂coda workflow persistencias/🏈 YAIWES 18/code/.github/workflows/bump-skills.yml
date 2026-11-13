@@ -1,0 +1,59 @@
+name: Bump skills submodule
+
+on:
+  repository_dispatch:
+    types: [skills-updated]
+  schedule:
+    - cron: "0 6 * * *"  # daily fallback at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: true
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update skills to latest main
+        id: update
+        run: |
+          git submodule update --remote --merge skills
+          echo "sha=$(git -C skills rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Open PR if changed
+        env:
+          # Prefer a PAT so PR creation works even when the repo-level
+          # "Allow GitHub Actions to create and approve pull requests" toggle
+          # is disabled.  Fall back to GITHUB_TOKEN (requires that toggle ON).
+          GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "skills already up to date"
+            exit 0
+          fi
+          BRANCH="ci/auto-bump-skills"
+          git checkout -B "$BRANCH"
+          git add skills
+          git commit -m "chore: bump skills submodule to ${{ steps.update.outputs.sha }}"
+          git push --force-with-lease origin "$BRANCH"
+          gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' \
+            | grep -q '[0-9]' && echo "PR already open" && exit 0
+          gh pr create \
+            --title "chore: bump skills submodule to ${{ steps.update.outputs.sha }}" \
+            --body "Automated skills submodule bump triggered by workflow." \
+            --base main \
+            --head "$BRANCH" \
+          || { echo ""; echo "ERROR: PR creation failed."; \
+               echo "Fix: add a GH_PAT repo secret (classic token with repo scope), OR"; \
+               echo "     enable Settings → Actions → General → Allow GitHub Actions to create and approve pull requests"; \
+               exit 1; }

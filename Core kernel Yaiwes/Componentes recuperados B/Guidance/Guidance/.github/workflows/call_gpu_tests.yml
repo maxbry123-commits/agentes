@@ -1,0 +1,102 @@
+name: call_gpu_tests
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
+      python-version:
+        required: true
+        type: string
+      model:
+        required: true
+        type: string
+      codeCovPython:
+        required: true
+        type: string
+        default: "3.12"
+    secrets:
+      HF_TOKEN:
+        required: false
+      CODECOV_TOKEN:
+        required: false
+  workflow_dispatch:
+    inputs:
+      os:
+        required: false
+        type: string
+        default: "gpu-runner"
+      python-version:
+        required: false
+        type: string
+        default: "3.12"
+      model:
+        required: false
+        type: string
+        default: "llamacpp_llama2_7b_gpu" # also try "transformers_gpt2_gpu", "transformers_phi2_gpu", etc
+      codeCovPython:
+        required: true
+        type: string
+        default: "3.12"
+      commit_id:
+        description: 'Branch or Commit ID (optional)'
+        required: false
+        type: string
+
+jobs:
+  gpu_tests:
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: Checkout repo at ${{ github.event_name == 'workflow_dispatch' && inputs.commit_id || github.sha }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.commit_id || github.sha }}
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+      - name: Install NVIDIA SDK
+        shell: bash
+        run: |
+          nvidia-smi
+          sudo apt-get --yes update
+          sudo apt-get --yes install cuda-toolkit-12.8
+          echo "/usr/local/cuda-12.8/bin" >> $GITHUB_PATH
+      - name: Install older pytorch (CUDA compatibility)
+        run: |
+          pip install "torch<2.11"
+      - name: Install other packages
+        shell: bash
+        run: |
+          uv pip install --system accelerate gpustat
+      - name: Install guidance in ${{ inputs.os }}
+        shell: bash
+        if: ${{ inputs.python-version != '3.14' }}
+        run: |
+          CMAKE_ARGS="-DGGML_CUDA=on" uv pip install --system -e .[llamacpp,transformers,onnxruntime-genai,test]
+      - name: Install guidance in ${{ inputs.os }} (3.14/ONNX workaround)
+        # https://github.com/microsoft/onnxruntime/issues/26547
+        shell: bash
+        if: ${{ inputs.python-version == '3.14' }}
+        run: |
+          CMAKE_ARGS="-DGGML_CUDA=on" uv pip install --system -e .[llamacpp,transformers,test]
+      - name: Check GPU available
+        shell: bash
+        run: |
+          python -c "import torch; assert torch.cuda.is_available()"
+      - name: gpu_tests for ${{ inputs.model }}
+        shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          pytest -vv --cov=guidance --cov-report=xml --cov-report=term-missing \
+            --selected_model ${{ inputs.model }} \
+            ./tests/model_integration ./tests/model_specific
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v6
+        if: ${{ (inputs.codeCovPython == inputs.python-version) }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

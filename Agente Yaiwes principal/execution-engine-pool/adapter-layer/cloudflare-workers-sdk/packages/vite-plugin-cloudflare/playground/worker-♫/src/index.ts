@@ -1,0 +1,50 @@
+import { a } from "./a";
+
+export default {
+	async fetch(request, _env, ctx) {
+		const url = new URL(request.url);
+		if (url.pathname === "/access") {
+			return Response.json({
+				aud: ctx.access?.aud,
+				identity: await ctx.access?.getIdentity(),
+			});
+		}
+
+		if (
+			url.pathname ===
+			// doing base path normalization, in real world you would built in framework features from libs like Hono
+			// eslint-disable-next-line turbo/no-undeclared-env-vars -- Worker runtime code: build-time replaced by Vite, not a Node.js process env var
+			`${import.meta.env.BASE_URL}/x-forwarded-host`.replace(/\/+/g, "/")
+		) {
+			return new Response(request.headers.get("X-Forwarded-Host"));
+		}
+
+		if (url.pathname.endsWith("/host-header")) {
+			return new Response(request.headers.get("Host"));
+		}
+
+		if (url.pathname.endsWith("/request-url")) {
+			return new Response(request.url);
+		}
+
+		// return the pathname if the path parameter is present to test the base path
+		if (url.searchParams.has("path")) {
+			return new Response(url.pathname);
+		}
+
+		console.log(a);
+		const { fn } = await import("./b");
+		fn();
+
+		console.debug("__console debug__");
+		console.log("__console log__");
+		console.warn("__console warn__");
+		console.error("__console error__");
+
+		return new Response("Hello World!");
+	},
+} satisfies ExportedHandler;
+
+addEventListener("unhandledrejection", () => {
+	console.error("__unhandled rejection__");
+});

@@ -1,0 +1,192 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Calendar Versioning](https://calver.org/).
+
+The **first number** of the version is the year.
+The **second number** is incremented with each release, starting at 1 for each year.
+The **third number** is for emergencies when we need to start branches for older releases.
+
+You can find our backwards-compatibility policy [here](https://github.com/hynek/stamina/blob/main/.github/SECURITY.md).
+
+<!-- changelog follows -->
+
+
+## [Unreleased](https://github.com/hynek/stamina/compare/26.1.0...HEAD)
+
+
+## [26.1.0](https://github.com/hynek/stamina/compare/25.2.0...26.1.0) - 2026-04-13
+
+### Changed
+
+- Passing `timeout=0` now raises a warning since it counterintuitively disables all retries.
+  If you explicitly want to disable the timeout, use `timeout=None`.
+
+
+### Fixed
+
+- `_compute_backoff()` no longer raises `OverflowError` when the attempt number exceeds 1024 with a float *wait_exp_base*.
+  The exponential result is now clamped to *wait_max* on overflow.
+  [#137](https://github.com/hynek/stamina/issues/137)
+
+
+## [25.2.0](https://github.com/hynek/stamina/compare/25.1.0...25.2.0) - 2025-12-11
+
+### Removed
+
+- Support for Python 3.8 and 3.9.
+
+
+### Added
+
+- The type hints for our public API are now also verified using [Pyrefly](https://pyrefly.org/) and [*ty*](https://docs.astral.sh/ty/).
+  [#124](https://github.com/hynek/stamina/pull/124)
+
+- `stamina.retry()` now retries wrapped generator functions and async generator functions.
+
+  **Warning**: Being able to `asend` and `athrow` into wrapped async generators introduced nontrivial complexity in the implementation and is therefore **provisional**.
+  If supporting these features causes problems, they may be removed again in a future version.
+  [#123](https://github.com/hynek/stamina/pull/123)
+
+- An *on* hook can now return a float or a `datetime.timedelta` to specify a custom backoff that overrides the default backoff.
+  [#103](https://github.com/hynek/stamina/discussions/103)
+  [#125](https://github.com/hynek/stamina/pull/125)
+
+
+### Fixed
+
+- Prevent unbounded stop condition when both *attempts* and *timeout* are non-`None` falsy values.
+  [#109](https://github.com/hynek/stamina/pull/109)
+
+- Default `wait_exp_base` parameter is now an integer to prevent an `OverflowError` after the 1023th retry.
+  [#104](https://github.com/hynek/stamina/pull/104)
+
+- `Attempt.next_wait` now returns the correct value.
+  [#115](https://github.com/hynek/stamina/pull/115)
+
+
+## [25.1.0](https://github.com/hynek/stamina/compare/24.3.0...25.1.0) - 2025-03-12
+
+### Added
+
+- *cap* argument to `stamina.set_testing()`.
+  By default, the value passed as *attempts* is used strictly.
+  When `cap=True`, it is used as an upper cap; that means that if the original attempts number is lower, it's not changed.
+  [#80](https://github.com/hynek/stamina/pull/80)
+
+- `stamina.set_testing()` can now be used as a context manager.
+  [#94](https://github.com/hynek/stamina/pull/94)
+
+- Instrumentation hooks can now can return context managers.
+  If they do, they are entered when a retry is scheduled and exited right before the retry is attempted.
+  [#95](https://github.com/hynek/stamina/pull/95)
+
+
+## [24.3.0](https://github.com/hynek/stamina/compare/24.2.0...24.3.0) - 2024-08-27
+
+### Added
+
+- The *on* argument in all retry functions now can be a callable that takes an exception and returns a bool which decides whether or not a retry should be scheduled.
+  [#70](https://github.com/hynek/stamina/pull/70)
+
+- `stamina.Attempt` now has a `next_wait` attribute that contains the time the *next* backoff will wait, if the *current* attempt fails (sans jitter).
+  [#72](https://github.com/hynek/stamina/pull/72)
+
+- It is now possible to switch *stamina* into a testing mode using `stamina.set_testing()`.
+  It disables backoffs and caps the number of retries.
+  [#73](https://github.com/hynek/stamina/pull/73)
+
+
+## [24.2.0](https://github.com/hynek/stamina/compare/24.1.0...24.2.0) - 2024-01-31
+
+### Added
+
+- `stamina.RetryingCaller` and `stamina.AsyncRetryingCaller` that allow even easier retries of single callables: `stamina.RetryingCaller(attempts=5).on(ValueError)(do_something, "foo", bar=42)` and `stamina.RetryingCaller(attempts=5)(ValueError, do_something, "foo", bar=42)` will call `do_something("foo", bar=42)` and retry on `ValueError` up to 5 times.
+
+  `stamina.RetryingCaller` and `stamina.AsyncRetryingCaller` take the same arguments as `stamina.retry()`, except for `on` that can be bound separately.
+
+  [#56](https://github.com/hynek/stamina/pull/56)
+  [#57](https://github.com/hynek/stamina/pull/57)
+
+
+## [24.1.0](https://github.com/hynek/stamina/compare/23.3.0...24.1.0) - 2024-01-03
+
+### Fixed
+
+- *stamina* doesn't retry successful blocks when it's deactivated anymore (yes, you read it right).
+  [#54](https://github.com/hynek/stamina/pull/54)
+
+
+## [23.3.0](https://github.com/hynek/stamina/compare/23.2.0...23.3.0) - 2023-12-05
+
+### Added
+
+- [Trio](https://trio.readthedocs.io/) support!
+  [#43](https://github.com/hynek/stamina/pull/43)
+
+
+## [23.2.0](https://github.com/hynek/stamina/compare/23.1.0...23.2.0) - 2023-10-30
+
+### Added
+
+- Instrumentation is now pluggable!
+  You can define your own hooks that are run with retry details whenever a retry is scheduled.
+  The documentation now has a [whole chapter on instrumentation](https://stamina.hynek.me/en/stable/instrumentation.html).
+  [#37](https://github.com/hynek/stamina/pull/37)
+
+- If *structlog* is not installed, the scheduled retry is now logged using the standard library `logging` module by default.
+  [#35](https://github.com/hynek/stamina/pull/35)
+
+
+### Changed
+
+- Tenacity's internal `AttemptManager` object is no longer exposed to the user.
+  This was an oversight and never documented.
+  `stamina.retry_context()` now yields instances of `stamina.Attempt`.
+  [#22](https://github.com/hynek/stamina/pull/22)
+
+- Initialization of instrumentation is now delayed.
+  This means that if there's no retries, there's no startup overhead from importing *structlog* and *prometheus-client*.
+  [#34](https://github.com/hynek/stamina/pull/34)
+
+- Some key names in *structlog* log messages have been renamed to better reflect their meaning (`slept` → `waited_so_far`, `attempt` → `retry_num`, and `error` → `caused_by`).
+  You can rename them back using *structlog*'s [`structlog.processors.EventRenamer`](https://www.structlog.org/en/stable/api.html#structlog.processors.EventRenamer).
+  [#35](https://github.com/hynek/stamina/pull/35)
+
+
+## [23.1.0](https://github.com/hynek/stamina/compare/22.2.0...23.1.0) - 2023-07-04
+
+### Added
+
+- Official Python 3.12 support.
+  [#9](https://github.com/hynek/stamina/pull/9)
+- Async support.
+  [#10](https://github.com/hynek/stamina/pull/10)
+- Retries of arbitrary blocks using (async) `for` loops and context managers.
+  [#12](https://github.com/hynek/stamina/pull/12)
+- Proper documentation.
+  [#16](https://github.com/hynek/stamina/pull/16)
+- A backwards-compatibility policy.
+
+
+### Changed
+
+- The *timeout*, *wait_initial*, *wait_max*, and *wait_jitter* arguments can now also be of type [`datetime.timedelta`](https://docs.python.org/3/library/datetime.html#datetime.timedelta).
+
+
+## [22.2.0](https://github.com/hynek/stamina/compare/22.1.0...22.2.0) - 2022-10-06
+
+### Added
+
+- Retries are now instrumented.
+  If [*prometheus-client*](https://github.com/prometheus/client_python) is installed, retries are counted using the *Prometheus* counter `stamina_retries_total`.
+  If [*structlog*](https://www.structlog.org/) is installed, they are logged using a *structlog* logger at warning level.
+  These two instrumentations are *independent* from each other.
+
+
+## [22.1.0](https://github.com/hynek/stamina/tree/22.1.0) - 2022-10-02
+
+### Added
+
+- Initial release.

@@ -1,0 +1,167 @@
+{
+  "$id": "https://api.cerbos.dev/cerbos/response/v1/InspectPoliciesResponse.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "cerbos.response.v1.InspectPoliciesResponse.Attribute": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/cerbos.response.v1.InspectPoliciesResponse.Attribute.Kind"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.response.v1.InspectPoliciesResponse.Attribute.Kind": {
+      "type": "string",
+      "enum": [
+        "KIND_UNSPECIFIED",
+        "KIND_PRINCIPAL_ATTRIBUTE",
+        "KIND_RESOURCE_ATTRIBUTE"
+      ]
+    },
+    "cerbos.response.v1.InspectPoliciesResponse.Constant": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/cerbos.response.v1.InspectPoliciesResponse.Constant.Kind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "used": {
+          "type": "boolean"
+        },
+        "value": {
+          "$ref": "#/definitions/google.protobuf.Value"
+        }
+      }
+    },
+    "cerbos.response.v1.InspectPoliciesResponse.Constant.Kind": {
+      "type": "string",
+      "enum": [
+        "KIND_UNSPECIFIED",
+        "KIND_EXPORTED",
+        "KIND_IMPORTED",
+        "KIND_LOCAL",
+        "KIND_UNDEFINED",
+        "KIND_UNKNOWN"
+      ]
+    },
+    "cerbos.response.v1.InspectPoliciesResponse.DerivedRole": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/cerbos.response.v1.InspectPoliciesResponse.DerivedRole.Kind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.response.v1.InspectPoliciesResponse.DerivedRole.Kind": {
+      "type": "string",
+      "enum": [
+        "KIND_UNSPECIFIED",
+        "KIND_UNDEFINED",
+        "KIND_EXPORTED",
+        "KIND_IMPORTED"
+      ]
+    },
+    "cerbos.response.v1.InspectPoliciesResponse.Result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.response.v1.InspectPoliciesResponse.Attribute"
+          }
+        },
+        "constants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.response.v1.InspectPoliciesResponse.Constant"
+          }
+        },
+        "derivedRoles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.response.v1.InspectPoliciesResponse.DerivedRole"
+          }
+        },
+        "policyId": {
+          "type": "string"
+        },
+        "variables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.response.v1.InspectPoliciesResponse.Variable"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.InspectPoliciesResponse.Variable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/cerbos.response.v1.InspectPoliciesResponse.Variable.Kind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "used": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.response.v1.InspectPoliciesResponse.Variable.Kind": {
+      "type": "string",
+      "enum": [
+        "KIND_UNSPECIFIED",
+        "KIND_EXPORTED",
+        "KIND_IMPORTED",
+        "KIND_LOCAL",
+        "KIND_UNDEFINED",
+        "KIND_UNKNOWN"
+      ]
+    },
+    "google.protobuf.Value": {
+      "title": "Value",
+      "description": "A dynamically-typed value."
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "results": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/cerbos.response.v1.InspectPoliciesResponse.Result"
+      }
+    }
+  }
+}

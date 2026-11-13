@@ -1,0 +1,4 @@
+# package with extras
+
+# extra names are expected to be normalized
+cyclonedx-python-lib[JSON-validation,xml-Validation] == 5.1.1

@@ -1,0 +1,268 @@
+{
+  "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
+  "index": 3,
+  "name": "Apache-DolphinScheduler",
+  "slug": "apache-dolphinscheduler",
+  "source_url": "https://github.com/apache/dolphinscheduler",
+  "source_commit": "d8e266397562baa7397aaa669a88824ca7190294",
+  "mode": "DOWNLOAD",
+  "delivery": "EXTRACTED_TREE_AFTER_PREFLIGHT",
+  "file_count": 4857,
+  "total_bytes": 98502589,
+  "max_blob": {
+    "path": "docs/img/start/view-log.gif",
+    "bytes": 4051371
+  },
+  "top_level_inventory": {
+    ".asf.yaml": {
+      "files": 1,
+      "bytes": 2293
+    },
+    ".github": {
+      "files": 62,
+      "bytes": 167329
+    },
+    ".gitignore": {
+      "files": 1,
+      "bytes": 1017
+    },
+    ".gitmodules": {
+      "files": 1,
+      "bytes": 2055
+    },
+    ".idea": {
+      "files": 2,
+      "bytes": 2460
+    },
+    ".licenserc.yaml": {
+      "files": 1,
+      "bytes": 1571
+    },
+    ".mvn": {
+      "files": 2,
+      "bytes": 51730
+    },
+    ".pre-commit-config.yaml": {
+      "files": 1,
+      "bytes": 1853
+    },
+    "AGENT.md": {
+      "files": 1,
+      "bytes": 10570
+    },
+    "AGENTS.md": {
+      "files": 1,
+      "bytes": 1001
+    },
+    "CLAUDE.md": {
+      "files": 1,
+      "bytes": 10505
+    },
+    "CONTRIBUTING.md": {
+      "files": 1,
+      "bytes": 685
+    },
+    "LICENSE": {
+      "files": 1,
+      "bytes": 12296
+    },
+    "NOTICE": {
+      "files": 1,
+      "bytes": 3872
+    },
+    "README.md": {
+      "files": 1,
+      "bytes": 5050
+    },
+    "README_zh_CN.md": {
+      "files": 1,
+      "bytes": 4489
+    },
+    "SECURITY.md": {
+      "files": 1,
+      "bytes": 607
+    },
+    "config": {
+      "files": 1,
+      "bytes": 3681
+    },
+    "deploy": {
+      "files": 67,
+      "bytes": 359615
+    },
+    "doap.rdf": {
+      "files": 1,
+      "bytes": 2560
+    },
+    "docs": {
+      "files": 705,
+      "bytes": 79340332
+    },
+    "dolphinscheduler-alert": {
+      "files": 173,
+      "bytes": 502981
+    },
+    "dolphinscheduler-api": {
+      "files": 430,
+      "bytes": 2949853
+    },
+    "dolphinscheduler-api-test": {
+      "files": 68,
+      "bytes": 291021
+    },
+    "dolphinscheduler-authentication": {
+      "files": 17,
+      "bytes": 46099
+    },
+    "dolphinscheduler-bom": {
+      "files": 3,
+      "bytes": 46539
+    },
+    "dolphinscheduler-common": {
+      "files": 134,
+      "bytes": 460958
+    },
+    "dolphinscheduler-dao": {
+      "files": 343,
+      "bytes": 1446063
+    },
+    "dolphinscheduler-dao-plugin": {
+      "files": 27,
+      "bytes": 45409
+    },
+    "dolphinscheduler-datasource-plugin": {
+      "files": 323,
+      "bytes": 909840
+    },
+    "dolphinscheduler-dist": {
+      "files": 142,
+      "bytes": 481034
+    },
+    "dolphinscheduler-e2e": {
+      "files": 95,
+      "bytes": 372789
+    },
+    "dolphinscheduler-eventbus": {
+      "files": 6,
+      "bytes": 11840
+    },
+    "dolphinscheduler-extract": {
+      "files": 118,
+      "bytes": 234012
+    },
+    "dolphinscheduler-master": {
+      "files": 443,
+      "bytes": 1869880
+    },
+    "dolphinscheduler-meter": {
+      "files": 20,
+      "bytes": 270000
+    },
+    "dolphinscheduler-microbench": {
+      "files": 7,
+      "bytes": 18996
+    },
+    "dolphinscheduler-registry": {
+      "files": 95,
+      "bytes": 289758
+    },
+    "dolphinscheduler-scheduler-plugin": {
+      "files": 29,
+      "bytes": 61767
+    },
+    "dolphinscheduler-service": {
+      "files": 26,
+      "bytes": 184188
+    },
+    "dolphinscheduler-spi": {
+      "files": 35,
+      "bytes": 90889
+    },
+    "dolphinscheduler-standalone-server": {
+      "files": 9,
+      "bytes": 33873
+    },
+    "dolphinscheduler-storage-plugin": {
+      "files": 55,
+      "bytes": 243777
+    },
+    "dolphinscheduler-task-executor": {
+      "files": 60,
+      "bytes": 145799
+    },
+    "dolphinscheduler-task-plugin": {
+      "files": 509,
+      "bytes": 1858162
+    },
+    "dolphinscheduler-tools": {
+      "files": 45,
+      "bytes": 372811
+    },
+    "dolphinscheduler-ui": {
+      "files": 708,
+      "bytes": 4065119
+    },
+    "dolphinscheduler-worker": {
+      "files": 44,
+      "bytes": 132401
+    },
+    "dolphinscheduler-yarn-aop": {
+      "files": 9,
+      "bytes": 19516
+    },
+    "images": {
+      "files": 7,
+      "bytes": 951185
+    },
+    "licenses": {
+      "files": 2,
+      "bytes": 1183
+    },
+    "lombok.config": {
+      "files": 1,
+      "bytes": 829
+    },
+    "mvnw": {
+      "files": 1,
+      "bytes": 10283
+    },
+    "mvnw.cmd": {
+      "files": 1,
+      "bytes": 6733
+    },
+    "pom.xml": {
+      "files": 1,
+      "bytes": 40921
+    },
+    "script": {
+      "files": 3,
+      "bytes": 8292
+    },
+    "style": {
+      "files": 3,
+      "bytes": 5538
+    },
+    "tools": {
+      "files": 11,
+      "bytes": 36680
+    }
+  },
+  "licenses": [
+    {
+      "path": "LICENSE",
+      "sha256": "f4a547d70186da2b44aa9ffee4055873f7cf503659fb0cf3d2044ff3a955e2d7",
+      "bytes": 12296
+    },
+    {
+      "path": "NOTICE",
+      "sha256": "92927b9d1505114ca56df5afdf135782a6955c9266a2b4066206d3f92c43d5ab",
+      "bytes": 3872
+    }
+  ],
+  "lfs_pointer_count": 0,
+  "lfs_pointers": [],
+  "oversized_blob_count": 0,
+  "oversized_blobs": [],
+  "deterministic_tree_sha256": "b242a1fbc7f31d0351ecd777f55e32840c7807cb464654e54c1919a66c412bd9",
+  "status": "PREFLIGHT_PASS"
+}

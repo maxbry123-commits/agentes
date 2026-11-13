@@ -1,0 +1,83 @@
+operators:
+  - id: create_urls
+    config:
+      type: function
+      function: data_strategies.32b_exploit.seed_pdf_parser.utils.create_url_dataset
+      function_config:
+        urls:
+          - "https://assets.openstax.org/oscms-prodcms/media/documents/OrganicChemistry-SAMPLE_9ADraVJ.pdf"
+  - id: get_pdf_bytes
+    config:
+      type: function
+      function: data_strategies.32b_exploit.seed_pdf_parser.utils.download_pdfs
+    input_ids:
+      - create_urls
+  - id: process_pdfs
+    config:
+      type: function
+      function: data_strategies.32b_exploit.seed_pdf_parser.utils.get_all_page_counts
+    input_ids:
+      - get_pdf_bytes
+  - id: get_page_bytes
+    config:
+      type: function
+      function: data_strategies.32b_exploit.seed_pdf_parser.utils.expand_and_extract_pages
+      function_config:
+        page_count_column: page_count
+    input_ids:
+      - process_pdfs
+  - id: generate_plan_instructions
+    config:
+      type: completions
+      map: gemini_ocr
+      map_config:
+        pdf_url_column: "url"
+        output_extraction_column: "output_extraction"
+        page_number_column: "page_number"
+      model: "gemini/gemini-2.0-flash-lite-preview-02-05"
+      backend_params:
+        invalid_finish_reasons: ["content_filter"]
+        max_requests_per_minute: 4_000
+        max_tokens_per_minute: 4_000_000
+    input_ids:
+      - get_page_bytes
+  - id: drop_columns
+    config:
+      type: function
+      function: data_strategies.commons.remove_columns
+      function_config:
+        columns:
+          - pdf_bytes
+    input_ids:
+      - generate_plan_instructions
+  - id: rename_task_column
+    config:
+      type: function
+      function: data_strategies.commons.force_rename_columns
+      function_config:
+        column_maps:
+          output_extraction: text
+    input_ids:
+      - drop_columns
+  - id: load_hf_dataset_negatives
+    config:
+      type: hf_source
+      dataset: nampdn-ai/tiny-strange-textbooks
+      split: train
+  - id: train_fasttext_classifier
+    config:
+      type: train_fasttext
+      text_column: text
+      positive_input_ids:
+        - rename_task_column
+      negative_input_ids:
+        - load_hf_dataset_negatives
+      dim: 256
+      epoch: 3
+      lr: 0.1
+      word_ngrams: 2
+      min_count: 3
+      hf_repo_id: mlfoundations-dev/organic_chemistry_fasttext
+    input_ids:
+      - rename_task_column
+      -  load_hf_dataset_negatives

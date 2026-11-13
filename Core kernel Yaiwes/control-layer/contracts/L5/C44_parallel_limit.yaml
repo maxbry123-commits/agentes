@@ -1,0 +1,18 @@
+# C44 — L5. B4 SALIDA4
+id: C44
+layer: L5
+name: parallel_limit
+implementado: true
+critical: false
+description: "Límite de paralelismo"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C44 aplica en capa L5"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - parallel_limit_check
+evidence:
+  type: parallel_limit_marker
+  required: false

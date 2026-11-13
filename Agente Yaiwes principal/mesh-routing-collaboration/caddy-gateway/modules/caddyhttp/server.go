@@ -1,0 +1,1600 @@
+// Copyright 2015 Matthew Holt and The Caddy Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package caddyhttp
+
+import (
+	"context"
+	"crypto/tls"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/netip"
+	"net/url"
+	"runtime"
+	"slices"
+	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/caddyserver/certmagic"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+	h3qlog "github.com/quic-go/quic-go/http3/qlog"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
+	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/modules/caddyevents"
+	"github.com/caddyserver/caddy/v2/modules/caddytls"
+)
+
+// Server describes an HTTP server.
+type Server struct {
+	// Socket addresses to which to bind listeners. Accepts
+	// [network addresses](/docs/conventions#network-addresses)
+	// that may include port ranges. Listener addresses must
+	// be unique; they cannot be repeated across all defined
+	// servers.
+	Listen []string `json:"listen,omitempty"`
+
+	// A list of listener wrapper modules, which can modify the behavior
+	// of the base listener. They are applied in the given order.
+	ListenerWrappersRaw []json.RawMessage `json:"listener_wrappers,omitempty" caddy:"namespace=caddy.listeners inline_key=wrapper"`
+
+	// A list of packet conn wrapper modules, which can modify the behavior
+	// of the base packet conn. They are applied in the given order.
+	PacketConnWrappersRaw []json.RawMessage `json:"packet_conn_wrappers,omitempty" caddy:"namespace=caddy.packetconns inline_key=wrapper"`
+
+	// How long to allow a read from a client's upload. Setting this
+	// to a short, non-zero value can mitigate slowloris attacks, but
+	// may also affect legitimately slow clients.
+	ReadTimeout caddy.Duration `json:"read_timeout,omitempty"`
+
+	// ReadHeaderTimeout is like ReadTimeout but for request headers.
+	// Default is 1 minute.
+	ReadHeaderTimeout caddy.Duration `json:"read_header_timeout,omitempty"`
+
+	// How long to allow a read from a client's upload to stall before
+	// aborting the connection, reset on every successful read. Unlike
+	// ReadTimeout, which bounds the whole transfer with a single
+	// deadline, this only fires if the connection actually stalls, so
+	// it mitigates slowloris-style attacks without penalizing large
+	// uploads from legitimately slow clients. Combine with ReadTimeout
+	// for a hard ceiling on top.
+	// Default is 1 minute.
+	ReadIdleTimeout caddy.Duration `json:"read_idle_timeout,omitempty"`
+
+	// ReadMinRate, if set, requires the client to sustain at least this
+	// many bytes/second, averaged from the start of the request body
+	// read, or the connection is aborted. Unlike ReadIdleTimeout alone,
+	// this also catches a trickle that sends just enough to never go
+	// idle, but never accumulates real throughput (a "MinRate" in
+	// Apache mod_reqtimeout terms). If zero, no rate is enforced and
+	// ReadIdleTimeout resets to a flat window on every read instead.
+	ReadMinRate int64 `json:"read_min_rate,omitempty"`
+
+	// WriteTimeout is how long to allow a write to a client. Note
+	// that setting this to a small value when serving large files
+	// may negatively affect legitimately slow clients.
+	WriteTimeout caddy.Duration `json:"write_timeout,omitempty"`
+
+	// How long to allow a write to a client to stall before aborting
+	// the connection, reset on every successful write, the same way
+	// ReadIdleTimeout works for reads. A handler that streams a large
+	// response, or pauses between writes (e.g. SSE), is unaffected as
+	// long as each individual write keeps making progress. Combine
+	// with WriteTimeout for a hard ceiling on top.
+	// Default is 1 minute.
+	WriteIdleTimeout caddy.Duration `json:"write_idle_timeout,omitempty"`
+
+	// WriteMinRate is like ReadMinRate, but for writes to the client.
+	WriteMinRate int64 `json:"write_min_rate,omitempty"`
+
+	// MaxWriteChunk bounds how many bytes a single underlying write
+	// operation is allowed to cover, so that WriteIdleTimeout/WriteMinRate
+	// can actually apply between chunks of a large response instead of
+	// being bounded by one deadline for the whole thing (nginx's
+	// sendfile_max_chunk exists for the same reason). Default: 64 KiB.
+	MaxWriteChunk int `json:"max_write_chunk,omitempty"`
+
+	// IdleTimeout is the maximum time to wait for the next request
+	// when keep-alives are enabled. If zero, a default timeout of
+	// 5m is applied to help avoid resource exhaustion.
+	IdleTimeout caddy.Duration `json:"idle_timeout,omitempty"`
+
+	// KeepAliveInterval is the interval at which TCP keepalive packets
+	// are sent to keep the connection alive at the TCP layer when no other
+	// data is being transmitted.
+	// If zero, the default is 15s.
+	// If negative, keepalive packets are not sent and other keepalive parameters
+	// are ignored.
+	KeepAliveInterval caddy.Duration `json:"keepalive_interval,omitempty"`
+
+	// KeepAliveIdle is the time that the connection must be idle before
+	// the first TCP keep-alive probe is sent when no other data is being
+	// transmitted.
+	// If zero, the default is 15s.
+	// If negative, underlying socket value is unchanged.
+	KeepAliveIdle caddy.Duration `json:"keepalive_idle,omitempty"`
+
+	// KeepAliveCount is the maximum number of TCP keep-alive probes that
+	// should be sent before dropping a connection.
+	// If zero, the default is 9.
+	// If negative, underlying socket value is unchanged.
+	KeepAliveCount int `json:"keepalive_count,omitempty"`
+
+	// MaxHeaderBytes is the maximum size to parse from a client's
+	// HTTP request headers. Default: 16 KiB.
+	MaxHeaderBytes int `json:"max_header_bytes,omitempty"`
+
+	// Enable full-duplex communication for HTTP/1 requests.
+	// Only has an effect if Caddy was built with Go 1.21 or later.
+	//
+	// For HTTP/1 requests, the Go HTTP server by default consumes any
+	// unread portion of the request body before beginning to write the
+	// response, preventing handlers from concurrently reading from the
+	// request and writing the response. Enabling this option disables
+	// this behavior and permits handlers to continue to read from the
+	// request while concurrently writing the response.
+	//
+	// For HTTP/2 requests, the Go HTTP server always permits concurrent
+	// reads and responses, so this option has no effect.
+	//
+	// Test thoroughly with your HTTP clients, as some older clients may
+	// not support full-duplex HTTP/1 which can cause them to deadlock.
+	// See https://github.com/golang/go/issues/57786 for more info.
+	//
+	// TODO: This is an EXPERIMENTAL feature. Subject to change or removal.
+	EnableFullDuplex bool `json:"enable_full_duplex,omitempty"`
+
+	// A list of header field names containing underscores that should
+	// be preserved instead of being dropped. By default, Caddy drops
+	// ALL headers with underscores to prevent ambiguity with
+	// CGI/FastCGI backends that map hyphens to underscores
+	// (GHSA-f59h-q822-g45g). When this list is configured, only the
+	// specified headers are kept; their hyphenated variants are
+	// actively dropped to prevent confusion. Entries are
+	// case-insensitive. A trailing "*" acts as a prefix glob
+	// (e.g., "webhook_*" matches any header starting with
+	// "webhook_"). If an allowlisted header arrives with
+	// multiple values (repeated field), all values are dropped
+	// as a safeguard against header injection.
+	//
+	// If the same logical header name is also allowlisted (in dot form)
+	// in ExpectedDotHeaders, both spellings are kept independently. Only
+	// do this if you know your backend doesn't fold both forms onto the
+	// same variable name; PHP/CGI-style backends do (see
+	// ExpectedDotHeaders), so allowlisting both there reintroduces the
+	// ambiguity this filter exists to remove.
+	//
+	// A header name containing both an underscore and a dot (e.g.
+	// "webhook_user.id") is never matched by a prefix glob here, even
+	// one whose prefix matches, because the free-form suffix a glob
+	// allows can't be vetted for an embedded dot; only an exact (non-glob)
+	// entry for that literal spelling is honored.
+	//
+	// TODO: This is an EXPERIMENTAL feature. Subject to change or removal.
+	ExpectedUnderscoreHeaders []string `json:"expected_underscore_headers,omitempty"`
+
+	// A list of header field names containing dots that should be
+	// preserved instead of being dropped. By default, Caddy drops ALL
+	// headers with dots to prevent ambiguity with backends that fold
+	// dots to underscores when registering CGI-style variables, e.g.
+	// PHP's $_SERVER (GHSA-49wc-4hcv-v58q). When this list is
+	// configured, only the specified headers are kept; their
+	// hyphenated variants are actively dropped to prevent confusion.
+	// Entries are case-insensitive. A trailing "*" acts as a prefix
+	// glob (e.g., "webhook.*" matches any header starting with
+	// "webhook."). If an allowlisted header arrives with multiple
+	// values (repeated field), all values are dropped as a safeguard
+	// against header injection.
+	//
+	// Dotted headers are legal HTTP tokens and some non-CGI backends
+	// (e.g. Node.js, Go) use them as ordinary, unrelated header names.
+	// If your backend is one of those, this poses no risk. Only
+	// PHP/CGI/FastCGI-style backends fold '.', '_', and '-' onto the
+	// same variable name; avoid allowlisting both the dot and
+	// underscore form of the same logical name if such a backend is in
+	// the request path, since Caddy will not stop you and the backend
+	// may then see either value depending on map iteration order.
+	//
+	// A header name containing both a dot and an underscore is never
+	// matched by a prefix glob here, for the same reason described on
+	// ExpectedUnderscoreHeaders; only an exact (non-glob) entry for
+	// that literal spelling is honored.
+	//
+	// TODO: This is an EXPERIMENTAL feature. Subject to change or removal.
+	ExpectedDotHeaders []string `json:"expected_dot_headers,omitempty"`
+
+	// Routes describes how this server will handle requests.
+	// Routes are executed sequentially. First a route's matchers
+	// are evaluated, then its grouping. If it matches and has
+	// not been mutually-excluded by its grouping, then its
+	// handlers are executed sequentially. The sequence of invoked
+	// handlers comprises a compiled middleware chain that flows
+	// from each matching route and its handlers to the next.
+	//
+	// By default, all unrouted requests receive a 200 OK response
+	// to indicate the server is working.
+	Routes RouteList `json:"routes,omitempty"`
+
+	// Errors is how this server will handle errors returned from any
+	// of the handlers in the primary routes. If the primary handler
+	// chain returns an error, the error along with its recommended
+	// status code are bubbled back up to the HTTP server which
+	// executes a separate error route, specified using this property.
+	// The error routes work exactly like the normal routes.
+	Errors *HTTPErrorConfig `json:"errors,omitempty"`
+
+	// NamedRoutes describes a mapping of reusable routes that can be
+	// invoked by their name. This can be used to optimize memory usage
+	// when the same route is needed for many subroutes, by having
+	// the handlers and matchers be only provisioned once, but used from
+	// many places. These routes are not executed unless they are invoked
+	// from another route.
+	//
+	// EXPERIMENTAL: Subject to change or removal.
+	NamedRoutes map[string]*Route `json:"named_routes,omitempty"`
+
+	// How to handle TLS connections. At least one policy is
+	// required to enable HTTPS on this server if automatic
+	// HTTPS is disabled or does not apply.
+	TLSConnPolicies caddytls.ConnectionPolicies `json:"tls_connection_policies,omitempty"`
+
+	// AutoHTTPS configures or disables automatic HTTPS within this server.
+	// HTTPS is enabled automatically and by default when qualifying names
+	// are present in a Host matcher and/or when the server is listening
+	// only on the HTTPS port.
+	AutoHTTPS *AutoHTTPSConfig `json:"automatic_https,omitempty"`
+
+	// If true, will require that a request's Host header match
+	// the value of the ServerName sent by the client's TLS
+	// ClientHello; often a necessary safeguard when using TLS
+	// client authentication.
+	StrictSNIHost *bool `json:"strict_sni_host,omitempty"`
+
+	// A module which provides a source of IP ranges, from which
+	// requests should be trusted. By default, no proxies are
+	// trusted.
+	//
+	// On its own, this configuration will not do anything,
+	// but it can be used as a default set of ranges for
+	// handlers or matchers in routes to pick up, instead
+	// of needing to configure each of them. See the
+	// `reverse_proxy` handler for example, which uses this
+	// to trust sensitive incoming `X-Forwarded-*` headers.
+	TrustedProxiesRaw json.RawMessage `json:"trusted_proxies,omitempty" caddy:"namespace=http.ip_sources inline_key=source"`
+
+	// The headers from which the client IP address could be
+	// read from. These will be considered in order, with the
+	// first good value being used as the client IP.
+	// By default, only `X-Forwarded-For` is considered.
+	//
+	// This depends on `trusted_proxies` being configured and
+	// the request being validated as coming from a trusted
+	// proxy, otherwise the client IP will be set to the direct
+	// remote IP address.
+	ClientIPHeaders []string `json:"client_ip_headers,omitempty"`
+
+	// If greater than zero, enables strict ClientIPHeaders
+	// (default X-Forwarded-For) parsing. If enabled, the
+	// ClientIPHeaders will be parsed from right to left, and
+	// the first value that is both valid and doesn't match the
+	// trusted proxy list will be used as client IP. If zero,
+	// the ClientIPHeaders will be parsed from left to right,
+	// and the first value that is a valid IP address will be
+	// used as client IP.
+	//
+	// This depends on `trusted_proxies` being configured.
+	// This option is disabled by default.
+	TrustedProxiesStrict int `json:"trusted_proxies_strict,omitempty"`
+
+	// If greater than zero, enables trusting socket connections
+	// (e.g. Unix domain sockets) as coming from a trusted
+	// proxy.
+	//
+	// This option is disabled by default.
+	TrustedProxiesUnix bool `json:"trusted_proxies_unix,omitempty"`
+
+	// Enables access logging and configures how access logs are handled
+	// in this server. To minimally enable access logs, simply set this
+	// to a non-null, empty struct.
+	Logs *ServerLogConfig `json:"logs,omitempty"`
+
+	// Protocols specifies which HTTP protocols to enable.
+	// Supported values are:
+	//
+	// - `h1` (HTTP/1.1)
+	// - `h2` (HTTP/2)
+	// - `h2c` (cleartext HTTP/2)
+	// - `h3` (HTTP/3)
+	//
+	// If enabling `h2` or `h2c`, `h1` must also be enabled;
+	// this is due to current limitations in the Go standard
+	// library.
+	//
+	// HTTP/2 operates only over TLS (HTTPS). HTTP/3 opens
+	// a UDP socket to serve QUIC connections.
+	//
+	// H2C operates over plain TCP if the client supports it;
+	// however, because this is not implemented by the Go
+	// standard library, other server options are not compatible
+	// and will not be applied to H2C requests. Do not enable this
+	// only to achieve maximum client compatibility. In practice,
+	// very few clients implement H2C, and even fewer require it.
+	// Enabling H2C can be useful for serving/proxying gRPC
+	// if encryption is not possible or desired.
+	//
+	// We recommend for most users to simply let Caddy use the
+	// default settings.
+	//
+	// Default: `[h1 h2 h3]`
+	Protocols []string `json:"protocols,omitempty"`
+
+	// ListenProtocols overrides Protocols for each parallel address in Listen.
+	// A nil value or element indicates that Protocols will be used instead.
+	ListenProtocols [][]string `json:"listen_protocols,omitempty"`
+
+	// If set, overrides whether QUIC listeners allow 0-RTT (early data).
+	// If nil, the default behavior is used (currently allowed).
+	//
+	// One reason to disable 0-RTT is if a remote IP matcher is used,
+	// which introduces a dependency on the remote address being verified
+	// if routing happens before the TLS handshake completes. An HTTP 425
+	// response is written in that case, but some clients misbehave and
+	// don't perform a retry, so disabling 0-RTT can smooth it out.
+	Allow0RTT *bool `json:"allow_0rtt,omitempty"`
+
+	// If set, metrics observations will be enabled.
+	// This setting is EXPERIMENTAL and subject to change.
+	// DEPRECATED: Use the app-level `metrics` field.
+	Metrics *Metrics `json:"metrics,omitempty"`
+
+	name string
+
+	primaryHandlerChain Handler
+	errorHandlerChain   Handler
+	listenerWrappers    []caddy.ListenerWrapper
+	packetConnWrappers  []caddy.PacketConnWrapper
+	listeners           []net.Listener
+	quicListeners       []http3.QUICListener // http3 now leave the quic.Listener management to us
+
+	tlsApp       *caddytls.TLS
+	events       *caddyevents.App
+	logger       *zap.Logger
+	accessLogger *zap.Logger
+	errorLogger  *zap.Logger
+	traceLogger  *zap.Logger
+	ctx          caddy.Context
+
+	server    *http.Server
+	h3server  *http3.Server
+	addresses []caddy.NetworkAddress
+
+	trustedProxies IPRangeSource
+
+	shutdownAt atomic.Pointer[time.Time]
+
+	// precomputed underscore header allowlist (built during provisioning)
+	underscoreExactAllow  map[string]struct{}
+	underscoreExactDrop   map[string]struct{}
+	underscorePrefixRules []aliasPrefixRule
+
+	// precomputed dot header allowlist (built during provisioning)
+	dotExactAllow  map[string]struct{}
+	dotExactDrop   map[string]struct{}
+	dotPrefixRules []aliasPrefixRule
+
+	// registered callback functions
+	connStateFuncs   []func(net.Conn, http.ConnState)
+	connContextFuncs []func(ctx context.Context, c net.Conn) context.Context
+	onShutdownFuncs  []func()
+	onStopFuncs      []func(context.Context) error // TODO: Experimental (Nov. 2023)
+}
+
+// aliasPrefixRule pairs a canonical allowed prefix (underscore- or
+// dot-named) with its hyphenated counterpart. Used for prefix-glob
+// matching in the underscore/dot allowlists.
+type aliasPrefixRule struct {
+	allow string // canonical allowed form, e.g. "Webhook_" or "Webhook."
+	drop  string // canonical hyphenated form, e.g. "Webhook-"
+}
+
+// provisionHeaderAliasAllowlist validates entries for a header-alias
+// allowlist (ExpectedUnderscoreHeaders or ExpectedDotHeaders) and builds
+// the precomputed maps and prefix rules used by the hot-path filter in
+// serveHTTP. sep is the separator the entries must contain ('_' or '.');
+// directive is the Caddyfile/JSON name used in error messages.
+func provisionHeaderAliasAllowlist(entries []string, sep rune, directive string) (exactAllow, exactDrop map[string]struct{}, prefixRules []aliasPrefixRule, err error) {
+	exactAllow = make(map[string]struct{}, len(entries))
+	exactDrop = make(map[string]struct{}, len(entries))
+
+	for _, entry := range entries {
+		// Reject non-ASCII bytes: Go's HTTP parser returns 400 for
+		// non-ASCII header names, so such entries can never match.
+		for i := 0; i < len(entry); i++ {
+			if entry[i] >= 0x80 {
+				return nil, nil, nil, fmt.Errorf("%s: entry %q contains non-ASCII characters", directive, entry)
+			}
+		}
+
+		isGlob := strings.HasSuffix(entry, "*")
+		name := entry
+		if isGlob {
+			name = strings.TrimSuffix(entry, "*")
+		}
+
+		// Reject entries with '*' not at the trailing position.
+		if strings.ContainsRune(name, '*') {
+			return nil, nil, nil, fmt.Errorf("%s: entry %q has '*' in an invalid position (only a trailing '*' is allowed)", directive, entry)
+		}
+
+		// The name (without trailing '*') must contain at least one separator.
+		if !strings.ContainsRune(name, sep) {
+			return nil, nil, nil, fmt.Errorf("%s: entry %q does not contain a %q", directive, entry, sep)
+		}
+
+		canonAllow := http.CanonicalHeaderKey(name)
+		canonDrop := http.CanonicalHeaderKey(strings.ReplaceAll(name, string(sep), "-"))
+
+		if isGlob {
+			prefixRules = append(prefixRules, aliasPrefixRule{
+				allow: canonAllow,
+				drop:  canonDrop,
+			})
+		} else {
+			exactAllow[canonAllow] = struct{}{}
+			exactDrop[canonDrop] = struct{}{}
+		}
+	}
+
+	return exactAllow, exactDrop, prefixRules, nil
+}
+
+// provisionUnderscoreHeaders validates the ExpectedUnderscoreHeaders
+// entries and builds the precomputed maps and prefix rules used by
+// the hot-path filter in serveHTTP.
+func (s *Server) provisionUnderscoreHeaders() error {
+	if len(s.ExpectedUnderscoreHeaders) == 0 {
+		return nil
+	}
+	var err error
+	s.underscoreExactAllow, s.underscoreExactDrop, s.underscorePrefixRules, err = provisionHeaderAliasAllowlist(s.ExpectedUnderscoreHeaders, '_', "expected_underscore_headers")
+	return err
+}
+
+// provisionDotHeaders validates the ExpectedDotHeaders entries and
+// builds the precomputed maps and prefix rules used by the hot-path
+// filter in serveHTTP.
+func (s *Server) provisionDotHeaders() error {
+	if len(s.ExpectedDotHeaders) == 0 {
+		return nil
+	}
+	var err error
+	s.dotExactAllow, s.dotExactDrop, s.dotPrefixRules, err = provisionHeaderAliasAllowlist(s.ExpectedDotHeaders, '.', "expected_dot_headers")
+	return err
+}
+
+// isAllowedUnderscoreHeader reports whether key (a canonical header
+// name containing an underscore) is permitted by the allowlist.
+func (s *Server) isAllowedUnderscoreHeader(key string) bool {
+	if _, ok := s.underscoreExactAllow[key]; ok {
+		return true
+	}
+	for _, rule := range s.underscorePrefixRules {
+		if strings.HasPrefix(key, rule.allow) {
+			return true
+		}
+	}
+	return false
+}
+
+// isAllowedDotHeader reports whether key (a canonical header name
+// containing a dot) is permitted by the allowlist.
+func (s *Server) isAllowedDotHeader(key string) bool {
+	if _, ok := s.dotExactAllow[key]; ok {
+		return true
+	}
+	for _, rule := range s.dotPrefixRules {
+		if strings.HasPrefix(key, rule.allow) {
+			return true
+		}
+	}
+	return false
+}
+
+// isHyphenatedVariant reports whether key (a canonical header name
+// containing neither an underscore nor a dot) is the hyphenated variant
+// of an allowlisted underscore or dot header and should therefore be
+// dropped.
+func (s *Server) isHyphenatedVariant(key string) bool {
+	if _, ok := s.underscoreExactDrop[key]; ok {
+		return true
+	}
+	if _, ok := s.dotExactDrop[key]; ok {
+		return true
+	}
+	for _, rule := range s.underscorePrefixRules {
+		if strings.HasPrefix(key, rule.drop) {
+			return true
+		}
+	}
+	for _, rule := range s.dotPrefixRules {
+		if strings.HasPrefix(key, rule.drop) {
+			return true
+		}
+	}
+	return false
+}
+
+var defaultProtocols = []string{"h1", "h2", "h3"}
+
+var (
+	ServerHeader = "Caddy"
+	serverHeader = []string{ServerHeader}
+)
+
+// ServeHTTP is the entry point for all HTTP requests.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
+	// If there are listener wrappers that process tls connections but don't return a *tls.Conn, this field will be nil.
+	if r.TLS == nil {
+		if tlsConnStateFunc, ok := r.Context().Value(tlsConnectionStateFuncCtxKey).(func() *tls.ConnectionState); ok {
+			r.TLS = tlsConnStateFunc()
+		}
+	}
+
+	// enable full-duplex for HTTP/1, ensuring the entire
+	// request body gets consumed before writing the response
+	if s.EnableFullDuplex && r.ProtoMajor == 1 {
+		if err := http.NewResponseController(w).EnableFullDuplex(); err != nil { //nolint:bodyclose
+			if c := s.logger.Check(zapcore.WarnLevel, "failed to enable full duplex"); c != nil {
+				c.Write(zap.Error(err))
+			}
+		}
+	}
+
+	// guard against slowloris-style attacks by aborting the connection
+	// if a read from the request body or a write to the response
+	// stalls for longer than the configured timeout; the deadline is
+	// reset on every successful read/write, so this doesn't affect
+	// legitimately slow clients as long as they keep making progress.
+	// hardDeadline, anchored to this handler's start, caps how far
+	// that reset can push the deadline out, so an explicitly configured
+	// ReadTimeout/WriteTimeout ceiling still applies on top instead of
+	// being silently overwritten by the first read/write.
+	rc := http.NewResponseController(w)
+	var readHardDeadline, writeHardDeadline time.Time
+	if s.ReadTimeout > 0 {
+		readHardDeadline = start.Add(time.Duration(s.ReadTimeout))
+	}
+	if s.WriteTimeout > 0 {
+		writeHardDeadline = start.Add(time.Duration(s.WriteTimeout))
+	}
+	if s.ReadIdleTimeout > 0 && r.Body != nil {
+		r.Body = &IdleTimeoutReader{
+			ReadCloser: r.Body,
+			Ctrl:       rc,
+			Deadline: IdleDeadline{
+				Start:        start,
+				Timeout:      time.Duration(s.ReadIdleTimeout),
+				MinRate:      s.ReadMinRate,
+				HardDeadline: readHardDeadline,
+			},
+			Logger: s.logger,
+		}
+	}
+	if s.WriteIdleTimeout > 0 {
+		w = &IdleTimeoutWriter{
+			ResponseWriterWrapper: &ResponseWriterWrapper{ResponseWriter: w},
+			Ctrl:                  rc,
+			Deadline: IdleDeadline{
+				Start:        start,
+				Timeout:      time.Duration(s.WriteIdleTimeout),
+				MinRate:      s.WriteMinRate,
+				HardDeadline: writeHardDeadline,
+			},
+			MaxChunk: s.MaxWriteChunk,
+			Logger:   s.logger,
+		}
+	}
+
+	// set the Server header
+	h := w.Header()
+	h["Server"] = serverHeader
+
+	// advertise HTTP/3, if enabled
+	if s.h3server != nil && r.ProtoMajor < 3 {
+		if err := s.h3server.SetQUICHeaders(h); err != nil {
+			if c := s.logger.Check(zapcore.ErrorLevel, "setting HTTP/3 Alt-Svc header"); c != nil {
+				c.Write(zap.Error(err))
+			}
+		}
+	}
+
+	// prepare internals of the request for the handler pipeline
+	repl := caddy.NewReplacer()
+	r = PrepareRequest(r, repl, w, s)
+
+	// clone the request for logging purposes before it enters any handler chain;
+	// this is necessary to capture the original request in case it gets modified
+	// during handling (cloning the request and using .WithLazy is considerably
+	// faster than using .With, which will JSON-encode the request immediately)
+	shouldLogCredentials := s.Logs != nil && s.Logs.ShouldLogCredentials
+	loggableReq := zap.Object("request", LoggableHTTPRequest{
+		Request:              r.Clone(r.Context()),
+		ShouldLogCredentials: shouldLogCredentials,
+	})
+	errLog := s.errorLogger.WithLazy(loggableReq)
+
+	var duration time.Duration
+
+	if s.shouldLogRequest(r) {
+		wrec := NewResponseRecorder(w, nil, nil)
+		w = wrec
+
+		// wrap the request body in a LengthReader
+		// so we can track the number of bytes read from it
+		var bodyReader *lengthReader
+		if r.Body != nil {
+			bodyReader = &lengthReader{Source: r.Body}
+			r.Body = bodyReader
+
+			// should always be true, private interface can only be referenced in the same package
+			if setReadSizer, ok := wrec.(interface{ setReadSize(*int) }); ok {
+				setReadSizer.setReadSize(&bodyReader.Length)
+			}
+		}
+
+		// capture the original version of the request
+		accLog := s.accessLogger.WithLazy(loggableReq)
+
+		defer s.logRequest(accLog, r, wrec, &duration, repl, bodyReader, shouldLogCredentials)
+	}
+
+	// guarantee ACME HTTP challenges; handle them separately from any user-defined handlers
+	if s.tlsApp.HandleHTTPChallenge(w, r) {
+		duration = time.Since(start)
+		return
+	}
+
+	err := s.serveHTTP(w, r)
+	duration = time.Since(start)
+
+	if err == nil {
+		return
+	}
+
+	// restore original request before invoking error handler chain (issue #3717)
+	// NOTE: this does not restore original headers if modified (for efficiency)
+	origReq, ok := r.Context().Value(OriginalRequestCtxKey).(http.Request)
+	if ok {
+		r.Method = origReq.Method
+		r.RemoteAddr = origReq.RemoteAddr
+		r.RequestURI = origReq.RequestURI
+		cloneURL(origReq.URL, r.URL)
+	}
+
+	// prepare the error log
+	errLog = errLog.With(zap.Duration("duration", duration))
+	errLoggers := []*zap.Logger{errLog}
+	if s.Logs != nil {
+		errLoggers = s.Logs.wrapLogger(errLog, r)
+	}
+
+	// get the values that will be used to log the error
+	errStatus, errMsg, errFields := errLogValues(err)
+
+	// add HTTP error information to request context
+	r = s.Errors.WithError(r, err)
+
+	var fields []zapcore.Field
+	if s.Errors != nil && len(s.Errors.Routes) > 0 {
+		// execute user-defined error handling route
+		if err2 := s.errorHandlerChain.ServeHTTP(w, r); err2 == nil {
+			// user's error route handled the error response successfully, so now just log the error
+			for _, logger := range errLoggers {
+				if c := logger.Check(zapcore.DebugLevel, errMsg); c != nil {
+					if fields == nil {
+						fields = errFields()
+					}
+					c.Write(fields...)
+				}
+			}
+		} else {
+			// well... this is awkward
+			for _, logger := range errLoggers {
+				if c := logger.Check(zapcore.ErrorLevel, "error handling handler error"); c != nil {
+					if fields == nil {
+						fields = errFields()
+						fields = append([]zapcore.Field{
+							zap.String("error", err2.Error()),
+							zap.Namespace("first_error"),
+							zap.String("msg", errMsg),
+						}, fields...)
+					}
+					c.Write(fields...)
+				}
+			}
+			if handlerErr, ok := err.(HandlerError); ok {
+				w.WriteHeader(handlerErr.StatusCode)
+			} else {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		}
+	} else {
+		logLevel := zapcore.DebugLevel
+		if errStatus >= 500 {
+			logLevel = zapcore.ErrorLevel
+		}
+
+		for _, logger := range errLoggers {
+			if c := logger.Check(logLevel, errMsg); c != nil {
+				if fields == nil {
+					fields = errFields()
+				}
+				c.Write(fields...)
+			}
+		}
+		w.WriteHeader(errStatus)
+	}
+}
+
+func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) error {
+	// reject very long methods; probably a mistake or an attack
+	if len(r.Method) > 32 {
+		if s.shouldLogRequest(r) {
+			if c := s.accessLogger.Check(zapcore.DebugLevel, "rejecting request with long method"); c != nil {
+				c.Write(
+					zap.String("method_trunc", r.Method[:32]),
+					zap.String("remote_addr", r.RemoteAddr),
+				)
+			}
+		}
+		return HandlerError{StatusCode: http.StatusMethodNotAllowed}
+	}
+
+	// RFC 9112 section 3.2: "A server MUST respond with a 400 (Bad Request) status
+	// code to any HTTP/1.1 request message that lacks a Host header field and to any
+	// request message that contains more than one Host header field line or a Host
+	// header field with an invalid field value."
+	if r.ProtoMajor == 1 && r.ProtoMinor == 1 && r.Host == "" {
+		return HandlerError{
+			Err:        errors.New("rfc9112 forbids empty Host"),
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
+	// Drop headers whose names contain `_` or `.`: once FastCGI/CGI/FrankenPHP etc.
+	// rewrites `-` to `_` (and PHP additionally folds `.` to `_` when registering
+	// $_SERVER keys), an underscore or dot alias collides with the legitimate
+	// hyphenated header and can bypass `forward_auth copy_headers`
+	// (GHSA-f59h-q822-g45g, GHSA-49wc-4hcv-v58q).
+	//
+	// The two allowlists (ExpectedUnderscoreHeaders, ExpectedDotHeaders) are
+	// otherwise independent: each only keeps headers spelled with its own
+	// character, and either allowlist actively drops the plain-hyphenated
+	// variant of its entries.
+	for k := range r.Header {
+		hasUnderscore := strings.ContainsRune(k, '_')
+		hasDot := strings.ContainsRune(k, '.')
+
+		switch {
+		case hasUnderscore && hasDot:
+			// A name containing both separators still collides with the
+			// hyphenated, underscore-only, and dot-only spellings once a
+			// CGI/FastCGI/PHP backend folds them onto the same variable
+			// name. A prefix glob can't vet its free-form suffix for an
+			// embedded "other" separator, so only an exact allowlist entry
+			// for this literal spelling is honored here.
+			_, underscoreOK := s.underscoreExactAllow[k]
+			_, dotOK := s.dotExactAllow[k]
+			if !underscoreOK && !dotOK {
+				delete(r.Header, k)
+
+				if c := s.logger.Check(zapcore.DebugLevel, "dropping header containing both underscore and dot"); c != nil {
+					c.Write(zap.String("header", k))
+				}
+			} else if n := len(r.Header[k]); n > 1 {
+				delete(r.Header, k)
+
+				if c := s.logger.Check(zapcore.WarnLevel, "dropping allowlisted underscore/dot header with repeated values (possible spoofing)"); c != nil {
+					c.Write(zap.String("header", k), zap.Int("count", n))
+				}
+			}
+
+		case hasUnderscore:
+			if len(s.ExpectedUnderscoreHeaders) == 0 || !s.isAllowedUnderscoreHeader(k) {
+				delete(r.Header, k)
+
+				if c := s.logger.Check(zapcore.DebugLevel, "dropping header containing underscore"); c != nil {
+					c.Write(zap.String("header", k))
+				}
+			} else if n := len(r.Header[k]); n > 1 {
+				delete(r.Header, k)
+
+				if c := s.logger.Check(zapcore.WarnLevel, "dropping allowlisted underscore header with repeated values (possible spoofing)"); c != nil {
+					c.Write(zap.String("header", k), zap.Int("count", n))
+				}
+			}
+
+		case hasDot:
+			if len(s.ExpectedDotHeaders) == 0 || !s.isAllowedDotHeader(k) {
+				delete(r.Header, k)
+
+				if c := s.logger.Check(zapcore.DebugLevel, "dropping header containing dot"); c != nil {
+					c.Write(zap.String("header", k))
+				}
+			} else if n := len(r.Header[k]); n > 1 {
+				delete(r.Header, k)
+
+				if c := s.logger.Check(zapcore.WarnLevel, "dropping allowlisted dot header with repeated values (possible spoofing)"); c != nil {
+					c.Write(zap.String("header", k), zap.Int("count", n))
+				}
+			}
+
+		case s.isHyphenatedVariant(k):
+			delete(r.Header, k)
+
+			if c := s.logger.Check(zapcore.DebugLevel, "dropping hyphenated variant of expected underscore/dot header"); c != nil {
+				c.Write(zap.String("header", k))
+			}
+		}
+	}
+
+	// execute the primary handler chain
+	return s.primaryHandlerChain.ServeHTTP(w, r)
+}
+
+// wrapPrimaryRoute wraps stack (a compiled middleware handler chain)
+// in s.enforcementHandler which performs crucial security checks, etc.
+func (s *Server) wrapPrimaryRoute(stack Handler) Handler {
+	return HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		return s.enforcementHandler(w, r, stack)
+	})
+}
+
+// enforcementHandler is an implicit middleware which performs
+// standard checks before executing the HTTP middleware chain.
+func (s *Server) enforcementHandler(w http.ResponseWriter, r *http.Request, next Handler) error {
+	// enforce strict host matching, which ensures that the SNI
+	// value (if any), matches the Host header; essential for
+	// servers that rely on TLS ClientAuth sharing a listener
+	// with servers that do not; if not enforced, client could
+	// bypass by sending benign SNI then restricted Host header
+	if s.StrictSNIHost != nil && *s.StrictSNIHost && r.TLS != nil {
+		hostname, _, err := net.SplitHostPort(r.Host)
+		if err != nil {
+			hostname = r.Host // OK; probably lacked port
+		}
+		if !strings.EqualFold(r.TLS.ServerName, hostname) {
+			err := fmt.Errorf("strict host matching: TLS ServerName (%s) and HTTP Host (%s) values differ",
+				r.TLS.ServerName, hostname)
+			r.Close = true
+			return Error(http.StatusMisdirectedRequest, err)
+		}
+	}
+	return next.ServeHTTP(w, r)
+}
+
+// listenersUseAnyPortOtherThan returns true if there are any
+// listeners in s that use a port which is not otherPort.
+func (s *Server) listenersUseAnyPortOtherThan(otherPort int) bool {
+	for _, lnAddr := range s.Listen {
+		laddrs, err := caddy.ParseNetworkAddress(lnAddr)
+		if err != nil {
+			continue
+		}
+		if uint(otherPort) > laddrs.EndPort || uint(otherPort) < laddrs.StartPort {
+			return true
+		}
+	}
+	return false
+}
+
+// hasListenerAddress returns true if s has a listener
+// at the given address fullAddr. Currently, fullAddr
+// must represent exactly one socket address (port
+// ranges are not supported)
+func (s *Server) hasListenerAddress(fullAddr string) bool {
+	laddrs, err := caddy.ParseNetworkAddress(fullAddr)
+	if err != nil {
+		return false
+	}
+	if laddrs.PortRangeSize() != 1 {
+		return false // TODO: support port ranges
+	}
+
+	for _, lnAddr := range s.Listen {
+		thisAddrs, err := caddy.ParseNetworkAddress(lnAddr)
+		if err != nil {
+			continue
+		}
+		if thisAddrs.Network != laddrs.Network {
+			continue
+		}
+
+		// Apparently, Linux requires all bound ports to be distinct
+		// *regardless of host interface* even if the addresses are
+		// in fact different; binding "192.168.0.1:9000" and then
+		// ":9000" will fail for ":9000" because "address is already
+		// in use" even though it's not, and the same bindings work
+		// fine on macOS. I also found on Linux that listening on
+		// "[::]:9000" would fail with a similar error, except with
+		// the address "0.0.0.0:9000", as if deliberately ignoring
+		// that I specified the IPv6 interface explicitly. This seems
+		// to be a major bug in the Linux network stack and I don't
+		// know why it hasn't been fixed yet, so for now we have to
+		// special-case ourselves around Linux like a doting parent.
+		// The second issue seems very similar to a discussion here:
+		// https://github.com/nodejs/node/issues/9390
+		//
+		// However, binding to *different specific* interfaces
+		// (e.g. 127.0.0.2:80 and 127.0.0.3:80) IS allowed on Linux.
+		// The conflict only happens when mixing specific IPs with
+		// wildcards (0.0.0.0 or ::).
+
+		// Hosts match exactly (e.g. 127.0.0.2 == 127.0.0.2) -> Conflict.
+		hostMatch := thisAddrs.Host == laddrs.Host
+
+		// On Linux, specific IP vs Wildcard fails to bind.
+		// So if we are on Linux AND either host is empty (wildcard), we treat
+		// it as a match (conflict). But if both are specific and different
+		// (127.0.0.2 vs 127.0.0.3), this remains false (no conflict).
+		linuxWildcardConflict := runtime.GOOS == "linux" && (thisAddrs.Host == "" || laddrs.Host == "")
+
+		if (hostMatch || linuxWildcardConflict) &&
+			(laddrs.StartPort <= thisAddrs.EndPort) &&
+			(laddrs.StartPort >= thisAddrs.StartPort) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) hasTLSClientAuth() bool {
+	return slices.ContainsFunc(s.TLSConnPolicies, func(cp *caddytls.ConnectionPolicy) bool {
+		return cp.ClientAuthentication != nil && cp.ClientAuthentication.Active()
+	})
+}
+
+// findLastRouteWithHostMatcher returns the index of the last route
+// in the server which has a host matcher. Used during Automatic HTTPS
+// to determine where to insert the HTTP->HTTPS redirect route, such
+// that it is after any other host matcher but before any "catch-all"
+// route without a host matcher.
+func (s *Server) findLastRouteWithHostMatcher() int {
+	foundHostMatcher := false
+	lastIndex := len(s.Routes)
+
+	for i, route := range s.Routes {
+		// since we want to break out of an inner loop, use a closure
+		// to allow us to use 'return' when we found a host matcher
+		found := func() bool {
+			for _, sets := range route.MatcherSets {
+				for _, matcher := range sets {
+					switch matcher.(type) {
+					case *MatchHost:
+						foundHostMatcher = true
+						return true
+					}
+				}
+			}
+			return false
+		}()
+
+		// if we found the host matcher, change the lastIndex to
+		// just after the current route
+		if found {
+			lastIndex = i + 1
+		}
+	}
+
+	// If we didn't actually find a host matcher, return 0
+	// because that means every defined route was a "catch-all".
+	// See https://caddy.community/t/how-to-set-priority-in-caddyfile/13002/8
+	if !foundHostMatcher {
+		return 0
+	}
+
+	return lastIndex
+}
+
+// serveHTTP3 creates a QUIC listener, configures an HTTP/3 server if
+// not already done, and then uses that server to serve HTTP/3 over
+// the listener, with Server s as the handler.
+func (s *Server) serveHTTP3(addr caddy.NetworkAddress, tlsCfg *tls.Config) error {
+	h3net, err := getHTTP3Network(addr.Network)
+	if err != nil {
+		return fmt.Errorf("starting HTTP/3 QUIC listener: %v", err)
+	}
+	addr.Network = h3net
+	h3ln, err := addr.ListenQUIC(s.ctx, 0, net.ListenConfig{}, tlsCfg, s.packetConnWrappers, s.Allow0RTT)
+	if err != nil {
+		return fmt.Errorf("starting HTTP/3 QUIC listener: %v", err)
+	}
+
+	// create HTTP/3 server if not done already
+	if s.h3server == nil {
+		s.h3server = &http3.Server{
+			Handler:        s,
+			TLSConfig:      tlsCfg,
+			MaxHeaderBytes: s.MaxHeaderBytes,
+			QUICConfig: &quic.Config{
+				Versions:          []quic.Version{quic.Version1, quic.Version2},
+				InitialPacketSize: 1200,
+				Tracer:            h3qlog.DefaultConnectionTracer,
+			},
+			IdleTimeout: time.Duration(s.IdleTimeout),
+		}
+	}
+
+	s.quicListeners = append(s.quicListeners, h3ln)
+
+	//nolint:errcheck
+	go s.h3server.ServeListener(h3ln)
+
+	return nil
+}
+
+// configureServer applies/binds the registered callback functions to the server.
+func (s *Server) configureServer(server *http.Server) {
+	for _, f := range s.connStateFuncs {
+		if server.ConnState != nil {
+			baseConnStateFunc := server.ConnState
+			server.ConnState = func(conn net.Conn, state http.ConnState) {
+				baseConnStateFunc(conn, state)
+				f(conn, state)
+			}
+		} else {
+			server.ConnState = f
+		}
+	}
+
+	for _, f := range s.connContextFuncs {
+		if server.ConnContext != nil {
+			baseConnContextFunc := server.ConnContext
+			server.ConnContext = func(ctx context.Context, c net.Conn) context.Context {
+				return f(baseConnContextFunc(ctx, c), c)
+			}
+		} else {
+			server.ConnContext = f
+		}
+	}
+
+	for _, f := range s.onShutdownFuncs {
+		server.RegisterOnShutdown(f)
+	}
+}
+
+// RegisterConnState registers f to be invoked on s.ConnState.
+func (s *Server) RegisterConnState(f func(net.Conn, http.ConnState)) {
+	s.connStateFuncs = append(s.connStateFuncs, f)
+}
+
+// RegisterConnContext registers f to be invoked as part of s.ConnContext.
+func (s *Server) RegisterConnContext(f func(ctx context.Context, c net.Conn) context.Context) {
+	s.connContextFuncs = append(s.connContextFuncs, f)
+}
+
+// RegisterOnShutdown registers f to be invoked when the server begins to shut down.
+func (s *Server) RegisterOnShutdown(f func()) {
+	s.onShutdownFuncs = append(s.onShutdownFuncs, f)
+}
+
+// RegisterOnStop registers f to be invoked after the server has shut down completely.
+//
+// EXPERIMENTAL: Subject to change or removal.
+func (s *Server) RegisterOnStop(f func(context.Context) error) {
+	s.onStopFuncs = append(s.onStopFuncs, f)
+}
+
+// HTTPErrorConfig determines how to handle errors
+// from the HTTP handlers.
+type HTTPErrorConfig struct {
+	// The routes to evaluate after the primary handler
+	// chain returns an error. In an error route, extra
+	// placeholders are available:
+	//
+	// Placeholder | Description
+	// ------------|---------------
+	// `{http.error.status_code}` | The recommended HTTP status code
+	// `{http.error.status_text}` | The status text associated with the recommended status code
+	// `{http.error.message}`     | The error message
+	// `{http.error.trace}`       | The origin of the error
+	// `{http.error.id}`          | An identifier for this occurrence of the error
+	Routes RouteList `json:"routes,omitempty"`
+}
+
+// WithError makes a shallow copy of r to add the error to its
+// context, and sets placeholders on the request's replacer
+// related to err. It returns the modified request which has
+// the error information in its context and replacer. It
+// overwrites any existing error values that are stored.
+func (*HTTPErrorConfig) WithError(r *http.Request, err error) *http.Request {
+	// add the raw error value to the request context
+	// so it can be accessed by error handlers
+	c := context.WithValue(r.Context(), ErrorCtxKey, err)
+	r = r.WithContext(c)
+
+	// add error values to the replacer
+	repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
+	repl.Set("http.error", err)
+	if handlerErr, ok := err.(HandlerError); ok {
+		repl.Set("http.error.status_code", handlerErr.StatusCode)
+		repl.Set("http.error.status_text", http.StatusText(handlerErr.StatusCode))
+		repl.Set("http.error.id", handlerErr.ID)
+		repl.Set("http.error.trace", handlerErr.Trace)
+		if handlerErr.Err != nil {
+			repl.Set("http.error.message", handlerErr.Err.Error())
+		} else {
+			repl.Set("http.error.message", http.StatusText(handlerErr.StatusCode))
+		}
+	}
+
+	return r
+}
+
+// shouldLogRequest returns true if this request should be logged.
+func (s *Server) shouldLogRequest(r *http.Request) bool {
+	if s.accessLogger == nil || s.Logs == nil {
+		// logging is disabled
+		return false
+	}
+
+	// strip off the port if any, logger names are host only
+	hostWithoutPort, _, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		hostWithoutPort = r.Host
+	}
+
+	for loggerName := range s.Logs.LoggerNames {
+		if certmagic.MatchWildcard(hostWithoutPort, loggerName) {
+			// this host is mapped to a particular logger name
+			return true
+		}
+	}
+	for _, dh := range s.Logs.SkipHosts {
+		// logging for this particular host is disabled
+		if certmagic.MatchWildcard(hostWithoutPort, dh) {
+			return false
+		}
+	}
+	// if configured, this host is not mapped and thus must not be logged
+	return !s.Logs.SkipUnmappedHosts
+}
+
+// logTrace will log that this middleware handler is being invoked.
+// It emits at DEBUG level.
+func (s *Server) logTrace(mh MiddlewareHandler) {
+	if s.Logs == nil || !s.Logs.Trace {
+		return
+	}
+	if c := s.traceLogger.Check(zapcore.DebugLevel, caddy.GetModuleName(mh)); c != nil {
+		c.Write(zap.Any("module", mh))
+	}
+}
+
+// logRequest logs the request to access logs, unless skipped.
+func (s *Server) logRequest(
+	accLog *zap.Logger, r *http.Request, wrec ResponseRecorder, duration *time.Duration,
+	repl *caddy.Replacer, bodyReader *lengthReader, shouldLogCredentials bool,
+) {
+	ctx := r.Context()
+
+	// this request may be flagged as omitted from the logs
+	if skip, ok := GetVar(ctx, LogSkipVar).(bool); ok && skip {
+		return
+	}
+
+	status := wrec.Status()
+	size := wrec.Size()
+
+	repl.Set("http.response.status", status) // will be 0 if no response is written by us (Go will write 200 to client)
+	repl.Set("http.response.size", size)
+	repl.Set("http.response.duration", duration)
+	repl.Set("http.response.duration_ms", duration.Seconds()*1e3) // multiply seconds to preserve decimal (see #4666)
+
+	loggers := []*zap.Logger{accLog}
+	if s.Logs != nil {
+		loggers = s.Logs.wrapLogger(accLog, r)
+	}
+
+	message := "handled request"
+	if nop, ok := GetVar(ctx, "unhandled").(bool); ok && nop {
+		message = "NOP"
+	}
+
+	logLevel := zapcore.InfoLevel
+	if status >= 500 {
+		logLevel = zapcore.ErrorLevel
+	}
+
+	var fields []zapcore.Field
+	for _, logger := range loggers {
+		c := logger.Check(logLevel, message)
+		if c == nil {
+			continue
+		}
+
+		if fields == nil {
+			userID, _ := repl.GetString("http.auth.user.id")
+
+			reqBodyLength := 0
+			if bodyReader != nil {
+				reqBodyLength = bodyReader.Length
+			}
+
+			extra := ctx.Value(ExtraLogFieldsCtxKey).(*ExtraLogFields)
+
+			fieldCount := 6
+			fields = make([]zapcore.Field, 0, fieldCount+len(extra.fields))
+			fields = append(
+				fields,
+				zap.Int("bytes_read", reqBodyLength),
+				zap.String("user_id", userID),
+				zap.Duration("duration", *duration),
+				zap.Int("size", size),
+				zap.Int("status", status),
+				zap.Object("resp_headers", LoggableHTTPHeader{
+					Header:               wrec.Header(),
+					ShouldLogCredentials: shouldLogCredentials,
+				}),
+			)
+			fields = append(fields, extra.fields...)
+		}
+
+		c.Write(fields...)
+	}
+}
+
+// protocol returns true if the protocol proto is configured/enabled.
+func (s *Server) protocol(proto string) bool {
+	if s.ListenProtocols == nil {
+		return slices.Contains(s.protocolsWithDefaults(), proto)
+	}
+
+	for _, lnProtocols := range s.ListenProtocols {
+		if slices.Contains(s.listenerProtocolsWithDefaults(lnProtocols), proto) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *Server) protocolsWithDefaults() []string {
+	if len(s.Protocols) == 0 {
+		return defaultProtocols
+	}
+	return s.Protocols
+}
+
+func (s *Server) listenerProtocolsWithDefaults(lnProtocols []string) []string {
+	serverProtocols := s.protocolsWithDefaults()
+	if len(lnProtocols) == 0 {
+		return serverProtocols
+	}
+
+	lnProtocolsDefault := false
+	lnProtocolsInclude := make([]string, 0, len(lnProtocols)+len(serverProtocols))
+	srvProtocolsInclude := make(map[string]struct{}, len(serverProtocols))
+	for _, srvProtocol := range serverProtocols {
+		srvProtocolsInclude[srvProtocol] = struct{}{}
+	}
+
+	for _, lnProtocol := range lnProtocols {
+		if lnProtocol == "" {
+			lnProtocolsDefault = true
+			continue
+		}
+		lnProtocolsInclude = append(lnProtocolsInclude, lnProtocol)
+		delete(srvProtocolsInclude, lnProtocol)
+	}
+
+	if lnProtocolsDefault {
+		for _, srvProtocol := range serverProtocols {
+			if _, ok := srvProtocolsInclude[srvProtocol]; ok {
+				lnProtocolsInclude = append(lnProtocolsInclude, srvProtocol)
+			}
+		}
+	}
+
+	return lnProtocolsInclude
+}
+
+// Listeners returns the server's listeners. These are active listeners,
+// so calling Accept() or Close() on them will probably break things.
+// They are made available here for read-only purposes (e.g. Addr())
+// and for type-asserting for purposes where you know what you're doing.
+//
+// EXPERIMENTAL: Subject to change or removal.
+func (s *Server) Listeners() []net.Listener { return s.listeners }
+
+// Name returns the server's name.
+func (s *Server) Name() string { return s.name }
+
+// PrepareRequest fills the request r for use in a Caddy HTTP handler chain. w and s can
+// be nil, but the handlers will lose response placeholders and access to the server.
+func PrepareRequest(r *http.Request, repl *caddy.Replacer, w http.ResponseWriter, s *Server) *http.Request {
+	// set up the context for the request
+	ctx := context.WithValue(r.Context(), caddy.ReplacerCtxKey, repl)
+	ctx = context.WithValue(ctx, ServerCtxKey, s)
+
+	trusted, clientIP := determineTrustedProxy(r, s)
+	ctx = context.WithValue(ctx, VarsCtxKey, map[string]any{
+		TrustedProxyVarKey: trusted,
+		ClientIPVarKey:     clientIP,
+	})
+
+	ctx = context.WithValue(ctx, routeGroupCtxKey, make(map[string]struct{}))
+
+	var url2 url.URL // avoid letting this escape to the heap
+	ctx = context.WithValue(ctx, OriginalRequestCtxKey, originalRequest(r, &url2))
+
+	ctx = context.WithValue(ctx, ExtraLogFieldsCtxKey, new(ExtraLogFields))
+	r = r.WithContext(ctx)
+
+	// once the pointer to the request won't change
+	// anymore, finish setting up the replacer
+	addHTTPVarsToReplacer(repl, r, w)
+
+	return r
+}
+
+// originalRequest returns a partial, shallow copy of
+// req, including: req.Method, deep copy of req.URL
+// (into the urlCopy parameter, which should be on the
+// stack), req.RequestURI, and req.RemoteAddr. Notably,
+// headers are not copied. This function is designed to
+// be very fast and efficient, and useful primarily for
+// read-only/logging purposes.
+func originalRequest(req *http.Request, urlCopy *url.URL) http.Request {
+	cloneURL(req.URL, urlCopy)
+	return http.Request{
+		Method:     req.Method,
+		RemoteAddr: req.RemoteAddr,
+		RequestURI: req.RequestURI,
+		URL:        urlCopy,
+	}
+}
+
+// determineTrustedProxy parses the remote IP address of
+// the request, and determines (if the server configured it)
+// if the client is a trusted proxy. If trusted, also returns
+// the real client IP if possible.
+func determineTrustedProxy(r *http.Request, s *Server) (bool, string) {
+	// If there's no server, then we can't check anything
+	if s == nil {
+		return false, ""
+	}
+
+	if s.TrustedProxiesUnix && r.RemoteAddr == "@" {
+		if s.TrustedProxiesStrict > 0 {
+			ipRanges := []netip.Prefix{}
+			if s.trustedProxies != nil {
+				ipRanges = s.trustedProxies.GetIPRanges(r)
+			}
+			return true, strictUntrustedClientIp(r, s.ClientIPHeaders, ipRanges, "@")
+		} else {
+			return true, trustedRealClientIP(r, s.ClientIPHeaders, "@")
+		}
+	}
+	// Parse the remote IP, ignore the error as non-fatal,
+	// but the remote IP is required to continue, so we
+	// just return early. This should probably never happen
+	// though, unless some other module manipulated the request's
+	// remote address and used an invalid value.
+	clientIP, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false, ""
+	}
+
+	// Client IP may contain a zone if IPv6, so we need
+	// to pull that out before parsing the IP
+	clientIP, _, _ = strings.Cut(clientIP, "%")
+	ipAddr, err := netip.ParseAddr(clientIP)
+	if err != nil {
+		return false, ""
+	}
+
+	// Check if the client is a trusted proxy
+	if s.trustedProxies == nil {
+		return false, ipAddr.String()
+	}
+
+	if isTrustedClientIP(ipAddr, s.trustedProxies.GetIPRanges(r)) {
+		if s.TrustedProxiesStrict > 0 {
+			return true, strictUntrustedClientIp(r, s.ClientIPHeaders, s.trustedProxies.GetIPRanges(r), ipAddr.String())
+		}
+		return true, trustedRealClientIP(r, s.ClientIPHeaders, ipAddr.String())
+	}
+
+	return false, ipAddr.String()
+}
+
+// isTrustedClientIP returns true if the given IP address is
+// in the list of trusted IP ranges.
+func isTrustedClientIP(ipAddr netip.Addr, trusted []netip.Prefix) bool {
+	return slices.ContainsFunc(trusted, func(prefix netip.Prefix) bool {
+		return prefix.Contains(ipAddr)
+	})
+}
+
+// trustedRealClientIP finds the client IP from the request assuming it is
+// from a trusted client. If there is no client IP headers, then the
+// direct remote address is returned. If there are client IP headers,
+// then the first value from those headers is used.
+func trustedRealClientIP(r *http.Request, headers []string, clientIP string) string {
+	// Read all the values of the configured client IP headers, in order
+	// nolint:prealloc
+	var values []string
+	for _, field := range headers {
+		values = append(values, r.Header.Values(field)...)
+	}
+
+	// If we don't have any values, then give up
+	if len(values) == 0 {
+		return clientIP
+	}
+
+	// Since there can be many header values, we need to
+	// join them together before splitting to get the full list
+	allValues := strings.SplitSeq(strings.Join(values, ","), ",")
+
+	// Get first valid left-most IP address
+	for part := range allValues {
+		// Some proxies may retain the port number, so split if possible
+		host, _, err := net.SplitHostPort(part)
+		if err != nil {
+			host = part
+		}
+
+		// Remove any zone identifier from the IP address
+		host, _, _ = strings.Cut(strings.TrimSpace(host), "%")
+
+		// Parse the IP address
+		ipAddr, err := netip.ParseAddr(host)
+		if err != nil {
+			continue
+		}
+		return ipAddr.String()
+	}
+
+	// We didn't find a valid IP
+	return clientIP
+}
+
+// strictUntrustedClientIp iterates through the list of client IP headers,
+// parses them from right-to-left, and returns the first valid IP address
+// that is untrusted. If no valid IP address is found, then the direct
+// remote address is returned.
+func strictUntrustedClientIp(r *http.Request, headers []string, trusted []netip.Prefix, clientIP string) string {
+	for _, headerName := range headers {
+		parts := strings.Split(strings.Join(r.Header.Values(headerName), ","), ",")
+
+		for _, part := range slices.Backward(parts) {
+			// Some proxies may retain the port number, so split if possible
+			host, _, err := net.SplitHostPort(part)
+			if err != nil {
+				host = part
+			}
+
+			// Remove any zone identifier from the IP address
+			host, _, _ = strings.Cut(strings.TrimSpace(host), "%")
+
+			// Parse the IP address
+			ipAddr, err := netip.ParseAddr(host)
+			if err != nil {
+				continue
+			}
+			if !isTrustedClientIP(ipAddr, trusted) {
+				return ipAddr.String()
+			}
+		}
+	}
+
+	return clientIP
+}
+
+// cloneURL makes a copy of r.URL and returns a
+// new value that doesn't reference the original.
+func cloneURL(from, to *url.URL) {
+	*to = *from
+	if from.User != nil {
+		userInfo := new(url.Userinfo)
+		*userInfo = *from.User
+		to.User = userInfo
+	}
+}
+
+// lengthReader is an io.ReadCloser that keeps track of the
+// number of bytes read from the request body.
+type lengthReader struct {
+	Source io.ReadCloser
+	Length int
+}
+
+func (r *lengthReader) Read(b []byte) (int, error) {
+	n, err := r.Source.Read(b)
+	r.Length += n
+	return n, err
+}
+
+func (r *lengthReader) Close() error {
+	return r.Source.Close()
+}
+
+// Context keys for HTTP request context values.
+const (
+	// For referencing the server instance
+	ServerCtxKey caddy.CtxKey = "server"
+
+	// For the request's variable table
+	VarsCtxKey caddy.CtxKey = "vars"
+
+	// For a partial copy of the unmodified request that
+	// originally came into the server's entry handler
+	OriginalRequestCtxKey caddy.CtxKey = "original_request"
+
+	// DEPRECATED: not used anymore.
+	// To refer to the underlying connection, implement a middleware plugin
+	// that RegisterConnContext during provisioning.
+	ConnCtxKey caddy.CtxKey = "conn"
+
+	// used to get the tls connection state in the context, if available
+	tlsConnectionStateFuncCtxKey caddy.CtxKey = "tls_connection_state_func"
+
+	// For tracking whether the client is a trusted proxy
+	TrustedProxyVarKey string = "trusted_proxy"
+
+	// For tracking the real client IP (affected by trusted_proxy)
+	ClientIPVarKey string = "client_ip"
+)
+
+var networkTypesHTTP3 = map[string]string{
+	"unixgram": "unixgram",
+	"udp":      "udp",
+	"udp4":     "udp4",
+	"udp6":     "udp6",
+	"tcp":      "udp",
+	"tcp4":     "udp4",
+	"tcp6":     "udp6",
+	"fdgram":   "fdgram",
+}
+
+// RegisterNetworkHTTP3 registers a mapping from non-HTTP/3 network to HTTP/3
+// network. This should be called during init() and will panic if the network
+// type is standard, reserved, or already registered.
+//
+// EXPERIMENTAL: Subject to change.
+func RegisterNetworkHTTP3(originalNetwork, h3Network string) {
+	if _, ok := networkTypesHTTP3[strings.ToLower(originalNetwork)]; ok {
+		panic("network type " + originalNetwork + " is already registered")
+	}
+	networkTypesHTTP3[originalNetwork] = h3Network
+}
+
+func getHTTP3Network(originalNetwork string) (string, error) {
+	h3Network, ok := networkTypesHTTP3[strings.ToLower(originalNetwork)]
+	if !ok {
+		return "", fmt.Errorf("network '%s' cannot handle HTTP/3 connections", originalNetwork)
+	}
+	return h3Network, nil
+}

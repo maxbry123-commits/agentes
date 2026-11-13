@@ -1,0 +1,224 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use bytes::Bytes;
+use http::{Method, Request, Response};
+use http_body_util::{BodyExt, Full};
+use tracing::warn;
+
+use restate_types::errors::GenericError;
+use restate_types::identifiers::IdempotencyId;
+use restate_types::invocation::InvocationQuery;
+use restate_types::invocation::client::{AttachInvocationResponse, GetInvocationOutputResponse};
+use restate_types::schema::invocation_target::InvocationTargetResolver;
+
+use super::HandlerError;
+use super::path_parsing::{InvocationRequestType, InvocationTargetType, TargetType};
+use super::{Handler, InvocationTargetRequest};
+use crate::RequestDispatcher;
+
+impl<Schemas, Dispatcher> Handler<Schemas, Dispatcher>
+where
+    Schemas: InvocationTargetResolver + Clone + Send + Sync + 'static,
+    Dispatcher: RequestDispatcher + Clone + Send + Sync + 'static,
+{
+    pub(crate) async fn handle_invocation<B: http_body::Body>(
+        self,
+        req: Request<B>,
+        invocation_request_type: InvocationRequestType,
+    ) -> Result<Response<Full<Bytes>>, HandlerError>
+    where
+        <B as http_body::Body>::Error: Into<GenericError>,
+    {
+        match invocation_request_type {
+            InvocationRequestType::Attach(invocation_target_type) => {
+                self.handle_invocation_attach(
+                    req,
+                    Self::convert_to_invocation_query(invocation_target_type)?,
+                )
+                .await
+            }
+            InvocationRequestType::GetOutput(invocation_target_type) => {
+                self.handle_invocation_get_output(
+                    req,
+                    Self::convert_to_invocation_query(invocation_target_type)?,
+                )
+                .await
+            }
+        }
+    }
+
+    pub(crate) fn convert_to_invocation_query(
+        invocation_target_type: InvocationTargetType,
+    ) -> Result<InvocationQuery, HandlerError> {
+        match invocation_target_type {
+            InvocationTargetType::InvocationId(id) => id
+                .parse()
+                .map(InvocationQuery::Invocation)
+                .map_err(|e| HandlerError::BadInvocationId(id, e)),
+            InvocationTargetType::IdempotencyId {
+                name,
+                target,
+                handler,
+                idempotency_id,
+            } => Ok(InvocationQuery::IdempotencyId(IdempotencyId::new(
+                name.into(),
+                match target {
+                    TargetType::Unkeyed => None,
+                    TargetType::Keyed { key } => Some(key.into()),
+                },
+                handler.into(),
+                idempotency_id.into(),
+                None,
+            ))),
+        }
+    }
+
+    pub(crate) async fn handle_invocation_attach<B: http_body::Body>(
+        self,
+        req: Request<B>,
+        invocation_query: InvocationQuery,
+    ) -> Result<Response<Full<Bytes>>, HandlerError>
+    where
+        <B as http_body::Body>::Error: Into<GenericError>,
+    {
+        if req.method() != Method::GET {
+            return Err(HandlerError::MethodNotAllowed);
+        }
+        self.attach_invocation_query(invocation_query).await
+    }
+
+    pub(crate) async fn handle_invocation_get_output<B: http_body::Body>(
+        self,
+        req: Request<B>,
+        invocation_query: InvocationQuery,
+    ) -> Result<Response<Full<Bytes>>, HandlerError>
+    where
+        <B as http_body::Body>::Error: Into<GenericError>,
+    {
+        if req.method() != Method::GET {
+            return Err(HandlerError::MethodNotAllowed);
+        }
+        self.get_invocation_output_query(invocation_query).await
+    }
+
+    pub(crate) async fn handle_attach_by_target<B: http_body::Body>(
+        self,
+        req: Request<B>,
+    ) -> Result<Response<Full<Bytes>>, HandlerError>
+    where
+        <B as http_body::Body>::Error: Into<GenericError>,
+    {
+        let invocation_query = Self::parse_invocation_target_body(req).await?;
+        self.attach_invocation_query(invocation_query).await
+    }
+
+    pub(crate) async fn handle_output_by_target<B: http_body::Body>(
+        self,
+        req: Request<B>,
+    ) -> Result<Response<Full<Bytes>>, HandlerError>
+    where
+        <B as http_body::Body>::Error: Into<GenericError>,
+    {
+        let invocation_query = Self::parse_invocation_target_body(req).await?;
+        self.get_invocation_output_query(invocation_query).await
+    }
+
+    async fn parse_invocation_target_body<B: http_body::Body>(
+        req: Request<B>,
+    ) -> Result<InvocationQuery, HandlerError>
+    where
+        <B as http_body::Body>::Error: Into<GenericError>,
+    {
+        if req.method() != Method::POST {
+            return Err(HandlerError::MethodNotAllowed);
+        }
+
+        let body_bytes = req
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| HandlerError::Body(e.into()))?
+            .to_bytes();
+
+        let target_request: InvocationTargetRequest = serde_json::from_slice(&body_bytes)
+            .map_err(|e| HandlerError::Body(anyhow::anyhow!("invalid request body: {e}").into()))?;
+
+        target_request.into_invocation_query()
+    }
+
+    async fn attach_invocation_query(
+        self,
+        invocation_query: InvocationQuery,
+    ) -> Result<Response<Full<Bytes>>, HandlerError> {
+        let response = match self
+            .dispatcher
+            .attach_invocation(invocation_query.clone())
+            .await
+            .map_err(HandlerError::GenericReadDispatcherError)?
+        {
+            AttachInvocationResponse::NotFound => {
+                return Err(HandlerError::InvocationNotFound);
+            }
+            AttachInvocationResponse::NotSupported => {
+                return Err(HandlerError::UnsupportedGetOutput);
+            }
+            AttachInvocationResponse::Ready(response) => response,
+        };
+
+        Self::reply_with_invocation_response(response, move |invocation_target| {
+            self.schemas
+                .pinned()
+                .resolve_latest_invocation_target(
+                    invocation_target.service_name(),
+                    invocation_target.handler_name(),
+                )
+                .ok_or(HandlerError::NotFound)
+        })
+    }
+
+    async fn get_invocation_output_query(
+        self,
+        invocation_query: InvocationQuery,
+    ) -> Result<Response<Full<Bytes>>, HandlerError> {
+        let response = match self
+            .dispatcher
+            .get_invocation_output(invocation_query.clone())
+            .await
+        {
+            Ok(GetInvocationOutputResponse::Ready(out)) => out,
+            Ok(GetInvocationOutputResponse::NotFound) => {
+                return Err(HandlerError::InvocationNotFound);
+            }
+            Ok(GetInvocationOutputResponse::NotReady) => return Err(HandlerError::NotReady),
+            Ok(GetInvocationOutputResponse::NotSupported) => {
+                return Err(HandlerError::UnsupportedGetOutput);
+            }
+            Err(e) => {
+                warn!(
+                    restate.invocation.query = ?invocation_query,
+                    "Failed to read output: {}",
+                    e,
+                );
+                return Err(HandlerError::GenericReadDispatcherError(e));
+            }
+        };
+
+        Self::reply_with_invocation_response(response, move |invocation_target| {
+            self.schemas
+                .pinned()
+                .resolve_latest_invocation_target(
+                    invocation_target.service_name(),
+                    invocation_target.handler_name(),
+                )
+                .ok_or(HandlerError::NotFound)
+        })
+    }
+}

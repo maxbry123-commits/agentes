@@ -1,0 +1,3081 @@
+import asyncio
+import datetime
+import inspect
+import time
+
+from huey.api import ChordResult
+from huey.api import MemoryHuey
+from huey.api import PeriodicTask
+from huey.api import Result
+from huey.api import ResultGroup
+from huey.api import Task
+from huey.api import TaskWrapper
+from huey.api import chord
+from huey.api import crontab
+from huey.api import group
+from huey.constants import EmptyData
+from huey.exceptions import CancelExecution
+from huey.exceptions import RateLimitExceeded
+from huey.exceptions import ResultTimeout
+from huey.exceptions import ConfigurationError
+from huey.exceptions import RetryTask
+from huey.exceptions import TaskException
+from huey.exceptions import TaskLockedException
+from huey.exceptions import TaskTimeout
+from huey.serializer import SignedSerializer
+from huey.tests.base import BaseTestCase
+from huey.utils import Error
+from huey.utils import SKIPPED
+
+
+class TestError(Exception):
+    def __init__(self, m=None):
+        self._m = m
+    def __repr__(self):
+        return 'TestError(%s)' % self._m
+
+class ExcCounter(Exception):
+    counter = 0
+    def __init__(self):
+        ExcCounter.counter += 1
+        self._v = ExcCounter.counter
+    def __repr__(self):
+        return 'ExcCounter(%s)' % self._v
+
+
+
+class TestQueue(BaseTestCase):
+    def setUp(self):
+        super(TestQueue, self).setUp()
+        ExcCounter.counter = 0
+
+    def test_workflow(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        result = task_a(3)
+        self.assertTrue(isinstance(result, Result))
+        self.assertFalse(result.is_ready())
+        self.assertEqual(len(self.huey), 1)  # One item in queue.
+        task = self.huey.dequeue()
+        self.assertEqual(len(self.huey), 0)  # No items in queue.
+        self.assertEqual(self.huey.result_count(), 0)  # No results.
+
+        self.assertEqual(result.id, task.id)  # Result points to task.
+        self.assertFalse(result.is_ready())
+        self.assertTrue(result.get() is None)
+
+        # Execute task, placing result in result store and returning the value
+        # produced by the task.
+        self.assertEqual(self.huey.execute(task), 4)
+
+        # Data is present in result store, we can read it from the result
+        # instance, and after reading the value is removed.
+        self.assertEqual(self.huey.result_count(), 1)
+        self.assertTrue(result.is_ready())
+        self.assertEqual(result.get(), 4)
+        self.assertEqual(self.huey.result_count(), 0)
+
+    def test_result_store(self):
+        @self.huey.task()
+        def task_a(n):
+            if n == 2:
+                return None
+            else:
+                return n - 1
+
+        r1, r2, r3 = [task_a(i) for i in (1, 2, 3)]
+        for _ in range(3):
+            self.execute_next()
+
+        self.assertEqual(self.huey.result_count(), 2)  # Didn't store None.
+        self.assertEqual(r1(), 0)
+        self.assertTrue(r2._get(preserve=True) is EmptyData)
+        self.assertTrue(r2() is None)
+        self.assertEqual(r3(), 2)
+
+        self.huey.store_none = True
+        r4 = task_a(2)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(self.huey.result_count(), 1)
+        self.assertTrue(r4._get() is None)
+
+    def test_result_timeout(self):
+        @self.huey.task()
+        def task_a(n):
+            return n
+
+        r = task_a(1)
+        with self.assertRaises(ResultTimeout):
+            r.get(blocking=True, timeout=0.01)
+        self.assertEqual(self.execute_next(), 1)
+        self.assertEqual(self.huey.result_count(), 1)
+        self.assertEqual(r(), 1)
+
+    def test_result_readiness(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        r = task_a(1)
+        self.assertFalse(r.is_ready())
+        self.assertEqual(self.execute_next(), 2)
+        self.assertTrue(r.is_ready())
+        self.assertEqual(r(), 2)
+
+        r = task_a(2)
+        self.assertFalse(r.is_ready())
+        self.assertEqual(self.execute_next(), 3)
+        self.assertEqual(r(), 3)
+        self.assertTrue(r.is_ready())  # Invert order of checks - OK.
+
+    def test_result_readiness_reads_result(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        r = task_a(1)
+        self.assertEqual(self.execute_next(), 2)
+
+        # is_ready() reads the result into the handle, so the caller is
+        # guaranteed to be able to read it.
+        self.assertTrue(r.is_ready())
+        self.assertEqual(self.huey.result_count(), 0)
+        self.assertEqual(r.get(preserve=True), 2)
+        self.assertEqual(r(), 2)
+
+        # Another handle for the same task does not see a result it cannot
+        # read.
+        r2 = Result(self.huey, r.task)
+        self.assertFalse(r2.is_ready())
+
+    def test_scheduling(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        result = task_a.schedule((3,), delay=60)
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.huey.scheduled_count(), 0)
+
+        task = self.huey.dequeue()
+        self.assertFalse(self.huey.ready_to_run(task))
+        value = self.huey.execute(task)  # Will not be run, will be scheduled.
+        self.assertTrue(value is None)
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.scheduled_count(), 1)
+
+        sched = self.huey.scheduled()
+        self.assertEqual(len(sched), 1)
+        self.assertEqual(sched[0], task)
+
+        # If we set the timestamp ahead, then we can verify the task will be
+        # ready to run in 60 seconds (as expected).
+        timestamp = datetime.datetime.now() + datetime.timedelta(seconds=60)
+        self.assertTrue(self.huey.ready_to_run(task, timestamp))
+
+        # Schedule a task with an old timestamp, it will be run immediately.
+        eta = datetime.datetime(2000, 1, 1)  # In the past.
+        result = task_a.schedule((4,), eta=eta)
+        task2 = self.huey.dequeue()
+        self.assertTrue(self.huey.ready_to_run(task2))
+        self.assertEqual(self.huey.execute(task2), 5)
+        self.assertEqual(result.get(), 5)
+
+        # Original task still scheduled.
+        sched = self.huey.scheduled()
+        self.assertEqual(len(sched), 1)
+        self.assertEqual(sched[0], task)
+
+    def test_schedule_s(self):
+        @self.huey.task()
+        def add(a, b):
+            return a + b
+
+        task = add.s(1, 2, delay=10)
+        task = task.then(add, 3, delay=20)
+        r1, r2 = self.huey.enqueue(task)
+        self.execute_next()
+
+        sched = self.huey.scheduled()
+        self.assertEqual(len(sched), 1)
+        self.assertEqual(sched[0], task)
+
+        t10 = datetime.datetime.now() + datetime.timedelta(seconds=10)
+        self.assertFalse(self.huey.ready_to_run(task))
+        self.assertTrue(self.huey.ready_to_run(task, t10))
+
+        t20 = datetime.datetime.now() + datetime.timedelta(seconds=20)
+        oc = task.on_complete
+        self.assertFalse(self.huey.ready_to_run(oc, t10))
+        self.assertTrue(self.huey.ready_to_run(oc, t20))
+
+        r = r1.reschedule()
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), 3)
+
+        self.assertEqual(len(self.huey), 1)
+        task = self.huey.dequeue()
+        self.assertFalse(self.huey.ready_to_run(task))
+        self.assertTrue(self.huey.ready_to_run(task, t20))
+        self.assertEqual(self.huey.execute(task, t20), 6)
+
+    def test_revoke_task(self):
+        state = {}
+        @self.huey.task()
+        def task_a(n):
+            state[n] = n  # Modify some state for extra visibility.
+            return n + 1
+
+        self.assertFalse(task_a.is_revoked())
+        task_a.revoke()
+        self.assertTrue(task_a.is_revoked())
+
+        r1, r2, r3 = task_a(1), task_a(2), task_a(3)
+        self.assertEqual(len(self.huey), 3)
+
+        # The result-wrapper will indicate the tasks are revoked.
+        for r in (r1, r2, r3):
+            self.assertTrue(r.is_revoked())
+            self.assertTrue(self.huey.is_revoked(r))
+            # We don't have the task class when using an ID so this doesn't
+            # work.
+            self.assertFalse(self.huey.is_revoked(r.task.id))
+
+        # Task is discarded and not executed, due to being revoked.
+        t1 = self.huey.dequeue()
+        self.assertTrue(self.huey.execute(t1) is None)
+        self.assertTrue(r1.get() is None)
+        self.assertEqual(state, {})
+
+        # Next task is also discarded.
+        self.assertTrue(r2.is_revoked())
+        self.assertTrue(self.execute_next() is None)
+        self.assertTrue(r2.get() is None)
+        self.assertEqual(state, {})
+
+        # Restore task, we will see side-effects and results of execution.
+        self.assertTrue(task_a.is_revoked())  # Still revoked.
+        self.assertTrue(r3.is_revoked())
+        self.assertTrue(task_a.restore())
+        self.assertFalse(task_a.is_revoked())
+        self.assertFalse(r3.is_revoked())
+
+        t3 = self.huey.dequeue()
+        self.assertEqual(self.huey.execute(t3), 4)
+        self.assertEqual(r3.get(), 4)
+        self.assertEqual(state, {3: 3})
+
+    def test_revoke_task_instance(self):
+        state = {}
+        @self.huey.task()
+        def task_a(n):
+            state[n] = n
+            return n + 1
+
+        r1, r2, r3 = [task_a(i) for i in (1, 2, 3)]
+        self.assertEqual(len(self.huey), 3)
+
+        r1.revoke()
+        r3.revoke()
+
+        self.assertTrue(r1.is_revoked())
+        self.assertFalse(r2.is_revoked())
+        self.assertTrue(r3.is_revoked())
+
+        self.assertTrue(self.huey.is_revoked(r1))
+        self.assertTrue(self.huey.is_revoked(r1.task.id))
+        self.assertFalse(self.huey.is_revoked(r2))
+        self.assertFalse(self.huey.is_revoked(r2.task.id))
+
+        # Task is discarded and not executed, due to being revoked.
+        t1 = self.huey.dequeue()
+        self.assertTrue(self.huey.execute(t1) is None)
+        self.assertTrue(r1.get() is None)
+        self.assertEqual(state, {})
+
+        # Second invocation will be executed normally.
+        t2 = self.huey.dequeue()
+        self.assertEqual(self.huey.execute(t2), 3)
+        self.assertEqual(r2.get(), 3)
+        self.assertEqual(state, {2: 2})
+
+        # Third invocation is also revoked, but we will restore it beforehand.
+        t3 = self.huey.dequeue()
+        r3.restore()
+        self.assertFalse(r3.is_revoked())
+        self.assertEqual(self.huey.execute(t3), 4)
+        self.assertEqual(r3.get(), 4)
+        self.assertEqual(state, {2: 2, 3: 3})
+
+        # Attempting to re-enqueue and re-execute the revoked t1 will now work,
+        # as it is only revoked once by default.
+        self.assertFalse(r1.is_revoked())
+        self.huey.enqueue(t1)
+        self.assertEqual(self.execute_next(), 2)
+        self.assertEqual(state, {1: 1, 2: 2, 3: 3})
+        self.assertFalse(r1.is_revoked())  # Still revoked.
+
+    def test_revoke_task_instance_persistent(self):
+        state = []
+        @self.huey.task()
+        def task_a(n):
+            state.append(n)
+            return n + 1
+
+        r1 = task_a(1)
+        r2 = task_a(2)
+        r1.revoke(revoke_once=False)
+        r2.revoke()
+        self.assertTrue(r1.is_revoked())
+        self.assertTrue(r2.is_revoked())
+
+        t1 = self.huey.dequeue()
+        self.assertTrue(self.huey.execute(t1) is None)
+        self.assertTrue(r1.is_revoked())
+
+        t2 = self.huey.dequeue()
+        self.assertTrue(self.huey.execute(t2) is None)
+        self.assertFalse(r2.is_revoked())  # No longer revoked.
+        self.assertEqual(state, [])
+
+        self.huey.enqueue(t1)
+        self.huey.enqueue(t2)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(self.execute_next(), 3)
+        self.assertEqual(r2.get(), 3)
+        self.assertEqual(state, [2])
+
+        self.assertTrue(r1.is_revoked())
+        self.assertFalse(r2.is_revoked())
+        self.assertEqual(self.huey.result_count(), 1)  # t1's revoke id.
+
+    def test_revoke_by_id(self):
+        state = []
+        @self.huey.task()
+        def task_a(n):
+            state.append(n)
+            return n
+
+        r1, r2, r3 = [task_a(i) for i in (1, 2, 3)]
+        for r in (r1, r2, r3):
+            self.huey.revoke_by_id(r.id)
+            self.assertTrue(r.is_revoked())
+
+        self.huey.restore_by_id(r2.id)  # Restore one instance.
+
+        for _ in range(3):
+            self.execute_next()
+
+        self.assertEqual(state, [2])
+        self.assertEqual(r2(), 2)
+        self.assertTrue(r1() is None and r3() is None)
+
+    def test_is_revoked_by_id(self):
+        @self.huey.task()
+        def task_a(n):
+            return n
+
+        r1, r2 = task_a(1), task_a(2)
+        self.huey.revoke_by_id(r1.id)
+        self.assertTrue(self.huey.is_revoked(r1.id))
+        self.assertFalse(self.huey.is_revoked(r2.id))
+
+        task_a.revoke()
+        self.assertTrue(r2.is_revoked())
+        self.assertFalse(self.huey.is_revoked(r2.id))
+
+    def test_revoke_once(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        r1, r2, r3 = [task_a(i) for i in (1, 2, 3)]
+        task_a.revoke(revoke_once=True)
+
+        # The task (and all subtasks) now appear* to be revoked.
+        self.assertTrue(task_a.is_revoked())
+        for result in (r1, r2, r3):
+            self.assertTrue(result.is_revoked())
+
+        # However we'll see that this is not the case.
+        for _ in range(3):
+            self.execute_next()
+
+            # After executing the first task, things are no longer revoked.
+            self.assertFalse(task_a.is_revoked())
+
+        self.assertTrue(r1() is None)
+        self.assertEqual(r2(), 3)
+        self.assertEqual(r3(), 4)
+
+        # Verify everything has been consumed.
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.result_count(), 0)
+
+    def test_revoke_until(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        timestamp = datetime.datetime(2000, 1, 1)
+        second = datetime.timedelta(seconds=1)
+        zero = datetime.timedelta(seconds=0)
+        task_a.revoke(revoke_until=timestamp)
+
+        # The task appears revoked if we specify timestamp 1s prior, and at the
+        # timestamp, the task appears to be no longer revoked.
+        revoked_ts = timestamp - second
+        self.assertFalse(task_a.is_revoked(timestamp=timestamp, peek=True))
+        self.assertTrue(task_a.is_revoked(timestamp=revoked_ts, peek=True))
+
+        r1, r2, r3, r4 = [task_a(i) for i in (1, 2, 3, 4)]
+        for delta in (-second, zero, second, -second):
+            task = self.huey.dequeue()
+            self.huey.execute(task, timestamp + delta)
+
+        self.assertTrue(r1() is None)
+        self.assertEqual(r2(), 3)
+        self.assertEqual(r3(), 4)
+        # The execute() code-path will clear the "revoked" flag if it appears
+        # that the cutoff-time has been exceeded (we don't expect time to flow
+        # backwards), so r4 will run *even though* the "apparent" timestamp
+        # when it is executed is prior to the revocation being removed. This
+        # happens because the key which contains the revocation metadata is no
+        # longer present.
+        self.assertEqual(r4(), 5)
+
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.result_count(), 0)
+
+    def test_revoke_periodic(self):
+        state = [0]
+        @self.huey.periodic_task(crontab(minute='0'))
+        def task_p():
+            state[0] = state[0] + 1
+
+        task_p.revoke()
+        self.assertTrue(task_p.is_revoked())
+        self.assertTrue(task_p.is_revoked())  # Verify check is idempotent.
+
+        task_p.restore()
+        self.assertFalse(task_p.is_revoked())
+        self.assertFalse(task_p.restore())  # It is not revoked.
+
+        task_p.revoke(revoke_once=True)
+        self.assertTrue(task_p.is_revoked())
+        self.assertTrue(task_p.is_revoked())  # Verify idempotent.
+
+        r = task_p()
+        self.execute_next()
+        self.assertTrue(r() is None)
+        self.assertEqual(state, [0])  # Task was not run, no side-effect.
+
+        self.assertFalse(task_p.is_revoked())  # No longer revoked.
+
+        timestamp = datetime.datetime(2000, 1, 1)
+        second = datetime.timedelta(seconds=1)
+        task_p.revoke(revoke_until=timestamp)
+        self.assertFalse(task_p.is_revoked(timestamp=timestamp))
+        self.assertFalse(task_p.is_revoked(timestamp=timestamp + second))
+        self.assertTrue(task_p.is_revoked(timestamp=timestamp - second))
+
+        task_p.restore()
+        self.assertFalse(task_p.is_revoked())
+        self.assertFalse(task_p.is_revoked(timestamp=timestamp - second))
+
+    def test_reschedule(self):
+        state = []
+        @self.huey.task()
+        def task_a(n):
+            state.append(n)
+            return n + 1
+
+        r = task_a(2)
+        self.assertEqual(len(self.huey), 1)
+
+        # Rescheduling the task will revoke the original invocation and enqueue
+        # a new task instance.
+        eta = datetime.datetime(2000, 1, 1)
+        rs = r.reschedule(eta=eta)
+        self.assertEqual(len(self.huey), 2)
+
+        # The new task has a new ID.
+        self.assertTrue(r.id != rs.id)
+
+        # Attempting to execute the original instance... It is revoked.
+        task = self.huey.dequeue()
+        self.assertEqual(task.id, r.id)
+        self.assertTrue(r.is_revoked())
+        self.assertTrue(self.huey.execute(task) is None)
+        self.assertEqual(state, [])
+
+        # We can execute the rescheduled instance.
+        task = self.huey.dequeue()
+        self.assertEqual(task.id, rs.id)
+        self.assertFalse(rs.is_revoked())
+        self.assertEqual(self.huey.execute(task), 3)
+        self.assertEqual(rs.get(), 3)
+        self.assertEqual(state, [2])
+
+        # Verify state of internals.
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.result_count(), 0)
+        self.assertEqual(self.huey.scheduled_count(), 0)
+
+        # Per-call retry settings, including backoff, are preserved.
+        r2 = task_a.schedule((3,), delay=60, retries=2, retry_delay=5,
+                             retry_backoff=4)
+        rs2 = r2.reschedule(delay=120)
+        new_task = [t for t in self.huey.pending() if t.id == rs2.id][0]
+        self.assertEqual(new_task.retries, 2)
+        self.assertEqual(new_task.retry_delay, 5)
+        self.assertEqual(new_task.retry_backoff, 4)
+
+    def test_blocking_result_no_sentinel_leak(self):
+        # A wait that ends without an obtainable result, e.g. read by another
+        # caller or a dropped connection, raises rather than surfacing the
+        # internal EmptyData sentinel.
+        self.huey.storage.wait_result = lambda *a, **kw: True
+        result = Result(self.huey, Task(id='tx'))
+        self.assertRaises(ResultTimeout,
+                          lambda: result.get(blocking=True))
+
+    def test_reschedule_no_delay(self):
+        state = []
+
+        @self.huey.task(context=True)
+        def task_s(task=None):
+            state.append(task.id)
+            return True
+
+        res = task_s()
+        res2 = res.reschedule()
+        self.assertTrue(res.id != res2.id)
+
+        self.assertEqual(len(self.huey), 2)
+        self.assertTrue(self.execute_next() is None)
+        self.assertTrue(self.execute_next())
+        self.assertTrue(res2())
+
+        self.assertEqual(state, [res2.id])
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.result_count(), 0)
+        self.assertEqual(self.huey.scheduled_count(), 0)
+
+    def test_expires(self):
+        state = []
+        now = datetime.datetime.now()
+        seconds = lambda s: now + datetime.timedelta(seconds=s)
+
+        # Tasks with both relative and absolute expire time.
+        @self.huey.task(context=True, expires=10)
+        def task_r(task=None):
+            state.append(task.id)
+            return True
+
+        @self.huey.task(context=True, expires=seconds(10))
+        def task_a(task=None):
+            state.append(task.id)
+            return True
+
+        for exp_task in (task_r, task_a):
+            # Task enqueued and executes normally since we're within the 10
+            # second window.
+            res = exp_task()
+            self.assertEqual(len(self.huey), 1)
+            self.assertTrue(self.execute_next(timestamp=seconds(1)))
+            self.assertTrue(res())
+            self.assertEqual(state, [res.id])
+
+            # We'll create another task and attempt to run it, as if 10 seconds
+            # had elapsed, and it will be expired.
+            r2 = exp_task()
+            task = self.huey.dequeue()
+
+            # We'll ensure that the TTL was set for ~10 seconds from now.
+            self.assertTrue(seconds(10) <= task.expires_resolved < seconds(12))
+
+            # Attempt to execute with execution timestamp 12s from task
+            # creation - the task will be expired.
+            self.huey.execute(task, seconds(12))
+            self.assertEqual(state, [res.id])
+
+            # Attempt to execute with execution timestamp at 5s.
+            self.huey.execute(task, seconds(5))
+            self.assertEqual(state, [res.id, r2.id])
+
+            # We can override the expire-time at invocation.
+            r3 = exp_task(expires=60)
+            task = self.huey.dequeue()
+            self.assertTrue(seconds(60) <= task.expires_resolved < seconds(62))
+
+            # Task is expired.
+            self.huey.execute(task, seconds(63))
+            self.assertEqual(state, [res.id, r2.id])
+
+            # Run within the expiration time.
+            self.huey.execute(task, seconds(50))
+            self.assertEqual(state, [res.id, r2.id, r3.id])
+
+            # We can also use datetime objects for default and per-task expire.
+            r4 = exp_task(expires=seconds(30))
+            task = self.huey.dequeue()
+            self.assertEqual(task.expires_resolved, seconds(30))
+            self.huey.execute(task, seconds(31))
+            self.assertEqual(state, [res.id, r2.id, r3.id])
+            self.huey.execute(task, seconds(30))
+            self.assertEqual(state, [res.id, r2.id, r3.id, r4.id])
+
+            state = []
+
+    def test_scheduling_expires(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        now = datetime.datetime.now()
+        seconds = lambda s: now + datetime.timedelta(seconds=s)
+
+        result = task_a.schedule((3,), eta=seconds(60), expires=5)
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.huey.scheduled_count(), 0)
+
+        # Will be added to schedule, since task is not ready to run.
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.scheduled_count(), 1)
+
+        # Simulate consumer running the scheduler after 60s elapsed.
+        task, = self.huey.read_schedule(timestamp=seconds(60))
+        self.assertEqual(task.expires, 5)  # Expire time is present.
+        self.huey.enqueue(task)
+
+        task = self.huey.dequeue()  # Read our task back.
+        task.eta = now  # Simulate the task being ready to run.
+        self.assertEqual(self.huey.execute(task, seconds(1)), 4)
+
+    def test_reschedule_expires(self):
+        state = []
+        now = datetime.datetime.now()
+        seconds = lambda s: now + datetime.timedelta(seconds=s)
+
+        @self.huey.task(context=True)
+        def task_s(task=None):
+            state.append(task.id)
+            return True
+
+        res = task_s()
+        res2 = res.reschedule(expires=seconds(10))
+        self.assertEqual(len(self.huey), 2)
+        self.assertTrue(self.execute_next() is None)  # 1st was revoked.
+
+        task = self.huey.dequeue()
+        self.assertEqual(task.expires_resolved, seconds(10))
+        self.assertTrue(self.huey.execute(task, seconds(11)) is None)
+        self.assertEqual(state, [])
+
+        res3 = res2.reschedule(expires=5)
+        task = self.huey.dequeue()
+        self.assertTrue(seconds(5) < task.expires_resolved < seconds(7))
+        self.assertEqual(self.huey.execute(task), True)
+        self.assertEqual(state, [res3.id])
+
+    def test_reschedule_priority(self):
+        state = []
+
+        @self.huey.task(context=True)
+        def task_s(task=None):
+            state.append(task.id)
+            return True
+
+        res = task_s(priority=10)
+        res2 = res.reschedule(priority=99)
+        self.assertEqual(len(self.huey), 2)
+
+        task = self.huey.dequeue()
+        self.assertEqual(task.priority, 99)
+        self.assertTrue(self.huey.execute(task))
+
+        task = self.huey.dequeue()
+        self.assertEqual(task.priority, 10)
+        self.assertTrue(res.is_revoked())
+        self.assertTrue(self.huey.execute(task) is None)
+
+        self.assertEqual(state, [res2.id])
+
+    def test_timeout(self):
+        state = []
+
+        @self.huey.task(context=True)
+        def normal(task=None):
+            state.append(task.timeout)
+
+        @self.huey.task(context=True, timeout=1)
+        def timeout(task=None):
+            state.append(task.timeout)
+
+        def assertTimeout(expected):
+            task = self.huey.dequeue()
+            self.assertEqual(task.timeout, expected)
+            self.huey.execute(task)
+            self.assertEqual(state, [expected])
+            state.clear()
+
+        # Test behavior across APIs w/a task that has no timeout.
+        normal()
+        assertTimeout(None)
+
+        normal(timeout=None)
+        assertTimeout(None)
+
+        normal(timeout=0)
+        assertTimeout(0)  # Zero treated as no timeout.
+
+        normal(timeout=2)
+        assertTimeout(2)
+
+        t = normal.s(timeout=3)
+        self.huey.enqueue(t)
+        assertTimeout(3)
+
+        normal.schedule(delay=-1)
+        assertTimeout(None)
+
+        normal.schedule(delay=-1, timeout=4)
+        assertTimeout(4)
+
+        # Test behavior across APIs w/a task that has default_timeout.
+        timeout()
+        assertTimeout(1)
+
+        timeout(timeout=2)
+        assertTimeout(2)
+
+        timeout(timeout=None)
+        assertTimeout(1)
+
+        timeout(timeout=0)
+        assertTimeout(0)
+
+        t = timeout.s(timeout=3)
+        self.huey.enqueue(t)
+        assertTimeout(3)
+
+        timeout.schedule(delay=-1)
+        assertTimeout(1)
+
+        timeout.schedule(delay=-1, timeout=4)
+        assertTimeout(4)
+
+    def test_timeout_coop_helpers(self):
+        @self.huey.task(context=True)
+        def normal(task=None):
+            pass
+
+        @self.huey.task(context=True, timeout=1)
+        def timeout(task=None):
+            pass
+
+        t = normal.s()
+        self.assertFalse(t.is_timed_out)
+        self.assertEqual(t.time_remaining, float('inf'))
+        t.check_timeout()  # No exc.
+
+        t = timeout.s()
+        t._deadline = time.monotonic() + 1
+        self.assertFalse(t.is_timed_out)
+        self.assertTrue(0 < t.time_remaining <= 1)
+        t.check_timeout()  # No exc.
+
+        t._deadline = time.monotonic() - 1
+        self.assertTrue(t.is_timed_out)
+        self.assertEqual(t.time_remaining, 0)
+        with self.assertRaises(TaskTimeout):
+            t.check_timeout()
+
+    def test_timeout_cooperative_full(self):
+        state = []
+
+        @self.huey.task(timeout=0.001, context=True)
+        def timeout(n, task=None):
+            time.sleep(0.002)
+            task.check_timeout()
+            state.append(n)
+            return n
+
+        r = timeout(1)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(state, [])
+
+        self.assertEqual(self.huey.result_count(), 1)
+        exc = self.trap_exception(r)
+        self.assertTrue('timeout' in str(exc).lower())
+
+        r = timeout(1, timeout=1000)
+        self.assertEqual(self.execute_next(), 1)
+        self.assertEqual(state, [1])
+
+    def test_task_error(self):
+        @self.huey.task()
+        def task_e(n):
+            if n == 0:
+                raise TestError('uh-oh')
+            return n + 1
+
+        re = task_e(0)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(self.huey.result_count(), 1)
+
+        err = self.trap_exception(re)
+        self.assertEqual(err.metadata['error'], 'TestError(uh-oh)')
+        self.assertEqual(err.metadata['retries'], 0)
+        self.assertIn('TestError', err.metadata['traceback'])
+        self.assertIn('uh-oh', err.metadata['traceback'])
+
+        self.assertEqual(self.huey.result_count(), 0)
+        self.assertEqual(len(self.huey), 0)
+
+    def test_subtask_error(self):
+        @self.huey.task()
+        def task_i(a):
+            raise TestError(a)
+
+        @self.huey.task()
+        def task_o(a):
+            res = task_i(a)
+            self.execute_next()
+            return res.get(blocking=True)
+
+        r = task_o(1)
+        self.assertTrue(self.execute_next() is None)
+        exc = self.trap_exception(r)
+        self.assertEqual(exc.metadata['error'], 'TestError(1)')
+
+    def test_retry(self):
+        @self.huey.task(retries=1)
+        def task_a(n):
+            if n < 0:
+                raise ExcCounter()
+            return n + 1
+
+        # Execute the task normally.
+        r = task_a(1)
+        self.assertEqual(self.execute_next(), 2)
+        self.assertEqual(r.get(), 2)
+        self.assertEqual(len(self.huey), 0)
+
+        # Trigger an exception being raised. Since the task has retries, it
+        # will be re-enqueued and the number of retries is decremented.
+        r = task_a(-1)
+        self.assertTrue(self.execute_next() is None)
+
+        # Attempting to resolve the result value will raise a TaskException,
+        # which wraps the original error from the task.
+        task_error = self.trap_exception(r)
+        self.assertEqual(task_error.metadata['error'], 'ExcCounter(1)')
+        self.assertEqual(task_error.metadata['retries'], 1)
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.huey.result_count(), 0)
+
+        # Dequeue next attempt. Note that the task uses the same ID as the
+        # previous invocation, allowing us to reuse the result object.
+        task = self.huey.dequeue()
+        self.assertEqual(r.id, task.id)
+        self.assertTrue(self.huey.execute(task) is None)
+        self.assertEqual(self.huey.result_count(), 1)
+
+        # Since the result will cache the task result locally, we need to reset
+        # it to re-read. Attempting to read again will just return the cached
+        # value.
+        task_error = self.trap_exception(r)
+        self.assertEqual(task_error.metadata['error'], 'ExcCounter(1)')
+        self.assertEqual(self.huey.result_count(), 1)  # No change.
+
+        # Reset the state of the result object in order to be able to read.
+        r.reset()
+
+        # As expected, the error occurs again.
+        task_error = self.trap_exception(r)
+        self.assertEqual(task_error.metadata['error'], 'ExcCounter(2)')
+        self.assertEqual(task_error.metadata['retries'], 0)
+        self.assertEqual(len(self.huey), 0)  # Not enqueued again.
+        self.assertEqual(self.huey.result_count(), 0)
+
+    def test_retries_with_override(self):
+        @self.huey.task(retries=1)
+        def task_a():
+            raise ExcCounter()
+
+        # Override the number of retries so it is not retried.
+        r = task_a(retries=0)
+        self.assertTrue(self.execute_next() is None)
+
+        # Attempting to resolve the result value will raise a TaskException,
+        # which wraps the original error from the task. The task will not be
+        # retried, so it is not enqueued again.
+        task_error = self.trap_exception(r)
+        self.assertEqual(task_error.metadata['error'], 'ExcCounter(1)')
+        self.assertEqual(task_error.metadata['retries'], 0)
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.result_count(), 0)
+
+        # Override the number of retries.
+        r = task_a(retries=2)
+        self.assertTrue(self.execute_next() is None)
+
+        # Attempting to resolve the result value will raise a TaskException,
+        # which wraps the original error from the task.
+        task_error = self.trap_exception(r)
+        self.assertEqual(task_error.metadata['error'], 'ExcCounter(2)')
+        self.assertEqual(task_error.metadata['retries'], 2)
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.huey.result_count(), 0)
+        self.huey.dequeue()  # Throw away task.
+
+        # Ensure this works with scheduling as well.
+        r = task_a.schedule(delay=-1, retries=3)
+        self.assertTrue(self.execute_next() is None)
+        task_error = self.trap_exception(r)
+        self.assertEqual(task_error.metadata['error'], 'ExcCounter(3)')
+        self.assertEqual(task_error.metadata['retries'], 3)
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.huey.result_count(), 0)
+
+    def test_retry_periodic(self):
+        state = [0]
+
+        @self.huey.periodic_task(crontab(hour='0'), retries=2)
+        def task_p():
+            if state[0] == 0:
+                state[0] = 1
+                raise TestError('oops')
+            elif state[0] == 1:
+                state[0] = 2
+            else:
+                state[0] = 9  # Should not happen.
+
+        task_p()
+        self.assertTrue(self.execute_next() is None)
+
+        # The task is re-enqueued to be retried. Verify retry count is right
+        # and execute.
+        self.assertEqual(len(self.huey), 1)
+        task = self.huey.dequeue()
+        self.assertEqual(task.retries, 1)
+        self.huey.execute(task)
+
+        self.assertEqual(state, [2])
+        self.assertEqual(len(self.huey), 0)
+
+    def test_retry_to_success(self):
+        state = [0]
+        @self.huey.task(retries=2)
+        def task_a():
+            state[0] = state[0] + 1
+            if state[0] != 3:
+                raise ValueError('try again')
+            return 1337
+
+        r = task_a()
+        self.assertTrue(self.execute_next() is None)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(self.execute_next(), 1337)
+        self.assertEqual(r.get(), 1337)
+
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.result_count(), 0)
+
+    def test_retry_delay(self):
+        @self.huey.task(retries=2, retry_delay=60)
+        def task_a():
+            raise ValueError('try again')
+
+        r = task_a()
+        self.assertTrue(self.execute_next() is None)
+        self.trap_exception(r)
+
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.scheduled_count(), 1)
+        task, = self.huey.scheduled()  # Dequeue the delayed retry.
+        self.assertTrue(task.eta is not None)
+        self.assertEqual(task.retries, 1)
+        self.assertFalse(self.huey.ready_to_run(task))
+
+        dt = datetime.datetime.now() + datetime.timedelta(seconds=61)
+        self.assertTrue(self.huey.ready_to_run(task, dt))
+
+    def test_retry_delay_periodic(self):
+        @self.huey.periodic_task(crontab(), retries=2, retry_delay=60)
+        def task_p():
+            raise ValueError('try again')
+
+        r = task_p()
+        self.assertTrue(self.execute_next() is None)
+
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.scheduled_count(), 1)
+        task, = self.huey.scheduled()  # Dequeue the delayed retry.
+        self.assertEqual(task.id, r.id)
+        self.assertTrue(task.eta is not None)
+        self.assertEqual(task.retries, 1)
+        self.assertFalse(self.huey.ready_to_run(task))
+
+        dt = datetime.datetime.now() + datetime.timedelta(seconds=61)
+        self.assertTrue(self.huey.ready_to_run(task, dt))
+
+    def test_retry_backoff(self):
+        @self.huey.task(retries=3, retry_delay=2, retry_backoff=2)
+        def task_a():
+            raise ValueError('try again')
+
+        r = task_a()
+        self.assertTrue(self.execute_next() is None)
+        self.trap_exception(r)
+
+        seconds = lambda s: (datetime.datetime.now() +
+                             datetime.timedelta(seconds=s))
+
+        # The first retry is scheduled using the given retry_delay, after
+        # which the delay is multiplied by retry_backoff. The waits between
+        # attempts are 2, 4 and 8 seconds, and the grown retry_delay is
+        # serialized with the task along with the decremented retries.
+        for retries, delay, wait in ((2, 4, 2), (1, 8, 4), (0, 16, 8)):
+            task, = self.huey.scheduled()
+            self.assertEqual(task.retries, retries)
+            self.assertEqual(task.retry_delay, delay)
+            self.assertEqual(task.retry_backoff, 2)
+            self.assertTrue(seconds(wait - 2) < task.eta <= seconds(wait))
+
+            self.huey.storage.flush_schedule()
+            self.assertTrue(self.huey.execute(task, task.eta) is None)
+
+        # Retries are exhausted, nothing further is scheduled.
+        self.assertEqual(self.huey.scheduled_count(), 0)
+        self.assertEqual(len(self.huey), 0)
+
+        # The backoff multiplier can also be given when enqueueing.
+        t = task_a.s(retry_backoff=3)
+        self.assertEqual(t.retry_backoff, 3)
+
+    def test_retrytask_eta_delay(self):
+        @self.huey.task(retry_delay=10)
+        def task_a(d=None, e=None):
+            raise RetryTask(delay=d, eta=e)
+
+        seconds = lambda s: (datetime.datetime.now() +
+                             datetime.timedelta(seconds=s))
+
+        def run_iteration(d, e):
+            r = task_a(d=d, e=e)
+            self.assertTrue(self.execute_next() is None)
+            self.assertRaises(TaskException, r.get)
+            self.assertEqual(len(self.huey), 0)
+            self.assertEqual(len(self.huey.scheduled()), 1)
+
+            task, = self.huey.scheduled()
+            self.assertEqual(task.id, r.id)
+            self.assertFalse(self.huey.ready_to_run(task))
+            if e is not None:
+                self.assertEqual(task.eta, e)
+            else:
+                d = d or 10  # Default.
+                self.assertTrue(seconds(d - 3) < task.eta < seconds(d + 3))
+
+            self.huey.flush()
+
+        run_iteration(None, None)
+        run_iteration(3, None)
+        run_iteration(300, None)
+        run_iteration(None, seconds(3))
+        run_iteration(None, seconds(300))
+
+    def test_retrytask_explicit(self):
+        state = [0]
+
+        @self.huey.task()
+        def task_a(n):
+            state[0] = state[0] + n
+            if state[0] < 2:
+                raise RetryTask('asdf')
+            return state[0]
+
+        r = task_a(1)
+        self.assertTrue(self.execute_next() is None)
+        self.assertRaises(TaskException, r.get)
+        self.assertEqual(state, [1])
+        self.assertEqual(len(self.huey), 1)
+
+        self.assertEqual(self.execute_next(), 2)
+        r.reset()
+        self.assertEqual(r.get(), 2)
+        self.assertEqual(state, [2])
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.result_count(), 0)
+
+        # Now run through and verify that if the task has a retry count, that
+        # it is decremented as we'd expect normally.
+        state = [0]
+        t = task_a.s(1)
+        t.retries = 2
+        r = self.huey.enqueue(t)
+        self.assertTrue(self.execute_next() is None)
+        self.assertRaises(TaskException, r.get)
+        self.assertEqual(state, [1])
+        self.assertEqual(len(self.huey), 1)
+
+        task = self.huey.dequeue()
+        self.assertEqual(task.retries, 2)  # Unaffected!
+        self.assertEqual(self.huey.execute(task), 2)
+        r.reset()
+        self.assertEqual(r.get(), 2)
+        self.assertEqual(state, [2])
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.result_count(), 0)
+
+    def test_cancel_execution(self):
+        @self.huey.task()
+        def task_a(n=None):
+            raise CancelExecution(retry=n)
+
+        r = task_a()
+        self.assertTrue(self.execute_next() is None)
+        self.assertRaises(TaskException, r.get)
+        self.assertEqual(len(self.huey), 0)
+
+        r = task_a(False)
+        self.assertTrue(self.execute_next() is None)
+        self.assertRaises(TaskException, r.get)
+        self.assertEqual(len(self.huey), 0)
+
+        r = task_a(True)
+        self.assertTrue(self.execute_next() is None)
+        self.assertRaises(TaskException, r.get)
+        try:
+            r.get()
+        except TaskException as exc:
+            metadata = exc.metadata
+        self.assertEqual(metadata['error'], 'CancelExecution()')
+        self.assertEqual(metadata['retries'], 1)
+        self.assertEqual(len(self.huey), 1)
+
+    def test_cancel_execution_task_retries(self):
+        @self.huey.task(retries=2)
+        def task_a(n=None):
+            raise CancelExecution(retry=n)
+
+        # Even though the task itself declares retries, these retries are
+        # ignored when cancel is raised with retry=False.
+        r = task_a(False)
+        self.assertTrue(self.execute_next() is None)
+        self.assertRaises(TaskException, r.get)
+        self.assertEqual(len(self.huey), 0)
+
+        # The original task specified 2 retries. When Cancel is raised with
+        # retry=None, it proceeds normally.
+        r = task_a()
+        for retries in (2, 1, 0):
+            self.assertTrue(self.execute_next() is None)
+            self.assertRaises(TaskException, r.get)
+            try:
+                r.get()
+            except TaskException as exc:
+                metadata = exc.metadata
+            self.assertEqual(metadata['error'], 'CancelExecution()')
+            self.assertEqual(metadata['retries'], retries)
+            if retries > 0:
+                self.assertEqual(len(self.huey), 1)
+            else:
+                self.assertEqual(len(self.huey), 0)
+            r.reset()
+
+        # The original task specified 2 retries. When Cancel is raised with
+        # retry=True, then max(task.retries, 1) will be used.
+        r = task_a(True)
+        for retries in (2, 1, 1, 1):
+            self.assertTrue(self.execute_next() is None)
+            self.assertRaises(TaskException, r.get)
+            try:
+                r.get()
+            except TaskException as exc:
+                metadata = exc.metadata
+            self.assertEqual(metadata['error'], 'CancelExecution()')
+            self.assertEqual(metadata['retries'], retries)
+            self.assertEqual(len(self.huey), 1)
+            r.reset()
+
+    def test_read_schedule(self):
+        @self.huey.task()
+        def task_a(n):
+            return n
+
+        server_time = datetime.datetime(2000, 1, 1)
+        timestamp = datetime.datetime(2000, 1, 2, 3, 4, 5)
+        second = datetime.timedelta(seconds=1)
+
+        rn1 = task_a.schedule(-1, eta=(timestamp - second))
+        r0 = task_a.schedule(0, eta=timestamp)
+        rp1 = task_a.schedule(1, eta=(timestamp + second))
+        self.assertEqual(self.huey.scheduled_count(), 0)
+        self.assertEqual(len(self.huey), 3)
+
+        # Get these tasks added to the schedule.
+        for _ in range(3):
+            self.huey.execute(self.huey.dequeue(), timestamp=server_time)
+
+        self.assertEqual(self.huey.scheduled_count(), 3)
+        self.assertEqual(len(self.huey), 0)
+
+        # Two tasks are ready to run. Reading from the schedule is a
+        # destructive operation.
+        tn1, t0 = self.huey.read_schedule(timestamp)
+        self.assertEqual(tn1.id, rn1.id)
+        self.assertEqual(t0.id, r0.id)
+        self.assertEqual(self.huey.read_schedule(timestamp), [])
+
+        tp1, = self.huey.read_schedule(datetime.datetime(2010, 1, 1))
+        self.assertEqual(tp1.id, rp1.id)
+
+        # Everything is cleared out.
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.result_count(), 0)
+        self.assertEqual(self.huey.scheduled_count(), 0)
+
+    def test_pending_scheduled_unregistered(self):
+        @self.huey.task()
+        def task_a(n):
+            return n
+
+        @self.huey.task()
+        def task_b(n):
+            return n
+
+        sa = task_a.schedule(3, delay=60)
+        sb = task_b.schedule(4, delay=60)
+        self.huey.execute(self.huey.dequeue())
+        self.huey.execute(self.huey.dequeue())
+        ra = task_a(1)
+        rb = task_b(2)
+        self.assertEqual(len(self.huey), 2)
+        self.assertEqual(self.huey.scheduled_count(), 2)
+
+        task_b.unregister()
+        self.assertEqual([t.id for t in self.huey.pending()], [ra.id])
+        self.assertEqual([t.id for t in self.huey.scheduled()], [sa.id])
+
+    def test_read_periodic(self):
+        @self.huey.periodic_task(crontab(minute='*/15', hour='9-17'))
+        def work():
+            pass
+
+        @self.huey.periodic_task(crontab(minute='0', hour='21'))
+        def sleep():
+            pass
+
+        @self.huey.periodic_task(crontab(minute='0-30'))
+        def first_half():
+            pass
+
+        def assertPeriodic(hour, minute, names):
+            dt = datetime.datetime(2000, 1, 1, hour, minute)
+            tasks = self.huey.read_periodic(dt)
+            self.assertEqual([t.name for t in tasks], names)
+
+        assertPeriodic(0, 0, ['first_half'])
+        assertPeriodic(23, 59, [])
+        assertPeriodic(9, 0, ['work', 'first_half'])
+        assertPeriodic(9, 45, ['work'])
+        assertPeriodic(9, 46, [])
+        assertPeriodic(21, 0, ['sleep', 'first_half'])
+        assertPeriodic(21, 30, ['first_half'])
+        assertPeriodic(21, 31, [])
+
+
+class TestAsyncTasks(BaseTestCase):
+    def test_async_task_rejected(self):
+        async def task_a(n):
+            return n
+
+        self.assertRaises(ConfigurationError, self.huey.task(), task_a)
+        self.assertRaises(ConfigurationError,
+                          self.huey.periodic_task(crontab(minute='1')),
+                          task_a)
+
+    def test_async_wrapper_pattern(self):
+        async def _work(n):
+            await asyncio.sleep(0)
+            return n + 1
+
+        @self.huey.task()
+        def task_a(n):
+            return asyncio.run(_work(n))
+
+        res = task_a(1)
+        self.assertEqual(self.execute_next(), 2)
+        self.assertEqual(res(), 2)
+
+
+class TestDecorators(BaseTestCase):
+    def test_task_decorator(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        self.assertTrue(isinstance(task_a, TaskWrapper))
+
+        task = task_a.s(3)
+        self.assertTrue(isinstance(task, Task))
+
+        self.assertEqual(task.retries, 0)
+        self.assertEqual(task.retry_delay, 0)
+        self.assertEqual(task.args, (3,))
+        self.assertEqual(task.kwargs, {})
+        self.assertEqual(task.execute(), 4)
+
+    def test_task_parameters(self):
+        @self.huey.task(retries=2, retry_delay=1, context=True, name='tb')
+        def task_b(n, task=None):
+            return (n + 1, task.id, task.retries, task.retry_delay)
+
+        task = task_b.s(2)
+        self.assertEqual(task.retries, 2)
+        self.assertEqual(task.retry_delay, 1)
+        self.assertEqual(task.args, (2,))
+        self.assertEqual(task.kwargs, {})
+
+        result, tid, retries, retry_delay = task.execute()
+        self.assertEqual(result, 3)
+        self.assertEqual(retries, 2)
+        self.assertEqual(retry_delay, 1)
+        self.assertEqual(tid, task.id)
+
+    def test_task_wrapper_retry_attrs(self):
+        @self.huey.task(retries=2, retry_delay=3)
+        def task_r():
+            pass
+        @self.huey.task()
+        def task_d():
+            pass
+        self.assertEqual((task_r.retries, task_r.retry_delay), (2, 3))
+        self.assertEqual((task_d.retries, task_d.retry_delay), (0, 0))
+
+    def test_task_id(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        self.assertEqual(task_a.s(1, id='t1').id, 't1')
+        self.assertEqual(task_a.schedule((1,), delay=1, id='t2').id, 't2')
+        self.assertEqual(task_a(1, id='t3').id, 't3')
+        self.assertEqual(self.huey.dequeue().id, 't2')
+        self.assertEqual(self.huey.dequeue().id, 't3')
+
+        pipe = task_a.s(1, id='p1').then(task_a, id='p2')
+        self.assertEqual(pipe.id, 'p1')
+        self.assertEqual(pipe.on_complete.id, 'p2')
+
+    def test_periodic_task(self):
+        @self.huey.periodic_task(crontab(minute='1'))
+        def task_p():
+            return 123
+
+        task = task_p.s()
+        self.assertTrue(isinstance(task, PeriodicTask))
+        self.assertEqual(task.retries, 0)
+        self.assertEqual(task.retry_delay, 0)
+        self.assertEqual(task.execute(), 123)
+
+        @self.huey.periodic_task(crontab(), retries=3, retry_delay=10)
+        def task_p2():
+            pass
+
+        task = task_p2.s()
+        self.assertEqual(task.retries, 3)
+        self.assertEqual(task.retry_delay, 10)
+
+    def test_call_periodic_task(self):
+        @self.huey.periodic_task(crontab(minute='1'))
+        def task_p():
+            return 123
+
+        res = task_p()
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), 123)
+
+        # Result-store is not used for periodic task results.
+        self.assertTrue(res() is None)
+
+    def test_context_task(self):
+        class DB(object):
+            def __init__(self):
+                self.state = []
+            def __enter__(self):
+                self.state.append('open')
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                self.state.append('close')
+            def get_state(self):
+                self.state, ret = [], self.state
+                return ret
+        db = DB()
+        self.assertEqual(db.get_state(), [])
+
+        @self.huey.context_task(db)
+        def task_c(n):
+            if n < 0:
+                raise ValueError('bad value')
+            return n + 1
+
+        res = task_c(2)
+        self.assertEqual(self.execute_next(), 3)
+        self.assertEqual(db.get_state(), ['open', 'close'])
+
+        res = task_c(-1)
+        self.assertEqual(db.get_state(), [])
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(db.get_state(), ['open', 'close'])
+
+    def test_dynamic_periodic_tasks(self):
+        def ptask(): pass
+
+        @self.huey.task()
+        def make_ptask(every_n):
+            name = 'ptask_%s' % every_n
+            sched = crontab('*/%s' % every_n)
+            self.huey.periodic_task(sched, name=name)(ptask)
+
+        # Create two tasks dynamically.
+        make_ptask(5)
+        make_ptask(10)
+
+        def assertPeriodic(dt, names):
+            ptasks = self.huey.read_periodic(dt)
+            self.assertEqual(len(ptasks), len(names))
+            self.assertEqual(sorted([t.name for t in ptasks]), names)
+
+        dt = datetime.datetime(2019, 1, 1, 0, 0, 0)
+        assertPeriodic(dt, [])
+
+        self.execute_next()
+        self.execute_next()
+
+        assertPeriodic(dt, ['ptask_10', 'ptask_5'])
+        assertPeriodic(datetime.datetime(2019, 1, 1, 0, 5), ['ptask_5'])
+        assertPeriodic(datetime.datetime(2019, 1, 1, 0, 6), [])
+
+
+class TestTaskHooks(BaseTestCase):
+    def test_task_hooks(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        allow_tasks = [True]
+        pre_state = []
+        post_state = []
+
+        @self.huey.pre_execute()
+        def pre_execute_cancel(task):
+            if not allow_tasks[0]:
+                raise CancelExecution()
+
+        @self.huey.pre_execute()
+        def pre_execute(task):
+            pre_state.append(task.id)
+
+        @self.huey.post_execute()
+        def post_execute(task, task_value, exc):
+            if exc is not None:
+                exc = type(exc).__name__
+            post_state.append((task.id, task_value, exc))
+
+        result = task_a(3)
+        self.assertEqual(self.execute_next(), 4)
+        self.assertEqual(pre_state, [result.id])
+        self.assertEqual(post_state, [(result.id, 4, None)])
+
+        # Cancel execution.
+        task_a(5)
+        allow_tasks[0] = False  # Disable execution.
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(pre_state), 1)
+        self.assertEqual(len(post_state), 1)
+
+        # Errors are passed to post-execute hook.
+        allow_tasks[0] = True  # Re-enable.
+        err_result = task_a(None)  # Can't add 1 to None!
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(pre_state, [result.id, err_result.id])
+        self.assertEqual(post_state, [(result.id, 4, None),
+                                      (err_result.id, None, 'TypeError')])
+
+    def test_hook_unregister(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        pre_state = []
+        post_state = []
+
+        @self.huey.pre_execute()
+        def test_pre_exec(task):
+            pre_state.append(task.id)
+        @self.huey.post_execute()
+        def test_post_exec(task, val, exc):
+            post_state.append(task.id)
+
+        # Verify hooks in place. Sanity check.
+        r = task_a(3)
+        self.assertEqual(self.execute_next(), 4)
+        self.assertEqual(pre_state, [r.id])
+        self.assertEqual(post_state, [r.id])
+
+        self.assertTrue(self.huey.unregister_pre_execute('test_pre_exec'))
+        self.assertTrue(self.huey.unregister_post_execute('test_post_exec'))
+
+        r2 = task_a(4)
+        self.assertEqual(self.execute_next(), 5)
+        self.assertEqual(len(pre_state), 1)
+        self.assertEqual(len(post_state), 1)
+
+        # Already unregistered, returns False.
+        self.assertFalse(self.huey.unregister_pre_execute('test_pre_exec'))
+        self.assertFalse(self.huey.unregister_post_execute('test_post_exec'))
+
+    def test_task_hook_errors(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        pre_state = []
+        post_state = []
+
+        @self.huey.pre_execute()
+        def test_pre_exec1(task):
+            raise ValueError('flaky pre hook')
+        @self.huey.pre_execute()
+        def test_pre_exec2(task):
+            pre_state.append(task.id)
+
+        @self.huey.post_execute()
+        def test_post_exec1(task, val, exc):
+            raise ValueError('flaky post hook')
+        @self.huey.post_execute()
+        def test_post_exec2(task, val, exc):
+            post_state.append(task.id)
+
+        # One flaky callback will not prevent other callbacks, nor will it
+        # prevent the task from being executed.
+        r = task_a(3)
+        self.assertEqual(self.execute_next(), 4)
+        self.assertEqual(pre_state, [r.id])
+        self.assertEqual(post_state, [r.id])
+
+
+class TestGroupPrimitive(BaseTestCase):
+    def test_group(self):
+        @self.huey.task()
+        def test(n):
+            return n + 1
+
+        g = group(test.s(i) for i in range(3))
+        rg = self.huey.enqueue(g)
+        self.assertEqual(len(self.huey), 3)
+        for i in range(3):
+            self.assertEqual(self.execute_next(), i + 1)
+
+        self.assertEqual(rg.get(), [1, 2, 3])
+
+        g = group(test.s(i) for i in [1, None, 2])
+        rg = self.huey.enqueue(g)
+        self.assertEqual(self.execute_next(), 2)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(self.execute_next(), 3)
+
+        with self.assertRaises(TaskException):
+            rg.get()
+
+    def test_multiple_task_types(self):
+        @self.huey.task()
+        def t1(n):
+            return n + 1
+        @self.huey.task()
+        def t2(n):
+            return n + 2
+
+        rg = self.huey.enqueue(group([
+            t1.s(1),
+            t2.s(2),
+            t1.s(10)]))
+        self.assertEqual(len(rg), 3)
+
+        for _ in range(3):
+            self.execute_next()
+
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(rg(), [2, 4, 11])
+
+    def test_group_priorities(self):
+        state = []
+
+        @self.huey.task()
+        def track(label):
+            state.append(label)
+            return label
+
+        r = self.huey.enqueue(group([
+            track.s('low', priority=1),
+            track.s('high', priority=10),
+            track.s('mid', priority=5),
+        ]))
+
+        self.assertEqual(self.execute_next(), 'high')
+        self.assertEqual(self.execute_next(), 'mid')
+        self.assertEqual(self.execute_next(), 'low')
+        self.assertEqual(state, ['high', 'mid', 'low'])
+        self.assertEqual(r(), ['low', 'high', 'mid'])
+
+    def test_group_callback(self):
+        @self.huey.task()
+        def ident(v):
+            return v
+
+        g = group([ident.s('a'), ident.s('b')]).then(ident)
+        r = self.huey.enqueue(g)
+        self.assertEqual(len(self.huey), 2)
+        self.execute_next()
+        self.execute_next()
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), ['a', 'b'])
+
+        # When groups have a callback they are converted to chord.
+        g = group([
+            ident.s('a', priority=1),
+            ident.s('b', priority=10),
+            ident.s('c', priority=5)]).then(ident)
+        r = self.huey.enqueue(g)
+        self.assertEqual(len(self.huey), 3)
+        self.assertEqual(self.execute_next(), 'b')
+        self.assertEqual(self.execute_next(), 'c')
+        self.assertEqual(self.execute_next(), 'a')
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), ['a', 'b', 'c'])
+        self.assertEqual(r(), ['a', 'b', 'c'])
+
+    def test_group_error_handler(self):
+        error_state = []
+
+        @self.huey.task()
+        def task_a(n):
+            if n < 0:
+                raise TestError('invalid')
+            return n
+
+        @self.huey.task()
+        def on_err(exc):
+            error_state.append(repr(exc))
+
+        g = group([task_a.s(1), task_a.s(-1), task_a.s(3)])
+        g.error(on_err)
+        self.huey.enqueue(g)
+        self.assertEqual(len(self.huey), 3)
+
+        self.execute_next()  # task_a(1)
+        self.execute_next()  # task_a(-1) fails, on err enqueued.
+        self.assertEqual(len(self.huey), 2)
+        self.execute_next()  # task_a(3)
+
+        self.assertEqual(len(error_state), 0)
+        self.execute_next()  # on_err runs
+        self.assertEqual(len(error_state), 1)
+        self.assertTrue('TestError' in error_state[0])
+
+    def test_group_error_chaining(self):
+        # group.error() returns self, enabling .then() chaining.
+        @self.huey.task()
+        def fetch(n):
+            return n
+
+        @self.huey.task()
+        def on_err(exc):
+            pass
+
+        @self.huey.task()
+        def combine(results):
+            return sum(results)
+
+        result = self.huey.enqueue(
+            group([fetch.s(2), fetch.s(3)])
+            .error(on_err)
+            .then(combine))
+
+        self.assertEqual([self.execute_next() for _ in range(3)],
+                         [2, 3, 5])
+        self.assertEqual(result(), 5)
+
+
+class TestChordPrimitive(BaseTestCase):
+    def funcs(self):
+        @self.huey.task(retries=1)
+        def prod(n):
+            return n + 1
+
+        @self.huey.task()
+        def agg(ns):
+            if any(isinstance(n, Error) for n in ns):
+                return -1
+            return sum(ns)
+
+        return prod, agg
+
+    def test_chord(self):
+        prod, agg = self.funcs()
+
+        c = chord([prod.s(i) for i in range(3)], agg.s())
+        r = self.huey.enqueue(c)
+        self.assertEqual(len(self.huey), 3)
+        self.assertEqual([self.execute_next() for _ in range(3)], [1, 2, 3])
+
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), 6)
+        self.assertEqual(r.get(), 6)
+        self.assertEqual(len(self.huey), 0)
+
+        # Each subtask's results are still visible.
+        self.assertEqual(self.huey.result_count(), 3)
+        self.assertEqual(r.results(), [1, 2, 3])
+        self.assertEqual(self.huey.result_count(), 0)
+
+        r = self.huey.enqueue(chord([prod.s(100)], agg))
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), 101)
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), 101)
+        self.assertEqual(len(self.huey), 0)
+
+    def test_chord_result_handles(self):
+        prod, agg = self.funcs()
+
+        result = self.huey.enqueue(chord(
+            [prod.s(1), prod.s(2)], agg.s()))
+
+        self.assertTrue(isinstance(result, ChordResult))
+        self.assertTrue(isinstance(result.results, ResultGroup))
+        self.assertTrue(isinstance(result.callback, Result))
+        self.assertEqual(len(result.results), 2)
+        self.assertIsNone(result.pipeline_results)
+
+        for _ in range(3):
+            self.execute_next()
+
+        self.assertEqual(result(), 5)
+        self.assertEqual(result.results(), [2, 3])
+        self.assertEqual(result.callback(), 5)
+
+    def test_chord_callback_cb(self):
+        prod, agg = self.funcs()
+
+        c = chord([prod.s(i) for i in range(3)], agg)
+        c.then(prod)  # Add callback to chord.
+        r = self.huey.enqueue(c)
+        self.assertEqual(len(self.huey), 3)
+        self.assertEqual([self.execute_next() for _ in range(3)], [1, 2, 3])
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), 6)
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(r.pipeline_results(), [6, None])
+        self.assertEqual(self.execute_next(), 7)
+        self.assertEqual(r(), 6)
+        self.assertEqual(r.results(), [1, 2, 3])
+        self.assertEqual(r.pipeline_results(), [6, 7])
+        self.assertEqual(len(self.huey), 0)
+
+        c = chord([prod.s(1)], agg).then(prod).then(prod)
+        r = self.huey.enqueue(c)
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), 2)  # prod.s(1).
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), 2)  # agg([2]).
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), 3)  # prod(2).
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), 4)  # prod(3).
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(r(), 2)
+        self.assertEqual(r.results(), [2])
+        self.assertEqual(r.pipeline_results(), [2, 3, 4])
+
+    def test_chord_callback_err(self):
+        prod, agg = self.funcs()
+        state = []
+
+        @self.huey.task()
+        def fail(ns):
+            raise ValueError('fail')
+
+        @self.huey.task()
+        def on_err(exc):
+            state.append(type(exc).__name__)
+            return 'done'
+
+        c = chord([prod.s(1), prod.s(2)], fail).error(on_err)
+        res = self.huey.enqueue(c)
+        self.assertEqual(self.execute_next(), 2)
+        self.assertEqual(self.execute_next(), 3)
+        self.assertTrue(self.execute_next() is None)  # callback fail().
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(state, [])
+        self.assertEqual(self.execute_next(), 'done')
+        self.assertEqual(state, ['ValueError'])
+        self.assertEqual(len(self.huey), 0)
+
+    def test_chord_task_cb(self):
+        prod, agg = self.funcs()
+
+        c = chord([prod.s(i).then(prod).then(prod) for i in range(3)], agg)
+        r = self.huey.enqueue(c)
+        self.assertEqual(len(self.huey), 3)
+        self.assertEqual([self.execute_next() for _ in range(3)], [1, 2, 3])
+        self.assertEqual(len(self.huey), 3)  # 3 callbacks.
+        self.assertEqual([self.execute_next() for _ in range(3)], [2, 3, 4])
+        self.assertEqual(len(self.huey), 3)  # 3 callbacks.
+        self.assertEqual([self.execute_next() for _ in range(3)], [3, 4, 5])
+
+        self.assertEqual(len(self.huey), 1)  # chord callback.
+        self.assertEqual(self.execute_next(), 12)
+        self.assertEqual(len(self.huey), 0)
+
+    def test_chord_error(self):
+        prod, agg = self.funcs()
+
+        c = chord([prod.s(i) for i in (1, None, 2)], agg)
+        r = self.huey.enqueue(c)
+        self.assertEqual(len(self.huey), 3)
+        self.assertEqual([self.execute_next() for _ in range(3)], [2, None, 3])
+        self.assertEqual(len(self.huey), 1)  # The failed task has 1 retry.
+        self.assertTrue(self.execute_next() is None)  # Retry - also fails.
+        self.assertEqual(len(self.huey), 1)  # Now the chord is hit.
+        self.assertEqual(self.execute_next(), -1)  # Error found.
+        self.assertEqual(len(self.huey), 0)
+
+        self.assertEqual(r(), -1)
+        self.assertEqual(r.results[0], 2)
+        with self.assertRaises(TaskException):
+            r.results[1]
+        self.assertEqual(r.results[2], 3)
+
+    def test_chord_revoked_member(self):
+        @self.huey.task()
+        def prod(n):
+            return n + 1
+
+        @self.huey.task()
+        def agg(ns):
+            return ns
+
+        c = chord([prod.s(i) for i in range(3)], agg.s())
+        r = self.huey.enqueue(c)
+        self.assertEqual(len(self.huey), 3)
+
+        # NB: indexing into the ResultGroup performs a blocking get().
+        list(r.results)[1].revoke()
+
+        self.assertEqual(self.execute_next(), 1)
+        self.assertTrue(self.execute_next() is None)  # Revoked, not run.
+        self.assertEqual(self.execute_next(), 3)
+
+        # The callback still fires, with a placeholder result contributed
+        # for the revoked task.
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), [1, SKIPPED, 3])
+        self.assertEqual(r(), [1, SKIPPED, 3])
+
+    def test_chord_expired_member(self):
+        @self.huey.task()
+        def prod(n):
+            return n + 1
+
+        @self.huey.task()
+        def agg(ns):
+            return ns
+
+        past = datetime.datetime.now() - datetime.timedelta(minutes=1)
+        c = chord([prod.s(0), prod.s(1, expires=past), prod.s(2)], agg.s())
+        r = self.huey.enqueue(c)
+        self.assertEqual(len(self.huey), 3)
+
+        self.assertEqual(self.execute_next(), 1)
+        self.assertTrue(self.execute_next() is None)  # Expired, not run.
+        self.assertEqual(self.execute_next(), 3)
+
+        # The callback still fires, with a placeholder result contributed
+        # for the expired task.
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), [1, SKIPPED, 3])
+        self.assertEqual(r(), [1, SKIPPED, 3])
+
+    def test_chord_failed_and_revoked_members(self):
+        @self.huey.task()
+        def prod(n):
+            if n is None:
+                raise TestError('bad')
+            return n + 1
+
+        @self.huey.task()
+        def agg(ns):
+            return ns
+
+        c = chord([prod.s(1), prod.s(None), prod.s(2)], agg.s())
+        r = self.huey.enqueue(c)
+        list(r.results)[2].revoke()
+
+        self.assertEqual(self.execute_next(), 2)
+        self.assertTrue(self.execute_next() is None)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 1)
+
+        v1, err, skipped = self.execute_next()
+        self.assertEqual(v1, 2)
+        self.assertTrue(isinstance(err, Error))
+        self.assertEqual(err.metadata['error'], 'TestError(bad)')
+        self.assertTrue(skipped is SKIPPED)
+        self.assertEqual(r(), [2, err, SKIPPED])
+
+    def test_chord_bookkeeping_cleared(self):
+        @self.huey.task()
+        def prod(n):
+            return n
+
+        @self.huey.task()
+        def agg(ns):
+            return ns
+
+        r = self.huey.enqueue(chord([prod.s(1), prod.s(2)], agg.s()))
+        for _ in range(3):
+            self.execute_next()
+        self.assertEqual(r(), [1, 2])
+        self.assertEqual(r.results(), [1, 2])
+        self.assertEqual(self.huey.storage._counters, {})
+        self.assertEqual(self.huey.result_count(), 0)
+
+    def test_chord_member_retry_then_success(self):
+        # A chord member that fails once, then succeeds on retry, should
+        # notify the chord with the success value -- not the initial failure.
+        # The first attempt's exception is not passed to the callback because
+        # retries remain; only the successful value propagates.
+        attempts = {}
+
+        @self.huey.task(retries=1)
+        def flaky(n):
+            attempts[n] = attempts.get(n, 0) + 1
+            if attempts[n] == 1:
+                raise TestError('transient')
+            return n * 10
+
+        @self.huey.task()
+        def agg(ns):
+            return sum(ns)
+
+        c = chord([flaky.s(1), flaky.s(2)], agg)
+        r = self.huey.enqueue(c)
+        self.assertEqual(len(self.huey), 2)
+
+        # Both members fail on the first attempt; chord not notified yet.
+        self.assertTrue(self.execute_next() is None)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 2)  # Both re-enqueued for retry.
+
+        # Retries succeed in order; each success notifies the chord.
+        self.assertEqual(self.execute_next(), 10)
+        self.assertEqual(len(self.huey), 1)  # Waiting on 2nd retry.
+        self.assertEqual(self.execute_next(), 20)
+        self.assertEqual(len(self.huey), 1)  # Callback enqueued.
+
+        self.assertEqual(self.execute_next(), 30)  # agg([10, 20]).
+        self.assertEqual(len(self.huey), 0)
+
+        self.assertEqual(r(), 30)
+        self.assertEqual(r.results(), [10, 20])
+        self.assertEqual(attempts, {1: 2, 2: 2})
+
+    def test_chord_error_cb(self):
+        prod, agg = self.funcs()
+        state = []
+
+        @self.huey.task()
+        def on_err(*exc):
+            state.append(len(exc))
+            return 99
+
+        c = chord([prod.s(1), prod.s(None).error(on_err), prod.s(2)], agg)
+        r = self.huey.enqueue(c)
+        self.assertEqual(len(self.huey), 3)
+        self.assertEqual(self.execute_next(), 2)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 3)  # prod.s(2), errcb, retry.
+        self.assertEqual(self.execute_next(), 3)
+        self.assertEqual(len(self.huey), 2)  # errcb, retry.
+        self.assertEqual(state, [])
+        self.assertEqual(self.execute_next(), 99)
+        self.assertEqual(state, [1])
+        self.assertTrue(self.execute_next() is None)  # retry.
+        self.assertEqual(len(self.huey), 2)  # err cb, chord cb.
+        self.assertEqual(self.execute_next(), 99)  # err cb fired again.
+        self.assertEqual(state, [1, 1])  # Each attempt's handler gets one error.
+        self.assertEqual(self.execute_next(), -1)  # chord cb (err).
+        self.assertEqual(r(), -1)
+
+    def test_chord_total_failure(self):
+        prod, agg = self.funcs()
+        c = chord([agg.s([None]), agg.s([None])], prod)
+        r = self.huey.enqueue(c)
+        self.assertEqual(len(self.huey), 2)
+        for _ in range(2):
+            self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 1)
+        self.assertTrue(self.execute_next() is None)
+        with self.assertRaises(TaskException):
+            r()
+
+        r.reset()
+        self.assertEqual(len(self.huey), 1)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 0)
+        with self.assertRaises(TaskException):
+            r()
+
+    def test_chord_member_error_callback_independent(self):
+        error_state = []
+
+        @self.huey.task()
+        def ident(n):
+            if n < 0:
+                raise TestError('bad')
+            return n
+
+        @self.huey.task()
+        def on_err(exc):
+            error_state.append('caught')
+            return 'onerr'
+
+        @self.huey.task()
+        def agg(results):
+            return results
+
+        tasks = [ident.s(1), ident.s(-1).error(on_err)]
+        result = self.huey.enqueue(chord(tasks, agg.s()))
+
+        self.assertEqual(self.execute_next(), 1)  # fetch(1).
+        self.assertTrue(self.execute_next() is None)  # fetch(-1).
+
+        # Both on_err and callback are in queue.
+        self.assertEqual(len(self.huey), 2)
+
+        self.assertEqual(self.execute_next(), 'onerr')
+        self.assertEqual(error_state, ['caught'])
+
+        self.execute_next()
+        self.assertEqual(result.results[0], 1)
+        with self.assertRaises(TaskException):
+            result.results[1]
+
+        res = result()
+        self.assertEqual(res[0], 1)
+        self.assertTrue(isinstance(res[1], Error))
+        self.assertEqual(res[1].metadata['error'], 'TestError(bad)')
+
+    def test_chord_pipeline_member_tail_fails(self):
+        @self.huey.task()
+        def step1(n):
+            return n
+
+        @self.huey.task()
+        def step2(n):
+            raise TestError('step2 fail')
+
+        @self.huey.task()
+        def combine(results):
+            return results
+
+        c = chord(
+            [step1.s(1).then(step2), step1.s(2).then(step2)],
+            combine.s())
+        r = self.huey.enqueue(c)
+
+        self.assertEqual(self.execute_next(), 1)
+        self.assertEqual(self.execute_next(), 2)
+        self.execute_next()  # step2 fails, exception to chord.
+        self.execute_next()  # step2 fails, exception to chord.
+
+        self.assertEqual(len(self.huey), 1)
+        self.execute_next()
+
+        result = r()
+        self.assertTrue(isinstance(result[0], Error))
+        self.assertTrue(isinstance(result[1], Error))
+
+    def test_chord_pipeline_member_head_fails(self):
+        @self.huey.task()
+        def step1(n):
+            raise TestError('step1 fail')
+
+        @self.huey.task()
+        def step2(n):
+            return n * 2
+
+        @self.huey.task()
+        def combine(results):
+            return results
+
+        c = chord([step1.s(1).then(step2), step1.s(2).then(step2)],
+                  combine.s())
+        r = self.huey.enqueue(c)
+
+        # The heads fail and their step2 tails are never enqueued, but each
+        # dead head contributes its exception for the member.
+        self.execute_next()
+        self.execute_next()
+
+        self.assertEqual(len(self.huey), 1)
+        self.execute_next()
+
+        result = r()
+        self.assertTrue(isinstance(result[0], Error))
+        self.assertTrue(isinstance(result[1], Error))
+
+    def test_chord_pipeline_member_head_revoked(self):
+        @self.huey.task()
+        def step1(n):
+            return n
+
+        @self.huey.task()
+        def step2(n):
+            return n * 2
+
+        @self.huey.task()
+        def combine(results):
+            return results
+
+        m1 = step1.s(1).then(step2)
+        m2 = step1.s(2).then(step2)
+        r = self.huey.enqueue(chord([m1, m2], combine.s()))
+
+        self.huey.revoke(m1)  # Revoke the head of the first member.
+        self.assertTrue(self.execute_next() is None)  # Revoked, not run.
+        self.assertEqual(self.execute_next(), 2)
+        self.assertEqual(self.execute_next(), 4)
+
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), [SKIPPED, 4])
+        self.assertEqual(r(), [SKIPPED, 4])
+
+    def test_chord_ordering(self):
+        @self.huey.task()
+        def ident(s):
+            return s
+        @self.huey.task()
+        def agg(results):
+            return results
+
+        result = self.huey.enqueue(chord(
+            [ident.s('a'), ident.s('b'), ident.s('c')],
+            agg))
+        self.assertEqual(len(self.huey), 3)
+        tasks = [self.huey.dequeue() for _ in range(3)]
+
+        self.huey.execute(tasks[2])  # 'c'.
+        self.huey.execute(tasks[0])  # 'a'.
+        self.huey.execute(tasks[1])  # 'b'.
+        self.assertEqual(len(self.huey), 1)  # cb.
+        self.assertEqual(self.execute_next(), ['a', 'b', 'c'])
+
+        self.assertEqual(result(), ['a', 'b', 'c'])
+
+    def test_chord_scheduling(self):
+        @self.huey.task()
+        def ident(s):
+            return s
+        @self.huey.task()
+        def agg(results):
+            return results
+
+        c = chord([
+            ident.s('a', delay=30),
+            ident.s('b', delay=50),
+            ident.s('c', delay=10)], agg.s(delay=10))
+        r = self.huey.enqueue(c)
+        for i in range(3):
+            self.assertTrue(self.execute_next() is None)  # Scheduled.
+
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.scheduled_count(), 3)
+
+        now = datetime.datetime.now()
+        seconds = lambda s: now + datetime.timedelta(seconds=s)
+
+        task, = self.huey.read_schedule(timestamp=seconds(10))
+        self.assertEqual(self.huey.execute(task, seconds(10)), 'c')
+
+        task, = self.huey.read_schedule(timestamp=seconds(30))
+        self.assertEqual(self.huey.execute(task, seconds(30)), 'a')
+
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.scheduled_count(), 1)  # One task left.
+
+        # After execution this enqueues the callback.
+        task, = self.huey.read_schedule(timestamp=seconds(50))
+        self.assertEqual(self.huey.execute(task, seconds(50)), 'b')
+
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.huey.scheduled_count(), 0)
+        self.assertTrue(self.execute_next() is None)
+
+        # Callback delay was calculated when enqueued, so it is 10, not 60.
+        self.assertEqual(self.huey.read_schedule(timestamp=seconds(9)), [])
+
+        task, = self.huey.read_schedule(timestamp=seconds(10))
+        self.assertEqual(self.huey.execute(task, seconds(10)), ['a', 'b', 'c'])
+
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.scheduled_count(), 0)
+
+        self.assertEqual(r(), ['a', 'b', 'c'])
+
+    def test_chord_return_none(self):
+        @self.huey.task()
+        def ident(v):
+            return v
+        @self.huey.task()
+        def agg(vs):
+            return vs
+
+        r = self.huey.enqueue(chord(
+            [ident.s(1), ident.s(None), ident.s(None)], agg))
+        self.assertEqual([self.execute_next() for _ in range(3)],
+                         [1, None, None])
+        self.assertEqual(self.execute_next(), [1, None, None])
+        self.assertEqual(r(), [1, None, None])
+
+    def test_nested_chord(self):
+        @self.huey.task()
+        def ident(v):
+            return v
+        @self.huey.task()
+        def agg(vs):
+            return vs
+
+        c = chord([
+            chord([ident.s('a'), ident.s('b')], agg),
+            chord([
+                chord([ident.s('c'), ident.s('d')], agg),
+                chord([ident.s('e'), ident.s('f')], agg),
+            ], agg),
+            chord([ident.s('g'), ident.s('h')], agg),
+        ], agg)
+        r = self.huey.enqueue(c)
+        self.assertEqual(len(self.huey), 8)
+
+        self.assertEqual([self.execute_next() for _ in range(8)],
+                         list('abcdefgh'))
+
+        self.assertEqual(len(self.huey), 4)
+        self.assertEqual([self.execute_next() for _ in range(4)], [
+            ['a', 'b'],
+            ['c', 'd'],
+            ['e', 'f'],
+            ['g', 'h'],
+        ])
+
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), [
+            ['c', 'd'], ['e', 'f'],
+        ])
+
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), [
+            ['a', 'b'], [['c', 'd'], ['e', 'f']], ['g', 'h'],
+        ])
+
+    def test_nested_chord_callback_pipeline_tail_walking(self):
+        @self.huey.task()
+        def fetch(n):
+            return n
+
+        @self.huey.task()
+        def inner_combine(results):
+            return sum(results)
+
+        @self.huey.task()
+        def post_process(n):
+            return n * 100
+
+        @self.huey.task()
+        def outer_combine(results):
+            return results
+
+        inner = chord([fetch.s(1), fetch.s(2)],
+                      inner_combine.s().then(post_process))
+
+        r = self.huey.enqueue(chord(
+            [inner, fetch.s(99)],
+            outer_combine.s()))
+
+        # 3 leaf tasks: fetch(1), fetch(2), fetch(99).
+        self.assertEqual(len(self.huey), 3)
+
+        self.assertEqual(self.execute_next(), 1)
+        self.assertEqual(self.execute_next(), 2)
+        self.assertEqual(self.execute_next(), 99)
+
+        self.assertEqual(self.execute_next(), 3)  # inner combine.
+        self.assertEqual(self.execute_next(), 300)  # inner postprocess.
+
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), [300, 99])
+
+        # Outer callback gets [post_process result, fetch(99) result].
+        self.assertEqual(r(), [300, 99])
+
+    def test_chord_chaining(self):
+        state = []
+
+        @self.huey.task()
+        def incr(n):
+            return n + 1
+        @self.huey.task()
+        def agg(ns):
+            return sum(ns)
+        @self.huey.task()
+        def finished(res):
+            return res * 10
+        @self.huey.task()
+        def err(exc):
+            state.append(99)
+            return -1
+
+        c = chord([incr.s(i) for i in range(2)], agg).then(finished).error(err)
+        r = self.huey.enqueue(c)
+        for _ in range(3):
+            self.execute_next()
+        self.assertEqual(r(), 3)
+        self.assertEqual(r.pipeline_results(), [3, None])
+
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), 30)
+        self.assertEqual(r(), 3)
+        self.assertEqual(r.pipeline_results(), [3, 30])
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(state, [])
+
+        c = chord([incr.s(1), incr.s(None)], agg).then(finished).error(err)
+        r = self.huey.enqueue(c)
+        for _ in range(3):
+            self.execute_next()
+
+        with self.assertRaises(TaskException):
+            r()
+
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), -1)
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(state, [99])
+
+
+class TestTaskChaining(BaseTestCase):
+    def test_pipeline_tuple(self):
+        @self.huey.task()
+        def fib(a, b=1):
+            a, b = a + b, a
+            return a, b
+
+        pipe = fib.s(1).then(fib).then(fib).then(fib)
+        self.assertPipe(pipe, [(2, 1), (3, 2), (5, 3), (8, 5)])
+
+    def test_pipeline_dict(self):
+        @self.huey.task()
+        def stateful(v1=None, v2=None, v3=None):
+            state = {
+                'v1': v1 + 1 if v1 is not None else 0,
+                'v2': v2 + 2 if v2 is not None else 0,
+                'v3': v3 + 3 if v3 is not None else 0}
+            return state
+
+        pipe = stateful.s().then(stateful).then(stateful)
+        self.assertPipe(pipe, [
+            {'v1': 0, 'v2': 0, 'v3': 0},
+            {'v1': 1, 'v2': 2, 'v3': 3},
+            {'v1': 2, 'v2': 4, 'v3': 6}])
+
+        pipe = stateful.s(v1=4).then(stateful, v2=6).then(stateful, v2=1, v3=8)
+        self.assertPipe(pipe, [
+            {'v1': 5, 'v2': 0, 'v3': 0},
+            {'v1': 6, 'v2': 8, 'v3': 3},
+            {'v1': 7, 'v2': 3, 'v3': 11}])
+
+    def test_partial(self):
+        @self.huey.task()
+        def add(a, b):
+            return a + b
+
+        @self.huey.task()
+        def mul(a, b):
+            return a * b
+
+        pipe = add.s(1, 2).then(add, 3).then(add, 4).then(add, 5)
+        self.assertPipe(pipe, [3, 6, 10, 15])
+
+        pipe = add.s(1, 2).then(mul, 4).then(add, -5).then(mul, 3).then(add, 8)
+        self.assertPipe(pipe, [3, 12, 7, 21, 29])
+
+    def test_mixed_tasks_instances(self):
+        @self.huey.task()
+        def add(a, b):
+            return a + b
+        @self.huey.task()
+        def mul(a, b):
+            return a * b
+
+        t1 = add.s(1, 2)
+        t2 = add.s(3)
+        t3 = mul.s(4)
+        t4 = mul.s()
+        p1 = t1.then(t2)
+        p2 = p1.then(t3).then(t4, 5)
+        self.assertPipe(p2, [3, 6, 24, 120])
+
+    def test_task_instances_args_kwargs(self):
+        @self.huey.task()
+        def add(a, b, c=None):
+            s = a + b
+            if c is not None:
+                s += c
+            return s
+
+        t1 = add.s(1, 2)
+        t2 = add.s()
+        t3 = add.s()
+        p1 = t1.then(t2, 3).then(t3, 4, c=5)
+        self.assertPipe(p1, [3, 6, 15])
+
+    def assertPipe(self, pipeline, expected):
+        results = self.huey.enqueue(pipeline)
+        for _ in range(len(results)):
+            self.assertEqual(len(self.huey), 1)
+            self.execute_next()
+
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(len(results), len(expected))
+        self.assertEqual([r() for r in results], expected)
+
+    def test_error_callback(self):
+        state = []
+        @self.huey.task()
+        def task_a(n):
+            raise TestError(n)
+
+        @self.huey.task()
+        def task_e(err):
+            state.append(repr(err))
+            return 1337
+
+        task = task_a.s(0).error(task_e)
+        result = self.huey.enqueue(task)
+        self.assertTrue(self.execute_next() is None)
+        self.assertRaises(TaskException, result.get)
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.execute_next(), 1337)
+        self.assertEqual(state, ['TestError(0)'])
+
+    def test_error_callback_retries(self):
+        # With store_intermediate_errors (the default), the on_error handler is
+        # enqueued on every failed attempt -- including those with retries
+        # remaining -- and the intermediate error is written to the result store
+        # each time. Each invocation receives only its own attempt's exception,
+        # so a fixed-arity handler does not accumulate arguments across retries.
+        state = []
+        @self.huey.task(retries=1)
+        def task_a():
+            raise TestError('boom')
+
+        @self.huey.task()
+        def task_e(err):
+            state.append(repr(err))
+
+        self.huey.enqueue(task_a.s().error(task_e))
+
+        # First attempt fails with a retry remaining: on_error is enqueued and
+        # the task is also re-enqueued.
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 2)
+        self.assertEqual(self.huey.result_count(), 1)  # Intermediate error.
+        self.execute_next()  # Run the first on_error handler.
+
+        # Final attempt exhausts retries: on_error is enqueued a second time.
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 1)
+        self.execute_next()  # Run the second on_error handler.
+
+        # The handler ran once per failed attempt, each with a single exception.
+        self.assertEqual(state, ['TestError(boom)', 'TestError(boom)'])
+        self.assertEqual(len(self.huey), 0)
+
+    def test_pipeline_error_midway(self):
+        @self.huey.task()
+        def task_a(n):
+            if n < 0:
+                raise TestError('below zero')
+            return n - 1
+
+        # 1, 0, -1, ??.
+        pipe = task_a.s(1).then(task_a).then(task_a).then(task_a)
+        r1, r2, r3, r4 = self.huey.enqueue(pipe)
+        self.assertEqual(self.execute_next(), 0)
+        self.assertEqual(self.execute_next(), -1)
+        self.assertTrue(self.execute_next() is None)
+        self.assertRaises(TaskException, r3.get)
+
+        # Was r4 enqueued? -- No.
+        self.assertEqual(len(self.huey), 0)
+        self.assertTrue(isinstance(r4.get_raw_result(), Error))
+        self.assertEqual(r4.get_raw_result().metadata['task_id'], r3.id)
+        self.assertRaises(TaskException, r4.get, blocking=True, timeout=1)
+
+    def test_pipeline_error_retries_then_downstream(self):
+        @self.huey.task(retries=1)
+        def task_a(n):
+            raise TestError(n)
+
+        @self.huey.task()
+        def task_e(n, err):
+            return n
+
+        pipe = task_a.s(1).then(task_a, 2).then(task_a, 3)
+        pipe.error(task_e, 9)
+        r1, r2, r3 = self.huey.enqueue(pipe)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 2)  # Error handler, retry.
+        self.assertEqual(self.execute_next(), 9)
+        self.assertTrue(r3.get_raw_result() is None)
+
+        self.assertTrue(self.execute_next() is None)  # Retry, final failure.
+        self.assertEqual(len(self.huey), 1)  # Error handler.
+        self.assertEqual(self.execute_next(), 9)
+        self.assertEqual(len(self.huey), 0)
+        for r in (r1, r2, r3):
+            self.assertRaises(TaskException, r.get)
+
+    def test_pipeline_revoke_midway(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        pipe = task_a.s(1).then(task_a).then(task_a).then(task_a)
+        r1, r2, r3, r4 = self.huey.enqueue(pipe)
+        r3.revoke()
+        self.assertEqual(self.execute_next(), 2)
+        self.assertEqual(self.execute_next(), 3)
+        self.assertTrue(r3.is_revoked())
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 0)
+        self.assertFalse(r3.is_revoked())  # Cleared when it was handled.
+
+    def test_chain_errors(self):
+        state1, state2 = [], []
+
+        @self.huey.task()
+        def task_a(n):
+            if n < 1:
+                raise TestError(n)
+            return n - 1
+
+        @self.huey.task()
+        def task_e1(n, err):
+            state1.append(repr(err))
+            if n < 1:
+                raise TestError(n)
+
+        @self.huey.task()
+        def task_e2(n, err):
+            state2.append((n, repr(err)))
+            return n
+
+        pipe = task_a.s(1).then(task_a)
+        pipe.on_complete.error(task_e1, 0).error(task_e2, 3)
+
+        # We get result wrappers for the invocations of task_a.
+        r1, r2 = self.huey.enqueue(pipe)
+        self.execute_next()  # First invocation, returns 0.
+        self.execute_next()  # Second, raises error.
+
+        self.assertEqual(len(self.huey), 1)
+        self.execute_next()  # Error handler (also fails).
+        self.assertEqual(len(self.huey), 1)
+
+        self.assertEqual(self.execute_next(), 3)  # Second error handler.
+
+        self.assertEqual(state1, ['TestError(0)'])
+        self.assertEqual(state2, [(3, 'TestError(0)')])
+
+        self.assertEqual(r1(), 0)
+        self.assertRaises(TaskException, r2.get)
+        self.assertEqual(len(self.huey), 0)
+
+
+class TestTaskLocking(BaseTestCase):
+    def test_task_locking(self):
+        @self.huey.task(retries=1)
+        @self.huey.lock_task('lock_a')
+        def task_a(n):
+            return n + 1
+
+        task_a(3)
+        self.assertEqual(self.execute_next(), 4)
+
+        task_a(4)
+        with self.huey.lock_task('lock_x') as lock:
+            self.assertTrue(lock.is_locked())
+            self.assertFalse(self.huey.is_locked('lock_a'))
+            self.assertTrue(self.huey.is_locked('lock_x'))
+            self.assertEqual(self.execute_next(), 5)
+
+        # Ensure locks were cleared.
+        self.assertFalse(self.huey.is_locked('lock_a'))
+        self.assertFalse(self.huey.is_locked('lock_x'))
+
+        r = task_a(5)
+        with self.huey.lock_task('lock_a'):
+            self.assertTrue(self.huey.is_locked('lock_a'))
+            self.assertTrue(self.execute_next() is None)
+
+        exc = self.trap_exception(r)
+        self.assertTrue('unable to acquire' in str(exc))
+
+        # Task failed due to lock, will be retried, which succeeds now that the
+        # lock is released.
+        self.assertEqual(self.execute_next(), 6)
+
+    def test_task_locking_ttl(self):
+        with self.huey.lock_task('lock_t', ttl=1):
+            self.assertTrue(self.huey.is_locked('lock_t'))
+            self.assertRaises(TaskLockedException,
+                              self.huey.lock_task('lock_t').acquire)
+            time.sleep(1.1)
+            self.assertFalse(self.huey.is_locked('lock_t'))
+            with self.huey.lock_task('lock_t'):
+                self.assertTrue(self.huey.is_locked('lock_t'))
+        self.assertFalse(self.huey.is_locked('lock_t'))
+
+
+class TestRateLimit(BaseTestCase):
+    def test_rate_limit(self):
+        rl = self.huey.rate_limit('test', limit=3, per=60)
+        for _ in range(3):
+            rl.acquire()
+
+        with self.assertRaises(RateLimitExceeded) as ctx:
+            rl.acquire()
+
+        exc = ctx.exception
+        self.assertEqual(exc.key, 'test')
+        self.assertTrue(0 < exc.delay <= 60)
+        self.assertTrue(exc.retry)
+
+        rl2 = self.huey.rate_limit('test2', limit=1, per=60, retry=False)
+        rl2.acquire()
+
+        with self.assertRaises(RateLimitExceeded) as ctx:
+            rl2.acquire()
+
+        exc = ctx.exception
+        self.assertEqual(exc.key, 'test2')
+        self.assertTrue(0 < exc.delay <= 60)
+        self.assertFalse(exc.retry)
+
+    def test_reset(self):
+        rl = self.huey.rate_limit('test', limit=1, per=60)
+        rl.acquire()
+        with self.assertRaises(RateLimitExceeded):
+            rl.acquire()
+
+        # Force window reset.
+        rl.reset()
+
+        rl.acquire()
+
+    def test_ctx_decorator(self):
+        rl = self.huey.rate_limit('test', limit=2, per=60)
+        @rl
+        def deco():
+            return True
+
+        def ctx():
+            with rl:
+                return True
+
+        self.assertTrue(deco())
+        self.assertTrue(ctx())
+
+        with self.assertRaises(RateLimitExceeded):
+            deco()
+        with self.assertRaises(RateLimitExceeded):
+            ctx()
+
+    def test_execution(self):
+        @self.huey.task()
+        @self.huey.rate_limit('test', limit=2, per=60)
+        def test(n):
+            return n + 1
+
+        r1 = test(1)
+        r2 = test(2)
+        r3 = test(3)
+        self.assertEqual(self.execute_next(), 2)
+        self.assertEqual(self.execute_next(), 3)
+
+        self.assertEqual(self.huey.scheduled_count(), 0)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(self.huey.scheduled_count(), 1)
+
+        err = self.trap_exception(r3)
+        self.assertTrue('RateLimitExceeded' in err.metadata['error'])
+        self.assertEqual(err.metadata['retries'], 1)
+
+        task, = self.huey.scheduled()
+        self.assertEqual(task.retries, 0)  # No additional retries.
+        self.huey.storage.flush_schedule()
+
+        r4 = test(4, retries=2)
+        self.assertTrue(self.execute_next() is None)
+        err = self.trap_exception(r4)
+        self.assertTrue('RateLimitExceeded' in err.metadata['error'])
+
+        task, = self.huey.scheduled()
+        self.assertEqual(task.retries, 2)  # Retries preserved, no decremented.
+        self.huey.storage.flush_schedule()
+
+        @self.huey.task()
+        @self.huey.rate_limit('test', limit=2, per=60, retry=False)
+        def test2(n):
+            return n + 1
+
+        # Task is NOT retried automatically.
+        r5 = test2(5)
+        self.assertTrue(self.execute_next() is None)
+        err = self.trap_exception(r5)
+        self.assertTrue('RateLimitExceeded' in err.metadata['error'])
+        self.assertEqual(self.huey.scheduled_count(), 0)
+
+        # Task may specify retries, though they will be decremented.
+        r6 = test2(6, retries=2, retry_delay=600)
+        self.assertTrue(self.execute_next() is None)
+        err = self.trap_exception(r6)
+        self.assertTrue('RateLimitExceeded' in err.metadata['error'])
+        self.assertEqual(self.huey.scheduled_count(), 1)
+
+        task, = self.huey.scheduled()
+        self.assertEqual(task.retries, 1)  # Retries decremented.
+        self.assertEqual(task.retry_delay, 600)  # Retry delay preserved.
+        self.huey.storage.flush_schedule()
+
+    def test_task_with_retries(self):
+        @self.huey.task(retries=2, retry_delay=10)
+        @self.huey.rate_limit('test', limit=1, per=60)
+        def test(n):
+            return n + 1
+
+        r1 = test(1)
+        r2 = test(2)
+        self.assertEqual(self.execute_next(), 2)
+
+        self.assertEqual(self.huey.scheduled_count(), 0)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(self.huey.scheduled_count(), 1)
+
+        task, = self.huey.scheduled()
+        self.assertEqual(task.retries, 2)  # Task retains its 2 retries.
+        self.assertEqual(task.retry_delay, 10)  # Task retains retry delay.
+        self.huey.storage.flush_schedule()
+
+        @self.huey.task(retries=2, retry_delay=10)
+        @self.huey.rate_limit('test', limit=1, per=60, retry=False)
+        def test2(n):
+            return n + 1
+
+        r3 = test2(1)
+        self.assertEqual(self.huey.scheduled_count(), 0)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(self.huey.scheduled_count(), 1)
+
+        task, = self.huey.scheduled()
+        self.assertEqual(task.retries, 1)  # Task retries decremented.
+        self.assertEqual(task.retry_delay, 10)  # Task retains retry delay.
+        self.huey.storage.flush_schedule()
+
+
+class TestHueyAPIs(BaseTestCase):
+    def test_flush_locks(self):
+        with self.huey.lock_task('lock1'):
+            with self.huey.lock_task('lock2'):
+                flushed = self.huey.flush_locks()
+
+        self.assertEqual(flushed, set(['lock1', 'lock2']))
+        self.assertEqual(self.huey.flush_locks(), set())
+
+    def test_flush_named_locks(self):
+        self.huey.put_if_empty('%s.lock.lock1' % self.huey.name, '1')
+        self.huey.put_if_empty('%s.lock.lock2' % self.huey.name, '1')
+        with self.huey.lock_task('lock3'):
+            flushed = self.huey.flush_locks('lock1', 'lock2', 'lockx')
+
+        self.assertEqual(flushed, set(['lock1', 'lock2', 'lock3']))
+        self.assertEqual(self.huey.flush_locks(), set())
+
+    def test_serialize_deserialize(self):
+        @self.huey.task()
+        def task_a(n):
+            return n
+        @self.huey.task()
+        def task_b(n):
+            return n
+        @self.huey.periodic_task(crontab(minute='1'))
+        def task_p():
+            return
+
+        ta = task_a.s(1)
+        tb = task_b.s(2)
+        tp = task_p.s()
+        S = lambda t: self.huey.deserialize_task(self.huey.serialize_task(t))
+        self.assertEqual(ta, S(ta))
+        self.assertEqual(tb, S(tb))
+        self.assertEqual(tp, S(tp))
+
+    def test_serialize_deserialize_signed(self):
+        self.huey.serializer = SignedSerializer(secret='test secret')
+        self.test_serialize_deserialize()
+
+    def test_put_get(self):
+        tests = ('v1', 1, 1., 0, None,
+                 [0, 1, 2],
+                 (2, 3, 4),
+                 {'k1': 'v1', 'k2': 'v2'},
+                 set('abc'))
+        for test in tests:
+            self.huey.put('key', test)
+            self.assertEqual(self.huey.get('key'), test)
+
+
+class TestMultipleHuey(BaseTestCase):
+    def test_multiple_huey(self):
+        huey1 = self.huey
+        huey2 = MemoryHuey('huey2', utc=False)
+
+        @huey1.task()
+        def task_a(n):
+            return n + 1
+
+        task_a2 = huey2.task(retries=1)(task_a)
+
+        r = task_a(1)
+        self.assertEqual(len(huey1), 1)
+        self.assertEqual(len(huey2), 0)
+        self.assertEqual(self.execute_next(), 2)
+        self.assertEqual(r.get(), 2)
+
+        r2 = task_a2(2)
+        self.assertEqual(len(huey1), 0)
+        self.assertEqual(len(huey2), 1)
+        self.assertEqual(huey2.execute(huey2.dequeue()), 3)
+        self.assertEqual(r2.get(), 3)
+
+
+class TestDisableResultStore(BaseTestCase):
+    def get_huey(self):
+        return MemoryHuey(results=False, utc=False)
+
+    def test_disable_result_store(self):
+        state = []
+
+        @self.huey.task()
+        def task_a(n):
+            state.append(n)
+            return n + 1
+
+        res = task_a(2)
+        self.assertTrue(res is None)
+        self.assertEqual(self.execute_next(), 3)
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.result_count(), 0)
+        self.assertEqual(state, [2])
+
+        p = task_a.s(3).then(task_a)
+        res = self.huey.enqueue(p)
+        self.assertTrue(res is None)
+        self.assertEqual(self.execute_next(), 4)
+        self.assertEqual(self.execute_next(), 5)
+        self.assertEqual(state, [2, 3, 4])
+
+        self.assertTrue(task_a.map([5, 6]) is None)
+        self.assertEqual(self.execute_next(), 6)
+        self.assertEqual(self.execute_next(), 7)
+        self.assertEqual(state, [2, 3, 4, 5, 6])
+
+        self.huey.immediate = True
+        self.assertTrue(task_a(7) is None)
+        self.assertEqual(state, [2, 3, 4, 5, 6, 7])
+
+        p = task_a.s(8).then(task_a)
+        res = self.huey.enqueue(p)
+        self.assertTrue(res is None)
+        self.assertEqual(state, [2, 3, 4, 5, 6, 7, 8, 9])
+
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.result_count(), 0)
+
+
+class TestStoreIntermediateErrors(BaseTestCase):
+    def get_huey(self):
+        return MemoryHuey(utc=False, store_intermediate_errors=False)
+
+    def test_intermediate_error_withheld(self):
+        @self.huey.task(retries=1)
+        def task_a():
+            raise TestError('boom')
+
+        r = task_a()
+
+        # First attempt fails with a retry remaining: nothing is written to the
+        # result store and the task is simply re-enqueued.
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(self.huey.result_count(), 0)
+        self.assertTrue(r.get() is None)
+
+        # Final attempt fails with retries exhausted: now the error is stored
+        # and surfaced to the caller.
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 0)
+        self.assertEqual(self.huey.result_count(), 1)
+        exc = self.trap_exception(r)
+        self.assertEqual(exc.metadata['error'], 'TestError(boom)')
+        self.assertEqual(exc.metadata['retries'], 0)
+
+    def test_retry_then_success(self):
+        state = []
+        @self.huey.task(retries=2)
+        def task_a():
+            state.append(1)
+            if len(state) == 1:
+                raise TestError('boom')
+            return 'ok'
+
+        r = task_a()
+
+        # The task fails on its first attempt, but because no intermediate error
+        # is stored the result handle is not poisoned -- unlike the default
+        # behavior, no reset() is needed to read the eventual success value.
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(self.huey.result_count(), 0)
+        self.assertTrue(r.get() is None)
+
+        self.assertEqual(self.execute_next(), 'ok')
+        self.assertEqual(r.get(), 'ok')
+        self.assertEqual(len(self.huey), 0)
+
+    def test_on_error_deferred(self):
+        state = []
+        @self.huey.task(retries=1)
+        def task_a():
+            raise TestError('boom')
+
+        @self.huey.task()
+        def task_e(err):
+            state.append(repr(err))
+
+        self.huey.enqueue(task_a.s().error(task_e))
+
+        # First attempt fails with a retry remaining: the on_error handler is
+        # withheld and only the task itself is re-enqueued.
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 1)
+        self.assertEqual(state, [])
+
+        # Final attempt exhausts retries: the on_error handler is enqueued and
+        # fires exactly once.
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(len(self.huey), 1)
+        self.execute_next()
+        self.assertEqual(state, ['TestError(boom)'])
+        self.assertEqual(len(self.huey), 0)
+
+
+class TestStorageWrappers(BaseTestCase):
+    def test_storage_wrappers(self):
+        @self.huey.task()
+        def task_a(n):
+            return n + 1
+
+        def assertTasks(tasks, id_list):
+            self.assertEqual([t.id for t in tasks], id_list)
+
+        assertTasks(self.huey.pending(), [])
+        assertTasks(self.huey.scheduled(), [])
+        self.assertEqual(self.huey.all_results(), {})
+
+        r1 = task_a(1)
+        r2 = task_a.schedule((2,), delay=60)
+        r3 = task_a(3)
+
+        assertTasks(self.huey.pending(), [r1.id, r2.id, r3.id])
+        assertTasks(self.huey.scheduled(), [])
+        self.assertEqual(self.huey.all_results(), {})
+
+        self.execute_next()
+        self.execute_next()
+
+        assertTasks(self.huey.pending(), [r3.id])
+        assertTasks(self.huey.scheduled(), [r2.id])
+        self.assertEqual(list(self.huey.all_results()), [r1.id])
+
+
+class TestDocstring(BaseTestCase):
+    def test_docstring_preserved(self):
+        @self.huey.task()
+        def add(a, b):
+            'Adds two numbers.'
+            return a + b
+
+        @self.huey.periodic_task(crontab(minute='*'))
+        def ptask():
+            'Sample periodic task.'
+
+        self.assertEqual(inspect.getdoc(add), 'Adds two numbers.')
+        self.assertEqual(inspect.getdoc(ptask), 'Sample periodic task.')
+
+
+class TestCustomErrorMetadata(BaseTestCase):
+    def get_huey(self):
+        class CustomError(MemoryHuey):
+            def build_error_result(self, task, exc):
+                err = super(CustomError, self).build_error_result(task, exc)
+                err.update(name=task.name, args=task.args)
+                return err
+        return CustomError(utc=False)
+
+    def test_custom_error(self):
+        @self.huey.task()
+        def task_e(n):
+            raise TestError('uh-oh')
+
+        re = task_e(0)
+        self.assertTrue(self.execute_next() is None)
+        self.assertEqual(self.huey.result_count(), 1)  # Error result present.
+
+        # Resolves the result handle, which re-raises the error.
+        err = self.trap_exception(re)
+        self.assertEqual(err.metadata['error'], 'TestError(uh-oh)')
+        self.assertEqual(err.metadata['retries'], 0)
+        self.assertEqual(err.metadata['name'], 'task_e')
+        self.assertEqual(err.metadata['args'], (0,))
+
+        self.assertEqual(self.huey.result_count(), 0)
+        self.assertEqual(len(self.huey), 0)

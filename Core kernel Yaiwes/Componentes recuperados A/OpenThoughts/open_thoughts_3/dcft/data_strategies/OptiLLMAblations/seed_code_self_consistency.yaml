@@ -1,0 +1,43 @@
+operators:
+- id: load_preexisting
+  config:
+    type: load_preexisting
+    framework_name: seed_code_multiple_samples_scale_up_base_16K
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - problem
+        - r1_distill_70b_response
+  input_ids:
+    - load_preexisting
+- id: merge_together
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.merge_duplicate_rows
+    function_config:
+      diff_columns: 
+        - r1_distill_70b_response
+  input_ids:
+    - drop_columns
+- id: multiple_samples
+  config:
+    type: function
+    function: data_strategies.OptiLLMAblations.utils.self_consistency_multiple_samples
+    function_config:
+      response_column: r1_distill_70b_response
+      verified_response_column: verified_r1_distill_70b_response
+  input_ids:
+    - merge_together
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: problem
+      input_response_column: verified_r1_distill_70b_response
+      output_sharegpt_column: conversations
+  input_ids:
+    - multiple_samples

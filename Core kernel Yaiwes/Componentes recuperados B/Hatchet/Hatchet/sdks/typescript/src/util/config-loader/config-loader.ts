@@ -1,0 +1,245 @@
+import { parse } from 'yaml';
+import { readFileSync } from 'fs';
+import * as p from 'path';
+import { z } from 'zod/v4';
+import { ClientConfig, ClientConfigSchema } from '@clients/hatchet-client';
+import { ChannelCredentials } from 'nice-grpc';
+import { LogLevel } from '@util/logger';
+import { getAddressesFromJWT, getTenantIdFromJWT } from './token';
+
+type EnvVars =
+  | 'HATCHET_CLIENT_TOKEN'
+  | 'HATCHET_CLIENT_TLS_STRATEGY'
+  | 'HATCHET_CLIENT_HOST_PORT'
+  | 'HATCHET_CLIENT_API_URL'
+  | 'HATCHET_CLIENT_TLS_CERT_FILE'
+  | 'HATCHET_CLIENT_TLS_KEY_FILE'
+  | 'HATCHET_CLIENT_TLS_ROOT_CA_FILE'
+  | 'HATCHET_CLIENT_TLS_SERVER_NAME'
+  | 'HATCHET_CLIENT_LOG_LEVEL'
+  | 'HATCHET_CLIENT_NAMESPACE'
+  | 'HATCHET_CLIENT_WORKER_HEALTHCHECK_ENABLED'
+  | 'HATCHET_CLIENT_WORKER_HEALTHCHECK_PORT'
+  | 'HATCHET_CLIENT_OPENTELEMETRY_EXCLUDED_ATTRIBUTES'
+  | 'HATCHET_CLIENT_OPENTELEMETRY_INCLUDE_TASK_NAME_IN_SPAN_NAME'
+  | 'HATCHET_CLIENT_OPENTELEMETRY_INDIVIDUAL_RUN_SPANS_FOR_BULK_RUN'
+  | 'HATCHET_CLIENT_GRPC_MAX_RECV_MESSAGE_LENGTH'
+  | 'HATCHET_CLIENT_GRPC_MAX_SEND_MESSAGE_LENGTH'
+  | 'HATCHET_CLIENT_RETRIER_MAX_ATTEMPTS'
+  | 'HATCHET_CLIENT_RETRIER_INITIAL_INTERVAL'
+  | 'HATCHET_CLIENT_RETRIER_MAX_JITTER';
+
+type TLSStrategy = 'tls' | 'mtls';
+
+interface LoadClientConfigOptions {
+  path?: string;
+}
+
+const DEFAULT_CONFIG_FILE = '.hatchet.yaml';
+
+export class ConfigLoader {
+  static loadClientConfig(
+    override?: Partial<ClientConfig>,
+    config?: LoadClientConfigOptions
+  ): Partial<ClientConfig> {
+    const yaml = this.loadYamlConfig(config?.path);
+    const tlsConfig = override?.tls_config ?? {
+      tls_strategy:
+        yaml?.tls_config?.tls_strategy ??
+        (this.env('HATCHET_CLIENT_TLS_STRATEGY') as TLSStrategy | undefined) ??
+        'tls',
+      cert_file: yaml?.tls_config?.cert_file ?? this.env('HATCHET_CLIENT_TLS_CERT_FILE')!,
+      key_file: yaml?.tls_config?.key_file ?? this.env('HATCHET_CLIENT_TLS_KEY_FILE')!,
+      ca_file: yaml?.tls_config?.ca_file ?? this.env('HATCHET_CLIENT_TLS_ROOT_CA_FILE')!,
+      server_name: yaml?.tls_config?.server_name ?? this.env('HATCHET_CLIENT_TLS_SERVER_NAME')!,
+    };
+
+    const token = override?.token ?? yaml?.token ?? this.env('HATCHET_CLIENT_TOKEN');
+
+    const healthCheckConfig = override?.healthcheck ??
+      yaml?.healthcheck ?? {
+        enabled: this.env('HATCHET_CLIENT_WORKER_HEALTHCHECK_ENABLED') === 'true',
+        port: parseInt(this.env('HATCHET_CLIENT_WORKER_HEALTHCHECK_PORT') || '8001', 10),
+      };
+
+    if (!token) {
+      throw new Error(
+        'No token provided. Provide it by setting the HATCHET_CLIENT_TOKEN environment variable.'
+      );
+    }
+
+    let grpcBroadcastAddress: string | undefined;
+    let apiUrl: string | undefined;
+    const tenantId = getTenantIdFromJWT(token!);
+
+    if (!tenantId) {
+      throw new Error('Tenant ID not found in subject claim of token');
+    }
+
+    try {
+      const addresses = getAddressesFromJWT(token!);
+
+      grpcBroadcastAddress =
+        override?.host_port ??
+        yaml?.host_port ??
+        this.env('HATCHET_CLIENT_HOST_PORT') ??
+        addresses.grpcBroadcastAddress;
+
+      apiUrl =
+        override?.api_url ??
+        yaml?.api_url ??
+        this.env('HATCHET_CLIENT_API_URL') ??
+        addresses.serverUrl;
+    } catch {
+      grpcBroadcastAddress =
+        override?.host_port ?? yaml?.host_port ?? this.env('HATCHET_CLIENT_HOST_PORT');
+      apiUrl = override?.api_url ?? yaml?.api_url ?? this.env('HATCHET_CLIENT_API_URL');
+    }
+
+    let namespace = override?.namespace ?? yaml?.namespace ?? this.env('HATCHET_CLIENT_NAMESPACE');
+
+    if (namespace && !namespace?.endsWith('_')) {
+      namespace = `${namespace}_`;
+    }
+
+    const otelConfig = override?.otel ??
+      yaml?.otel ?? {
+        excludedAttributes: this.parseJsonArray(
+          this.env('HATCHET_CLIENT_OPENTELEMETRY_EXCLUDED_ATTRIBUTES') || '[]'
+        ),
+        includeTaskNameInSpanName:
+          this.env('HATCHET_CLIENT_OPENTELEMETRY_INCLUDE_TASK_NAME_IN_SPAN_NAME') === 'true',
+        individualRunSpansForBulkRun:
+          this.env('HATCHET_CLIENT_OPENTELEMETRY_INDIVIDUAL_RUN_SPANS_FOR_BULK_RUN') === 'true',
+      };
+
+    const grpcMaxRecvMessageLength =
+      override?.grpc_max_recv_message_length ??
+      yaml?.grpc_max_recv_message_length ??
+      this.parseIntEnv('HATCHET_CLIENT_GRPC_MAX_RECV_MESSAGE_LENGTH') ??
+      4 * 1024 * 1024;
+
+    const grpcMaxSendMessageLength =
+      override?.grpc_max_send_message_length ??
+      yaml?.grpc_max_send_message_length ??
+      this.parseIntEnv('HATCHET_CLIENT_GRPC_MAX_SEND_MESSAGE_LENGTH') ??
+      4 * 1024 * 1024;
+
+    const retrierConfig = {
+      maxAttempts:
+        override?.retrier?.maxAttempts ??
+        yaml?.retrier?.maxAttempts ??
+        this.parseIntEnv('HATCHET_CLIENT_RETRIER_MAX_ATTEMPTS'),
+      initialInterval:
+        override?.retrier?.initialInterval ??
+        yaml?.retrier?.initialInterval ??
+        this.parseFloatEnv('HATCHET_CLIENT_RETRIER_INITIAL_INTERVAL'),
+      maxJitter:
+        override?.retrier?.maxJitter ??
+        yaml?.retrier?.maxJitter ??
+        this.parseIntEnv('HATCHET_CLIENT_RETRIER_MAX_JITTER'),
+    };
+    const hasRetrier = Object.values(retrierConfig).some((v) => v !== undefined);
+
+    return {
+      token: override?.token ?? yaml?.token ?? this.env('HATCHET_CLIENT_TOKEN'),
+      host_port: grpcBroadcastAddress,
+      api_url: apiUrl,
+      tls_config: tlsConfig,
+      healthcheck: healthCheckConfig,
+      log_level:
+        override?.log_level ??
+        yaml?.log_level ??
+        (this.env('HATCHET_CLIENT_LOG_LEVEL') as LogLevel) ??
+        'INFO',
+      tenant_id: tenantId,
+      namespace: namespace ? `${namespace}`.toLowerCase() : '',
+      otel: otelConfig,
+      grpc_max_recv_message_length: grpcMaxRecvMessageLength,
+      grpc_max_send_message_length: grpcMaxSendMessageLength,
+      cancellation_grace_period:
+        override?.cancellation_grace_period ?? yaml?.cancellation_grace_period,
+      cancellation_warning_threshold:
+        override?.cancellation_warning_threshold ?? yaml?.cancellation_warning_threshold,
+      ...(hasRetrier ? { retrier: retrierConfig } : {}),
+    };
+  }
+
+  private static parseIntEnv(envName: EnvVars): number | undefined {
+    const value = this.env(envName);
+    if (value === undefined || value === '') return undefined;
+    if (!/^\d+$/.test(value.trim())) {
+      throw new Error(`Invalid value for ${envName}: "${value}". Expected a positive integer.`);
+    }
+    return parseInt(value, 10);
+  }
+
+  private static parseFloatEnv(envName: EnvVars): number | undefined {
+    const value = this.env(envName);
+    if (value === undefined || value === '') return undefined;
+    const parsed = parseFloat(value.trim());
+    if (isNaN(parsed) || parsed <= 0) {
+      throw new Error(`Invalid value for ${envName}: "${value}". Expected a positive number.`);
+    }
+    return parsed;
+  }
+
+  private static parseJsonArray(value: string): string[] {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  static get default_yaml_config_path() {
+    return p.join(process.cwd(), DEFAULT_CONFIG_FILE);
+  }
+
+  static createCredentials(config: ClientConfig['tls_config']): ChannelCredentials {
+    // if none, create insecure credentials
+    if (config.tls_strategy === 'none') {
+      return ChannelCredentials.createInsecure();
+    }
+
+    if (config.tls_strategy === 'tls') {
+      const rootCerts = config.ca_file ? readFileSync(config.ca_file) : undefined;
+      return ChannelCredentials.createSsl(rootCerts);
+    }
+
+    const rootCerts = config.ca_file ? readFileSync(config.ca_file) : null;
+    const privateKey = config.key_file ? readFileSync(config.key_file) : null;
+    const certChain = config.cert_file ? readFileSync(config.cert_file) : null;
+    return ChannelCredentials.createSsl(rootCerts, privateKey, certChain);
+  }
+
+  static loadYamlConfig(path?: string): ClientConfig | undefined {
+    try {
+      const configFile = readFileSync(
+        p.join(__dirname, path ?? this.default_yaml_config_path),
+        'utf8'
+      );
+
+      const config = parse(configFile);
+
+      ClientConfigSchema.partial().parse(config);
+
+      return config as ClientConfig;
+    } catch (e) {
+      if (!path) {
+        return undefined;
+      }
+
+      if (e instanceof z.ZodError) {
+        throw new Error(`Invalid yaml config: ${e.message}`, { cause: e });
+      }
+
+      throw e;
+    }
+  }
+
+  private static env(name: EnvVars): string | undefined {
+    return process.env[name];
+  }
+}

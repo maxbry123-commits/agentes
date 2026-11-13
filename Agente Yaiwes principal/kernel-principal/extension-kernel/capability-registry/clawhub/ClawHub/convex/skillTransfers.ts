@@ -1,0 +1,522 @@
+import { v } from "convex/values";
+import type { Doc, Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
+import { internalMutation, internalQuery } from "./functions";
+import {
+  assertCanManageOwnedResource,
+  ensurePersonalPublisherForUser,
+  getActiveUserByHandleOrPersonalPublisher,
+} from "./lib/publishers";
+import { isSkillTransferBlockedByModeration } from "./lib/skillSafety";
+const TRANSFER_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
+
+type TransferDoc = Doc<"skillOwnershipTransfers">;
+
+function normalizeHandle(value: string) {
+  return value.trim().replace(/^@+/, "").toLowerCase();
+}
+
+function isExpired(transfer: TransferDoc, now: number) {
+  return transfer.expiresAt < now;
+}
+
+async function requireActiveUserById(ctx: unknown, userId: Id<"users">) {
+  const db = (ctx as { db: { get: (id: Id<"users">) => Promise<Doc<"users"> | null> } }).db;
+  const user = await db.get(userId);
+  if (!user || user.deletedAt || user.deactivatedAt) throw new Error("Unauthorized");
+  return user;
+}
+
+async function assertCanRequestSkillTransfer(
+  ctx: MutationCtx,
+  actor: Doc<"users">,
+  skill: Doc<"skills">,
+) {
+  if (skill.ownerUserId === actor._id) return;
+  await assertCanManageOwnedResource(ctx, {
+    actor,
+    ownerUserId: skill.ownerUserId,
+    ownerPublisherId: skill.ownerPublisherId,
+    allowedPublisherRoles: ["admin"],
+    allowPlatformAdmin: true,
+  });
+}
+
+async function findTransferDestinationSlugConflict(
+  ctx: MutationCtx,
+  params: {
+    skill: Doc<"skills">;
+    aliases: Doc<"skillSlugAliases">[];
+    destinationUserId: Id<"users">;
+    destinationPublisher: Doc<"publishers">;
+  },
+) {
+  const slugs = new Set([params.skill.slug, ...params.aliases.map((alias) => alias.slug)]);
+
+  for (const slug of slugs) {
+    const [publisherSkills, legacySkills, publisherAliases, legacyAliases] = await Promise.all([
+      ctx.db
+        .query("skills")
+        .withIndex("by_owner_publisher_slug", (q) =>
+          q.eq("ownerPublisherId", params.destinationPublisher._id).eq("slug", slug),
+        )
+        .collect(),
+      ctx.db
+        .query("skills")
+        .withIndex("by_owner_slug", (q) =>
+          q.eq("ownerUserId", params.destinationUserId).eq("slug", slug),
+        )
+        .collect(),
+      ctx.db
+        .query("skillSlugAliases")
+        .withIndex("by_owner_publisher_slug", (q) =>
+          q.eq("ownerPublisherId", params.destinationPublisher._id).eq("slug", slug),
+        )
+        .collect(),
+      ctx.db
+        .query("skillSlugAliases")
+        .withIndex("by_owner_slug", (q) =>
+          q.eq("ownerUserId", params.destinationUserId).eq("slug", slug),
+        )
+        .collect(),
+    ]);
+
+    const conflictingSkill = [...publisherSkills, ...legacySkills].find(
+      (candidate) =>
+        candidate._id !== params.skill._id &&
+        !candidate.softDeletedAt &&
+        (!candidate.ownerPublisherId ||
+          candidate.ownerPublisherId === params.destinationPublisher._id),
+    );
+    if (conflictingSkill) {
+      return `Destination owner @${params.destinationPublisher.handle} already has skill "${slug}". Rename or merge it before accepting this transfer.`;
+    }
+
+    const conflictingAlias = [...publisherAliases, ...legacyAliases].find(
+      (candidate) =>
+        candidate.skillId !== params.skill._id &&
+        (!candidate.ownerPublisherId ||
+          candidate.ownerPublisherId === params.destinationPublisher._id),
+    );
+    if (conflictingAlias) {
+      return `Destination owner @${params.destinationPublisher.handle} already has a redirect for skill "${slug}". Rename or merge it before accepting this transfer.`;
+    }
+  }
+
+  return null;
+}
+
+async function getActivePendingTransferForSkill(ctx: unknown, skillId: Id<"skills">, now: number) {
+  const db = (
+    ctx as {
+      db: {
+        patch: (id: Id<"skillOwnershipTransfers">, value: Partial<TransferDoc>) => Promise<unknown>;
+        query: (table: "skillOwnershipTransfers") => {
+          withIndex: (
+            indexName: "by_skill_status",
+            cb: (q: {
+              eq: (
+                field: "skillId",
+                value: Id<"skills">,
+              ) => {
+                eq: (field: "status", value: "pending") => unknown;
+              };
+            }) => unknown,
+          ) => { collect: () => Promise<TransferDoc[]> };
+        };
+      };
+    }
+  ).db;
+
+  const transfers = await db
+    .query("skillOwnershipTransfers")
+    .withIndex("by_skill_status", (q) => q.eq("skillId", skillId).eq("status", "pending"))
+    .collect();
+
+  let active: TransferDoc | null = null;
+  for (const transfer of transfers) {
+    if (isExpired(transfer, now)) {
+      await db.patch(transfer._id, { status: "expired", respondedAt: now });
+      continue;
+    }
+    if (!active || transfer.requestedAt > active.requestedAt) active = transfer;
+  }
+  return active;
+}
+
+async function validatePendingTransferForActor(
+  ctx: unknown,
+  params: {
+    transferId: Id<"skillOwnershipTransfers">;
+    actorUserId: Id<"users">;
+    role: "sender" | "recipient";
+    now: number;
+  },
+) {
+  const db = (
+    ctx as {
+      db: {
+        get: (id: Id<"skillOwnershipTransfers">) => Promise<TransferDoc | null>;
+        patch: (id: Id<"skillOwnershipTransfers">, value: Partial<TransferDoc>) => Promise<unknown>;
+      };
+    }
+  ).db;
+
+  const transfer = await db.get(params.transferId);
+  if (!transfer) throw new Error("Transfer not found");
+
+  if (params.role === "recipient" && transfer.toUserId !== params.actorUserId) {
+    throw new Error("No pending transfer found");
+  }
+  if (params.role === "sender" && transfer.fromUserId !== params.actorUserId) {
+    throw new Error("No pending transfer found");
+  }
+  if (transfer.status !== "pending") throw new Error("No pending transfer found");
+  if (isExpired(transfer, params.now)) {
+    await db.patch(transfer._id, { status: "expired", respondedAt: params.now });
+    throw new Error("Transfer has expired");
+  }
+  return transfer;
+}
+
+export const requestTransferInternal = internalMutation({
+  args: {
+    actorUserId: v.id("users"),
+    skillId: v.id("skills"),
+    toUserHandle: v.string(),
+    message: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const actor = await requireActiveUserById(ctx, args.actorUserId);
+
+    const skill = await ctx.db.get(args.skillId);
+    if (!skill || skill.softDeletedAt) throw new Error("Skill not found");
+    await assertCanRequestSkillTransfer(ctx, actor, skill);
+
+    const toHandle = normalizeHandle(args.toUserHandle);
+    if (!toHandle) throw new Error("toUserHandle required");
+
+    const toUser = await getActiveUserByHandleOrPersonalPublisher(ctx, toHandle);
+    if (!toUser) throw new Error("User not found");
+    if (toUser._id === args.actorUserId) throw new Error("Cannot transfer to yourself");
+
+    const activePending = await getActivePendingTransferForSkill(ctx, args.skillId, now);
+    if (activePending) throw new Error("A transfer is already pending for this skill");
+
+    const message = args.message?.trim();
+    const expiresAt = now + TRANSFER_EXPIRY_MS;
+    const transferId = await ctx.db.insert("skillOwnershipTransfers", {
+      skillId: skill._id,
+      fromUserId: args.actorUserId,
+      toUserId: toUser._id,
+      status: "pending",
+      message: message || undefined,
+      requestedAt: now,
+      expiresAt,
+    });
+
+    await ctx.db.insert("auditLogs", {
+      actorUserId: args.actorUserId,
+      action: "skill.transfer.request",
+      targetType: "skill",
+      targetId: skill._id,
+      metadata: {
+        transferId,
+        toUserId: toUser._id,
+        toUserHandle: toUser.handle ?? toHandle,
+      },
+      createdAt: now,
+    });
+
+    return { ok: true as const, transferId, toUserHandle: toUser.handle ?? toHandle, expiresAt };
+  },
+});
+
+export const acceptTransferInternal = internalMutation({
+  args: {
+    actorUserId: v.id("users"),
+    transferId: v.id("skillOwnershipTransfers"),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const newOwner = await requireActiveUserById(ctx, args.actorUserId);
+
+    const transfer = await validatePendingTransferForActor(ctx, {
+      transferId: args.transferId,
+      actorUserId: args.actorUserId,
+      role: "recipient",
+      now,
+    });
+    const cancelTransfer = async (message: string) => {
+      await ctx.db.patch(transfer._id, { status: "cancelled" as const, respondedAt: now });
+      return { ok: false as const, error: message };
+    };
+
+    const skill = await ctx.db.get(transfer.skillId);
+    if (!skill || skill.softDeletedAt) throw new Error("Skill not found");
+    if (isSkillTransferBlockedByModeration(skill)) {
+      return await cancelTransfer("Skill is under moderation");
+    }
+    const requester = await ctx.db.get(transfer.fromUserId);
+    if (!requester || requester.deletedAt || requester.deactivatedAt) {
+      return await cancelTransfer("Transfer is no longer valid");
+    }
+    if (skill.ownerUserId !== transfer.fromUserId) {
+      try {
+        await assertCanRequestSkillTransfer(ctx, requester, skill);
+      } catch {
+        return await cancelTransfer("Transfer is no longer valid");
+      }
+    }
+    const newPublisher = await ensurePersonalPublisherForUser(ctx, newOwner, {
+      actorUserId: args.actorUserId,
+      source: "skill.transfer.accept",
+    });
+    if (!newPublisher) throw new Error("Failed to resolve publisher for new owner");
+
+    const aliases = await ctx.db
+      .query("skillSlugAliases")
+      .withIndex("by_skill", (q) => q.eq("skillId", skill._id))
+      .collect();
+    const destinationConflict = await findTransferDestinationSlugConflict(ctx, {
+      skill,
+      aliases,
+      destinationUserId: args.actorUserId,
+      destinationPublisher: newPublisher,
+    });
+    if (destinationConflict) {
+      // Keep the request pending so the owners can resolve the namespace collision and retry.
+      return { ok: false as const, error: destinationConflict };
+    }
+
+    await ctx.db.patch(skill._id, {
+      ownerUserId: args.actorUserId,
+      ownerPublisherId: newPublisher._id,
+      updatedAt: now,
+    });
+
+    for (const alias of aliases) {
+      await ctx.db.patch(alias._id, {
+        ownerUserId: args.actorUserId,
+        ownerPublisherId: newPublisher._id,
+        updatedAt: now,
+      });
+    }
+
+    const embeddings = await ctx.db
+      .query("skillEmbeddings")
+      .withIndex("by_skill", (q) => q.eq("skillId", skill._id))
+      .collect();
+    for (const embedding of embeddings) {
+      await ctx.db.patch(embedding._id, {
+        ownerId: args.actorUserId,
+        updatedAt: now,
+      });
+    }
+
+    await ctx.db.patch(transfer._id, { status: "accepted", respondedAt: now });
+
+    await ctx.db.insert("auditLogs", {
+      actorUserId: args.actorUserId,
+      action: "skill.transfer.accept",
+      targetType: "skill",
+      targetId: skill._id,
+      metadata: {
+        transferId: transfer._id,
+        fromUserId: transfer.fromUserId,
+      },
+      createdAt: now,
+    });
+
+    return { ok: true as const, skillSlug: skill.slug };
+  },
+});
+
+export const rejectTransferInternal = internalMutation({
+  args: {
+    actorUserId: v.id("users"),
+    transferId: v.id("skillOwnershipTransfers"),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await requireActiveUserById(ctx, args.actorUserId);
+
+    const transfer = await validatePendingTransferForActor(ctx, {
+      transferId: args.transferId,
+      actorUserId: args.actorUserId,
+      role: "recipient",
+      now,
+    });
+
+    await ctx.db.patch(transfer._id, { status: "rejected", respondedAt: now });
+    await ctx.db.insert("auditLogs", {
+      actorUserId: args.actorUserId,
+      action: "skill.transfer.reject",
+      targetType: "skill",
+      targetId: transfer.skillId,
+      metadata: { transferId: transfer._id },
+      createdAt: now,
+    });
+
+    return { ok: true as const };
+  },
+});
+
+export const cancelTransferInternal = internalMutation({
+  args: {
+    actorUserId: v.id("users"),
+    transferId: v.id("skillOwnershipTransfers"),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await requireActiveUserById(ctx, args.actorUserId);
+
+    const transfer = await validatePendingTransferForActor(ctx, {
+      transferId: args.transferId,
+      actorUserId: args.actorUserId,
+      role: "sender",
+      now,
+    });
+
+    await ctx.db.patch(transfer._id, { status: "cancelled", respondedAt: now });
+    await ctx.db.insert("auditLogs", {
+      actorUserId: args.actorUserId,
+      action: "skill.transfer.cancel",
+      targetType: "skill",
+      targetId: transfer.skillId,
+      metadata: { transferId: transfer._id },
+      createdAt: now,
+    });
+
+    return { ok: true as const };
+  },
+});
+
+export const listIncomingInternal = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await requireActiveUserById(ctx, args.userId);
+
+    const transfers = await ctx.db
+      .query("skillOwnershipTransfers")
+      .withIndex("by_to_user_status", (q) => q.eq("toUserId", args.userId).eq("status", "pending"))
+      .collect();
+
+    const results: Array<{
+      _id: Id<"skillOwnershipTransfers">;
+      skill: { _id: Id<"skills">; slug: string; displayName: string };
+      fromUser: { _id: Id<"users">; handle: string | null; displayName: string | null };
+      message: string | undefined;
+      requestedAt: number;
+      expiresAt: number;
+    }> = [];
+
+    for (const transfer of transfers) {
+      if (isExpired(transfer, now)) continue;
+      const skill = await ctx.db.get(transfer.skillId);
+      if (!skill || skill.softDeletedAt) continue;
+      const fromUser = await ctx.db.get(transfer.fromUserId);
+      if (!fromUser || fromUser.deletedAt || fromUser.deactivatedAt) continue;
+
+      results.push({
+        _id: transfer._id,
+        skill: { _id: skill._id, slug: skill.slug, displayName: skill.displayName },
+        fromUser: {
+          _id: fromUser._id,
+          handle: fromUser.handle ?? null,
+          displayName: fromUser.displayName ?? null,
+        },
+        message: transfer.message,
+        requestedAt: transfer.requestedAt,
+        expiresAt: transfer.expiresAt,
+      });
+    }
+
+    return results;
+  },
+});
+
+export const listOutgoingInternal = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await requireActiveUserById(ctx, args.userId);
+
+    const transfers = await ctx.db
+      .query("skillOwnershipTransfers")
+      .withIndex("by_from_user_status", (q) =>
+        q.eq("fromUserId", args.userId).eq("status", "pending"),
+      )
+      .collect();
+
+    const results: Array<{
+      _id: Id<"skillOwnershipTransfers">;
+      skill: { _id: Id<"skills">; slug: string; displayName: string };
+      toUser: { _id: Id<"users">; handle: string | null; displayName: string | null };
+      message: string | undefined;
+      requestedAt: number;
+      expiresAt: number;
+    }> = [];
+
+    for (const transfer of transfers) {
+      if (isExpired(transfer, now)) continue;
+      const skill = await ctx.db.get(transfer.skillId);
+      if (!skill || skill.softDeletedAt) continue;
+      const toUser = await ctx.db.get(transfer.toUserId);
+      if (!toUser || toUser.deletedAt || toUser.deactivatedAt) continue;
+
+      results.push({
+        _id: transfer._id,
+        skill: { _id: skill._id, slug: skill.slug, displayName: skill.displayName },
+        toUser: {
+          _id: toUser._id,
+          handle: toUser.handle ?? null,
+          displayName: toUser.displayName ?? null,
+        },
+        message: transfer.message,
+        requestedAt: transfer.requestedAt,
+        expiresAt: transfer.expiresAt,
+      });
+    }
+
+    return results;
+  },
+});
+
+export const getPendingTransferBySkillAndUserInternal = internalQuery({
+  args: {
+    skillId: v.id("skills"),
+    toUserId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const transfer = await ctx.db
+      .query("skillOwnershipTransfers")
+      .withIndex("by_skill_status", (q) => q.eq("skillId", args.skillId).eq("status", "pending"))
+      .filter((q) => q.eq(q.field("toUserId"), args.toUserId))
+      .first();
+
+    if (!transfer || isExpired(transfer, now)) return null;
+    return transfer;
+  },
+});
+
+export const getPendingTransferBySkillAndFromUserInternal = internalQuery({
+  args: {
+    skillId: v.id("skills"),
+    fromUserId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const transfer = await ctx.db
+      .query("skillOwnershipTransfers")
+      .withIndex("by_skill_status", (q) => q.eq("skillId", args.skillId).eq("status", "pending"))
+      .filter((q) => q.eq(q.field("fromUserId"), args.fromUserId))
+      .first();
+
+    if (!transfer || isExpired(transfer, now)) return null;
+    return transfer;
+  },
+});

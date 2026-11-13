@@ -1,0 +1,506 @@
+[workspace]
+members = [
+  "crates/*",
+  "forks/*",
+  "sdks/cpp/sdkgen_cpp",
+  "sdks/csharp/sdkgen_csharp",
+  "sdks/go/sdkgen_go",
+  "sdks/java/bridge_java",
+  "sdks/java/sdkgen_java",
+  "sdks/typescript/bridge_typescript",
+  "sdks/typescript/bridge_typescript_web",
+  "sdks/typescript/sdkgen_typescript_shared",
+  "sdks/python/rust/*",
+  "sdks/swift/rust/*",
+  "sdks/rust/*",
+  "sdk_tests/harness_setup",
+  "sdk_tests/harness_runner",
+  "sdk_tests/harness/llm_recordings",
+  # `sdk_tests/crates/java` follows typescript_node's soft-fail model
+  # (see below); its per-fixture tests are `#[ignore]`d while
+  # `sdkgen_java` is a stub.
+  "sdk_tests/crates/java",
+  "sdk_tests/crates/cpp",
+  "sdk_tests/crates/csharp",
+  "sdk_tests/crates/python_pydantic2",
+  "sdk_tests/crates/ruby_sorbet",
+  # Swift sdk-tests: build.rs codegen soft-fails into build_diagnostics
+  # (sdkgen_swift is early); the swift toolchain tests themselves are
+  # macOS-only and setup.sh (xcframework assembly) is bound in
+  # .config/nextest.toml for macOS hosts.
+  "sdk_tests/crates/swift",
+  "sdk_tests/crates/go",
+  # `sdk_tests/crates/typescript`'s build.rs runs codegen +
+  # `pnpm install` but soft-fails into `$OUT_DIR/build_diagnostics.txt`
+  # if pnpm is missing or install fails (see
+  # `sdk_tests/harness_setup/src/lib.rs::BuildDiagnostics` —
+  # package name `sdk_test_harness_setup`), so a workspace
+  # `cargo build` / `cargo doc` succeeds without pnpm installed.
+  # The failures surface via `cargo test`'s
+  # `build_diagnostics::no_build_failures` test.
+  "sdk_tests/crates/typescript",
+  "sdk_tests/crates/typescript_web",
+  "sdk_tests/crates/rust",
+  # Native RUSTC_WRAPPER shim (see tools_sccache/src/main.rs); the Windows
+  # counterpart to the tools/baml-sccache POSIX script, built explicitly in CI.
+  "tools_sccache",
+]
+exclude = [
+  # Live system-test harnesses are intentionally outside the workspace. They
+  # enable native-only tokio/reqwest features such as `fs` and `rt-multi-thread`;
+  # keeping them out prevents workspace wasm builds from inheriting those
+  # unsupported features through resolver feature unification.
+  "forks/aws-config-systest",
+  "forks/google-cloud-auth-systest",
+  # Rust SDK release-verification fixtures (a `baml.toml` BAML project + a
+  # consumer smoke, not a crate); the `sdks/rust/*` members glob would
+  # otherwise try to load it as a workspace member.
+  "sdks/rust/verify",
+]
+resolver = "2"
+
+[workspace.package]
+# Please update rustfmt.toml when bumping the Rust edition
+edition = "2024"
+# This is the MSRV (Minimum Supported Rust Version) for the workspace
+rust-version = "1.91.1"
+authors = [ "Vaibhav Gupta <vbv@boundaryml.com>" ]
+homepage = "https://github.com/BoundaryML/baml"
+documentation = "https://docs.boundaryml.com"
+repository = "https://github.com/BoundaryML/baml"
+license = "Apache-2.0"
+# This needs to be updated manually when bumping the version
+version = "0.0.0-beta"
+
+[workspace.dependencies]
+#  Internal dependencies (baml_*)
+bex_str = { path = "crates/bex_str" }
+baml_base = { path = "crates/baml_base" }
+baml_artifact = { path = "crates/baml_artifact" }
+baml_type = { path = "crates/baml_type" }
+baml_type_runtime = { path = "crates/baml_type_runtime" }
+baml_type_macros = { path = "crates/baml_type_macros" }
+baml_builtins2 = { path = "crates/baml_builtins2" }
+baml_builtins2_codegen = { path = "crates/baml_builtins2_codegen" }
+sdkgen_cpp = { path = "sdks/cpp/sdkgen_cpp" }
+sdkgen_csharp = { path = "sdks/csharp/sdkgen_csharp" }
+sdkgen_typescript_shared = { path = "sdks/typescript/sdkgen_typescript_shared" }
+sdkgen_python_pydantic2 = { path = "sdks/python/rust/sdkgen_python_pydantic2" }
+sdkgen_java = { path = "sdks/java/sdkgen_java" }
+bridge_java = { path = "sdks/java/bridge_java" }
+sdkgen_swift = { path = "sdks/swift/rust/sdkgen_swift" }
+sdkgen_go = { path = "sdks/go/sdkgen_go" }
+sdkgen_rust = { path = "sdks/rust/sdkgen_rust" }
+baml_codegen_types = { path = "crates/baml_codegen_types" }
+baml_compiler2_ast = { path = "crates/baml_compiler2_ast" }
+baml_compiler2_hir = { path = "crates/baml_compiler2_hir" }
+baml_compiler2_ppir = { path = "crates/baml_compiler2_ppir" }
+baml_compiler2_hir_ty = { path = "crates/baml_compiler2_hir_ty" }
+baml_compiler2_mir = { path = "crates/baml_compiler2_mir" }
+baml_compiler2_emit = { path = "crates/baml_compiler2_emit" }
+baml_compiler2_visualization = { path = "crates/baml_compiler2_visualization" }
+baml_compiler_diagnostics = { path = "crates/baml_compiler_diagnostics" }
+baml_compiler_lexer = { path = "crates/baml_compiler_lexer" }
+baml_compiler_parser = { path = "crates/baml_compiler_parser" }
+baml_compiler_syntax = { path = "crates/baml_compiler_syntax" }
+bex_cache = { path = "crates/bex_cache", default-features = false }
+bex_project = { path = "crates/bex_project", default-features = false }
+bex_engine = { path = "crates/bex_engine", default-features = false }
+sys_auth = { path = "crates/sys_auth" }
+sys_glob = { path = "crates/sys_glob" }
+sys_ops = { path = "crates/sys_ops", default-features = false }
+sys_types = { path = "crates/sys_types" }
+sys_native = { path = "crates/sys_native", default-features = false }
+baml_path = { path = "crates/baml_path" }
+baml_db = { path = "crates/baml_db" }
+baml_fmt = { path = "crates/baml_fmt" }
+baml_ide = { path = "crates/baml_ide" }
+baml_lsp = { path = "crates/baml_lsp" }
+baml_lsp_server = { path = "crates/baml_lsp_server", default-features = false }
+baml_release = { path = "crates/baml_release" }
+baml_tests = { path = "crates/baml_tests" }
+baml_version = { path = "crates/baml_version" }
+bex_vm = { path = "crates/bex_vm" }
+bex_vm_types = { path = "crates/bex_vm_types" }
+bex_external_types = { path = "crates/bex_external_types" }
+bex_heap = { path = "crates/bex_heap" }
+bex_sap = { path = "crates/bex_sap" }
+bridge_ctypes = { path = "crates/bridge_ctypes", default-features = false }
+bridge_cffi = { path = "crates/bridge_cffi", default-features = false }
+sys_wasm = { path = "crates/sys_wasm" }
+baml_cli = { path = "crates/baml_cli" }
+baml_exec = { path = "crates/baml_exec" }
+bex_events = { path = "crates/bex_events" }
+bex_prof_store = { path = "crates/bex_prof_store" }
+baml_query = { path = "crates/baml_query" }
+baml_query_profiles = { path = "crates/baml_query_profiles" }
+bex_resource_types = { path = "crates/bex_resource_types" }
+darwin-kperf = "0.1.0"
+darwin-kperf-events = "0.1.0"
+
+#  External dependencies
+anyhow = { version = "1" }
+async-trait = "0.1"
+askama = { version = "0.14.0" }
+# Slim, reqwest/serde-based replacements for the AWS SDK + Google Cloud auth
+# crates, living in `forks/`. They cover only what BAML needs (Bedrock Converse,
+# AWS credential sources, and Google Cloud OAuth2 tokens for Vertex AI) without
+# the Smithy runtime or the google-cloud-rust client stack. See
+# `forks/*/Cargo.toml`. The dependency keys keep the upstream crate names so
+# call sites import them unchanged; the `package` is the `forked_*` crate.
+aws-config = { path = "forks/aws-config", package = "forked_aws_config" }
+aws-sigv4 = { path = "forks/aws-sigv4", package = "forked_aws_sigv4" }
+google-cloud-auth = { path = "forks/google-cloud-auth", package = "forked_google_cloud_auth" }
+axum = { version = "0.8.4", default-features = false, features = [ "http1", "matched-path", "original-uri", "query", "tokio", "ws" ] }
+bitflags = "2"
+# Native `borsh` derives on the entire Program type graph (bex_vm_types +
+# baml_type + baml_exec envelope). The pack envelope was previously
+# bitcode-with-serde; borsh's native derive avoids both the bitcode crate
+# and the serde infrastructure for these types, which were otherwise only
+# serde-derived to satisfy bitcode. Custom impls live alongside the
+# derives for the four runtime-only types (Value, Object, FunctionKind,
+# HeapPtr) that need to refuse or proxy their on-disk form.
+borsh = { version = "1.5", features = [ "derive", "indexmap" ] }
+bytes = "1"
+bytesize = "2.4.2"
+cargo_metadata = { version = "0.23.1" }
+cbindgen = "=0.29.0"
+clap = { version = "4.4.6", features = [ "cargo", "derive" ] }
+console = "0.16"
+console_error_panic_hook = "0.1"
+miette = { version = "7.6", default-features = false, features = [ "fancy-no-syscall" ] }
+owo-colors = "4"
+crossbeam-channel = { version = "0.5" }
+# `CachePadded` for the profiling ring's cache-line-aligned field groups
+# (bex_events::prof, plan D3).
+crossbeam-utils = { version = "0.8" }
+ctrlc = "3.4"
+derive_more = { version = "2.1.1", features = [ "from" ] }
+divan = { package = "codspeed-divan-compat", version = "*" }
+# Union-find with snapshot/rollback for hir_ty's InferenceTable - the same
+# crate rustc and rust-analyzer build their inference tables on.
+ena = "0.14"
+flate2 = { version = "1" }
+fs2 = "0.4"
+futures = { version = "0.3.30", features = [ "executor" ] }
+graphviz-rust = { version = "0.9" }
+hex = "0.4"
+hmac = "0.12"
+http-body-util = "0.1"
+hyper = { version = "1", features = [ "server", "http1", "http2" ] }
+hyper-util = { version = "0.1", features = [ "server", "server-auto", "tokio" ] }
+indexmap = { version = "2.13", features = [ "serde" ] }
+indicatif = "0.18"
+insta = { version = "1.34", features = [ "yaml", "redactions" ] }
+similar = "2"
+jiff = { version = "0.2" }
+la-arena = { version = "0.3" }
+libc = "0.2.169"
+libloading = "0.8"
+libsui = { version = "0.16.4" }
+log = "0.4.20"
+logos = { version = "0.15" }
+# Concurrency model checker for the profiling ring (bex_events::prof). Only a
+# dependency when building with `RUSTFLAGS="--cfg baml_loom"` (see the
+# `[target.'cfg(baml_loom)'.dependencies]` section of bex_events).
+loom = { version = "0.7" }
+lsp-server = "0.7.6"
+lsp-types = "0.95.0"
+notify = "7.0"
+once_cell = "1.19"
+ouroboros = "0.18.5"
+parking_lot = { version = "0.12" }
+paste = "1.0"
+percent-encoding = "2.3"
+pretty_assertions = { version = "1.4" }
+prettyplease = { version = "0.2" }
+proc-macro2 = { version = "1" }
+prost = "0.14"
+prost-build = "0.14.1"
+protoc-bin-vendored = "3"
+quote = { version = "1" }
+rayon = { version = "1.10" }
+regex = { version = "1.10.2" }
+# gitignore-aware directory walking (workspace project discovery in the LSP)
+ignore = { version = "0.4" }
+base64 = "0.22"
+mime_guess = "2"
+bytecount = "0.6"
+reqwest = { version = "0.13.1", default-features = false, features = [
+  "stream",
+] }
+mimalloc = { version = "0.1.52" }
+rowan = { version = "0.16" }
+rustls = { version = "0.23.37", default-features = false }
+rustls-pemfile = "2"
+rustc-hash = { version = "2.1" }
+salsa = { version = "0.26", default-features = false, features = [
+  "compact_str",
+  "macros",
+  "salsa_unstable",
+  "inventory",
+] }
+serde = { version = "1.0.197", features = [ "derive" ] }
+serde-wasm-bindgen = "0.6"
+serde_json = { version = "1.0.113", features = [ "arbitrary_precision", "preserve_order" ] }
+semver = { version = "1" }
+# The maintained fork of the archived serde_yaml, published by the YAML org;
+# package-renamed so `use serde_yaml::` imports stay unchanged.
+serde_yaml = { package = "yaml_serde", version = "0.10" }
+sha1 = "0.10"
+smallvec = { version = "1.15", features = [ "const_generics" ] }
+smol_str = { version = "0.3", features = [ "serde", "borsh" ] }
+strsim = { version = "0.11.1" }
+syn = { version = "2", features = [ "full" ] }
+tar = "0.4"
+zip = { version = "2", default-features = false, features = [ "deflate" ] }
+taplo = { version = "0.13" }
+tempfile = { version = "3" }
+time = { version = "0.3", features = [ "formatting", "macros", "parsing" ] }
+text-size = { version = "1.1", features = [ "serde" ] }
+thiserror = { version = "2.0.0" }
+# Pinned exactly: DataFusion minor bumps change planner behaviour
+# (TASK/baml-query-scope.md §3.1); the conformance corpus re-runs on bumps.
+datafusion = { version = "=54.1.0", default-features = false, features = [
+  "sql",
+  "nested_expressions",
+  "unicode_expressions",
+  "regex_expressions",
+  "datetime_expressions",
+] }
+toml = { version = "0.8" }
+toml_edit = { version = "0.22" }
+tokio = { version = "1.36" }
+tokio-rustls = { version = "0.26", default-features = false, features = [ "logging", "tls12" ] }
+tokio-tungstenite = { version = "0.29.0" }
+tokio-util = { version = "0.7" }
+tower-http = { version = "0.6.6", features = [ "fs" ] }
+tracing = { version = "0.1.40" }
+tracing-subscriber = { version = "0.3.18", default-features = false, features = [
+  "env-filter",
+  "fmt",
+] }
+unicode-normalization = "0.1.25"
+ureq = { version = "3", default-features = false, features = [ "rustls", "gzip" ] }
+uuid = { version = "1", features = [ "serde", "v4" ] }
+walkdir = { version = "2.4" }
+tsify = { version = "0.5", features = [ "js" ] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+wasm-bindgen-test = "0.3"
+jni = "0.21"
+js-sys = "0.3"
+webbrowser = "1.0.5"
+strum = { version = "0.26", features = [ "derive" ] }
+pyo3 = { version = "0.28", default-features = false }
+pyo3-async-runtimes = { version = "0.28" }
+pyo3-build-config = "0.28"
+pyo3-stub-gen = { version = "0.22", default-features = false }
+napi = { version = "3.9.0", default-features = false }
+napi-derive = "3.5.6"
+napi-build = "2.3.2"
+wiremock = "0.6"
+vfs = "0.12"
+wasm-logger = "0.2.0"
+web-time = "1.1.0"
+getrandom = { version = "0.2" }
+getrandom_03 = { package = "getrandom", version = "0.3", features = [ "wasm_js" ] }
+# Pinned to the rand 0.8-era ecosystem (rand_core 0.6) to share the `RngCore`
+# trait with `num-bigint`'s `rand` feature below, so the `baml.random`
+# generators can drive `num-bigint` sampling (future `bigint.random`). Bumping
+# to rand_core 0.9 would fork that trait and is deliberately avoided.
+rand_core = "0.6"
+rand_chacha = "0.3"
+rand_xoshiro = "0.6"
+num-bigint = { version = "0.4", features = [ "rand", "serde" ] }
+num-traits = { version = "0.2" }
+rsa = { version = "0.9", default-features = false, features = [ "std", "pem" ] }
+# The hardware SHA-2 backend (`asm`: SHA-NI / ARMv8 crypto extensions,
+# runtime-detected) is enabled per-target in `bex_cache` — the `asm` feature
+# does not build under MSVC (sha2-asm ships GAS `.S` sources), so it must not
+# be turned on here unconditionally.
+sha2 = { version = "0.10", features = [ "oid" ] }
+# `baml.crypto`'s AEAD ciphers. `getrandom` is off (it is on by default): keys
+# and nonces come from a caller-supplied `baml.random.Rng`, never from the
+# crate's own entropy source, so the VM keeps building for
+# `wasm32-unknown-unknown` without a JS shim. `zeroize` is on (it is off by
+# default) so the per-message subkeys AES-GCM-SIV derives are wiped after use.
+aes-gcm-siv = { version = "0.12", default-features = false, features = [
+  "aes",
+  "alloc",
+  "zeroize",
+] }
+# The other `baml.crypto` AEAD family. Same `aead` 0.6 generation as
+# `aes-gcm-siv` above, which is what lets both share one set of seal/open
+# helpers. `getrandom` off and `zeroize` on for the same reasons; the
+# `reduced-round` ChaCha8/ChaCha12 variants stay off, since they trade security
+# margin for speed and no RFC covers them.
+chacha20poly1305 = { version = "0.11", default-features = false, features = [
+  "alloc",
+  "zeroize",
+] }
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+unreachable_pub = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = [
+  "cfg(fuzzing)",
+  "cfg(codspeed)",
+  # Loom model-checked builds of bex_events::prof (RUSTFLAGS="--cfg baml_loom").
+  "cfg(baml_loom)",
+] }
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -2 }
+# Enabled at the crate level
+disallowed_methods = "allow"
+# Used by clippy-wasm task (CLIPPY_CONF_DIR=clippy-wasm); config in clippy-wasm/clippy.toml
+disallowed_types = "warn"
+# Allowed pedantic lints
+char_lit_as_u8 = "allow"
+collapsible_else_if = "allow"
+collapsible_if = "allow"
+implicit_hasher = "allow"
+map_unwrap_or = "allow"
+match_same_arms = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+similar_names = "allow"
+single_match_else = "allow"
+too_many_lines = "allow"
+needless_continue = "allow"            # An explicit continue can be more readable, especially if the alternative is an empty block.
+unnecessary_debug_formatting = "allow" # too many instances, the display also doesn't quote the path which is often desired in logs where we use them the most often.
+# Without the hashes we run into a `rustfmt` bug in some snapshot tests, see #13250
+needless_raw_string_hashes = "allow"
+# Disallowed restriction lints
+ignore_without_reason = "allow"          # Too many exsisting instances, and there's no auto fix.
+print_stdout = "deny"                    # deny print! and println! (LSP requires stdout/stderr for communication)
+print_stderr = "deny"
+dbg_macro = "deny"                       # deny dbg! macro (LSP requires stdout/stderr for communication)
+empty_drop = "warn"
+empty_structs_with_brackets = "warn"
+exit = "warn"
+get_unwrap = "warn"
+rc_buffer = "warn"
+rc_mutex = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+# nursery rules
+redundant_clone = "warn"
+debug_assert_with_mut_call = "warn"
+unused_peekable = "warn"
+# This lint sometimes flags code whose `if` and `else`
+# bodies could be flipped when a `!` operator is removed.
+# While perhaps sometimes a good idea, it is also often
+# not a good idea due to other factors impacting
+# readability. For example, if flipping the bodies results
+# in the `if` being an order of magnitude bigger than the
+# `else`, then some might consider that harder to read.
+if_not_else = "allow"
+
+# Diagnostics are not actionable: Enable once https://github.com/rust-lang/rust-clippy/issues/13774 is resolved.
+large_stack_arrays = "allow"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = "s"   # smallest; try "s" if perf matters
+strip = "symbols" # still keep your strip -x in packaging
+# `unwind` for every artifact — see the "Why panic = unwind" note below the
+# profile overrides.
+panic = "unwind"
+
+# Some crates don't change as much but benefit more from
+# more expensive optimization passes, so we selectively
+# decrease codegen-units in some cases.
+[profile.release.package.salsa]
+codegen-units = 1
+
+# Fast test runs: release-grade codegen for our own crates without the
+# release profile's ship-oriented costs — fat LTO and codegen-units=1 make
+# the BUILD dwarf the test-time win, and panic=abort breaks should_panic
+# tests. Debug assertions and overflow checks stay ON: the corpus and the
+# lowering tripwires (debug_assert) are load-bearing for correctness runs.
+# Usage: cargo nextest run --cargo-profile fasttest ...
+[profile.fasttest]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+panic = "unwind"
+opt-level = 2
+strip = false
+debug-assertions = true
+overflow-checks = true
+
+[profile.dev.package.insta]
+opt-level = 3
+
+[profile.dev.package.similar]
+opt-level = 3
+
+# Salsa is the compiler's query engine: it only recompiles on a lockfile or
+# toolchain bump, but it executes on every compile. At opt-level 0 a debug
+# `baml-cli` takes 10-30s to cold-compile a one-function project, which the
+# spawned-CLI e2e suites (exit_code_e2e and friends) pay per test.
+[profile.dev.package.salsa]
+opt-level = 3
+
+# This profile is meant to mimic the `release` profile as closely as
+# possible, but using settings that are more beneficial for iterative
+# development. That is, the `release` profile is intended for actually
+# building the release, where as `profiling` is meant for building ty/ruff
+# for running benchmarks.
+#
+# The main differences here are to avoid stripping debug information
+# and disabling fat lto. This does result in a mismatch between our release
+# configuration and our benchmarking configuration, which is unfortunate.
+# But compile times with `lto = fat` are completely untenable.
+#
+# This setup does risk that we are measuring something in benchmarks
+# that we aren't shipping, but in order to make those two the same, we'd
+# either need to make compile times way worse for development, or take
+# a hit to binary size and a slight hit to runtime performance in our
+# release builds.
+#
+# Use the `--profile profiling` flag to show symbols in release mode.
+# e.g. `cargo build --profile profiling`
+[profile.profiling]
+inherits = "release"
+strip = false
+debug = "full"
+lto = "fat"
+
+# The profile that 'cargo dist' will build with.
+[profile.dist]
+inherits = "release"
+
+# Why `panic = "unwind"` everywhere (release profile above)
+#
+# `panic` is a whole-artifact setting: it cannot be overridden per crate and one
+# binary cannot mix strategies. `release` used to be `abort` (chosen for binary
+# size) with a family of `release-bridge-*` profiles that re-enabled `unwind`
+# for the artifacts loaded into a user's process (PyO3 `baml_py.abi3.so`, the
+# napi `.node` addon, the Swift/Java cdylibs, the standalone `bridge_cffi`
+# cdylib that dylib-loader SDKs dlopen). Those need `unwind` because their
+# `catch_unwind` -> `baml.panics.SdkPanic` boundary in `bridge_cffi` (and
+# tokio's per-task isolation in the in-engine HTTP server) only fires when the
+# stack can unwind; under `abort` a stdlib slice bounds check anywhere in the
+# engine `process::abort()`s the user's interpreter/JVM/server, uncatchable.
+#
+# The CLI now needs `unwind` for the same structural reason: the language
+# server runs reads on Salsa snapshots and relies on Salsa's unwind-based
+# cancellation (`salsa::Cancelled`) to abandon in-flight queries when sources
+# change, and on `catch_unwind` at request dispatch to survive a query panic.
+# Neither exists under `abort`. Making `release` itself `unwind` also gives
+# `baml run`/`baml test` the same panic containment the SDKs have (previously
+# the CLI SIGABRT'd where an SDK reported a catchable panic).
+#
+# Measured cost on `baml-cli`, aarch64-apple-darwin, identical release settings
+# except `panic` (2026-08-18): 24.65 MiB (abort) -> 30.87 MiB (unwind),
+# +6.23 MiB / +25%: `__text` +2.63 MB (landing pads), `__eh_frame` +2.32 MB,
+# `__gcc_except_tab` +1.19 MB, `__unwind_info` +0.32 MB. Nothing else in the
+# profile can shave this — LTO, opt-level and strip are already at their
+# size-minimizing settings — so the size-gate ceilings carry it explicitly
+# (`.cargo/size-gate.toml`). wasm32 is unaffected: it has no unwinding and
+# behaves as `abort` regardless of this setting.

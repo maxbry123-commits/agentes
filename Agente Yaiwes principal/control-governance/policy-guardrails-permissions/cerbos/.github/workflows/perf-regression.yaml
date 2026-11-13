@@ -1,0 +1,54 @@
+---
+name: Performance Regression
+on:
+  schedule:
+    - cron: "0 3 * * 2" # Tuesday at 03:00 UTC
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+permissions: {}
+
+jobs:
+  perf-test:
+    name: Perf regression test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: ./.github/actions/setup-go
+
+      - name: Set up Cerbos (dev)
+        run: |
+          docker pull ghcr.io/cerbos/cerbos:dev
+          docker create --name cerbos-extract ghcr.io/cerbos/cerbos:dev
+          docker cp cerbos-extract:/cerbos /usr/local/bin/cerbos
+          docker rm cerbos-extract
+
+      - name: Install ghz
+        uses: cerbos/actions/install-tools@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+        with:
+          tools: ghz
+
+      - name: Run performance test
+        run: hack/loadtest/ci/run-test.sh
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: perf-results
+          path: hack/loadtest/results/ci/
+
+      - name: Notify Slack on failure
+        if: "!success()"
+        uses: cerbos/actions/notify-slack@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+        with:
+          webhook-url: ${{ secrets.SLACK_CI_NOTIFICATIONS_WEBHOOK_URL }}

@@ -1,0 +1,1865 @@
+// Copyright (c) 2026 Uber Technologies, Inc.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
+
+	"github.com/uber/cadence/client/history"
+	"github.com/uber/cadence/common/cache"
+	"github.com/uber/cadence/common/client"
+	"github.com/uber/cadence/common/constants"
+	dc "github.com/uber/cadence/common/dynamicconfig"
+	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
+	"github.com/uber/cadence/common/metrics"
+	"github.com/uber/cadence/common/persistence"
+	"github.com/uber/cadence/common/resource"
+	"github.com/uber/cadence/common/service"
+	"github.com/uber/cadence/common/types"
+	frontendcfg "github.com/uber/cadence/service/frontend/config"
+	"github.com/uber/cadence/service/frontend/validate"
+	"github.com/uber/cadence/service/worker/scheduler"
+)
+
+type scheduleTestFixture struct {
+	t              *testing.T
+	ctrl           *gomock.Controller
+	mockResource   *resource.Test
+	domainCache    *cache.MockDomainCache
+	historyClient  *history.MockClient
+	versionChecker *client.MockVersionChecker
+	handler        *WorkflowHandler
+}
+
+func newScheduleTestFixture(t *testing.T) *scheduleTestFixture {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	mockResource := resource.NewTest(t, ctrl, metrics.Frontend)
+
+	versionChecker := client.NewMockVersionChecker(ctrl)
+	versionChecker.EXPECT().ClientSupported(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	versionChecker.EXPECT().SupportsWorkflowAlreadyCompletedError(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockResource.MembershipResolver.EXPECT().MemberCount(service.Frontend).Return(5, nil).AnyTimes()
+
+	config := frontendcfg.NewConfig(
+		dc.NewCollection(dc.NewInMemoryClient(), mockResource.Logger),
+		10, false, "hostname", mockResource.Logger,
+	)
+	config.EmitSignalNameMetricsTag = dynamicproperties.GetBoolPropertyFnFilteredByDomain(true)
+
+	handler := NewWorkflowHandler(mockResource, config, versionChecker, nil)
+
+	return &scheduleTestFixture{
+		t:              t,
+		ctrl:           ctrl,
+		mockResource:   mockResource,
+		domainCache:    mockResource.DomainCache,
+		historyClient:  mockResource.HistoryClient,
+		versionChecker: versionChecker,
+		handler:        handler,
+	}
+}
+
+func (f *scheduleTestFixture) finish() {
+	f.ctrl.Finish()
+	f.mockResource.Finish(f.t)
+}
+
+func TestCreateSchedule(t *testing.T) {
+	validRequest := &types.CreateScheduleRequest{
+		Domain:     testDomain,
+		ScheduleID: "my-schedule",
+		Spec:       &types.ScheduleSpec{CronExpression: "*/5 * * * *"},
+		Action: &types.ScheduleAction{
+			StartWorkflow: &types.StartWorkflowAction{
+				WorkflowType: &types.WorkflowType{Name: "my-workflow"},
+				TaskList:     &types.TaskList{Name: "my-tasklist"},
+				Input:        []byte(`{"k":1}`),
+			},
+		},
+	}
+
+	tests := map[string]struct {
+		request     *types.CreateScheduleRequest
+		mockFn      func(*scheduleTestFixture)
+		wantErr     bool
+		wantErrType interface{}
+	}{
+		"nil request": {
+			request: nil,
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"empty domain": {
+			request: &types.CreateScheduleRequest{},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"empty schedule ID": {
+			request: &types.CreateScheduleRequest{Domain: testDomain},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"nil spec": {
+			request: &types.CreateScheduleRequest{Domain: testDomain, ScheduleID: "s1"},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"empty cron expression": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec:       &types.ScheduleSpec{},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"invalid cron expression": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec:       &types.ScheduleSpec{CronExpression: "not-a-cron"},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"out-of-range minute in cron expression": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec:       &types.ScheduleSpec{CronExpression: "99 * * * *"},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"impossible cron date (Feb 30) parses but never fires": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec:       &types.ScheduleSpec{CronExpression: "0 0 30 2 *"},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"spec endTime not after startTime": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec: &types.ScheduleSpec{
+					CronExpression: "* * * * *",
+					StartTime:      time.Unix(2000, 0),
+					EndTime:        time.Unix(1000, 0), // before start
+				},
+				Action: &types.ScheduleAction{
+					StartWorkflow: &types.StartWorkflowAction{
+						WorkflowType: &types.WorkflowType{Name: "wf"},
+						TaskList:     &types.TaskList{Name: "tl"},
+					},
+				},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"nil action": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec:       &types.ScheduleSpec{CronExpression: "* * * * *"},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"retry policy with no bounds rejected at create": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec:       &types.ScheduleSpec{CronExpression: "* * * * *"},
+				Action: &types.ScheduleAction{
+					StartWorkflow: &types.StartWorkflowAction{
+						WorkflowType: &types.WorkflowType{Name: "wf"},
+						TaskList:     &types.TaskList{Name: "tl"},
+						RetryPolicy: &types.RetryPolicy{
+							InitialIntervalInSeconds: 1,
+							MaximumIntervalInSeconds: 60,
+							BackoffCoefficient:       2,
+							// MaximumAttempts and ExpirationIntervalInSeconds both zero
+						},
+					},
+				},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"invalid SKIP_NEW + CATCH_UP_ALL": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec:       &types.ScheduleSpec{CronExpression: "* * * * *"},
+				Action: &types.ScheduleAction{
+					StartWorkflow: &types.StartWorkflowAction{
+						WorkflowType: &types.WorkflowType{Name: "wf"},
+						TaskList:     &types.TaskList{Name: "tl"},
+					},
+				},
+				Policies: &types.SchedulePolicies{
+					OverlapPolicy: types.ScheduleOverlapPolicySkipNew,
+					CatchUpPolicy: types.ScheduleCatchUpPolicyAll,
+				},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"domain not found": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return("", errors.New("not found")).AnyTimes()
+			},
+			wantErr: true,
+		},
+		"already exists": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().StartWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(nil, &types.WorkflowExecutionAlreadyStartedError{Message: "already started"})
+			},
+			wantErr: true,
+		},
+		"user search attributes use reserved key": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "my-schedule",
+				Spec:       &types.ScheduleSpec{CronExpression: "*/5 * * * *"},
+				Action: &types.ScheduleAction{
+					StartWorkflow: &types.StartWorkflowAction{
+						WorkflowType: &types.WorkflowType{Name: "my-workflow"},
+						TaskList:     &types.TaskList{Name: "my-tasklist"},
+					},
+				},
+				SearchAttributes: &types.SearchAttributes{IndexedFields: map[string][]byte{
+					"CadenceScheduleState": []byte(`"paused"`),
+				}},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"history error": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().StartWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(nil, errors.New("internal error"))
+			},
+			wantErr: true,
+		},
+		"BUFFER with buffer_limit above system limit succeeds (warns)": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "my-schedule",
+				Spec:       &types.ScheduleSpec{CronExpression: "*/5 * * * *"},
+				Action: &types.ScheduleAction{
+					StartWorkflow: &types.StartWorkflowAction{
+						WorkflowType: &types.WorkflowType{Name: "my-workflow"},
+						TaskList:     &types.TaskList{Name: "my-tasklist"},
+					},
+				},
+				Policies: &types.SchedulePolicies{
+					OverlapPolicy: types.ScheduleOverlapPolicyBuffer,
+					BufferLimit:   int32(scheduler.MaxBufferedFiresSystemLimit * 2),
+				},
+			},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().StartWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.StartWorkflowExecutionResponse{RunID: "test-run-id"}, nil)
+			},
+			wantErr: false,
+		},
+		"success": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().StartWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistoryStartWorkflowExecutionRequest, _ ...yarpc.CallOption) (*types.StartWorkflowExecutionResponse, error) {
+						assert.Equal(t, testDomainID, req.DomainUUID)
+						assert.Equal(t, "cadence-scheduler:my-schedule", req.StartRequest.WorkflowID)
+						assert.Equal(t, scheduler.WorkflowTypeName, req.StartRequest.WorkflowType.Name)
+						assert.Equal(t, scheduler.TaskListName, req.StartRequest.TaskList.Name)
+
+						var input scheduler.SchedulerWorkflowInput
+						require.NoError(t, json.Unmarshal(req.StartRequest.Input, &input))
+						assert.Equal(t, testDomain, input.Domain)
+						assert.Equal(t, "my-schedule", input.ScheduleID)
+						assert.Equal(t, "*/5 * * * *", input.Spec.CronExpression)
+						require.NotNil(t, input.Action.StartWorkflow)
+						assert.Equal(t, []byte(`{"k":1}`), input.Action.StartWorkflow.Input)
+
+						return &types.StartWorkflowExecutionResponse{RunID: "test-run-id"}, nil
+					})
+			},
+			wantErr: false,
+		},
+		"search attributes forwarded into workflow input": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "my-schedule",
+				Spec:       &types.ScheduleSpec{CronExpression: "*/5 * * * *"},
+				Action: &types.ScheduleAction{
+					StartWorkflow: &types.StartWorkflowAction{
+						WorkflowType: &types.WorkflowType{Name: "my-workflow"},
+						TaskList:     &types.TaskList{Name: "my-tasklist"},
+					},
+				},
+				SearchAttributes: &types.SearchAttributes{
+					IndexedFields: map[string][]byte{"CustomStringField": []byte(`"hello"`)},
+				},
+			},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().StartWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistoryStartWorkflowExecutionRequest, _ ...yarpc.CallOption) (*types.StartWorkflowExecutionResponse, error) {
+						var input scheduler.SchedulerWorkflowInput
+						require.NoError(t, json.Unmarshal(req.StartRequest.Input, &input))
+						require.NotNil(t, input.SearchAttributes)
+						assert.Equal(t, []byte(`"hello"`), input.SearchAttributes.IndexedFields["CustomStringField"])
+						return &types.StartWorkflowExecutionResponse{RunID: "test-run-id"}, nil
+					})
+			},
+			wantErr: false,
+		},
+		"recreate after delete succeeds (AllowDuplicate reuse policy)": {
+			// Deleting a schedule terminates the scheduler workflow but the closed run stays
+			// within the retention window. With RejectDuplicate the server would reject a new
+			// StartWorkflowExecution for the same workflow ID; AllowDuplicate lets it through.
+			// This test verifies both that the policy sent to history is AllowDuplicate and that
+			// the handler succeeds when history accepts the start (as it does for closed runs).
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().StartWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistoryStartWorkflowExecutionRequest, _ ...yarpc.CallOption) (*types.StartWorkflowExecutionResponse, error) {
+						assert.Equal(t, types.WorkflowIDReusePolicyAllowDuplicate, *req.StartRequest.WorkflowIDReusePolicy)
+						return &types.StartWorkflowExecutionResponse{RunID: "new-run-id"}, nil
+					})
+			},
+			wantErr: false,
+		},
+		"memo forwarded into workflow input": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "my-schedule",
+				Spec:       &types.ScheduleSpec{CronExpression: "*/5 * * * *"},
+				Action: &types.ScheduleAction{
+					StartWorkflow: &types.StartWorkflowAction{
+						WorkflowType: &types.WorkflowType{Name: "my-workflow"},
+						TaskList:     &types.TaskList{Name: "my-tasklist"},
+					},
+				},
+				Memo: &types.Memo{Fields: map[string][]byte{"schedMemo": []byte(`"sm"`)}},
+			},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().StartWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistoryStartWorkflowExecutionRequest, _ ...yarpc.CallOption) (*types.StartWorkflowExecutionResponse, error) {
+						var input scheduler.SchedulerWorkflowInput
+						require.NoError(t, json.Unmarshal(req.StartRequest.Input, &input))
+						require.NotNil(t, input.Memo)
+						assert.Equal(t, []byte(`"sm"`), input.Memo.Fields["schedMemo"])
+						return &types.StartWorkflowExecutionResponse{RunID: "test-run-id"}, nil
+					})
+			},
+			wantErr: false,
+		},
+		"state with paused=true starts schedule paused": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "my-schedule",
+				Spec:       &types.ScheduleSpec{CronExpression: "*/5 * * * *"},
+				Action: &types.ScheduleAction{
+					StartWorkflow: &types.StartWorkflowAction{
+						WorkflowType: &types.WorkflowType{Name: "my-workflow"},
+						TaskList:     &types.TaskList{Name: "my-tasklist"},
+					},
+				},
+				State: &types.ScheduleState{
+					Paused:    true,
+					PauseInfo: &types.SchedulePauseInfo{Reason: "initial pause", PausedBy: "test-user"},
+				},
+			},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().StartWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistoryStartWorkflowExecutionRequest, _ ...yarpc.CallOption) (*types.StartWorkflowExecutionResponse, error) {
+						var input scheduler.SchedulerWorkflowInput
+						require.NoError(t, json.Unmarshal(req.StartRequest.Input, &input))
+						assert.True(t, input.State.Paused)
+						assert.Equal(t, "initial pause", input.State.PauseReason)
+						assert.Equal(t, "test-user", input.State.PausedBy)
+						return &types.StartWorkflowExecutionResponse{RunID: "test-run-id"}, nil
+					})
+			},
+			wantErr: false,
+		},
+		"state with paused=true and no pause info starts schedule paused": {
+			request: &types.CreateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "my-schedule",
+				Spec:       &types.ScheduleSpec{CronExpression: "*/5 * * * *"},
+				Action: &types.ScheduleAction{
+					StartWorkflow: &types.StartWorkflowAction{
+						WorkflowType: &types.WorkflowType{Name: "my-workflow"},
+						TaskList:     &types.TaskList{Name: "my-tasklist"},
+					},
+				},
+				State: &types.ScheduleState{Paused: true},
+			},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().StartWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistoryStartWorkflowExecutionRequest, _ ...yarpc.CallOption) (*types.StartWorkflowExecutionResponse, error) {
+						var input scheduler.SchedulerWorkflowInput
+						require.NoError(t, json.Unmarshal(req.StartRequest.Input, &input))
+						assert.True(t, input.State.Paused)
+						assert.Empty(t, input.State.PauseReason)
+						assert.Empty(t, input.State.PausedBy)
+						return &types.StartWorkflowExecutionResponse{RunID: "test-run-id"}, nil
+					})
+			},
+			wantErr: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			f := newScheduleTestFixture(t)
+			defer f.finish()
+			tt.mockFn(f)
+
+			resp, err := f.handler.CreateSchedule(context.Background(), tt.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, resp)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, resp)
+			}
+		})
+	}
+}
+
+func TestDescribeSchedule(t *testing.T) {
+	descResult := scheduler.ScheduleDescription{
+		ScheduleID:  "my-schedule",
+		Domain:      testDomain,
+		Spec:        types.ScheduleSpec{CronExpression: "*/10 * * * *"},
+		Action:      types.ScheduleAction{StartWorkflow: &types.StartWorkflowAction{WorkflowType: &types.WorkflowType{Name: "wf"}}},
+		Policies:    types.SchedulePolicies{OverlapPolicy: types.ScheduleOverlapPolicySkipNew},
+		Paused:      true,
+		PauseReason: "maintenance",
+		PausedBy:    "admin",
+		TotalRuns:   42,
+		MissedRuns:  5,
+		SkippedRuns: 3,
+		Memo:        &types.Memo{Fields: map[string][]byte{"schedMemo": []byte(`"sm"`)}},
+		SearchAttributes: &types.SearchAttributes{
+			IndexedFields: map[string][]byte{"CustomIntField": []byte(`7`)},
+		},
+	}
+	descBytes, _ := json.Marshal(descResult)
+
+	validRequest := &types.DescribeScheduleRequest{
+		Domain:     testDomain,
+		ScheduleID: "my-schedule",
+	}
+
+	tests := map[string]struct {
+		ctx      context.Context
+		request  *types.DescribeScheduleRequest
+		mockFn   func(*scheduleTestFixture)
+		wantErr  bool
+		checkErr func(*testing.T, error)
+		check    func(*testing.T, *types.DescribeScheduleResponse)
+	}{
+		"nil request": {
+			request: nil,
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"empty domain": {
+			request: &types.DescribeScheduleRequest{},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"empty schedule ID": {
+			request: &types.DescribeScheduleRequest{Domain: testDomain},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"domain not found": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return("", errors.New("not found")).AnyTimes().AnyTimes()
+			},
+			wantErr: true,
+		},
+		"query error": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{},
+					}, nil)
+				f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+					Return(nil, errors.New("query failed"))
+			},
+			wantErr: true,
+		},
+		"schedule not found": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(nil, &types.EntityNotExistsError{Message: "workflow not found"})
+			},
+			wantErr: true,
+			checkErr: func(t *testing.T, err error) {
+				var notFound *types.EntityNotExistsError
+				assert.ErrorAs(t, err, &notFound)
+				assert.Contains(t, notFound.Message, "schedule")
+			},
+		},
+		"describe workflow error": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(nil, errors.New("describe failed"))
+			},
+			wantErr: true,
+		},
+		// A scheduler workflow that ended FAILED (for example, an invalid cron) must not
+		// surface as ACTIVE. The DWE probe sees a non-nil CloseStatus and refuses to
+		// serve the schedule.
+		"scheduler workflow failed - closed": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				closeStatus := types.WorkflowExecutionCloseStatusFailed
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{CloseStatus: &closeStatus},
+					}, nil)
+			},
+			wantErr: true,
+			checkErr: func(t *testing.T, err error) {
+				var internalErr *types.InternalServiceError
+				assert.ErrorAs(t, err, &internalErr)
+				assert.Contains(t, internalErr.Message, "FAILED")
+			},
+		},
+		"scheduler workflow terminated - closed": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				closeStatus := types.WorkflowExecutionCloseStatusTerminated
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{CloseStatus: &closeStatus},
+					}, nil)
+			},
+			wantErr: true,
+			checkErr: func(t *testing.T, err error) {
+				var internalErr *types.InternalServiceError
+				assert.ErrorAs(t, err, &internalErr)
+				assert.Contains(t, internalErr.Message, "TERMINATED")
+			},
+		},
+		// Schedulers ContinueAsNew on every UpdateSchedule and periodically to bound
+		// history. While the executionCache is invalidating, wfID-without-runID can
+		// briefly resolve to the just-closed old run; the helper retries until the
+		// new (running) run is visible.
+		"scheduler mid-ContinueAsNew - DescribeWorkflowExecution retried until running": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				canStatus := types.WorkflowExecutionCloseStatusContinuedAsNew
+				gomock.InOrder(
+					f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+						Return(&types.DescribeWorkflowExecutionResponse{
+							WorkflowExecutionInfo: &types.WorkflowExecutionInfo{CloseStatus: &canStatus},
+						}, nil),
+					f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+						Return(&types.DescribeWorkflowExecutionResponse{
+							WorkflowExecutionInfo: &types.WorkflowExecutionInfo{},
+						}, nil),
+				)
+				f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+					Return(&types.HistoryQueryWorkflowResponse{
+						Response: &types.QueryWorkflowResponse{QueryResult: descBytes},
+					}, nil)
+			},
+			wantErr: false,
+		},
+		// If the close status stays CONTINUED_AS_NEW past the retry budget, the
+		// scheduler is stuck rather than mid-transition: the server has already
+		// waited it out, so report the stuck state instead of a retry hint.
+		"scheduler mid-ContinueAsNew - retry budget exhausted": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				canStatus := types.WorkflowExecutionCloseStatusContinuedAsNew
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{CloseStatus: &canStatus},
+					}, nil).
+					Times(describeScheduleRetryAttempts)
+			},
+			wantErr: true,
+			checkErr: func(t *testing.T, err error) {
+				var internalErr *types.InternalServiceError
+				assert.ErrorAs(t, err, &internalErr)
+				assert.Contains(t, internalErr.Message, "mid-ContinueAsNew")
+			},
+		},
+		// A freshly started scheduler run has not yet processed its first decision
+		// task and cannot be queried. The describe pass is retried until the run is
+		// ready; here it succeeds on the second attempt. Each attempt re-runs the
+		// probe, hence two DescribeWorkflowExecution calls.
+		"scheduler not yet queryable - retried until ready": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{},
+					}, nil).
+					Times(2)
+				gomock.InOrder(
+					f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+						Return(nil, &types.QueryFailedError{Message: "workflow must handle at least one decision task before it can be queried"}),
+					f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+						Return(&types.HistoryQueryWorkflowResponse{
+							Response: &types.QueryWorkflowResponse{QueryResult: descBytes},
+						}, nil),
+				)
+			},
+			wantErr: false,
+		},
+		// If the workflow remains unqueryable past the retry budget, the last error
+		// is returned so the caller can surface it without masking the root cause.
+		"scheduler not yet queryable - retry budget exhausted": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{},
+					}, nil).
+					Times(describeScheduleRetryAttempts)
+				f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+					Return(nil, &types.QueryFailedError{Message: "workflow must handle at least one decision task before it can be queried"}).
+					Times(describeScheduleRetryAttempts)
+			},
+			wantErr: true,
+			checkErr: func(t *testing.T, err error) {
+				var qfe *types.QueryFailedError
+				assert.ErrorAs(t, err, &qfe)
+				assert.Contains(t, qfe.Message, "decision task")
+			},
+		},
+		// History's internal query wait times out before the scheduler workflow
+		// processes its first decision task. The frontend retries the same as for
+		// the QueryFailedError case; here it succeeds on the second attempt.
+		"history query timeout - retried until ready": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{},
+					}, nil).
+					Times(2)
+				gomock.InOrder(
+					f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+						Return(nil, yarpcerrors.DeadlineExceededErrorf("query wait timed out")),
+					f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+						Return(&types.HistoryQueryWorkflowResponse{
+							Response: &types.QueryWorkflowResponse{QueryResult: descBytes},
+						}, nil),
+				)
+			},
+			wantErr: false,
+		},
+		// If history keeps returning deadline exceeded past the retry budget, the
+		// last error is returned.
+		"history query timeout - retry budget exhausted": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{},
+					}, nil).
+					Times(describeScheduleRetryAttempts)
+				f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+					Return(nil, yarpcerrors.DeadlineExceededErrorf("query wait timed out")).
+					Times(describeScheduleRetryAttempts)
+			},
+			wantErr: true,
+		},
+		// History returns the stdlib context.DeadlineExceeded (not yarpc's CodeDeadlineExceeded)
+		// while the caller's context is still live. The frontend treats this as a history-side
+		// timeout and retries; here it succeeds on the second attempt.
+		"history query timeout (stdlib context.DeadlineExceeded) - retried until ready": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{},
+					}, nil).
+					Times(2)
+				gomock.InOrder(
+					f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+						Return(nil, context.DeadlineExceeded),
+					f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+						Return(&types.HistoryQueryWorkflowResponse{
+							Response: &types.QueryWorkflowResponse{QueryResult: descBytes},
+						}, nil),
+				)
+			},
+			wantErr: false,
+		},
+		// When history returns DeadlineExceeded but the caller's own context is already expired,
+		// ctx.Err() != nil so the queryTimeout guard is false and the error is returned immediately
+		// without retrying.
+		"history query timeout - caller context expired - not retried": {
+			ctx:     func() context.Context { ctx, cancel := context.WithCancel(context.Background()); cancel(); return ctx }(),
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{},
+					}, nil)
+				f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+					Return(nil, context.DeadlineExceeded)
+			},
+			wantErr: true,
+		},
+		// If the scheduler closes between the DWE probe and the QueryWorkflow call,
+		// the reject condition on the query stops the history layer from replaying
+		// closed history and reporting stale ACTIVE state.
+		"scheduler closes between DWE and Query - reject condition catches it": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{},
+					}, nil)
+				closeStatus := types.WorkflowExecutionCloseStatusFailed
+				f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+					Return(&types.HistoryQueryWorkflowResponse{
+						Response: &types.QueryWorkflowResponse{
+							QueryRejected: &types.QueryRejected{CloseStatus: &closeStatus},
+						},
+					}, nil)
+			},
+			wantErr: true,
+			checkErr: func(t *testing.T, err error) {
+				var internalErr *types.InternalServiceError
+				assert.ErrorAs(t, err, &internalErr)
+				assert.Contains(t, internalErr.Message, "FAILED")
+			},
+		},
+		// If the scheduler does ContinueAsNew between the DWE probe and the query,
+		// the query is rejected with CONTINUED_AS_NEW. The whole pass is retried, so
+		// the second query is preceded by a fresh probe of the new run.
+		"scheduler ContinueAsNew between DWE and Query - retried until queryable": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{},
+					}, nil).
+					Times(2)
+				closeStatus := types.WorkflowExecutionCloseStatusContinuedAsNew
+				gomock.InOrder(
+					f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+						Return(&types.HistoryQueryWorkflowResponse{
+							Response: &types.QueryWorkflowResponse{
+								QueryRejected: &types.QueryRejected{CloseStatus: &closeStatus},
+							},
+						}, nil),
+					f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+						Return(&types.HistoryQueryWorkflowResponse{
+							Response: &types.QueryWorkflowResponse{QueryResult: descBytes},
+						}, nil),
+				)
+			},
+			wantErr: false,
+		},
+		// If the query stays rejected with CONTINUED_AS_NEW past the retry budget,
+		// the scheduler is stuck; report the stuck state rather than a retry hint.
+		"scheduler ContinueAsNew between DWE and Query - retry budget exhausted": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.DescribeWorkflowExecutionResponse{
+						WorkflowExecutionInfo: &types.WorkflowExecutionInfo{},
+					}, nil).
+					Times(describeScheduleRetryAttempts)
+				closeStatus := types.WorkflowExecutionCloseStatusContinuedAsNew
+				f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+					Return(&types.HistoryQueryWorkflowResponse{
+						Response: &types.QueryWorkflowResponse{
+							QueryRejected: &types.QueryRejected{CloseStatus: &closeStatus},
+						},
+					}, nil).
+					Times(describeScheduleRetryAttempts)
+			},
+			wantErr: true,
+			checkErr: func(t *testing.T, err error) {
+				var internalErr *types.InternalServiceError
+				assert.ErrorAs(t, err, &internalErr)
+				assert.Contains(t, internalErr.Message, "mid-ContinueAsNew")
+			},
+		},
+		"success": {
+			request: validRequest,
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistoryDescribeWorkflowExecutionRequest, _ ...yarpc.CallOption) (*types.DescribeWorkflowExecutionResponse, error) {
+						assert.Equal(t, testDomainID, req.DomainUUID)
+						assert.Equal(t, "cadence-scheduler:my-schedule", req.Request.Execution.WorkflowID)
+						return &types.DescribeWorkflowExecutionResponse{
+							WorkflowExecutionInfo: &types.WorkflowExecutionInfo{},
+						}, nil
+					})
+				f.historyClient.EXPECT().QueryWorkflow(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistoryQueryWorkflowRequest, _ ...yarpc.CallOption) (*types.HistoryQueryWorkflowResponse, error) {
+						assert.Equal(t, testDomainID, req.DomainUUID)
+						assert.Equal(t, "cadence-scheduler:my-schedule", req.Request.Execution.WorkflowID)
+						assert.Equal(t, scheduler.QueryTypeDescribe, req.Request.Query.QueryType)
+						require.NotNil(t, req.Request.QueryRejectCondition)
+						assert.Equal(t, types.QueryRejectConditionNotCompletedCleanly, *req.Request.QueryRejectCondition)
+
+						return &types.HistoryQueryWorkflowResponse{
+							Response: &types.QueryWorkflowResponse{
+								QueryResult: descBytes,
+							},
+						}, nil
+					})
+			},
+			wantErr: false,
+			check: func(t *testing.T, resp *types.DescribeScheduleResponse) {
+				assert.Equal(t, "*/10 * * * *", resp.Spec.CronExpression)
+				assert.True(t, resp.State.Paused)
+				assert.Equal(t, "maintenance", resp.State.PauseInfo.Reason)
+				assert.Equal(t, "admin", resp.State.PauseInfo.PausedBy)
+				assert.Equal(t, int64(42), resp.Info.TotalRuns)
+				assert.Equal(t, int64(5), resp.Info.MissedRuns)
+				assert.Equal(t, int64(3), resp.Info.SkippedRuns)
+				require.NotNil(t, resp.Memo)
+				assert.Equal(t, []byte(`"sm"`), resp.Memo.Fields["schedMemo"])
+				require.NotNil(t, resp.SearchAttributes)
+				assert.Equal(t, []byte(`7`), resp.SearchAttributes.IndexedFields["CustomIntField"])
+			},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			f := newScheduleTestFixture(t)
+			defer f.finish()
+			tt.mockFn(f)
+
+			ctx := tt.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			resp, err := f.handler.DescribeSchedule(ctx, tt.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.checkErr != nil {
+					tt.checkErr(t, err)
+				}
+			} else {
+				assert.NoError(t, err)
+				if tt.check != nil {
+					tt.check(t, resp)
+				}
+			}
+		})
+	}
+}
+
+func TestPauseSchedule(t *testing.T) {
+	tests := map[string]struct {
+		request *types.PauseScheduleRequest
+		mockFn  func(*scheduleTestFixture)
+		wantErr bool
+	}{
+		"nil request": {
+			request: nil,
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"empty domain": {
+			request: &types.PauseScheduleRequest{},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"empty schedule ID": {
+			request: &types.PauseScheduleRequest{Domain: testDomain},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"signal error": {
+			request: &types.PauseScheduleRequest{Domain: testDomain, ScheduleID: "s1", Reason: "maintenance"},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(errors.New("signal failed"))
+			},
+			wantErr: true,
+		},
+		"success": {
+			request: &types.PauseScheduleRequest{Domain: testDomain, ScheduleID: "s1", Reason: "maintenance"},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistorySignalWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+						assert.Equal(t, testDomainID, req.DomainUUID)
+						assert.Equal(t, "cadence-scheduler:s1", req.SignalRequest.WorkflowExecution.WorkflowID)
+						assert.Equal(t, scheduler.SignalNamePause, req.SignalRequest.SignalName)
+
+						var signal scheduler.PauseSignal
+						require.NoError(t, json.Unmarshal(req.SignalRequest.Input, &signal))
+						assert.Equal(t, "maintenance", signal.Reason)
+						return nil
+					})
+			},
+			wantErr: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			f := newScheduleTestFixture(t)
+			defer f.finish()
+			tt.mockFn(f)
+
+			resp, err := f.handler.PauseSchedule(context.Background(), tt.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, resp)
+			}
+		})
+	}
+}
+
+func TestUnpauseSchedule(t *testing.T) {
+	tests := map[string]struct {
+		request *types.UnpauseScheduleRequest
+		mockFn  func(*scheduleTestFixture)
+		wantErr bool
+	}{
+		"nil request": {
+			request: nil,
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"success": {
+			request: &types.UnpauseScheduleRequest{
+				Domain:        testDomain,
+				ScheduleID:    "s1",
+				CatchUpPolicy: types.ScheduleCatchUpPolicyOne,
+			},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistorySignalWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+						assert.Equal(t, scheduler.SignalNameUnpause, req.SignalRequest.SignalName)
+						var signal scheduler.UnpauseSignal
+						require.NoError(t, json.Unmarshal(req.SignalRequest.Input, &signal))
+						assert.Equal(t, types.ScheduleCatchUpPolicyOne, signal.CatchUpPolicy)
+						return nil
+					})
+			},
+			wantErr: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			f := newScheduleTestFixture(t)
+			defer f.finish()
+			tt.mockFn(f)
+
+			resp, err := f.handler.UnpauseSchedule(context.Background(), tt.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, resp)
+			}
+		})
+	}
+}
+
+func TestUpdateSchedule(t *testing.T) {
+	tests := map[string]struct {
+		request *types.UpdateScheduleRequest
+		mockFn  func(*scheduleTestFixture)
+		wantErr bool
+	}{
+		"nil request": {
+			request: nil,
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"nothing to update": {
+			request: &types.UpdateScheduleRequest{Domain: testDomain, ScheduleID: "s1"},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"invalid SKIP_NEW + CATCH_UP_ALL": {
+			request: &types.UpdateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Policies: &types.SchedulePolicies{
+					OverlapPolicy: types.ScheduleOverlapPolicySkipNew,
+					CatchUpPolicy: types.ScheduleCatchUpPolicyAll,
+				},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"success with spec update": {
+			request: &types.UpdateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec:       &types.ScheduleSpec{CronExpression: "0 * * * *"},
+			},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistorySignalWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+						assert.Equal(t, scheduler.SignalNameUpdate, req.SignalRequest.SignalName)
+						var signal scheduler.UpdateSignal
+						require.NoError(t, json.Unmarshal(req.SignalRequest.Input, &signal))
+						assert.Equal(t, "0 * * * *", signal.Spec.CronExpression)
+						assert.Nil(t, signal.Action)
+						assert.Nil(t, signal.Policies)
+						return nil
+					})
+			},
+			wantErr: false,
+		},
+		"invalid cron expression in spec update": {
+			request: &types.UpdateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec:       &types.ScheduleSpec{CronExpression: "not-a-cron"},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"out-of-range minute in cron expression rejects update": {
+			request: &types.UpdateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec:       &types.ScheduleSpec{CronExpression: "99 * * * *"},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"impossible cron date in spec update (Feb 30) parses but never fires": {
+			request: &types.UpdateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec:       &types.ScheduleSpec{CronExpression: "0 0 30 2 *"},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"reserved SA key rejected": {
+			request: &types.UpdateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				SearchAttributes: &types.SearchAttributes{
+					IndexedFields: map[string][]byte{"CadenceScheduleState": []byte(`"active"`)},
+				},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"retry policy with no bounds rejected at update": {
+			request: &types.UpdateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Action: &types.ScheduleAction{
+					StartWorkflow: &types.StartWorkflowAction{
+						WorkflowType: &types.WorkflowType{Name: "wf"},
+						TaskList:     &types.TaskList{Name: "tl"},
+						RetryPolicy: &types.RetryPolicy{
+							InitialIntervalInSeconds: 1,
+							MaximumIntervalInSeconds: 60,
+							BackoffCoefficient:       2,
+							// MaximumAttempts and ExpirationIntervalInSeconds both zero
+						},
+					},
+				},
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"search attributes only update succeeds": {
+			request: &types.UpdateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				SearchAttributes: &types.SearchAttributes{
+					IndexedFields: map[string][]byte{"MyField": []byte(`"hello"`)},
+				},
+			},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistorySignalWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+						assert.Equal(t, scheduler.SignalNameUpdate, req.SignalRequest.SignalName)
+						var signal scheduler.UpdateSignal
+						require.NoError(t, json.Unmarshal(req.SignalRequest.Input, &signal))
+						assert.Nil(t, signal.Spec)
+						assert.Nil(t, signal.Action)
+						assert.Nil(t, signal.Policies)
+						require.NotNil(t, signal.SearchAttributes)
+						assert.Equal(t, []byte(`"hello"`), signal.SearchAttributes.IndexedFields["MyField"])
+						return nil
+					})
+			},
+			wantErr: false,
+		},
+		"search attributes forwarded with spec update": {
+			request: &types.UpdateScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				Spec:       &types.ScheduleSpec{CronExpression: "0 * * * *"},
+				SearchAttributes: &types.SearchAttributes{
+					IndexedFields: map[string][]byte{"MyField": []byte(`"hello"`)},
+				},
+			},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistorySignalWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+						var signal scheduler.UpdateSignal
+						require.NoError(t, json.Unmarshal(req.SignalRequest.Input, &signal))
+						assert.Equal(t, "0 * * * *", signal.Spec.CronExpression)
+						require.NotNil(t, signal.SearchAttributes)
+						assert.Equal(t, []byte(`"hello"`), signal.SearchAttributes.IndexedFields["MyField"])
+						return nil
+					})
+			},
+			wantErr: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			f := newScheduleTestFixture(t)
+			defer f.finish()
+			tt.mockFn(f)
+
+			resp, err := f.handler.UpdateSchedule(context.Background(), tt.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, resp)
+			}
+		})
+	}
+}
+
+func TestDeleteSchedule(t *testing.T) {
+	tests := map[string]struct {
+		request *types.DeleteScheduleRequest
+		mockFn  func(*scheduleTestFixture)
+		wantErr bool
+	}{
+		"nil request": {
+			request: nil,
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"empty domain": {
+			request: &types.DeleteScheduleRequest{ScheduleID: "s1"},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"empty schedule ID": {
+			request: &types.DeleteScheduleRequest{Domain: testDomain},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"success: signal delivered": {
+			request: &types.DeleteScheduleRequest{Domain: testDomain, ScheduleID: "s1"},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistorySignalWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+						assert.Equal(t, scheduler.SignalNameDelete, req.SignalRequest.SignalName)
+						assert.Nil(t, req.SignalRequest.Input)
+						return nil
+					})
+			},
+			wantErr: false,
+		},
+		"idempotent: scheduler workflow not found is treated as already deleted": {
+			request: &types.DeleteScheduleRequest{Domain: testDomain, ScheduleID: "s1"},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.EntityNotExistsError{Message: "workflow cadence-scheduler:s1 not found"})
+			},
+			wantErr: false,
+		},
+		"idempotent: scheduler workflow already closed is treated as already deleted": {
+			request: &types.DeleteScheduleRequest{Domain: testDomain, ScheduleID: "s1"},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.WorkflowExecutionAlreadyCompletedError{Message: "workflow execution already completed"})
+			},
+			wantErr: false,
+		},
+		"transient signal failure returns error without terminate": {
+			request: &types.DeleteScheduleRequest{Domain: testDomain, ScheduleID: "s1"},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.ServiceBusyError{Message: "busy"})
+			},
+			wantErr: true,
+		},
+		"workflow id rate limit returns error without terminate": {
+			request: &types.DeleteScheduleRequest{Domain: testDomain, ScheduleID: "s1"},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.ServiceBusyError{Reason: constants.WorkflowIDRateLimitReason})
+			},
+			wantErr: true,
+		},
+		"deadline exceeded signal failure returns error without terminate": {
+			request: &types.DeleteScheduleRequest{Domain: testDomain, ScheduleID: "s1"},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(yarpcerrors.DeadlineExceededErrorf("deadline exceeded"))
+			},
+			wantErr: true,
+		},
+		"signal failure falls back to terminate and returns success": {
+			request: &types.DeleteScheduleRequest{Domain: testDomain, ScheduleID: "s1"},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(errors.New("some internal error"))
+				f.historyClient.EXPECT().TerminateWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistoryTerminateWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+						assert.Equal(t, scheduleWorkflowID("s1"), req.TerminateRequest.GetWorkflowExecution().GetWorkflowID())
+						assert.NotEmpty(t, req.TerminateRequest.GetReason())
+						return nil
+					})
+			},
+			wantErr: false,
+		},
+		"signal failure falls back to terminate; terminate also reports already gone": {
+			request: &types.DeleteScheduleRequest{Domain: testDomain, ScheduleID: "s1"},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(errors.New("some internal error"))
+				f.historyClient.EXPECT().TerminateWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(&types.WorkflowExecutionAlreadyCompletedError{Message: "already completed"})
+			},
+			wantErr: false,
+		},
+		"signal failure and terminate failure surface the original signal error": {
+			request: &types.DeleteScheduleRequest{Domain: testDomain, ScheduleID: "s1"},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(errors.New("signal boom"))
+				f.historyClient.EXPECT().TerminateWorkflowExecution(gomock.Any(), gomock.Any()).
+					Return(errors.New("terminate boom"))
+			},
+			wantErr: true,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			f := newScheduleTestFixture(t)
+			defer f.finish()
+			tt.mockFn(f)
+
+			resp, err := f.handler.DeleteSchedule(context.Background(), tt.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, resp)
+			}
+		})
+	}
+}
+
+func TestResolveBackfillID(t *testing.T) {
+	assert.Equal(t, "bf-1", resolveBackfillID("bf-1"))
+	assert.Equal(t, "bf-1", resolveBackfillID("  bf-1  "))
+	_, err := uuid.Parse(resolveBackfillID(""))
+	require.NoError(t, err)
+	_, err = uuid.Parse(resolveBackfillID("  \t  "))
+	require.NoError(t, err)
+}
+
+func TestBackfillSchedule(t *testing.T) {
+	now := time.Now()
+	tests := map[string]struct {
+		request *types.BackfillScheduleRequest
+		mockFn  func(*scheduleTestFixture)
+		wantErr bool
+	}{
+		"nil request": {
+			request: nil,
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"missing start time": {
+			request: &types.BackfillScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				EndTime:    now,
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"missing end time": {
+			request: &types.BackfillScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				StartTime:  now.Add(-time.Hour),
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"end before start": {
+			request: &types.BackfillScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				StartTime:  now,
+				EndTime:    now.Add(-time.Hour),
+			},
+			mockFn:  func(f *scheduleTestFixture) {},
+			wantErr: true,
+		},
+		"success": {
+			request: &types.BackfillScheduleRequest{
+				Domain:        testDomain,
+				ScheduleID:    "s1",
+				StartTime:     now.Add(-time.Hour),
+				EndTime:       now,
+				OverlapPolicy: types.ScheduleOverlapPolicyConcurrent,
+				BackfillID:    "bf-1",
+			},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistorySignalWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+						assert.Equal(t, scheduler.SignalNameBackfill, req.SignalRequest.SignalName)
+						var signal scheduler.BackfillSignal
+						require.NoError(t, json.Unmarshal(req.SignalRequest.Input, &signal))
+						assert.Equal(t, types.ScheduleOverlapPolicyConcurrent, signal.OverlapPolicy)
+						assert.Equal(t, "bf-1", signal.BackfillID)
+						return nil
+					})
+			},
+			wantErr: false,
+		},
+		"success without backfill id assigns uuid": {
+			request: &types.BackfillScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				StartTime:  now.Add(-time.Hour),
+				EndTime:    now,
+			},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistorySignalWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+						var signal scheduler.BackfillSignal
+						require.NoError(t, json.Unmarshal(req.SignalRequest.Input, &signal))
+						_, err := uuid.Parse(signal.BackfillID)
+						require.NoError(t, err, "expected server-generated UUID backfill id, got %q", signal.BackfillID)
+						return nil
+					})
+			},
+			wantErr: false,
+		},
+		"whitespace backfill id assigns uuid": {
+			request: &types.BackfillScheduleRequest{
+				Domain:     testDomain,
+				ScheduleID: "s1",
+				StartTime:  now.Add(-time.Hour),
+				EndTime:    now,
+				BackfillID: "   ",
+			},
+			mockFn: func(f *scheduleTestFixture) {
+				f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+				f.historyClient.EXPECT().SignalWorkflowExecution(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, req *types.HistorySignalWorkflowExecutionRequest, _ ...yarpc.CallOption) error {
+						var signal scheduler.BackfillSignal
+						require.NoError(t, json.Unmarshal(req.SignalRequest.Input, &signal))
+						_, err := uuid.Parse(signal.BackfillID)
+						require.NoError(t, err)
+						return nil
+					})
+			},
+			wantErr: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			f := newScheduleTestFixture(t)
+			defer f.finish()
+			tt.mockFn(f)
+
+			resp, err := f.handler.BackfillSchedule(context.Background(), tt.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, resp)
+			}
+		})
+	}
+}
+
+func TestListSchedules(t *testing.T) {
+	t.Run("nil request", func(t *testing.T) {
+		f := newScheduleTestFixture(t)
+		defer f.finish()
+
+		resp, err := f.handler.ListSchedules(context.Background(), nil)
+		assert.Error(t, err)
+		assert.Nil(t, resp)
+	})
+
+	t.Run("empty domain", func(t *testing.T) {
+		f := newScheduleTestFixture(t)
+		defer f.finish()
+
+		resp, err := f.handler.ListSchedules(context.Background(), &types.ListSchedulesRequest{})
+		assert.Error(t, err)
+		assert.Nil(t, resp)
+	})
+
+	t.Run("success with results", func(t *testing.T) {
+		f := newScheduleTestFixture(t)
+		defer f.finish()
+
+		f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+
+		pausedStateBytes, _ := json.Marshal(scheduler.ScheduleStatePaused)
+		cronBytes, _ := json.Marshal("0 6 * * *")
+		typeBytes, _ := json.Marshal("my-target-workflow")
+
+		f.mockResource.VisibilityMgr.On("ListOpenWorkflowExecutionsByType", mock.Anything, mock.MatchedBy(func(req *persistence.ListWorkflowExecutionsByTypeRequest) bool {
+			return req.Domain == testDomain && req.WorkflowTypeName == scheduler.WorkflowTypeName
+		})).Return(&persistence.ListWorkflowExecutionsResponse{
+			Executions: []*types.WorkflowExecutionInfo{
+				{
+					Execution: &types.WorkflowExecution{
+						WorkflowID: "cadence-scheduler:sched-1",
+						RunID:      "run-1",
+					},
+					Type: &types.WorkflowType{Name: scheduler.WorkflowTypeName},
+					SearchAttributes: &types.SearchAttributes{IndexedFields: map[string][]byte{
+						scheduler.SearchAttrScheduleState:        pausedStateBytes,
+						scheduler.SearchAttrScheduleCron:         cronBytes,
+						scheduler.SearchAttrScheduleWorkflowType: typeBytes,
+					}},
+				},
+				{
+					Execution: &types.WorkflowExecution{
+						WorkflowID: "cadence-scheduler:sched-2",
+						RunID:      "run-2",
+					},
+					Type: &types.WorkflowType{Name: scheduler.WorkflowTypeName},
+				},
+			},
+			NextPageToken: []byte("next"),
+		}, nil).Once()
+
+		resp, err := f.handler.ListSchedules(context.Background(), &types.ListSchedulesRequest{
+			Domain:   testDomain,
+			PageSize: 10,
+		})
+		assert.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.Len(t, resp.Schedules, 2)
+
+		assert.Equal(t, "sched-1", resp.Schedules[0].ScheduleID)
+		require.NotNil(t, resp.Schedules[0].State)
+		assert.True(t, resp.Schedules[0].State.Paused)
+		assert.Equal(t, "0 6 * * *", resp.Schedules[0].CronExpression)
+		require.NotNil(t, resp.Schedules[0].WorkflowType)
+		assert.Equal(t, "my-target-workflow", resp.Schedules[0].WorkflowType.Name)
+
+		assert.Equal(t, "sched-2", resp.Schedules[1].ScheduleID)
+		require.NotNil(t, resp.Schedules[1].State)
+		assert.False(t, resp.Schedules[1].State.Paused, "missing search attribute should default to not paused")
+		assert.Empty(t, resp.Schedules[1].CronExpression, "missing cron search attribute should yield empty string")
+		assert.Nil(t, resp.Schedules[1].WorkflowType, "missing workflow type search attribute should yield nil")
+
+		assert.Equal(t, []byte("next"), resp.NextPageToken)
+	})
+
+	t.Run("query path when list visibility filter disabled", func(t *testing.T) {
+		f := newScheduleTestFixture(t)
+		defer f.finish()
+
+		f.handler.config.DisableListVisibilityByFilter = dynamicproperties.GetBoolPropertyFnFilteredByDomain(true)
+
+		f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+
+		f.mockResource.VisibilityMgr.On("ListWorkflowExecutions", mock.Anything, mock.MatchedBy(func(req *persistence.ListWorkflowExecutionsByQueryRequest) bool {
+			return req.Domain == testDomain && req.Query == "WorkflowType = 'cadence-scheduler' and CloseTime = missing"
+		})).Return(&persistence.ListWorkflowExecutionsResponse{
+			Executions: []*types.WorkflowExecutionInfo{
+				{
+					Execution: &types.WorkflowExecution{
+						WorkflowID: "cadence-scheduler:sched-q",
+						RunID:      "run-q",
+					},
+					Type: &types.WorkflowType{Name: scheduler.WorkflowTypeName},
+				},
+			},
+			NextPageToken: []byte("tok-q"),
+		}, nil).Once()
+
+		resp, err := f.handler.ListSchedules(context.Background(), &types.ListSchedulesRequest{
+			Domain:   testDomain,
+			PageSize: 5,
+		})
+		assert.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.Schedules, 1)
+		assert.Equal(t, "sched-q", resp.Schedules[0].ScheduleID)
+		assert.Equal(t, []byte("tok-q"), resp.NextPageToken)
+	})
+
+	t.Run("skips visibility rows without schedule workflow id prefix", func(t *testing.T) {
+		f := newScheduleTestFixture(t)
+		defer f.finish()
+
+		f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+
+		f.mockResource.VisibilityMgr.On("ListOpenWorkflowExecutionsByType", mock.Anything, mock.Anything).
+			Return(&persistence.ListWorkflowExecutionsResponse{
+				Executions: []*types.WorkflowExecutionInfo{
+					{
+						Execution: &types.WorkflowExecution{WorkflowID: "not-scheduler-wf", RunID: "r1"},
+						Type:      &types.WorkflowType{Name: scheduler.WorkflowTypeName},
+					},
+					{
+						Execution: &types.WorkflowExecution{WorkflowID: "cadence-scheduler:good", RunID: "r2"},
+						Type:      &types.WorkflowType{Name: scheduler.WorkflowTypeName},
+					},
+				},
+			}, nil).Once()
+
+		resp, err := f.handler.ListSchedules(context.Background(), &types.ListSchedulesRequest{Domain: testDomain})
+		require.NoError(t, err)
+		require.Len(t, resp.Schedules, 1)
+		assert.Equal(t, "good", resp.Schedules[0].ScheduleID)
+	})
+}
+
+func TestNormalizeScheduleError(t *testing.T) {
+	t.Run("describe not found returns friendly message", func(t *testing.T) {
+		f := newScheduleTestFixture(t)
+		defer f.finish()
+
+		f.domainCache.EXPECT().GetDomainID(testDomain).Return(testDomainID, nil).AnyTimes()
+		f.historyClient.EXPECT().DescribeWorkflowExecution(gomock.Any(), gomock.Any()).
+			Return(nil, &types.EntityNotExistsError{Message: "workflow cadence-scheduler:s1 not found"})
+
+		_, err := f.handler.DescribeSchedule(context.Background(), &types.DescribeScheduleRequest{
+			Domain:     testDomain,
+			ScheduleID: "s1",
+		})
+
+		var notFound *types.EntityNotExistsError
+		require.True(t, errors.As(err, &notFound))
+		assert.Contains(t, notFound.Message, `schedule "s1" not found in domain`)
+	})
+
+}
+
+func TestScheduleWorkflowID(t *testing.T) {
+	assert.Equal(t, "cadence-scheduler:my-schedule", scheduleWorkflowID("my-schedule"))
+	assert.Equal(t, "cadence-scheduler:", scheduleWorkflowID(""))
+}
+
+func TestValidateSchedulePolicies(t *testing.T) {
+	tests := map[string]struct {
+		policies *types.SchedulePolicies
+		wantErr  bool
+	}{
+		"nil policies": {
+			policies: nil,
+			wantErr:  false,
+		},
+		"valid SKIP_NEW + SKIP": {
+			policies: &types.SchedulePolicies{
+				OverlapPolicy: types.ScheduleOverlapPolicySkipNew,
+				CatchUpPolicy: types.ScheduleCatchUpPolicySkip,
+			},
+			wantErr: false,
+		},
+		"valid SKIP_NEW + ONE": {
+			policies: &types.SchedulePolicies{
+				OverlapPolicy: types.ScheduleOverlapPolicySkipNew,
+				CatchUpPolicy: types.ScheduleCatchUpPolicyOne,
+			},
+			wantErr: false,
+		},
+		"invalid SKIP_NEW + ALL": {
+			policies: &types.SchedulePolicies{
+				OverlapPolicy: types.ScheduleOverlapPolicySkipNew,
+				CatchUpPolicy: types.ScheduleCatchUpPolicyAll,
+			},
+			wantErr: true,
+		},
+		"valid TERMINATE_PREVIOUS + ALL": {
+			policies: &types.SchedulePolicies{
+				OverlapPolicy: types.ScheduleOverlapPolicyTerminatePrevious,
+				CatchUpPolicy: types.ScheduleCatchUpPolicyAll,
+			},
+			wantErr: false,
+		},
+		"valid CONCURRENT + ALL": {
+			policies: &types.SchedulePolicies{
+				OverlapPolicy: types.ScheduleOverlapPolicyConcurrent,
+				CatchUpPolicy: types.ScheduleCatchUpPolicyAll,
+			},
+			wantErr: false,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := validateSchedulePolicies(tt.policies)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestOngoingBackfillsForResponse(t *testing.T) {
+	t.Run("nil input returns nil", func(t *testing.T) {
+		assert.Nil(t, ongoingBackfillsForResponse(nil))
+	})
+	t.Run("empty input returns nil", func(t *testing.T) {
+		assert.Nil(t, ongoingBackfillsForResponse([]types.BackfillInfo{}))
+	})
+	t.Run("non-empty input is mapped one-to-one and copies each entry", func(t *testing.T) {
+		in := []types.BackfillInfo{
+			{
+				BackfillID:    "bf-a",
+				StartTime:     time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC),
+				EndTime:       time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC),
+				RunsTotal:     24,
+				RunsCompleted: 5,
+			},
+			{
+				BackfillID: "bf-b",
+				StartTime:  time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+				EndTime:    time.Date(2026, 4, 2, 0, 0, 0, 0, time.UTC),
+			},
+		}
+		out := ongoingBackfillsForResponse(in)
+		require.Len(t, out, 2)
+		assert.Equal(t, in[0], *out[0])
+		assert.Equal(t, in[1], *out[1])
+
+		// Each pointer must refer to an independent copy so a later mutation
+		// of the response slice does not race against scheduler-workflow state.
+		out[0].RunsCompleted = 99
+		assert.Equal(t, int32(5), in[0].RunsCompleted, "mutating out must not affect in")
+	})
+}
+
+// TestValidateUserSearchAttributes verifies that user-supplied search attribute
+// keys colliding with the scheduler-reserved "CadenceSchedule" prefix are
+// rejected, while other keys (including a lowercase near-miss) are allowed. The
+// prefix check is case-sensitive.
+func TestValidateUserSearchAttributes(t *testing.T) {
+	sa := func(keys ...string) *types.SearchAttributes {
+		fields := make(map[string][]byte, len(keys))
+		for _, k := range keys {
+			fields[k] = []byte(`"v"`)
+		}
+		return &types.SearchAttributes{IndexedFields: fields}
+	}
+
+	tests := map[string]struct {
+		sa      *types.SearchAttributes
+		wantErr bool
+	}{
+		"nil search attributes":       {sa: nil, wantErr: false},
+		"empty indexed fields":        {sa: &types.SearchAttributes{}, wantErr: false},
+		"reserved exact prefix":       {sa: sa("CadenceSchedule"), wantErr: true},
+		"reserved CadenceScheduleID":  {sa: sa("CadenceScheduleID"), wantErr: true},
+		"reserved CadenceScheduleFoo": {sa: sa("CadenceScheduleFoo"), wantErr: true},
+		"lowercase not reserved":      {sa: sa("cadenceschedule"), wantErr: false},
+		"unrelated key allowed":       {sa: sa("MyKey"), wantErr: false},
+		"mixed reserved + allowed":    {sa: sa("MyKey", "CadenceScheduleX"), wantErr: true},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := validateUserSearchAttributes(tt.sa)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateScheduleSpecTimeRange verifies the spec StartTime/EndTime ordering
+// check: both must be set for the check to apply, and EndTime must be strictly
+// after StartTime.
+func TestValidateScheduleSpecTimeRange(t *testing.T) {
+	t1 := time.Unix(1000, 0)
+	t2 := time.Unix(2000, 0)
+	tests := map[string]struct {
+		spec    *types.ScheduleSpec
+		wantErr bool
+	}{
+		"nil spec":                 {spec: nil, wantErr: false},
+		"both unset":               {spec: &types.ScheduleSpec{CronExpression: "* * * * *"}, wantErr: false},
+		"only start set":           {spec: &types.ScheduleSpec{StartTime: t1}, wantErr: false},
+		"only end set":             {spec: &types.ScheduleSpec{EndTime: t2}, wantErr: false},
+		"valid start before end":   {spec: &types.ScheduleSpec{StartTime: t1, EndTime: t2}, wantErr: false},
+		"invalid end before start": {spec: &types.ScheduleSpec{StartTime: t2, EndTime: t1}, wantErr: true},
+		"invalid end equals start": {spec: &types.ScheduleSpec{StartTime: t1, EndTime: t1}, wantErr: true},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := validateScheduleSpecTimeRange(tt.spec)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestWarnIfBufferLimitExceedsSystemLimit_NilSafe verifies the helper does not
+// panic when policies or policies.BufferLimit is nil, and that it stays a no-op
+// when the overlap policy is not Buffer (BufferLimit has no effect there).
+func TestWarnIfBufferLimitExceedsSystemLimit_NilSafe(t *testing.T) {
+	f := newScheduleTestFixture(t)
+	defer f.finish()
+
+	cases := []struct {
+		name     string
+		policies *types.SchedulePolicies
+	}{
+		{name: "nil policies", policies: nil},
+		{
+			name: "Buffer policy with zero BufferLimit",
+			policies: &types.SchedulePolicies{
+				OverlapPolicy: types.ScheduleOverlapPolicyBuffer,
+				BufferLimit:   0,
+			},
+		},
+		{
+			name: "non-Buffer policy with BufferLimit set",
+			policies: &types.SchedulePolicies{
+				OverlapPolicy: types.ScheduleOverlapPolicySkipNew,
+				BufferLimit:   int32(scheduler.MaxBufferedFiresSystemLimit * 2),
+			},
+		},
+		{
+			name: "Buffer policy with BufferLimit under system limit",
+			policies: &types.SchedulePolicies{
+				OverlapPolicy: types.ScheduleOverlapPolicyBuffer,
+				BufferLimit:   1,
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.NotPanics(t, func() {
+				f.handler.warnIfBufferLimitExceedsSystemLimit("sched-1", "domain", tc.policies)
+			})
+		})
+	}
+}
+
+func TestCreateSchedule_ShuttingDown(t *testing.T) {
+	f := newScheduleTestFixture(t)
+	defer f.finish()
+	f.handler.shuttingDown = 1
+
+	_, err := f.handler.CreateSchedule(context.Background(), &types.CreateScheduleRequest{})
+	assert.Equal(t, validate.ErrShuttingDown, err)
+}

@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 60565,
+  "bundle_sha256": "da35e024addde65c4c75ab615fce7e7da3de9d45610ab4d5ed62b1afbe2b718f",
+  "extracted_tree": {
+    "bytes": 187224,
+    "files": 31,
+    "sha256": "5b7fbc716a417b88d83fce8973dc10bed81af7212f77e7c3ca0c75a9ca9cbfff"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 60565,
+      "name": "GTPyhop.bundle.zip.part-0001",
+      "sha256": "da35e024addde65c4c75ab615fce7e7da3de9d45610ab4d5ed62b1afbe2b718f"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "GTPyhop",
+  "source_bytes": 187224,
+  "source_commit": "1ca7773963443476d0e83d03f10efab325327565",
+  "source_files": 31,
+  "source_ref": "HEAD",
+  "source_repo": "dananau/GTPyhop",
+  "source_tree": {
+    "bytes": 187224,
+    "files": 31,
+    "sha256": "5b7fbc716a417b88d83fce8973dc10bed81af7212f77e7c3ca0c75a9ca9cbfff"
+  }
+}

@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # Main integration test runner
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      - RUNNING_IN_DOCKER=true
+      - NODE_ENV=test
+    volumes:
+      # Mount source for faster iteration (optional, comment out for clean builds)
+      # - ./src:/app/src:ro
+      # - ./tests:/app/tests:ro
+      # Mount for test output
+      - ./test-results:/app/test-results
+    command: npm run test:integration
+
+  # Interactive shell for manual testing
+  shell:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      - RUNNING_IN_DOCKER=true
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+  # Run all tests (unit + integration)
+  test-all:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      - RUNNING_IN_DOCKER=true
+      - NODE_ENV=test
+    command: npm run test:all
+
+  # Quick smoke test
+  smoke:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      - RUNNING_IN_DOCKER=true
+    command: |
+      bash -c '
+        echo "=== AgentGuard Smoke Test ==="
+        echo ""
+        echo "Testing: Block rm -rf /"
+        if agentguard -- rm -rf / 2>&1 | grep -qi block; then
+          echo "✓ PASS: rm -rf / was blocked"
+        else
+          echo "✗ FAIL: rm -rf / was NOT blocked!"
+          exit 1
+        fi
+        echo ""
+        echo "Testing: Allow rm -rf node_modules"
+        mkdir -p /tmp/test-proj/node_modules
+        echo "test" > /tmp/test-proj/node_modules/test.txt
+        if agentguard -- rm -rf /tmp/test-proj/node_modules; then
+          if [ ! -d /tmp/test-proj/node_modules ]; then
+            echo "✓ PASS: node_modules was deleted"
+          else
+            echo "✗ FAIL: node_modules still exists"
+            exit 1
+          fi
+        else
+          echo "✗ FAIL: rm command failed"
+          exit 1
+        fi
+        echo ""
+        echo "=== All smoke tests passed! ==="
+      '

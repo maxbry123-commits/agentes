@@ -1,0 +1,365 @@
+name: YAIWES SOL3 AG2 STEP1 STEP2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-sol3-ag2-step1-step2.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-sol3-ag2-step1-step2
+  cancel-in-progress: false
+
+jobs:
+  integrate_ag2:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout AG2 integration surfaces
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-sol3-ag2-step1-step2.yml
+            /📂 Bitácora stated JSON Craxy wall.json
+            /Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json
+            /Core kernel Yaiwes/Componentes recuperados B/AG2/
+            /Agente Yaiwes principal/agent-fleet-parallelism/
+            /➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py
+
+      - name: Register SOL3 and AG2 STEP1 PASS then claim STEP2
+        shell: bash
+        env:
+          WALL: '📂 Bitácora stated JSON Craxy wall.json'
+          INVENTORY: 'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json'
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+
+          wall_path = os.environ['WALL']
+          inventory_path = os.environ['INVENTORY']
+          now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+
+          with open(wall_path, 'r', encoding='utf-8') as f:
+              data = json.load(f)
+
+          regs = data.setdefault('registrations', [])
+          if not any(r.get('name') == 'SOL integración 3' and r.get('status') == 'ACTIVE' for r in regs):
+              regs.append({
+                  'name': 'SOL integración 3',
+                  'role': 'integration_worker',
+                  'status': 'ACTIVE',
+                  'scope': 'physical_inventory_strict_3_steps',
+                  'registered_at': now,
+              })
+
+          loop = data.setdefault('sol_loop_persistence', {})
+          workers = loop.setdefault('workers', [])
+          if 'SOL_3' not in workers:
+              workers.append('SOL_3')
+          loop['updated_at'] = now
+
+          nodes = data.setdefault('nodes', [])
+          node = next((n for n in nodes if n.get('component') == 'AG2'), None)
+          if node is None:
+              next_id = max([int(n.get('id', 0)) for n in nodes] or [0]) + 1
+              node = {
+                  'id': next_id,
+                  'component': 'AG2',
+                  'source': 'Core kernel Yaiwes/Componentes recuperados B/AG2/',
+                  'current_step': 1,
+                  'status': 'PENDING',
+                  'abc': None,
+                  'target': None,
+                  'owner': None,
+                  'lock': 'FREE',
+                  'checkpoint': {'before': None, 'after': None},
+                  'evidence': [],
+                  'history': [],
+                  'next_action': 'STEP_1_ANALYZE_ABC_DESTINATION'
+              }
+              nodes.append(node)
+          if node.get('current_step') == 1:
+              if node.get('lock') not in ('FREE', None) or node.get('owner') not in (None, 'SOL'):
+                  raise SystemExit(f"AG2_LOCKED:{node.get('owner')}:{node.get('lock')}")
+              node['owner'] = 'SOL'
+              node['lock'] = 'CLAIMED'
+              node['checkpoint']['before'] = (
+                  f"{now} SOL integración 3 fresh main: AG2 physical inventory wall_node_id=null; "
+                  "README blob b8f7c0a249280f97809f81565d7d7afb9ecb140b; execute STEP1 only"
+              )
+              node.setdefault('history', []).append({
+                  'at': now, 'actor': 'SOL', 'label': 'SOL integración 3', 'event': 'CLAIM_STEP1_USER_REACTIVATION'
+              })
+              node['abc'] = 'B'
+              node['target'] = 'Agente Yaiwes principal/agent-fleet-parallelism/ag2/'
+              node['status'] = 'PASS_STEP1'
+              node['current_step'] = 2
+              node['checkpoint']['after'] = (
+                  'STEP1 PASS: AG2 README defines AgentOS/framework for AI agents, tools, autonomous workflows and multi-agent orchestration; '
+                  'classified B motor de trabajo; target existing agent-fleet-parallelism/ag2/'
+              )
+              for item in [
+                  'worker:SOL integración 3',
+                  'step1:readme_blob:b8f7c0a249280f97809f81565d7d7afb9ecb140b',
+                  'step1:classification:B',
+                  'step1:target:Agente Yaiwes principal/agent-fleet-parallelism/ag2/',
+                  'step1:reason:multi-agent orchestration + tools + autonomous workflows'
+              ]:
+                  if item not in node['evidence']:
+                      node['evidence'].append(item)
+              node['history'].append({
+                  'at': now, 'actor': 'SOL', 'label': 'SOL integración 3', 'event': 'STEP1_PASS_RELEASE'
+              })
+              node['owner'] = None
+              node['lock'] = 'FREE'
+              node['next_action'] = 'STEP_2_MOVE_WITH_CANONICAL_MOTOR'
+
+          if node.get('current_step') != 2:
+              raise SystemExit(f"AG2_UNEXPECTED_STEP:{node.get('current_step')}:{node.get('status')}")
+          if node.get('lock') not in ('FREE', None) or node.get('owner') not in (None, 'SOL'):
+              raise SystemExit(f"AG2_STEP2_LOCKED:{node.get('owner')}:{node.get('lock')}")
+          node['owner'] = 'SOL'
+          node['lock'] = 'CLAIMED'
+          node['status'] = 'PENDING_STEP2'
+          node['checkpoint']['before'] = (
+              f"{now} SOL integración 3 STEP2 claim: use immutable Motor4 blob 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; "
+              "source AG2 -> target agent-fleet-parallelism/ag2"
+          )
+          node['history'].append({
+              'at': now, 'actor': 'SOL', 'label': 'SOL integración 3', 'event': 'CLAIM_STEP2'
+          })
+          data['updated_at'] = now
+          data.setdefault('directive_history', []).append({
+              'at': now,
+              'actor': 'SOL',
+              'label': 'SOL integración 3',
+              'event': 'USER_REACTIVATED_SOL3_PHYSICAL_INVENTORY_LOOP_AG2_STEP1_PASS_STEP2_CLAIM'
+          })
+
+          with open(inventory_path, 'r', encoding='utf-8') as f:
+              inv = json.load(f)
+          comp = next((c for c in inv.get('components', []) if c.get('name') == 'AG2'), None)
+          if comp is None:
+              raise SystemExit('AG2_NOT_FOUND_IN_INVENTORY')
+          comp['wall_node_id'] = node['id']
+          comp['wall_status'] = node['status']
+          comp['wall_current_step'] = node['current_step']
+          comp['wall_target'] = node['target']
+
+          with open(wall_path, 'w', encoding='utf-8') as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          with open(inventory_path, 'w', encoding='utf-8') as f:
+              json.dump(inv, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          PY
+            git add -- "$WALL" "$INVENTORY"
+            if git diff --cached --quiet; then
+              echo WALL_STEP1_STEP2_ALREADY_REGISTERED
+              ok=1
+              break
+            fi
+            git commit -m 'crazy-wall: SOL integración 3 AG2 STEP1 PASS claim STEP2'
+            if git push origin HEAD:main; then
+              ok=1
+              break
+            fi
+            sleep $((attempt * 2))
+          done
+          test "$ok" -eq 1
+
+      - name: Verify immutable Motor4 SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          MOTOR='➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
+          test -f "$MOTOR"
+          test "$(git hash-object "$MOTOR")" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'
+          echo MOTOR4_SHA_VERIFIED
+
+      - name: Execute Motor4 MOVE AG2
+        id: motor
+        shell: bash
+        run: |
+          set -u
+          MOTOR='➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
+          SRC='Core kernel Yaiwes/Componentes recuperados B/AG2'
+          DST='Agente Yaiwes principal/agent-fleet-parallelism/ag2'
+          if [ ! -d "$SRC" ] && [ -d "$DST" ]; then
+            echo 'motor_rc=0' >> "$GITHUB_OUTPUT"
+            echo 'motor_tail=MOVE_ALREADY_CANONICAL' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test -d "$SRC" || { echo 'motor_rc=2' >> "$GITHUB_OUTPUT"; echo 'motor_tail=SOURCE_DIR_NOT_FOUND' >> "$GITHUB_OUTPUT"; exit 0; }
+          mkdir -p "$DST"
+          export SOURCE_DIR="$SRC"
+          export DEST_DIR="$DST"
+          export STATE_FILE="/tmp/yaiwes-sol3-ag2-motor4.json"
+          export BATCH_SIZE=100
+          export COLLISION_POLICY=fail
+          set +e
+          python3 "$MOTOR" > /tmp/motor4-ag2.log 2>&1
+          rc=$?
+          set -e
+          tail_line="$(tail -n 1 /tmp/motor4-ag2.log | tr '\n\r' ' ' | sed 's/=/ /g' | cut -c1-500)"
+          cat /tmp/motor4-ag2.log
+          echo "motor_rc=$rc" >> "$GITHUB_OUTPUT"
+          echo "motor_tail=$tail_line" >> "$GITHUB_OUTPUT"
+
+      - name: Publish AG2 Motor4 MOVE to main
+        id: publish
+        if: steps.motor.outputs.motor_rc == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC='Core kernel Yaiwes/Componentes recuperados B/AG2'
+          DST='Agente Yaiwes principal/agent-fleet-parallelism/ag2'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- "$SRC" "$DST"
+          if git diff --cached --quiet; then
+            echo MOVE_ALREADY_CANONICAL_NO_DELTA
+          else
+            git commit -m 'move(yaiwes): Motor4 MOVE AG2 to agent-fleet-parallelism/ag2'
+            ok=0
+            for attempt in 1 2 3 4; do
+              git fetch origin main
+              if git rebase origin/main && git push origin HEAD:main; then
+                ok=1
+                break
+              fi
+              git rebase --abort || true
+              sleep $((attempt * 3))
+            done
+            test "$ok" -eq 1
+          fi
+          echo "move_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Read-back AG2 MOVE
+        if: steps.motor.outputs.motor_rc == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          SRC='Core kernel Yaiwes/Componentes recuperados B/AG2'
+          DST='Agente Yaiwes principal/agent-fleet-parallelism/ag2'
+          SRC_REMOTE="$(git ls-tree -r --name-only origin/main -- "$SRC")"
+          DST_REMOTE="$(git ls-tree -r --name-only origin/main -- "$DST")"
+          test -z "$SRC_REMOTE"
+          test -n "$DST_REMOTE"
+          echo READBACK_OK "$DST"
+
+      - name: Checkpoint AG2 STEP2 PASS or GAP
+        shell: bash
+        env:
+          WALL: '📂 Bitácora stated JSON Craxy wall.json'
+          INVENTORY: 'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json'
+          MOTOR_RC: ${{ steps.motor.outputs.motor_rc }}
+          MOTOR_TAIL: ${{ steps.motor.outputs.motor_tail }}
+          MOVE_COMMIT: ${{ steps.publish.outputs.move_commit }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+
+          wall_path = os.environ['WALL']
+          inv_path = os.environ['INVENTORY']
+          rc = int(os.environ.get('MOTOR_RC') or 99)
+          tail = (os.environ.get('MOTOR_TAIL') or 'NO_MOTOR_OUTPUT')[:500]
+          move_commit = os.environ.get('MOVE_COMMIT') or None
+          now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+
+          with open(wall_path, 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          node = next(n for n in data['nodes'] if n.get('component') == 'AG2')
+          if node.get('owner') != 'SOL' or node.get('lock') != 'CLAIMED' or node.get('current_step') != 2:
+              raise SystemExit(f"LOCK_OR_STEP_CHANGED:{node.get('owner')}:{node.get('lock')}:{node.get('current_step')}")
+          ev = node.setdefault('evidence', [])
+          if rc == 0:
+              node['current_step'] = 3
+              node['status'] = 'PASS_STEP2'
+              node['checkpoint']['after'] = (
+                  f"STEP2 PASS: canonical Motor4 MOVE; origin/main source absent; target populated; run={os.environ['GITHUB_RUN_ID']}; "
+                  f"move_commit={move_commit}"
+              )
+              for item in [
+                  'step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5',
+                  f"step2:run:{os.environ['GITHUB_RUN_ID']}",
+                  f"step2:move_commit:{move_commit}",
+                  'step2:readback:origin/main source absent target populated'
+              ]:
+                  if item not in ev:
+                      ev.append(item)
+              node['history'].append({
+                  'at': now, 'actor': 'SOL', 'label': 'SOL integración 3', 'event': 'STEP2_PASS_RELEASE',
+                  'run': int(os.environ['GITHUB_RUN_ID']), 'commit': move_commit
+              })
+              node['next_action'] = 'STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST'
+          else:
+              node['status'] = 'GAP_STEP2'
+              node['checkpoint']['after'] = f"STEP2 GAP: Motor4 rc={rc}; {tail}"
+              ev.append(f"step2:gap:run:{os.environ['GITHUB_RUN_ID']}:rc={rc}:{tail}")
+              node['history'].append({
+                  'at': now, 'actor': 'SOL', 'label': 'SOL integración 3', 'event': 'STEP2_GAP_RELEASE',
+                  'run': int(os.environ['GITHUB_RUN_ID'])
+              })
+              node['next_action'] = 'REPAIR_EXACT_STEP2_GAP_AND_RETRY'
+          node['owner'] = None
+          node['lock'] = 'FREE'
+          data['updated_at'] = now
+
+          with open(inv_path, 'r', encoding='utf-8') as f:
+              inv = json.load(f)
+          comp = next(c for c in inv['components'] if c.get('name') == 'AG2')
+          comp['wall_node_id'] = node['id']
+          comp['wall_status'] = node['status']
+          comp['wall_current_step'] = node['current_step']
+          comp['wall_target'] = node['target']
+
+          with open(wall_path, 'w', encoding='utf-8') as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          with open(inv_path, 'w', encoding='utf-8') as f:
+              json.dump(inv, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          PY
+            git add -- "$WALL" "$INVENTORY"
+            git commit -m "crazy-wall: SOL integración 3 AG2 STEP2 checkpoint run $GITHUB_RUN_ID" || true
+            if git push origin HEAD:main; then
+              ok=1
+              break
+            fi
+            sleep $((attempt * 2))
+          done
+          test "$ok" -eq 1
+
+      - name: Fail closed if Motor4 GAP
+        if: steps.motor.outputs.motor_rc != '0'
+        shell: bash
+        run: |
+          echo "Motor4 GAP rc=${{ steps.motor.outputs.motor_rc }} detail=${{ steps.motor.outputs.motor_tail }}"
+          exit 1

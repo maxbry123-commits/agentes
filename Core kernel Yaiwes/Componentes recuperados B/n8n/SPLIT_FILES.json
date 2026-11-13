@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "n8n",
+    "path": "packages/@n8n/workflow-sdk/test-fixtures/real-workflows/public_published_templates.zip",
+    "chunks_dir": "n8n/packages/@n8n/workflow-sdk/test-fixtures/real-workflows/public_published_templates.zip.chunks",
+    "bytes": 11441764,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "n8n",
+    "path": "packages/frontend/editor-ui/src/experiments/instanceAiTemplateExamples/instance-ai-examples.data.json",
+    "chunks_dir": "n8n/packages/frontend/editor-ui/src/experiments/instanceAiTemplateExamples/instance-ai-examples.data.json.chunks",
+    "bytes": 9408923,
+    "chunk_bytes": 8388608
+  }
+]

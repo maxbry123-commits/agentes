@@ -1,0 +1,112 @@
+import { combineUrl } from 'kea-router'
+
+import { urls } from 'scenes/urls'
+
+import { DateRange, FileSystemIconType, ProductItemCategory, ProductKey } from '~/queries/schema/schema-general'
+
+import { FileSystemIconColor, ProductManifest, UniversalFiltersGroup } from '../../frontend/src/types'
+import { configurationRedirect, resolveSettingSlug } from './frontend/settingsRedirects'
+
+export const manifest: ProductManifest = {
+    name: 'Error tracking',
+    scenes: {
+        ErrorTracking: {
+            import: () => import('./frontend/scenes/ErrorTrackingScene/ErrorTrackingScene'),
+            projectBased: true,
+            name: 'Error tracking',
+            iconType: 'error_tracking',
+            description: 'Track and analyze your error tracking data to understand and fix issues.',
+            docsHref: 'https://posthog.com/docs/error-tracking',
+        },
+        ErrorTrackingIssue: {
+            import: () => import('./frontend/scenes/ErrorTrackingIssueScene/ErrorTrackingIssueScene'),
+            projectBased: true,
+            name: 'Error tracking issue',
+            layout: 'app-raw',
+        },
+        ErrorTrackingIssueFingerprints: {
+            import: () =>
+                import('./frontend/scenes/ErrorTrackingFingerprintsScene/ErrorTrackingIssueFingerprintsScene'),
+            projectBased: true,
+            name: 'Error tracking issue fingerprints',
+        },
+        ErrorTrackingFingerprint: {
+            import: () => import('./frontend/scenes/ErrorTrackingFingerprintScene/ErrorTrackingFingerprintScene'),
+            projectBased: true,
+            name: 'Error tracking fingerprint',
+        },
+    },
+    routes: {
+        '/error_tracking': ['ErrorTracking', 'errorTracking'],
+        '/error_tracking/fingerprint/*': ['ErrorTrackingFingerprint', 'errorTrackingFingerprint'],
+        '/error_tracking/alerts/new/:templateId': ['HogFunction', 'errorTrackingAlertNew'],
+        '/error_tracking/alerts/:id': ['HogFunction', 'errorTrackingAlert'],
+        '/error_tracking/:id': ['ErrorTrackingIssue', 'errorTrackingIssue'],
+        '/error_tracking/:id/fingerprints': ['ErrorTrackingIssueFingerprints', 'errorTrackingIssueFingerprints'],
+    },
+    redirects: {
+        '/error_tracking/configuration': (_params, searchParams, hashParams) =>
+            configurationRedirect(resolveSettingSlug(searchParams.tab), searchParams, hashParams),
+        '/error_tracking/configuration/:tab': (params, searchParams, hashParams) =>
+            configurationRedirect(resolveSettingSlug(params.tab), searchParams, hashParams),
+        '/error_tracking/settings': (_params, searchParams, hashParams) =>
+            configurationRedirect(resolveSettingSlug(searchParams.tab), searchParams, hashParams),
+        '/error_tracking/settings/:tab': (params, searchParams, hashParams) =>
+            configurationRedirect(resolveSettingSlug(params.tab), searchParams, hashParams),
+        '/error_tracking/symbol_sets': (_params, searchParams, hashParams) =>
+            configurationRedirect('error-tracking-symbol-sets', searchParams, hashParams),
+        '/error_tracking/symbol-sets': (_params, searchParams, hashParams) =>
+            configurationRedirect('error-tracking-symbol-sets', searchParams, hashParams),
+    },
+    // Boot-time approximation of errorTrackingSetupLogic: a $exception definition
+    // existing means issues exist. The in-scene check stays the source of truth
+    // (it also reads the autocapture opt-in for the waiting state).
+    setupProbe: {
+        productKey: ProductKey.ERROR_TRACKING,
+        hasDataEvents: ['$exception'],
+    },
+    urls: {
+        errorTracking: (params = {}): string => combineUrl('/error_tracking', params).url,
+        errorTrackingConfiguration: (params = {}): string =>
+            combineUrl('/error_tracking', { ...params, activeTab: 'configuration' }).url,
+        errorTrackingIssue: (
+            id: string,
+            params: {
+                timestamp?: string
+                fingerprint?: string
+                searchQuery?: string
+                dateRange?: DateRange
+                filterGroup?: UniversalFiltersGroup
+                utm_source?: string
+                utm_campaign?: string
+                utm_medium?: string
+            } = {}
+        ): string => combineUrl(`/error_tracking/${id}`, params).url,
+        errorTrackingIssueFingerprints: (id: string): string => `/error_tracking/${id}/fingerprints`,
+        errorTrackingFingerprint: (
+            fingerprint: string,
+            params: {
+                timestamp?: string
+            } = {}
+        ): string => combineUrl(`/error_tracking/fingerprint/${encodeURIComponent(fingerprint)}`, params).url,
+        errorTrackingAlert: (id: string): string => `/error_tracking/alerts/${id}`,
+        errorTrackingAlertNew: (templateId: string): string => `/error_tracking/alerts/new/${templateId}`,
+    },
+    fileSystemTypes: {},
+    treeItemsNew: [],
+    treeItemsProducts: [
+        {
+            path: 'Error tracking',
+            intents: [ProductKey.ERROR_TRACKING],
+            category: ProductItemCategory.APP_MONITORING,
+            type: 'error_tracking',
+            iconType: 'error_tracking' as FileSystemIconType,
+            iconColor: [
+                'var(--color-product-error-tracking-light)',
+                'var(--color-product-error-tracking-dark)',
+            ] as FileSystemIconColor,
+            href: urls.errorTracking(),
+            sceneKey: 'ErrorTracking',
+        },
+    ],
+}

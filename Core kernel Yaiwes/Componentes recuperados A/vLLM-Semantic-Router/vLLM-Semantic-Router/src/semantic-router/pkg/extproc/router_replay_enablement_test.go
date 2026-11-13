@@ -1,0 +1,223 @@
+package extproc
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/config"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/decision"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/routerreplay"
+)
+
+func TestInitializeReplayRecordersUsesGlobalReplayDefault(t *testing.T) {
+	cfg := &config.RouterConfig{
+		RouterReplay: config.RouterReplayConfig{Enabled: true, StoreBackend: "memory"},
+		IntelligentRouting: config.IntelligentRouting{
+			Decisions: []config.Decision{
+				{Name: "inherits-global", ModelRefs: []config.ModelRef{{Model: "m"}}},
+				{
+					Name:      "opt-out",
+					ModelRefs: []config.ModelRef{{Model: "m"}},
+					Plugins: []config.DecisionPlugin{
+						{Type: config.DecisionPluginRouterReplay, Configuration: config.MustStructuredPayload(map[string]interface{}{
+							"enabled": false,
+						})},
+					},
+				},
+			},
+		},
+	}
+
+	recorders := initializeReplayRecorders(cfg)
+	if _, ok := recorders["inherits-global"]; !ok {
+		t.Fatalf("expected global replay to create a recorder for decisions without an explicit plugin")
+	}
+	if _, ok := recorders["opt-out"]; ok {
+		t.Fatalf("expected per-decision enabled=false to disable router replay")
+	}
+}
+
+func TestInitializeReplayRecordersIncludesNamedRecipeDecisions(t *testing.T) {
+	cfg := &config.RouterConfig{
+		RouterReplay: config.RouterReplayConfig{Enabled: true, StoreBackend: "memory"},
+		Recipes: []config.RoutingRecipe{
+			{
+				Name: "balanced",
+				Profile: config.RoutingProfile{Decisions: []config.Decision{
+					{Name: "shared-route", ModelRefs: []config.ModelRef{{Model: "m"}}},
+				}},
+			},
+			{
+				Name: "speed",
+				Profile: config.RoutingProfile{Decisions: []config.Decision{
+					{Name: "shared-route", ModelRefs: []config.ModelRef{{Model: "m"}}},
+				}},
+			},
+		},
+	}
+
+	recorders := initializeReplayRecorders(cfg)
+	for _, key := range []string{"balanced::shared-route", "speed::shared-route"} {
+		if _, ok := recorders[key]; !ok {
+			t.Fatalf("expected isolated replay recorder %q, got keys %+v", key, recorders)
+		}
+	}
+}
+
+func TestNamedRecipeRecorderNeverFallsBackToBareDecisionKey(t *testing.T) {
+	bareRecorder := new(routerreplay.Recorder)
+	router := &OpenAIRouter{
+		ReplayRecorders: map[string]*routerreplay.Recorder{
+			"shared-route": bareRecorder,
+		},
+	}
+	ctx := &RequestContext{}
+	ctx.Routing.SelectRecipe(&config.RoutingRecipe{Name: "privacy"})
+
+	if recorder := router.resolveReplayRecorder(ctx, "shared-route"); recorder != nil {
+		t.Fatal("named recipe must not reuse a bare/default-recipe recorder")
+	}
+}
+
+func TestApplyDecisionResultToContextUsesEffectiveRouterReplayConfig(t *testing.T) {
+	cfg := &config.RouterConfig{
+		RouterReplay: config.RouterReplayConfig{Enabled: true, StoreBackend: "memory"},
+		IntelligentRouting: config.IntelligentRouting{
+			Decisions: []config.Decision{
+				{Name: "inherits-global", ModelRefs: []config.ModelRef{{Model: "m"}}},
+			},
+		},
+	}
+	router := &OpenAIRouter{Config: cfg}
+	ctx := &RequestContext{}
+
+	router.applyDecisionResultToContext(&decision.DecisionResult{
+		Decision: &cfg.Decisions[0],
+	}, ctx)
+
+	if ctx.RouterReplayPluginConfig == nil {
+		t.Fatalf("expected effective replay config to be attached to the request context")
+	}
+	if !ctx.RouterReplayPluginConfig.Enabled {
+		t.Fatalf("expected attached replay config to be enabled")
+	}
+	if ctx.RouterReplayPluginConfig.MaxRecords != 10000 {
+		t.Fatalf("expected default max_records=10000, got %d", ctx.RouterReplayPluginConfig.MaxRecords)
+	}
+	if !ctx.RouterReplayPluginConfig.CaptureRequestBody || !ctx.RouterReplayPluginConfig.CaptureResponseBody {
+		t.Fatalf("expected effective replay config to capture both request and response bodies by default")
+	}
+}
+
+func TestResolveReplayStoreBackend(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.RouterReplayConfig
+		want string
+	}{
+		{
+			name: "explicit backend wins",
+			cfg: config.RouterReplayConfig{
+				StoreBackend: " redis ",
+				Postgres:     &config.RouterReplayPostgresConfig{},
+			},
+			want: "redis",
+		},
+		{
+			name: "postgres config implies postgres",
+			cfg: config.RouterReplayConfig{
+				Postgres: &config.RouterReplayPostgresConfig{},
+			},
+			want: "postgres",
+		},
+		{
+			name: "redis config implies redis",
+			cfg: config.RouterReplayConfig{
+				Redis: &config.RouterReplayRedisConfig{},
+			},
+			want: "redis",
+		},
+		{
+			name: "milvus config implies milvus",
+			cfg: config.RouterReplayConfig{
+				Milvus: &config.RouterReplayMilvusConfig{},
+			},
+			want: "milvus",
+		},
+		{
+			name: "qdrant config implies qdrant",
+			cfg: config.RouterReplayConfig{
+				Qdrant: &config.RouterReplayQdrantConfig{},
+			},
+			want: "qdrant",
+		},
+		{
+			name: "empty config defaults to memory",
+			cfg:  config.RouterReplayConfig{},
+			want: "memory",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveReplayStoreBackend(tt.cfg); got != tt.want {
+				t.Fatalf("expected backend %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestCreateReplayRuntimeFailsClosedWhenEnabledSharedStoreIsInvalid(t *testing.T) {
+	cfg := &config.RouterConfig{
+		RouterReplay: config.RouterReplayConfig{Enabled: true, StoreBackend: "redis"},
+		IntelligentRouting: config.IntelligentRouting{Decisions: []config.Decision{
+			{Name: "replay-required", ModelRefs: []config.ModelRef{{Model: "m"}}},
+		}},
+	}
+
+	_, _, _, err := createReplayRuntime(cfg)
+	if err == nil || !strings.Contains(err.Error(), "redis config required") {
+		t.Fatalf("createReplayRuntime() error = %v, want enabled-store failure", err)
+	}
+}
+
+func TestCreateReplayRuntimeAllowsExplicitDecisionOptInWithSafeDefaults(t *testing.T) {
+	cfg := &config.RouterConfig{
+		RouterReplay: config.RouterReplayConfig{Enabled: false, StoreBackend: "memory"},
+		IntelligentRouting: config.IntelligentRouting{Decisions: []config.Decision{
+			{
+				Name:      "replay-opt-in",
+				ModelRefs: []config.ModelRef{{Model: "m"}},
+				Plugins: []config.DecisionPlugin{
+					{Type: config.DecisionPluginRouterReplay, Configuration: config.MustStructuredPayload(map[string]interface{}{
+						"enabled": true,
+					})},
+				},
+			},
+		}},
+	}
+
+	recorders, shared, sharedStore, err := createReplayRuntime(cfg)
+	if err != nil {
+		t.Fatalf("createReplayRuntime() returned error for memory opt-in: %v", err)
+	}
+	if shared != nil || sharedStore {
+		t.Fatalf("memory replay must remain decision-scoped, shared=%v sharedStore=%v", shared, sharedStore)
+	}
+	if recorders["replay-opt-in"] == nil {
+		t.Fatalf("expected explicit decision opt-in to create an in-memory recorder")
+	}
+}
+
+func TestBuildReplayPostgresConfigUsesUnifiedTableName(t *testing.T) {
+	pgConfig := buildReplayPostgresConfig(&config.RouterReplayPostgresConfig{
+		Host:      "localhost",
+		Database:  "router",
+		User:      "postgres",
+		TableName: "router_replay",
+	})
+
+	if pgConfig.TableName != "router_replay" {
+		t.Fatalf("expected unified postgres table name, got %q", pgConfig.TableName)
+	}
+}

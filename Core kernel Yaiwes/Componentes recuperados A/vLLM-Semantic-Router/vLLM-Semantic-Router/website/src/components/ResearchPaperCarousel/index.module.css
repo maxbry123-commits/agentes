@@ -1,0 +1,280 @@
+.section {
+  position: relative;
+  overflow: hidden;
+  padding: 5rem 0;
+  border-bottom: 0;
+  background: var(--site-bg);
+}
+
+.section::before {
+  content: none;
+}
+
+.header,
+.carouselShell,
+.footer {
+  position: relative;
+  z-index: 1;
+}
+
+.header {
+  composes: site-section-intro from global;
+  position: relative;
+  z-index: 1;
+}
+
+.title {
+  composes: site-section-intro__title from global;
+  color: var(--site-text);
+}
+
+.subtitle {
+  composes: site-section-intro__lede from global;
+}
+
+.carouselShell {
+  position: relative;
+  border: 1px solid var(--site-border);
+  border-radius: 1.45rem;
+  background: var(--site-surface-alt);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.carouselShell::before,
+.carouselShell::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: clamp(1.25rem, 4vw, 3.5rem);
+  pointer-events: none;
+}
+
+.carouselShell::before {
+  left: 0;
+  background: linear-gradient(90deg, var(--site-surface-alt), transparent);
+}
+
+.carouselShell::after {
+  right: 0;
+  background: linear-gradient(270deg, var(--site-surface-alt), transparent);
+}
+
+.carouselContainer {
+  position: relative;
+  overflow: hidden;
+  padding: 1.4rem 1rem;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.carouselContainerStatic {
+  overflow-x: auto;
+  padding: 1.4rem 1rem 1.55rem;
+  scroll-padding-inline: 1rem;
+  scroll-snap-type: x proximity;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.carouselTrack {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+  will-change: transform;
+}
+
+.paperCard {
+  flex: 0 0 25rem;
+  min-width: 25rem;
+  display: grid;
+  align-content: space-between;
+  gap: 1rem;
+  min-height: 19rem;
+  padding: 1.2rem;
+  border: 1px solid var(--site-border);
+  background:
+    radial-gradient(circle at top right, var(--site-accent-soft), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 52%),
+    var(--site-surface);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  transition:
+    border-color 180ms ease,
+    transform 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
+  scroll-snap-align: start;
+}
+
+.paperCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--site-hover-border);
+  background:
+    radial-gradient(circle at top right, rgba(48, 162, 255, 0.2), transparent 40%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 58%),
+    var(--site-surface-alt);
+  box-shadow: var(--site-hover-glow);
+}
+
+.paperCard:hover .paperTitle {
+  color: var(--site-brand-blue);
+}
+
+.spotlightCard {
+  background:
+    radial-gradient(circle at top right, rgba(48, 162, 255, 0.2), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 56%),
+    var(--site-surface-raised);
+}
+
+.cardTop,
+.cardFooter {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.cardMeta,
+.categoryBadge {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--site-border);
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cardMeta {
+  color: var(--site-muted-bright);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.categoryBadge {
+  color: #030303;
+  background: var(--site-accent);
+  border-color: var(--site-accent);
+}
+
+.cardCopy {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.paperTitle {
+  composes: site-card-line--2 from global;
+  margin: 0;
+  color: var(--site-text);
+  font-size: clamp(1.1rem, 1.9vw, 1.35rem);
+  line-height: 1.3;
+}
+
+.paperAuthors,
+.paperVenue,
+.paperAbstract,
+.footer p {
+  margin: 0;
+  color: var(--site-muted-bright);
+  line-height: 1.65;
+}
+
+.paperAuthors,
+.paperVenue {
+  font-size: 0.9rem;
+}
+
+.paperVenue {
+  color: var(--site-muted);
+}
+
+.paperAbstract {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.paperLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.45rem;
+  padding: 0.6rem 0.95rem;
+  border: 1px solid var(--site-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--site-text);
+  font-size: 0.74rem;
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    background 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.paperLink:hover {
+  background: var(--site-accent);
+  color: #030303;
+  border-color: var(--site-accent);
+  box-shadow: 0 12px 24px rgba(48, 162, 255, 0.18);
+  text-decoration: none;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.footer p {
+  max-width: 42rem;
+}
+
+@media (max-width: 768px) {
+  .section {
+    padding: 3.5rem 0;
+  }
+
+  .paperCard {
+    flex-basis: min(21rem, calc(100vw - 4rem));
+    min-width: min(21rem, calc(100vw - 4rem));
+    min-height: 17rem;
+    padding: 1rem;
+  }
+
+  .footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .carouselShell::before,
+  .carouselShell::after {
+    width: 1rem;
+  }
+
+  .carouselContainer {
+    padding: 1rem 0.75rem;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+
+  .carouselContainerStatic {
+    padding-inline: 0.75rem;
+  }
+
+  .paperCard {
+    flex-basis: min(18rem, calc(100vw - 3rem));
+    min-width: min(18rem, calc(100vw - 3rem));
+  }
+}

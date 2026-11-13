@@ -1,0 +1,61 @@
+### model
+model_name_or_path: {model_name_or_path}
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: dcft/train/zero3.json
+packing: true
+neat_packing: true
+enable_liger_kernel: false
+
+### dataset
+dataset: "mlfoundations-dev/oh-dcft-v3.1-gpt-4o-mini"
+dataset_dir: ONLINE
+template: mistral
+formatting: sharegpt
+cutoff_len: 2048
+overwrite_cache: true
+preprocessing_num_workers: 32
+messages: "conversations"
+role_tag: "from"
+content_tag: "value"
+assistant_tag: "gpt"
+user_tag: "human"
+
+
+### train
+per_device_train_batch_size: {per_device_train_batch_size}
+gradient_accumulation_steps: {gradient_accumulation_steps}
+global_batch_size: {global_batch_size}
+gradient_checkpointing: true
+learning_rate: {learning_rate}
+num_train_epochs: 3.0
+lr_scheduler_type: {lr_scheduler_type}
+lr_scheduler_kwargs: 
+  min_lr: {min_lr}
+warmup_ratio: {warmup_ratio}
+adam_beta1: 0.9
+adam_beta2: 0.999
+weight_decay: 0.1
+max_grad_norm: 1.0
+bf16: true
+report_to: wandb
+run_name: oh-mistral-bs{global_batch_size}_lr{learning_rate}_scheduler{lr_scheduler_type}_warmup{warmup_ratio}_minlr{min_lr}
+
+### output
+# save_strategy: "no"
+save_strategy: epoch
+output_dir: oh-mistral-bs{global_batch_size}_lr{learning_rate}_scheduler{lr_scheduler_type}_warmup{warmup_ratio}_minlr{min_lr}
+logging_steps: 10
+plot_loss: false
+overwrite_output_dir: false # resume training from the last checkpoint
+
+### eval
+eval_strategy: "no"
+# eval_strategy: epoch
+# val_size: 0.05
+push_to_db: true
+push_to_hub: true
+hub_model_id: mlfoundations-dev/oh-mistral-bs{global_batch_size}_lr{learning_rate}_scheduler{lr_scheduler_type}_warmup{warmup_ratio}_minlr{min_lr}

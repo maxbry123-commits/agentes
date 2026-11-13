@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.planning_proposal.v1",
+  "title": "PlanningProposal",
+  "description": "Engine planning output. Always PROPOSAL never COMPILED goals.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "proposal_id",
+    "contract_id",
+    "engine_id",
+    "status",
+    "proposed_answers",
+    "proposal_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "proposal_id": { "type": "string" },
+    "contract_id": { "type": "string" },
+    "engine_id": {
+      "type": "string",
+      "enum": ["openclaw", "hermes", "both", "fake", "unknown"]
+    },
+    "status": {
+      "type": "string",
+      "const": "PROPOSAL"
+    },
+    "proposed_answers": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Keys subset of Q01-Q12"
+    },
+    "task_breakdown": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "proposal_hash": { "type": "string" }
+  }
+}

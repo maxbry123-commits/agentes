@@ -1,0 +1,95 @@
+{
+  "artifact_id": "yaiwes.memory.pgvector",
+  "version": "1.0.0",
+  "estado": "active",
+  "contract_hash": "sha256:eb5a0cc0ef2c7eb1a8b47e2ef290165172363e4456cfc0095b3d3ed99f2332ce",
+  "tribunal_case_id": "YAIWES-N27-PGVECTOR-STEP3",
+  "contrato": {
+    "rol": "service",
+    "consume": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    },
+    "expone": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    }
+  },
+  "ejecucion": {
+    "kind": "db",
+    "transport": "stdio",
+    "runtime_type": "compute",
+    "entry_point": "Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/pgvector/yaiwes/pgvector_adapter.py:run_microtest",
+    "idempotente": true
+  },
+  "seguridad": {
+    "sandbox": "process",
+    "limites": {
+      "timeout_ms": 360000,
+      "deadline_ms": 360000
+    }
+  },
+  "firma": {
+    "gpg_key_id": "YAIWES-N27"
+  },
+  "categoria": "pipeline",
+  "etapa": "P",
+  "perfiles": {
+    "n0": {
+      "habilitada": true,
+      "iteraciones": 1,
+      "simulaciones": 0,
+      "criticas": 0,
+      "muestras_k": 1
+    }
+  },
+  "repeticion": {
+    "max": 1,
+    "condicion": "nunca"
+  },
+  "repite_en": [],
+  "activacion": {
+    "eventos": [
+      "kernel.v2.plugin.enchufed"
+    ],
+    "wake_words": [],
+    "condicion": ""
+  },
+  "presupuesto": {
+    "n0": {
+      "max_tokens": 1,
+      "max_ms": 360000,
+      "max_costo_usd": 0.0
+    }
+  },
+  "telemetria": {
+    "metricas": [
+      "tiempo",
+      "errores",
+      "health"
+    ],
+    "span_otel": true
+  },
+  "evidencia": {
+    "produce": [
+      "L2_build",
+      "L3_runtime",
+      "L4_feature"
+    ],
+    "destino": "Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/pgvector/yaiwes/"
+  },
+  "failover": {
+    "sustituible_por": [],
+    "compensacion": "fail_closed"
+  },
+  "salud": {
+    "metodo": "exec",
+    "heartbeat_interval_s": 30
+  }
+}

@@ -1,0 +1,56 @@
+package io.kestra.executor;
+
+import java.util.List;
+import java.util.Optional;
+
+import io.kestra.core.models.executions.Execution;
+import io.kestra.core.models.flows.FlowInterface;
+import io.kestra.core.models.flows.sla.ExecutionChangedSLA;
+import io.kestra.core.models.flows.sla.SLA;
+import io.kestra.core.models.flows.sla.Violation;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.utils.ListUtils;
+
+import jakarta.inject.Singleton;
+
+@Singleton
+public class SLAService {
+
+    /**
+     * Evaluate execution changed SLA of a flow for an execution.
+     * Each violated SLA will be logged.
+     */
+    public List<Violation> evaluateExecutionChangedSLA(RunContext runContext, FlowInterface flow, Execution execution) {
+        return ListUtils.emptyOnNull(flow.getSla()).stream()
+            .filter(ExecutionChangedSLA.class::isInstance)
+            .map(
+                sla ->
+                {
+                    try {
+                        return sla.evaluate(runContext, execution);
+                    } catch (Exception e) {
+                        runContext.logger().error("SLA '{}' could not be evaluated and is treated as violated: {}", sla.getId(), e.getMessage(), e);
+                        return Optional.of(new Violation(sla.getId(), sla.getBehavior(), sla.getLabels(), "SLA could not be evaluated: " + e.getMessage()));
+                    }
+                }
+            )
+            .flatMap(violation -> violation.stream())
+            .peek(violation -> runContext.logger().warn("SLA '{}' violated: {}", violation.slaId(), violation.reason()))
+            .toList();
+    }
+
+    /**
+     * Evaluate a single SLA for an execution.
+     * Each violated SLA will be logged.
+     */
+    public Optional<Violation> evaluateExecutionMonitoringSLA(RunContext runContext, Execution execution, SLA sla) {
+        try {
+            Optional<Violation> maybeViolation = sla.evaluate(runContext, execution);
+            maybeViolation.ifPresent(violation -> runContext.logger().warn("SLA '{}' violated: {}", violation.slaId(), violation.reason()));
+            return maybeViolation;
+        } catch (Exception e) {
+            runContext.logger().error("SLA '{}' could not be evaluated and is treated as violated: {}", sla.getId(), e.getMessage(), e);
+            return Optional.of(new Violation(sla.getId(), sla.getBehavior(), sla.getLabels(), "SLA could not be evaluated: " + e.getMessage()));
+        }
+    }
+}

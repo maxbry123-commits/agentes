@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "callback": {
+      "x-python-type": "Callable[[str], str]"
+    },
+    "optionalValue": {
+      "x-python-type": "Optional[str]"
+    },
+    "unionValue": {
+      "x-python-type": "Union[str, int]"
+    }
+  }
+}

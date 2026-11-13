@@ -1,0 +1,389 @@
+{
+  "fqn": "cerbos.role.leave_request.vdefault/acme",
+  "rolePolicy": {
+    "meta": {
+      "fqn": "cerbos.role.leave_request.vdefault/acme",
+      "version": "default",
+      "sourceAttributes": {
+        "role.leave_request.vdefault/acme": {
+          "attributes": {
+            "source": "role_policies/acme_admin.yaml"
+          }
+        }
+      }
+    },
+    "role": "leave_request",
+    "scope": "acme",
+    "resources": {
+      "acme_admin": {
+        "rules": [
+          {
+            "resource": "acme_admin",
+            "allowActions": {
+              "*": {}
+            }
+          }
+        ]
+      },
+      "expenses_report": {
+        "rules": [
+          {
+            "resource": "expenses_report",
+            "allowActions": {
+              "create": {},
+              "delete": {},
+              "view": {}
+            },
+            "condition": {
+              "expr": {
+                "original": "variables.is_public_report",
+                "checked": {
+                  "referenceMap": {
+                    "2": {
+                      "name": "variables"
+                    }
+                  },
+                  "typeMap": {
+                    "1": {
+                      "dyn": {}
+                    },
+                    "2": {
+                      "messageType": "cerbos.Variables"
+                    }
+                  },
+                  "sourceInfo": {
+                    "location": "<input>",
+                    "lineOffsets": [
+                      27
+                    ],
+                    "positions": {
+                      "1": 9,
+                      "2": 0
+                    }
+                  },
+                  "expr": {
+                    "id": "1",
+                    "selectExpr": {
+                      "operand": {
+                        "id": "2",
+                        "identExpr": {
+                          "name": "variables"
+                        }
+                      },
+                      "field": "is_public_report"
+                    }
+                  }
+                }
+              }
+            },
+            "name": "expenses_report_rule",
+            "emitOutput": {
+              "when": {
+                "ruleActivated": {
+                  "original": "\"expenses_report_allowed:%s\".format([request.principal.id])",
+                  "checked": {
+                    "referenceMap": {
+                      "1": {
+                        "overloadId": [
+                          "string_format"
+                        ]
+                      },
+                      "6": {
+                        "name": "request"
+                      }
+                    },
+                    "typeMap": {
+                      "1": {
+                        "primitive": "STRING"
+                      },
+                      "2": {
+                        "primitive": "STRING"
+                      },
+                      "3": {
+                        "listType": {
+                          "elemType": {
+                            "primitive": "STRING"
+                          }
+                        }
+                      },
+                      "4": {
+                        "primitive": "STRING"
+                      },
+                      "5": {
+                        "messageType": "cerbos.engine.v1.Request.Principal"
+                      },
+                      "6": {
+                        "messageType": "cerbos.engine.v1.Request"
+                      }
+                    },
+                    "sourceInfo": {
+                      "location": "<input>",
+                      "lineOffsets": [
+                        60
+                      ],
+                      "positions": {
+                        "1": 35,
+                        "2": 0,
+                        "3": 36,
+                        "4": 54,
+                        "5": 44,
+                        "6": 37
+                      }
+                    },
+                    "expr": {
+                      "id": "1",
+                      "callExpr": {
+                        "target": {
+                          "id": "2",
+                          "constExpr": {
+                            "stringValue": "expenses_report_allowed:%s"
+                          }
+                        },
+                        "function": "format",
+                        "args": [
+                          {
+                            "id": "3",
+                            "listExpr": {
+                              "elements": [
+                                {
+                                  "id": "4",
+                                  "selectExpr": {
+                                    "operand": {
+                                      "id": "5",
+                                      "selectExpr": {
+                                        "operand": {
+                                          "id": "6",
+                                          "identExpr": {
+                                            "name": "request"
+                                          }
+                                        },
+                                        "field": "principal"
+                                      }
+                                    },
+                                    "field": "id"
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "conditionNotMet": {
+                  "original": "\"expenses_report_blocked:%s\".format([request.principal.id])",
+                  "checked": {
+                    "referenceMap": {
+                      "1": {
+                        "overloadId": [
+                          "string_format"
+                        ]
+                      },
+                      "6": {
+                        "name": "request"
+                      }
+                    },
+                    "typeMap": {
+                      "1": {
+                        "primitive": "STRING"
+                      },
+                      "2": {
+                        "primitive": "STRING"
+                      },
+                      "3": {
+                        "listType": {
+                          "elemType": {
+                            "primitive": "STRING"
+                          }
+                        }
+                      },
+                      "4": {
+                        "primitive": "STRING"
+                      },
+                      "5": {
+                        "messageType": "cerbos.engine.v1.Request.Principal"
+                      },
+                      "6": {
+                        "messageType": "cerbos.engine.v1.Request"
+                      }
+                    },
+                    "sourceInfo": {
+                      "location": "<input>",
+                      "lineOffsets": [
+                        60
+                      ],
+                      "positions": {
+                        "1": 35,
+                        "2": 0,
+                        "3": 36,
+                        "4": 54,
+                        "5": 44,
+                        "6": 37
+                      }
+                    },
+                    "expr": {
+                      "id": "1",
+                      "callExpr": {
+                        "target": {
+                          "id": "2",
+                          "constExpr": {
+                            "stringValue": "expenses_report_blocked:%s"
+                          }
+                        },
+                        "function": "format",
+                        "args": [
+                          {
+                            "id": "3",
+                            "listExpr": {
+                              "elements": [
+                                {
+                                  "id": "4",
+                                  "selectExpr": {
+                                    "operand": {
+                                      "id": "5",
+                                      "selectExpr": {
+                                        "operand": {
+                                          "id": "6",
+                                          "identExpr": {
+                                            "name": "request"
+                                          }
+                                        },
+                                        "field": "principal"
+                                      }
+                                    },
+                                    "field": "id"
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "orderedVariables": [
+      {
+        "name": "is_public_report",
+        "expr": {
+          "original": "request.resource.attr.public == constants.public",
+          "checked": {
+            "referenceMap": {
+              "1": {
+                "overloadId": [
+                  "equals"
+                ]
+              },
+              "5": {
+                "name": "request"
+              },
+              "7": {
+                "name": "constants"
+              }
+            },
+            "typeMap": {
+              "1": {
+                "primitive": "BOOL"
+              },
+              "2": {
+                "dyn": {}
+              },
+              "3": {
+                "mapType": {
+                  "keyType": {
+                    "primitive": "STRING"
+                  },
+                  "valueType": {
+                    "dyn": {}
+                  }
+                }
+              },
+              "4": {
+                "messageType": "cerbos.engine.v1.Request.Resource"
+              },
+              "5": {
+                "messageType": "cerbos.engine.v1.Request"
+              },
+              "6": {
+                "dyn": {}
+              },
+              "7": {
+                "messageType": "cerbos.Variables"
+              }
+            },
+            "sourceInfo": {
+              "location": "<input>",
+              "lineOffsets": [
+                49
+              ],
+              "positions": {
+                "1": 29,
+                "2": 21,
+                "3": 16,
+                "4": 7,
+                "5": 0,
+                "6": 41,
+                "7": 32
+              }
+            },
+            "expr": {
+              "id": "1",
+              "callExpr": {
+                "function": "_==_",
+                "args": [
+                  {
+                    "id": "2",
+                    "selectExpr": {
+                      "operand": {
+                        "id": "3",
+                        "selectExpr": {
+                          "operand": {
+                            "id": "4",
+                            "selectExpr": {
+                              "operand": {
+                                "id": "5",
+                                "identExpr": {
+                                  "name": "request"
+                                }
+                              },
+                              "field": "resource"
+                            }
+                          },
+                          "field": "attr"
+                        }
+                      },
+                      "field": "public"
+                    }
+                  },
+                  {
+                    "id": "6",
+                    "selectExpr": {
+                      "operand": {
+                        "id": "7",
+                        "identExpr": {
+                          "name": "constants"
+                        }
+                      },
+                      "field": "public"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    ],
+    "constants": {
+      "public": true
+    }
+  },
+  "compilerVersion": 2
+}

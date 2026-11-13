@@ -1,0 +1,201 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    tags: ["*"]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Rerun CI in order to detect flaky tests. Note that all packages are pinned, so
+    # these scheduled runs are unaffected by upstream releases.
+    # The upstream.yml workflow will instead pick up upstream changes.
+    - cron: "0 6,18 * * *"
+
+# When this workflow is queued, automatically cancel any previous running
+# or pending jobs from the same branch
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Do not run the schedule job on forks
+    if: github.repository == 'dask/distributed' || github.event_name != 'schedule'
+
+    # If you change the pattern of this name, please adjust
+    # continuous_integration/scripts/test_report.py accordingly
+    name: ${{ matrix.os }} ${{ matrix.environment }} ${{ matrix.task }} ${{ matrix.partition }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Note: after adding/removing builds here, update
+        # codecov.yml to match.
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest]
+        environment: [py310, py311, py312, py313, py314]
+        task: [test-ci]
+        # Cherry-pick test modules to split the overall runtime roughly in half
+        partition: [ci1, not ci1]
+        include:
+          # MacOS CI does not have many hosts available; run it on 3.14 only
+          - os: macos-latest
+            environment: py314
+            task: test-ci
+            partition: ci1
+          - os: macos-latest
+            environment: py314
+            task: test-ci
+            partition: not ci1
+
+          # Minimum dependencies
+          - os: ubuntu-latest
+            environment: mindeps
+            task: test-ci
+            partition: ci1
+          - os: ubuntu-latest
+            environment: mindeps
+            task: test-ci
+            partition: not ci1
+
+          - os: ubuntu-latest
+            environment: mindeps-array
+            task: test-ci
+            partition: ci1
+          - os: ubuntu-latest
+            environment: mindeps-array
+            task: test-ci
+            partition: not ci1
+
+          - os: ubuntu-latest
+            environment: mindeps-dataframe
+            task: test-ci
+            partition: ci1
+          - os: ubuntu-latest
+            environment: mindeps-dataframe
+            task: test-ci
+            partition: not ci1
+
+          # Set distributed.scheduler.worker-saturation: .inf
+          - os: ubuntu-latest
+            environment: py310
+            task: test-noqueue
+            partition: ci1
+          - os: ubuntu-latest
+            environment: py310
+            task: test-noqueue
+            partition: not ci1
+
+          # Free-threading (WIP - tests don't pass yet)
+          # - os: ubuntu-latest
+          #   environment: py314t
+          #   task: test-ci
+          #   partition: ci1
+          # - os: ubuntu-latest
+          #   environment: py314t
+          #   task: test-ci
+          #   partition: not ci1
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Reconfigure pytest-timeout
+        # No SIGALRM available on Windows
+        # Note: all changes to the source code must happen before setup-pixi
+        # or we'll build the package twice
+        if: ${{ matrix.os != 'windows-latest' }}
+        run: sed -i.bak 's/timeout_method = "thread"/timeout_method = "signal"/' pyproject.toml
+
+      - uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          pixi-version: v0.72.1
+          environments: ${{ matrix.environment }}
+          cache: true
+          locked: true
+
+      - name: Set $TEST_ID
+        shell: bash -l {0}
+        run: |
+          PARTITION_LABEL=$( echo "${{ matrix.partition }}" | sed "s/ //" )
+          export TEST_ID="${{ matrix.os }}-${{ matrix.environment }}-${{ matrix.task }}-$PARTITION_LABEL"
+          echo "TEST_ID: $TEST_ID"
+          echo "TEST_ID=$TEST_ID" >> $GITHUB_ENV
+
+      - name: Setup SSH
+        # FIXME no SSH available on Windows
+        # https://github.com/dask/distributed/issues/4509
+        if: matrix.os != 'windows-latest'
+        run: continuous_integration/scripts/setup_ssh.sh
+
+      - name: Disable IPv6
+        shell: bash -l {0}
+        # FIXME ipv6-related failures on Ubuntu and MacOS github actions CI
+        # https://github.com/dask/distributed/issues/4514
+        if: matrix.os  != 'windows-latest'
+        run: echo "DISABLE_IPV6=1" >> $GITHUB_ENV
+
+      - name: Print host info
+        run: pixi run -e ${{ matrix.environment }} host-info
+
+      - name: Test
+        id: run_tests
+        shell: bash -l {0}
+        run: |
+          source continuous_integration/scripts/set_ulimit.sh
+          set -o pipefail
+          mkdir reports
+
+          pixi run -e ${{ matrix.environment }} ${{ matrix.task }} \
+            -m "${{ matrix.partition }}" \
+          | tee pytest-stdout.log
+
+      - name: Generate or post-process coverage.xml and pytest.xml
+        if: always()
+        run: pixi run post-test-ci
+
+      - name: Coverage
+        # Do not upload coverage reports for cron jobs
+        if: always() && github.event_name != 'schedule'
+        uses: codecov/codecov-action@v7
+        with:
+          name: ${{ env.TEST_ID }}
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results
+        # ensure this runs even if pytest fails
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.TEST_ID }}
+          path: pytest.xml
+
+      - name: Upload gen_cluster dumps for failed tests
+        # ensure this runs even if pytest fails
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.TEST_ID }}_cluster_dumps
+          path: test_cluster_dump
+          if-no-files-found: ignore
+
+      # - name: Debug with tmate on failure
+      #   if: failure()
+      #   uses: mxschmitt/action-tmate@v3
+
+  # Publish an artifact for the event; used by publish-test-results.yaml
+  event_file:
+    # Do not run the schedule job on forks
+    if: github.repository == 'dask/distributed' || github.event_name != 'schedule'
+    name: "Event File"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: Event File
+          path: ${{ github.event_path }}

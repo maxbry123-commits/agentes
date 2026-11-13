@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=../.jsonschema/CelTestCase.schema.json
+---
+condition:
+  all:
+    of:
+      - expr: duration(R.attr.cooldownPeriod).getSeconds() == 3750
+      - expr: duration(R.attr.cooldownPeriod).getHours() == 1
+      - expr: duration(R.attr.cooldownPeriod).getMilliseconds() == 3750000
+      - expr: duration(R.attr.cooldownPeriod).getMinutes() == 62
+      - expr: timestamp(R.attr.lastAccessTime) - timestamp(R.attr.lastUpdateTime) < duration("36h")
+request: {
+  "principal": {
+    "id": "john",
+    "roles": ["employee"],
+    "attr": {
+      "department": "marketing"
+    }
+  },
+  "resource": {
+    "kind": "leave_request",
+    "id": "test",
+    "attr": {
+      "cooldownPeriod": "3750s",
+      "lastUpdateTime": "2021-05-01T13:34:12.024Z",
+      "lastAccessTime": "2021-05-02T14:24:22.034Z"
+    }
+  }
+}
+want: true

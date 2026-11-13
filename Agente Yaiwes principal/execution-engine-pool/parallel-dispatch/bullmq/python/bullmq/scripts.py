@@ -1,0 +1,888 @@
+"""
+    This class is used to load and execute Lua scripts.
+    It is a wrapper around the Redis client.
+"""
+
+from __future__ import annotations
+from redis import Redis
+from bullmq.queue_keys import QueueKeys
+from bullmq.error_code import ErrorCode
+from bullmq.custom_errors import UnrecoverableError
+from bullmq.utils import isRedisVersionLowerThan, get_parent_key, object_to_flat_array
+from typing import Any, TYPE_CHECKING
+if TYPE_CHECKING:
+    from bullmq.job import Job
+    from bullmq.redis_connection import RedisConnection
+
+import time
+import json
+import msgpack
+
+
+# Caps bounded getJobs backfill when skipping ids whose job hash is missing.
+GET_JOBS_MAX_BACKFILL_ITERATIONS = 5
+
+
+class Scripts:
+
+    def __init__(self, prefix: str, queueName: str, redisConnection: RedisConnection):
+        self.prefix = prefix
+        self.queueName = queueName
+        self.keys = {}
+        self.redisConnection = redisConnection
+        self.redisClient = redisConnection.conn
+        self.commands = redisConnection.commands
+
+        self.queue_keys = QueueKeys(prefix)
+        self.keys = self.queue_keys.getKeys(queueName)
+
+    def resetQueueKeys(self, queue_name: str):
+        self.queueName = queue_name
+        self.keys = self.queue_keys.getKeys(queue_name)
+
+    def toKey(self, name: str):
+        return self.queue_keys.toKey(self.queueName, name)
+
+    def getKeys(self, keys: list[str]):
+        def mapKey(key):
+            return self.keys[key]
+        return list(map(mapKey, keys))
+
+    def encodeOpts(self, opts: dict) -> dict:
+        """
+        Encode options keys from long form to short form for Redis storage.
+        For example: 'deduplication' -> 'de', 'failParentOnFailure' -> 'fpof'
+        """
+        from bullmq.job import optsEncodeMap
+        
+        encoded = {}
+        for key, value in opts.items():
+            # Use encoded key if available, otherwise use original key
+            encoded_key = optsEncodeMap.get(key, key)
+            encoded[encoded_key] = value
+        return encoded
+
+    def addJobArgs(self, job: Job):
+        #  ARGV[1] msgpacked arguments array
+        #         [1]  key prefix,
+        #         [2]  custom id (will not generate one automatically)
+        #         [3]  name
+        #         [4]  timestamp
+        #         [5]  parentKey?
+        #         [6]  parent dependencies key.
+        #         [7]  parent? {id, queueKey}
+        #         [8]  repeat job key
+        #         [9]  deduplication key
+
+        jsonData = json.dumps(job.data, separators=(',', ':'), allow_nan=False)
+        
+        # Encode opts keys before packing
+        encodedOpts = self.encodeOpts(job.opts)
+        packedOpts = msgpack.packb(encodedOpts)
+
+        parent = job.parent
+        parentKey = job.parentKey
+        
+        # Build deduplication key if deduplication ID exists
+        deduplicationKey = None
+        if job.deduplication_id:
+            deduplicationKey = f"{self.keys['']}de:{job.deduplication_id}"
+
+        packedArgs = msgpack.packb(
+            [
+                self.keys[""],                                              # [1] key prefix
+                job.id or "",                                               # [2] custom id
+                job.name,                                                   # [3] name
+                job.timestamp,                                              # [4] timestamp
+                job.parentKey,                                              # [5] parentKey
+                f"{parentKey}:dependencies" if parentKey else None,         # [6] parent dependencies key
+                parent,                                                     # [7] parent {id, queueKey}
+                job.repeatJobKey,                                           # [8] repeat job key
+                deduplicationKey                                            # [9] deduplication key
+            ],
+            use_bin_type=True)
+        
+        return [packedArgs, jsonData, packedOpts]
+
+    async def addJob(self, job: Job, pipe = None):
+        """
+        Add an item to the queue
+        """
+        result = None
+        if job.opts.get("delay"):
+            result = await self.addDelayedJob(job, job.opts.get("delay"), pipe)
+        elif job.opts.get("priority"):
+            result = await self.addPrioritizedJob(job, job.opts.get("priority"), pipe)
+        else:
+            result = await self.addStandardJob(job, job.timestamp, pipe)
+
+        if type(result) == int :
+            if result < 0:
+                raise self.finishedErrors({
+                    "code": result, 
+                    "parentKey": job.parentKey,
+                    "command": 'addJob'
+                    })
+        return result
+
+    def addStandardJob(self, job: Job, timestamp: int, pipe = None):
+        """
+        Add a standard job to the queue
+        """
+        keys = self.getKeys(['wait', 'paused', 'meta', 'id', 'completed',
+                             'delayed', 'active', 'events', 'marker'])
+        args = self.addJobArgs(job)
+        args.append(timestamp)
+
+        return self.commands["addStandardJob"](keys=keys, args=args, client=pipe)
+    
+    def addDelayedJob(self, job: Job, timestamp: int, pipe = None):
+        """
+        Add a delayed job to the queue
+        """
+        keys = self.getKeys(['marker', 'meta', 'id',
+                            'delayed', 'completed', 'events'])
+        args = self.addJobArgs(job)
+        args.append(timestamp)
+
+        return self.commands["addDelayedJob"](keys=keys, args=args, client=pipe)
+    
+    def addPrioritizedJob(self, job: Job, timestamp: int, pipe = None):
+        """
+        Add a prioritized job to the queue
+        """
+        keys = self.getKeys(['marker', 'meta', 'id', 'prioritized',
+                             'delayed', 'completed', 'active', 'events', 'pc'])
+        args = self.addJobArgs(job)
+        args.append(timestamp)
+
+        return self.commands["addPrioritizedJob"](keys=keys, args=args, client=pipe)
+
+    def addParentJob(self, job: Job, pipe = None):
+        """
+        Add a job to the queue that is a parent
+        """
+        keys = self.getKeys(['meta', 'id', 'delayed', 'waiting-children', 'completed', 'events'])
+
+        args = self.addJobArgs(job)
+
+        return self.commands["addParentJob"](keys=keys, args=args, client=pipe)
+
+    def cleanJobsInSetArgs(self, set: str, grace: int, limit:int = 0):
+        keys = [self.toKey(set),
+                self.keys['events'],
+                self.keys['repeat']]
+        args = [self.keys[''], round(time.time() * 1000) - grace, limit, set]
+
+        return (keys, args)
+
+    def cleanJobsInSet(self, set: str, grace: int = 0, limit:int = 0):
+        keys, args = self.cleanJobsInSetArgs(set, grace, limit)
+        return self.commands["cleanJobsInSet"](keys=keys, args=args)
+
+    def moveToWaitingChildrenArgs(self, job_id, token, opts: dict = {}):
+        keys = [self.keys['active'],
+                self.keys['waiting-children'],
+                self.toKey(job_id),
+                self.toKey(job_id) + ":dependencies",
+                self.toKey(job_id) + ":unsuccessful",
+                self.keys['stalled'],
+                self.keys['events']]
+        child_key = opts.get("child") if opts else None
+        args = [token, get_parent_key(child_key) or "", round(time.time() * 1000), job_id,
+                self.keys['']]
+
+        return (keys, args)
+
+    async def moveToWaitingChildren(self, job_id, token, opts):
+        keys, args = self.moveToWaitingChildrenArgs(job_id, token, opts)
+        result = await self.commands["moveToWaitingChildren"](keys=keys, args=args)
+
+        if type(result) == int:
+            if result == 1:
+                return False
+            elif result == 0:
+                return True
+            elif result < 0:
+                raise self.finishedErrors({
+                    "code": result,
+                    "jobId": job_id,
+                    "command": 'moveToWaitingChildren',
+                    "state": 'active'
+                    })
+        return None
+
+    def getRangesArgs(self, types, start: int = 0, end: int = 1, asc: bool = False):
+        transformed_types = []
+        for type in types:
+            transformed_types.append("wait" if type == "waiting" else type)
+
+        keys = self.getKeys([''])
+        args = [start, end, "1" if asc else "0"] + transformed_types
+
+        return (keys, args)
+
+    def getJobsArgs(self, types, start: int = 0, end: int = 1, asc: bool = False):
+        transformed_types = []
+        for type in types:
+            transformed_types.append("wait" if type == "waiting" else type)
+
+        keys = self.getKeys([''])
+        args = [
+            start,
+            end,
+            "1" if asc else "0",
+            GET_JOBS_MAX_BACKFILL_ITERATIONS,
+        ] + transformed_types
+
+        return (keys, args)
+
+    async def getJobs(self, types, start: int = 0, end: int = 1, asc: bool = False):
+        keys, args = self.getJobsArgs(types, start, end, asc)
+
+        return await self.commands["getJobs"](keys=keys, args=args)
+
+    async def getRanges(self, types, start: int = 0, end: int = 1, asc: bool = False):
+        commands = []
+
+        switcher = {
+            "completed": "zrange",
+            "delayed": "zrange",
+            "failed": "zrange",
+            "prioritized": "zrange",
+            "repeat": "zrange",
+            "waiting-children": "zrange",
+            "active": "lrange",
+            "paused": "lrange",
+            "wait": "lrange"
+        }
+        transformed_types = []
+        for type in types:
+            transformed_type = "wait" if type == "waiting" else type
+            transformed_types.append(transformed_type)
+            commands.append(switcher.get(transformed_type))
+
+        keys, args = self.getRangesArgs(transformed_types, start, end, asc)
+
+        responses = await self.commands["getRanges"](keys=keys, args=args)
+
+        results = []
+        for i, response in enumerate(responses):
+            result = response or []
+
+            if asc and commands[i] == "lrange":
+                result.reverse()
+                results+=result
+            else:
+                results+=result
+
+        return results
+
+    def saveStacktraceArgs(self, job_id: str, stacktrace: str, failedReason: str):
+        keys = [self.toKey(job_id)]
+        args = [stacktrace, failedReason]
+
+        return (keys, args)
+
+    def retryJobArgs(self, job_id: str, lifo: bool, token: str, opts: dict = {}):
+        keys = self.getKeys(['active', 'wait', 'paused'])
+        keys.append(self.toKey(job_id))
+        keys.append(self.keys['meta'])
+        keys.append(self.keys['events'])
+        keys.append(self.keys['delayed'])
+        keys.append(self.keys['prioritized'])
+        keys.append(self.keys['pc'])
+        keys.append(self.keys['marker'])
+        keys.append(self.keys['stalled'])
+
+        push_cmd = "RPUSH" if lifo else "LPUSH"
+
+        args = [self.keys[''], round(time.time() * 1000), push_cmd,
+                job_id, token]
+        if opts.get("fieldsToUpdate"):
+            args.append(msgpack.packb(object_to_flat_array(opts.get("fieldsToUpdate")), use_bin_type=True))
+
+        return (keys, args)
+
+    async def retryJob(self, job_id: str, lifo: bool, token: str = "0", opts = {}):
+        keys, args = self.retryJobArgs(job_id, lifo, token, opts)
+
+        result = await self.commands["retryJob"](keys=keys, args=args)
+
+        if type(result) == int:
+            if result < 0:
+                raise self.finishedErrors({
+                    "code": result,
+                    "jobId": job_id,
+                    "command": 'retryJob',
+                    "state": 'active'
+                    })
+        return None
+
+    def moveToDelayedArgs(self, job_id: str, timestamp: int, token: str, delay: int = 0, opts: dict = {}):
+        keys = self.getKeys(['marker', 'active', 'prioritized', 'delayed'])
+        keys.append(self.toKey(job_id))
+        keys.append(self.keys['events'])
+        keys.append(self.keys['meta'])
+        keys.append(self.keys['stalled'])
+        keys.append(self.keys['wait'])
+        keys.append(self.keys['limiter'])
+        keys.append(self.keys['paused'])
+        keys.append(self.keys['pc'])
+
+        fetch_next = opts.get("fetchNext", False)
+
+        args = [self.keys[''], str(timestamp),
+                job_id, token, delay, "1" if opts.get("skipAttempt") else "0"]
+        if opts.get("fieldsToUpdate"):
+            args.append(msgpack.packb(object_to_flat_array(opts.get("fieldsToUpdate")), use_bin_type=True))
+        else:
+            # Use empty string as placeholder so ARGV positions remain stable and redis-py accepts the args
+            args.append("")
+
+        args.append("1" if fetch_next else "0")
+        if fetch_next:
+            worker_opts = opts.get("workerOpts", {})
+            args.append(msgpack.packb({
+                "token": token,
+                "lockDuration": worker_opts.get("lockDuration", 0),
+                "limiter": worker_opts.get("limiter", None),
+            }, use_bin_type=True))
+
+        return (keys, args)
+
+    async def moveToDelayed(self, job_id: str, timestamp: int, delay: int, token: str = "0", opts: dict = {}):
+        keys, args = self.moveToDelayedArgs(job_id, timestamp, token, delay, opts)
+
+        result = await self.commands["moveToDelayed"](keys=keys, args=args)
+
+        if result is not None:
+            if type(result) == int and result < 0:
+                raise self.finishedErrors({
+                    "code": result,
+                    "jobId": job_id,
+                    "command": 'moveToDelayed',
+                    "state": 'active'
+                    })
+            if type(result) != int:
+                return raw2NextJobData(result)
+        return None
+
+    def promoteArgs(self, job_id: str):
+        keys = self.getKeys(['delayed', 'wait', 'paused', 'meta', 'prioritized', 'active', 'pc', 'events', 'marker'])
+        keys.append(self.toKey(job_id))
+        keys.append(self.keys['events'])
+        keys.append(self.keys['paused'])
+        keys.append(self.keys['meta'])
+
+        args = [self.keys[''], job_id]
+
+        return (keys, args)
+
+    async def promote(self, job_id: str):
+        keys, args = self.promoteArgs(job_id)
+
+        result = await self.commands["promote"](keys=keys, args=args)
+
+        if type(result) == int:
+            if result < 0:
+                raise self.finishedErrors({
+                    "code": result,
+                    "jobId": job_id,
+                    "command": 'promote',
+                    "state": 'delayed'
+                    })
+        return None
+
+    async def addJobScheduler(
+        self,
+        job_scheduler_id: str,
+        next_millis: int,
+        template_data: str,
+        template_opts: dict,
+        scheduler_opts: dict,
+        delayed_job_opts: dict,
+        producer_id: str = None,
+    ):
+        """
+        Register or override a job scheduler and queue its next iteration.
+
+        Returns a `[jobId, delay]` pair. Raises if the script returns a
+        negative status code (collision / slots busy).
+        """
+        keys = [
+            self.keys["repeat"],
+            self.keys["delayed"],
+            self.keys["wait"],
+            self.keys["paused"],
+            self.keys["meta"],
+            self.keys["prioritized"],
+            self.keys["marker"],
+            self.keys["id"],
+            self.keys["events"],
+            self.keys["pc"],
+            self.keys["active"],
+        ]
+        args = [
+            next_millis,
+            msgpack.packb(scheduler_opts, use_bin_type=True),
+            job_scheduler_id,
+            template_data,
+            msgpack.packb(self.encodeOpts(template_opts or {}), use_bin_type=True),
+            msgpack.packb(self.encodeOpts(delayed_job_opts or {}), use_bin_type=True),
+            round(time.time() * 1000),
+            self.keys[""],
+            self.toKey(producer_id) if producer_id else "",
+        ]
+
+        result = await self.commands["addJobScheduler"](keys=keys, args=args)
+
+        if isinstance(result, int) and result < 0:
+            raise self.finishedErrors({
+                "code": result,
+                "command": "addJobScheduler",
+            })
+        return result
+
+    async def updateJobSchedulerNextMillis(
+        self,
+        job_scheduler_id: str,
+        next_millis: int,
+        template_data: str,
+        delayed_job_opts: dict,
+        producer_id: str = None,
+    ):
+        """
+        Advance a registered job scheduler to its next iteration. Returns the
+        new delayed job id, or None if no iteration was produced (e.g. the
+        scheduler is gone or the producer doesn't match).
+        """
+        keys = [
+            self.keys["repeat"],
+            self.keys["delayed"],
+            self.keys["wait"],
+            self.keys["paused"],
+            self.keys["meta"],
+            self.keys["prioritized"],
+            self.keys["marker"],
+            self.keys["id"],
+            self.keys["events"],
+            self.keys["pc"],
+            self.toKey(producer_id) if producer_id else "",
+            self.keys["active"],
+        ]
+        args = [
+            next_millis,
+            job_scheduler_id,
+            template_data,
+            msgpack.packb(self.encodeOpts(delayed_job_opts or {}), use_bin_type=True),
+            round(time.time() * 1000),
+            self.keys[""],
+            producer_id or "",
+        ]
+        return await self.commands["updateJobScheduler"](keys=keys, args=args)
+
+    async def removeJobScheduler(self, job_scheduler_id: str) -> int:
+        """
+        Remove a job scheduler and any pending next-iteration job.
+        Returns 0 if the scheduler was removed, 1 if it did not exist.
+        """
+        keys = [self.keys["repeat"], self.keys["delayed"], self.keys["events"]]
+        args = [job_scheduler_id, self.keys[""]]
+        return await self.commands["removeJobScheduler"](keys=keys, args=args)
+
+    async def getJobScheduler(self, job_scheduler_id: str):
+        """
+        Fetch a scheduler hash. Returns a `[raw_fields, score]` tuple where
+        `raw_fields` is the flat HGETALL result (or None) and `score` is the
+        next-iteration timestamp (or None).
+        """
+        keys = [self.keys["repeat"]]
+        args = [job_scheduler_id]
+        return await self.commands["getJobScheduler"](keys=keys, args=args)
+
+    def remove(self, job_id: str, remove_children: bool):
+        keys = [self.toKey(job_id),
+                self.keys['repeat']]
+        args = [job_id, 1 if remove_children else 0, self.keys['']]
+
+        return self.commands["removeJob"](keys=keys, args=args)
+
+    def getCounts(self, types):
+        keys = self.getKeys([''])
+        transformed_types = list(
+            map(lambda type: 'wait' if type == 'waiting' else type, types))
+
+        return self.commands["getCounts"](keys=keys, args=transformed_types)
+
+    def getCountsPerPriorityArgs(self, priorities):
+        keys = [self.keys['wait'],
+                self.keys['prioritized']]
+
+        args = priorities
+
+        return (keys, args)
+
+    def getCountsPerPriority(self, priorities):
+        keys, args = self.getCountsPerPriorityArgs(priorities)
+
+        return self.commands["getCountsPerPriority"](keys=keys, args=args)
+
+    async def getState(self, job_id: str):
+        keys = self.getKeys(['completed', 'failed', 'delayed', 'active', 'wait',
+                'paused', 'waiting-children', 'prioritized'])
+
+        args = [job_id, self.toKey(job_id)]
+
+        redis_version = await self.redisConnection.getRedisVersion()
+
+        if isRedisVersionLowerThan(redis_version, '6.0.6'):
+            result = await self.commands["getState"](keys=keys, args=args)
+            return result
+
+        result = await self.commands["getStateV2"](keys=keys, args=args)
+        return result
+
+    async def isJobInList(self, list_key: str, job_id: str):
+        redis_version = await self.redisConnection.getRedisVersion()
+
+        result = None
+        if isRedisVersionLowerThan(redis_version, '6.0.6'):
+            result = await self.commands["getState"](keys=[list_key], args=[job_id])
+        else:
+            result = await self.redisClient.lpos(list_key, job_id)
+        return isinstance(result, int)
+
+    async def changePriority(self, job_id: str, priority:int = 0, lifo:bool = False):
+        keys = [self.keys['wait'],
+            self.keys['paused'],
+            self.keys['meta'],
+            self.keys['prioritized'],
+            self.keys['active'],
+            self.keys['pc'],
+            self.keys['marker']]
+
+        args = [priority, self.toKey(job_id), job_id, 1 if lifo else 0]
+
+        result = await self.commands["changePriority"](keys=keys, args=args)
+
+        if type(result) == int:
+            if result < 0:
+                raise self.finishedErrors({
+                    "code": result,
+                    "jobId": job_id,
+                    "command": 'changePriority'
+                    })
+        return None
+
+    async def updateData(self, job_id: str, data):
+        keys = [self.toKey(job_id)]
+        data_json = json.dumps(data, separators=(',', ':'), allow_nan=False)
+        args = [data_json]
+
+        result = await self.commands["updateData"](keys=keys, args=args)
+
+        if type(result) == int:
+            if result < 0:
+                raise self.finishedErrors({
+                    "code": result,
+                    "jobId": job_id,
+                    "command": 'updateData'
+                    })
+        return None
+
+    async def reprocessJob(self, job: Job, state: str, opts: dict = {}):
+        keys = [self.toKey(job.id)]
+        keys.append(self.keys['events'])
+        keys.append(self.keys[state])
+        keys.append(self.keys['wait'])
+        keys.append(self.keys['meta'])
+        keys.append(self.keys['paused'])
+        keys.append(self.keys['active'])
+        keys.append(self.keys['marker'])
+
+        args = [
+            job.id,
+            ("R" if job.opts.get("lifo") else "L") + "PUSH",
+            "failedReason" if state == "failed" else "returnvalue",
+            state,
+            "1" if opts.get("resetAttemptsMade") else "0",
+            "1" if opts.get("resetAttemptsStarted") else "0"
+            ]
+
+        result = await self.commands["reprocessJob"](keys=keys, args=args)
+
+        if type(result) == int:
+            if result < 0:
+                raise self.finishedErrors({
+                    "code": result,
+                    "jobId": job.id,
+                    "command": 'reprocessJob',
+                    "state": state
+                    })
+        return None
+
+    def pause(self, pause: bool = True):
+        """
+        Pause or resume a queue
+        """
+        src = "wait" if pause else "paused"
+        dst = "paused" if pause else "wait"
+        keys = self.getKeys([src, dst, 'meta', 'prioritized', 'events', 'delayed', 'marker'])
+        return self.commands["pause"](keys, args=["paused" if pause else "resumed"])
+
+    async def obliterate(self, count: int, force: bool = False):
+        """
+        Remove a queue completely
+        """
+        keys = self.getKeys(['meta', ''])
+        result = await self.commands["obliterate"](keys, args=[count, "force" if force else ""])
+        if (result < 0):
+            if (result == -1):
+                raise Exception("Cannot obliterate non-paused queue")
+            if (result == -2):
+                raise Exception("Cannot obliterate queue with active jobs")
+        return result
+
+    async def drain(self, delayed: bool = False):
+        """
+        Drains the queue, removes all jobs that are waiting
+        or delayed, but not active, completed or failed.
+        
+        @param delayed: Pass True if it should also clean the delayed jobs.
+        """
+        keys = self.getKeys(['wait', 'paused', 'delayed', 'prioritized', 'repeat'])
+        args = [self.keys[''], '1' if delayed else '0']
+        await self.commands["drain"](keys, args=args)
+
+    def moveJobsToWaitArgs(self, state: str, count: int, timestamp: int) -> int:
+        keys = self.getKeys(
+            ['', 'events', state, 'wait', 'paused', 'meta', 'active', 'marker'])
+
+        args = [count or 1000, timestamp or round(time.time()*1000), state]
+        return (keys, args)
+
+    async def retryJobs(self, state: str, count: int, timestamp: int):
+        """
+        Retry jobs that are in failed or completed state
+        """
+        current_state = state or 'failed'
+        keys, args = self.moveJobsToWaitArgs(current_state, count, timestamp)
+
+        result = await self.commands["moveJobsToWait"](keys=keys, args=args)
+        return result
+
+    async def promoteJobs(self, count: int):
+        """
+        Promote jobs in delayed state
+        """
+        keys, args = self.moveJobsToWaitArgs('delayed', count, 1.7976931348623157e+308)
+
+        result = await self.commands["moveJobsToWait"](keys=keys, args=args)
+        return result
+
+    async def moveToActive(self, token: str, opts: dict) -> list[Any]:
+        """
+        Add an item to the queue
+        """
+        timestamp = round(time.time() * 1000)
+        lockDuration = opts.get("lockDuration", 0)
+        limiter = opts.get("limiter", None)
+
+        keys = self.getKeys(['wait', 'active', 'prioritized', 'events',
+                            'stalled', 'limiter', 'delayed', 'paused', 'meta', 'pc', 'marker'])
+        packedOpts = msgpack.packb(
+            {"token": token, "lockDuration": lockDuration, "limiter": limiter}, use_bin_type=True)
+        args = [self.keys[''], timestamp, packedOpts]
+
+        result = await self.commands["moveToActive"](keys=keys, args=args)
+
+        return raw2NextJobData(result)
+
+    async def updateProgress(self, job_id: str, progress):
+        keys = [self.toKey(job_id), self.keys['events'], self.keys['meta']]
+        progress_json = json.dumps(progress, separators=(',', ':'), allow_nan=False)
+        args = [job_id, progress_json]
+        result = await self.commands["updateProgress"](keys=keys, args=args)
+
+        if type(result) == int:
+            if result < 0:
+                raise self.finishedErrors({
+                    "code": result,
+                    "jobId": job_id,
+                    "command": 'updateProgress'
+                    })
+        return None
+
+    def moveToFinishedArgs(self, job: Job, val: Any, propVal: str, shouldRemove, target, token: str,
+        fetchNext=True, fields_to_update = None) -> list[Any] | None:
+        transformed_value = (
+            val
+            if propVal == 'failedReason'
+            else json.dumps(val, separators=(',', ':'), allow_nan=False)
+        )
+        timestamp = round(time.time() * 1000)
+        metricsKey = self.toKey('metrics:' + target)
+
+        keys = self.getKeys(['wait', 'active', 'prioritized', 'events',
+                            'stalled', 'limiter', 'delayed', 'paused', 'meta', 'pc', target])
+        keys.append(self.toKey(job.id))
+        keys.append(metricsKey)
+        keys.append(self.keys['marker'])
+
+        def getKeepJobs(shouldRemove: bool | dict | int | None):
+            if type(shouldRemove) == int:
+                return {"count": shouldRemove}
+
+            if type(shouldRemove) == dict:
+                return shouldRemove
+
+            if shouldRemove:
+                return {"count": 0}
+
+            if not shouldRemove or shouldRemove is None:
+                return {"count": -1}
+
+        def getMetricsSize(opts: dict):
+            metrics = opts.get("metrics")
+            if metrics is not None:
+                return metrics.get("maxDataPoints", "")
+            return ""
+
+        keepJobs = getKeepJobs(shouldRemove)
+
+        opts = job.queue.opts
+        packedOpts = msgpack.packb({
+            "token": token,
+            "keepJobs": keepJobs,
+            "limiter": opts.get("limiter"),
+            "lockDuration": opts.get("lockDuration"),
+            "attempts": job.attempts,
+            "attemptsMade": job.attemptsMade,
+            "maxMetricsSize": getMetricsSize(opts),
+            "fpof": job.opts.get("failParentOnFailure", False),
+            "cpof": job.opts.get("continueParentOnFailure", False),
+            "idof": job.opts.get("ignoreDependencyOnFailure", False),
+            "rdof": job.opts.get("removeDependencyOnFailure", False)
+        }, use_bin_type=True)
+
+        args = [job.id, timestamp, propVal, transformed_value or "", target,
+                fetchNext and "1" or "", self.keys[''], packedOpts]
+        if fields_to_update:
+            args.append(msgpack.packb(object_to_flat_array(fields_to_update), use_bin_type=True))
+
+        return (keys, args)
+
+    def moveToCompletedArgs(self, job: Job, return_value: str, shouldRemove, token: str, fetchNext=True):
+        return self.moveToFinishedArgs(job, return_value, 'returnvalue', shouldRemove, 'completed',
+            token, fetchNext)
+
+    def moveToFailedArgs(self, job: Job, failed_reason: str, shouldRemove, token: str, fetchNext=True, fields_to_update = None):
+        return self.moveToFinishedArgs(job, failed_reason, 'failedReason', shouldRemove, 'failed',
+            token, fetchNext, fields_to_update)
+
+    def moveToCompleted(self, job: Job, val: Any, removeOnComplete, token: str, fetchNext=True):
+        keys, args = self.moveToCompletedArgs(job, val, removeOnComplete, token, fetchNext)
+
+        return self.moveToFinished(job.id, keys, args)
+
+    def moveToFailed(self, job: Job, failedReason: str, removeOnFailed, token: str, fetchNext=True):
+        keys, args = self.moveToFailedArgs(job, failedReason, removeOnFailed, token, fetchNext)
+
+        return self.moveToFinished(job.id, keys, args)
+
+    async def moveToFinished(self, job_id: str, keys, args) -> list[Any] | None:
+        result = await self.commands["moveToFinished"](keys=keys, args=args)
+
+        if result is not None:
+            if type(result) == int and result < 0:
+                raise self.finishedErrors({
+                    "code": result,
+                    "jobId": job_id,
+                    "command": 'moveToFinished',
+                    "state": 'active'
+                    })
+            return raw2NextJobData(result)
+        return None
+
+    def extendLock(self, jobId: str, token: str, duration: int, client: Redis = None):
+        keys = [self.toKey(jobId) + ":lock", self.keys['stalled']]
+        args = [token, duration, jobId]
+        return self.commands["extendLock"](keys, args, client)
+
+    def extendJobLocks(self, job_ids: list, tokens: list, duration: int):
+        """
+        Extend locks for many jobs atomically in a single Lua call.
+
+        Returns the list of job ids whose lock could not be renewed
+        (because the token did not match, the lock was already released,
+        or the SET failed). An empty list means every lock was renewed.
+        """
+        keys = [self.keys['stalled']]
+        args = [
+            self.keys[''],
+            msgpack.packb(tokens, use_bin_type=True),
+            msgpack.packb(job_ids, use_bin_type=True),
+            duration,
+        ]
+        return self.commands["extendLocks"](keys=keys, args=args)
+
+    def moveStalledJobsToWait(self, maxStalledCount: int, stalledInterval: int):
+        keys = self.getKeys(['stalled', 'wait', 'active',
+                            'stalled-check', 'meta', 'paused', 'marker', 'events', 'repeat'])
+        args = [maxStalledCount, self.keys[''], round(
+            time.time() * 1000), stalledInterval]
+        return self.commands["moveStalledJobsToWait"](keys, args)
+
+    def finishedErrors(self, opts: dict) -> TypeError:
+        code = opts.get("code")
+        if code == ErrorCode.JobNotExist.value:
+            return TypeError(f"Missing key for job {opts.get('jobId')}. {opts.get('command')}")
+        elif code == ErrorCode.JobLockNotExist.value:
+            return TypeError(f"Missing lock for job {opts.get('jobId')}. {opts.get('command')}")
+        elif code == ErrorCode.JobNotInState.value:
+            return TypeError(f"Job {opts.get('jobId')} is not in the {opts.get('state')} state. {opts.get('command')}")
+        elif code == ErrorCode.JobPendingDependencies.value:
+            return TypeError(f"Job {opts.get('jobId')} has pending dependencies. {opts.get('command')}")
+        elif code == ErrorCode.ParentJobNotExist.value:
+            return TypeError(f"Missing key for parent job {opts.get('parentKey')}. {opts.get('command')}")
+        elif code == ErrorCode.JobLockMismatch.value:
+            return TypeError(f"Lock mismatch for job {opts.get('jobId')}. Cmd {opts.get('command')} from {opts.get('state')}")
+        elif code == ErrorCode.ParentJobCannotBeReplaced.value:
+            return TypeError(f"The parent job {opts.get('jobId')} cannot be replaced. {opts.get('command')}")
+        elif code == ErrorCode.JobHasFailedChildren.value:
+            return UnrecoverableError(f"Cannot complete job {opts.get('jobId')} because it has at least one failed child. {opts.get('command')}")
+        elif code == ErrorCode.SchedulerJobIdCollision.value:
+            return TypeError(
+                f"Cannot create job scheduler iteration - job ID already exists. {opts.get('command')}"
+            )
+        elif code == ErrorCode.SchedulerJobSlotsBusy.value:
+            return TypeError(
+                f"Cannot create job scheduler iteration - current and next time slots already have jobs. {opts.get('command')}"
+            )
+        else:
+            return TypeError(f"Unknown code {str(code)} error for {opts.get('jobId')}. {opts.get('command')}")
+
+
+def raw2NextJobData(raw: list[Any]) -> list[Any] | None:
+    if raw:
+        result = [None, raw[1], None, None] if len(raw) == 2 else [None, raw[1], raw[2], raw[3]]
+        if raw[0]:
+            result[0]= array2obj(raw[0])
+        return result
+    return [None, None, None, None]
+
+
+def array2obj(arr: list[str]) -> dict[str, str]:
+    obj = {}
+    for i in range(0, len(arr), 2):
+        obj[arr[i]] = arr[i + 1]
+    return obj
+
+
+def convert_to_int(text: str):
+    try:
+        result = int(text)
+        return result
+    except ValueError:
+        return 0

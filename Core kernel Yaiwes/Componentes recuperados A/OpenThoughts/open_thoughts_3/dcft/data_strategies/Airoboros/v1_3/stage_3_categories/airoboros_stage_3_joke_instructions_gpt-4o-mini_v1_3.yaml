@@ -1,0 +1,33 @@
+operators:
+- id: load_stage_2
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_2_gpt-4o-mini_v1_3
+- id: select_joke_instructions
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        airoboros_subset: joke
+  input_ids:
+    - load_stage_2
+- id: select_columns
+  config:
+    type: function
+    function: data_strategies.commons.select_columns
+    function_config:
+      columns:
+        - instruction
+        - response
+        - airoboros_subset
+  input_ids:
+    - select_joke_instructions
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample
+    function_config:
+      num_samples: 1500  # 10% of 15000 target from stage 1
+  input_ids:
+    - select_columns 

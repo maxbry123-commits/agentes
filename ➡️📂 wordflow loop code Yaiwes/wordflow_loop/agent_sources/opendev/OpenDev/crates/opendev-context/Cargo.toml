@@ -1,0 +1,24 @@
+[package]
+name = "opendev-context"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Context engineering: compaction, validation, and context picking for OpenDev"
+
+[dependencies]
+uuid = { workspace = true }
+opendev-config = { workspace = true }
+opendev-models = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+regex = { workspace = true }
+dirs-next = { workspace = true }
+glob = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

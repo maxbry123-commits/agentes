@@ -1,0 +1,159 @@
+name: YAIWES SOL3 AI-Scientist-v2 STEP2 Motor4
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-sol3-ai-scientist-v2-step2.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-sol3-ai-scientist-v2-step2
+  cancel-in-progress: false
+
+jobs:
+  move:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      WALL: '📂 Bitácora stated JSON Craxy wall.json'
+      INVENTORY: 'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json'
+      MOTOR4: '➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
+      SOURCE: 'Core kernel Yaiwes/Componentes recuperados B/AI-Scientist-v2'
+      TARGET: 'Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist-v2'
+      STATE_FILE: '/tmp/ai-scientist-v2-motor4-state.json'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 12
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /📂 Bitácora stated JSON Craxy wall.json
+            /Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json
+            /Core kernel Yaiwes/Componentes recuperados B/AI-Scientist-v2/
+            /Agente Yaiwes principal/agent-fleet-parallelism/
+            /➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py
+
+      - name: CLAIM STEP2
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'; ok=0
+          for attempt in $(seq 1 10); do
+            git fetch origin main; git reset --hard origin/main
+            python3 - <<'PY'
+          import json,os
+          from datetime import datetime,timezone
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          with open(os.environ['WALL'],encoding='utf-8') as f:d=json.load(f)
+          n=next(n for n in d['nodes'] if n.get('id')==35 and n.get('component')=='AI-Scientist-v2')
+          if n.get('current_step')!=2 or n.get('status') not in ('PASS_STEP1','GAP_STEP2','GAP') or n.get('owner') is not None or n.get('lock')!='FREE': raise SystemExit(f"N35_NOT_CLAIMABLE:{n.get('current_step')}:{n.get('status')}:{n.get('owner')}:{n.get('lock')}")
+          n['owner']='SOL';n['lock']='CLAIMED';n['status']='PENDING_STEP2';n['checkpoint']['before']=f'{now} SOL integración 3 STEP2 claim: immutable canonical Motor4 AI-Scientist-v2 -> agent-fleet-parallelism/ai-scientist-v2; require VERIFIED_CLOSED and origin/main read-back'
+          for x in ['step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5','step2:runner:.github/workflows/yaiwes-sol3-ai-scientist-v2-step2.yml']:
+              if x not in n['evidence']:n['evidence'].append(x)
+          n['history'].append({'at':now,'actor':'SOL','label':'SOL integración 3','event':'CLAIM_STEP2'});n['next_action']='STEP_2_MOVE_WITH_CANONICAL_MOTOR';d['updated_at']=now
+          with open(os.environ['WALL'],'w',encoding='utf-8') as f:json.dump(d,f,ensure_ascii=False,indent=2);f.write('\n')
+          PY
+            git add -- "$WALL"; git commit -m 'crazy-wall: SOL integración 3 claim AI-Scientist-v2 STEP2'
+            if git push origin HEAD:main; then ok=1; break; fi
+            sleep $((attempt*2))
+          done
+          test "$ok" -eq 1
+
+      - name: Verify Motor4 and source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main; git reset --hard origin/main
+          test "$(git hash-object "$MOTOR4")" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'
+          test -f "$SOURCE/README.md"
+          test "$(git hash-object "$SOURCE/README.md")" = '3bb62d43ab4632b3bbffc2642f12beafe869d3a4'
+          test -f "$SOURCE/launch_scientist_bfts.py"
+          test ! -e "$TARGET"
+
+      - name: Execute canonical Motor4
+        id: motor
+        shell: bash
+        run: |
+          set +e
+          rm -f "$STATE_FILE" /tmp/motor4-v2.json /tmp/motor4-v2-check.txt
+          SOURCE_DIR="$SOURCE" DEST_DIR="$TARGET" STATE_FILE="$STATE_FILE" BATCH_SIZE=100 COLLISION_POLICY=fail MAX_BATCHES=0 python3 "$MOTOR4" | tee /tmp/motor4-v2.json
+          rc=${PIPESTATUS[0]}
+          python3 - <<'PY' >/tmp/motor4-v2-check.txt 2>&1
+          import json
+          from pathlib import Path
+          rows=[x for x in Path('/tmp/motor4-v2.json').read_text().splitlines() if x.strip()]; assert rows,'NO_RESULT'; d=json.loads(rows[-1]); assert d['verdict']=='VERIFIED_CLOSED' and d['failed']==0 and d['pending']==0 and d['source_files_remaining']==0,d; print(json.dumps(d,sort_keys=True))
+          PY
+          c=$?; cat /tmp/motor4-v2-check.txt; [ "$rc" -eq 0 ] && [ "$c" -eq 0 ]; final=$?; tail_line="$(cat /tmp/motor4-v2.json /tmp/motor4-v2-check.txt 2>/dev/null | tail -n 8 | tr '\n\r' ' ' | sed 's/=/ /g' | cut -c1-1800)"; echo "rc=$final" >> "$GITHUB_OUTPUT"; echo "tail=$tail_line" >> "$GITHUB_OUTPUT"; exit 0
+
+      - name: Persist Motor4 move
+        id: publish
+        if: steps.motor.outputs.rc == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$TARGET/README.md"; test -f "$TARGET/launch_scientist_bfts.py"
+          if [ -d "$SOURCE" ]; then test "$(find "$SOURCE" -type f | wc -l)" -eq 0; fi
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- "$SOURCE" "$TARGET"; git commit -m 'move(yaiwes): AI-Scientist-v2 via canonical Motor4'; base=$(git rev-parse HEAD); ok=0
+          for attempt in $(seq 1 10); do git fetch origin main; if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi; git rebase --abort || true; git reset --hard "$base"; sleep $((attempt*2)); done
+          test "$ok" -eq 1; echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Origin main read-back
+        id: readback
+        if: steps.motor.outputs.rc == '0' && steps.publish.outcome == 'success'
+        shell: bash
+        run: |
+          set +e
+          git fetch origin main
+          git cat-file -e "origin/main:$TARGET/README.md"; r1=$?
+          git cat-file -e "origin/main:$TARGET/launch_scientist_bfts.py"; r2=$?
+          git ls-tree -r --name-only origin/main -- "$SOURCE" >/tmp/source-v2-tree.txt; remaining=$(wc -l </tmp/source-v2-tree.txt); test "$remaining" -eq 0; r3=$?
+          test "$r1" -eq 0 -a "$r2" -eq 0 -a "$r3" -eq 0; rc=$?; echo "rc=$rc" >> "$GITHUB_OUTPUT"; exit 0
+
+      - name: STEP2 PASS or GAP release
+        shell: bash
+        env:
+          MOTOR_RC: ${{ steps.motor.outputs.rc }}
+          MOTOR_TAIL: ${{ steps.motor.outputs.tail }}
+          MOVE_COMMIT: ${{ steps.publish.outputs.commit }}
+          READBACK_RC: ${{ steps.readback.outputs.rc }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'; ok=0
+          for attempt in $(seq 1 10); do
+            git fetch origin main; git reset --hard origin/main
+            python3 - <<'PY'
+          import json,os
+          from datetime import datetime,timezone
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z');m=int(os.environ.get('MOTOR_RC') or 99);raw=os.environ.get('READBACK_RC');r=int(raw) if raw not in (None,'') else 99;detail=(os.environ.get('MOTOR_TAIL') or 'NO_OUTPUT')[:1600]
+          with open(os.environ['WALL'],encoding='utf-8') as f:d=json.load(f)
+          n=next(n for n in d['nodes'] if n.get('id')==35 and n.get('component')=='AI-Scientist-v2')
+          if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=2:raise SystemExit('LOCK_CHANGED')
+          if m==0 and r==0:
+              n['status']='PASS_STEP2';n['current_step']=3;n['checkpoint']['after']='STEP2 PASS: canonical Motor4 VERIFIED_CLOSED; failed=0 pending=0 source_files_remaining=0; main target README+launch_scientist_bfts read-back PASS.'
+              for x in [f"step2:run:{os.environ['GITHUB_RUN_ID']}",f"step2:move_commit:{os.environ.get('MOVE_COMMIT') or 'unknown'}",'step2:motor4:VERIFIED_CLOSED:failed=0:pending=0:source_files_remaining=0','step2:readback:origin/main source_absent+target README+launch_scientist_bfts PASS']:
+                  if x not in n['evidence']:n['evidence'].append(x)
+              n['history'].append({'at':now,'actor':'SOL','label':'SOL integración 3','event':'STEP2_PASS_RELEASE','run':int(os.environ['GITHUB_RUN_ID']),'commit':os.environ.get('MOVE_COMMIT')});n['next_action']='STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST'
+          else:
+              n['status']='GAP_STEP2';n['checkpoint']['after']=f"STEP2 GAP run={os.environ['GITHUB_RUN_ID']} motor_rc={m} readback_rc={r}: {detail}";n['evidence'].append(f"step2:gap:run:{os.environ['GITHUB_RUN_ID']}:{detail}");n['history'].append({'at':now,'actor':'SOL','label':'SOL integración 3','event':'STEP2_GAP_RELEASE','run':int(os.environ['GITHUB_RUN_ID'])});n['next_action']='REPAIR_EXACT_STEP2_GAP_AND_RETRY'
+          n['owner']=None;n['lock']='FREE';d['updated_at']=now
+          with open(os.environ['INVENTORY'],encoding='utf-8') as f:inv=json.load(f)
+          c=next(c for c in inv['components'] if c.get('name')=='AI-Scientist-v2');c.update({'wall_node_id':35,'wall_status':n['status'],'wall_current_step':n['current_step'],'wall_target':n['target']})
+          with open(os.environ['WALL'],'w',encoding='utf-8') as f:json.dump(d,f,ensure_ascii=False,indent=2);f.write('\n')
+          with open(os.environ['INVENTORY'],'w',encoding='utf-8') as f:json.dump(inv,f,ensure_ascii=False,indent=2);f.write('\n')
+          PY
+            git add -- "$WALL" "$INVENTORY"; git commit -m "crazy-wall: SOL integración 3 AI-Scientist-v2 STEP2 checkpoint run $GITHUB_RUN_ID" || true
+            if git push origin HEAD:main; then ok=1; break; fi
+            sleep $((attempt*2))
+          done
+          test "$ok" -eq 1
+
+      - name: Fail closed on GAP
+        if: steps.motor.outputs.rc != '0' || steps.readback.outputs.rc != '0'
+        run: exit 1

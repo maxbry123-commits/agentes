@@ -1,0 +1,11 @@
+.tox/
+.*_cache
+__pycache__
+src/datamodel_code_generator/_version.py
+coverage.xml
+.coverage
+.idea/
+.vscode/
+site/
+tests/cli_doc/.cli_doc_collection.json
+docs/assets/playground/generated/

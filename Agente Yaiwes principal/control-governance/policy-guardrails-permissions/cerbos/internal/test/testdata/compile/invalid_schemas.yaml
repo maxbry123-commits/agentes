@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=../.jsonschema/CompileTestCase.schema.json
+---
+wantErrors:
+  - file: resource_policies/leave_request_20210210.yaml
+    error: invalid schema
+    description: |-
+      Failed to load principal schema "cerbos:///invalid.json": jsonschema cerbos:///invalid.json compilation failed: '' does not validate with https://json-schema.org/draft/2020-12/schema#/type: expected object or boolean, but got string
+    position:
+      line: 10
+      column: 7
+      path: "$.resourcePolicy.schemas.principalSchema.ref"
+mainDef: "resource_policies/leave_request_20210210.yaml"

@@ -1,0 +1,166 @@
+name: Vally Lint — PR Gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "skills/**"
+      - "agents/**"
+      - "plugins/**/skills/**"
+      - "plugins/**/agents/**"
+
+permissions:
+  contents: read
+
+jobs:
+  skill-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20
+
+      # ── Detect changed skills & agents ────────────────────────────
+      - name: Detect changed skills and agents
+        id: detect
+        run: |
+          declare -A SEEN_SKILL_DIRS=()
+          declare -A SEEN_AGENT_FILES=()
+          SKILL_DIRS=()
+          AGENT_FILES=()
+
+          while IFS= read -r -d '' file; do
+            case "$file" in
+              skills/*)
+                skill_dir="${file#skills/}"
+                skill_dir="skills/${skill_dir%%/*}"
+                if [ -d "$skill_dir" ] && [ -z "${SEEN_SKILL_DIRS[$skill_dir]+x}" ]; then
+                  SEEN_SKILL_DIRS["$skill_dir"]=1
+                  SKILL_DIRS+=("$skill_dir")
+                fi
+                ;;
+              plugins/*/skills/*)
+                IFS='/' read -r seg1 seg2 seg3 seg4 _ <<< "$file"
+                skill_dir="$seg1/$seg2/$seg3/$seg4"
+                if [ -d "$skill_dir" ] && [ -z "${SEEN_SKILL_DIRS[$skill_dir]+x}" ]; then
+                  SEEN_SKILL_DIRS["$skill_dir"]=1
+                  SKILL_DIRS+=("$skill_dir")
+                fi
+                ;;
+            esac
+
+            case "$file" in
+              agents/*.agent.md|plugins/*/agents/*.agent.md)
+                if [ -f "$file" ] && [ -z "${SEEN_AGENT_FILES[$file]+x}" ]; then
+                  SEEN_AGENT_FILES["$file"]=1
+                  AGENT_FILES+=("$file")
+                fi
+                ;;
+            esac
+          done < <(git diff --name-only -z "origin/${{ github.base_ref }}...HEAD")
+
+          SKILL_COUNT=${#SKILL_DIRS[@]}
+          AGENT_COUNT=${#AGENT_FILES[@]}
+          TOTAL=$((SKILL_COUNT + AGENT_COUNT))
+
+          {
+            echo "total=$TOTAL"
+            echo "skill_count=$SKILL_COUNT"
+            echo "agent_count=$AGENT_COUNT"
+            echo "skill_dirs<<EOF"
+            printf '%s\n' "${SKILL_DIRS[@]}"
+            echo "EOF"
+            echo "agent_files<<EOF"
+            printf '%s\n' "${AGENT_FILES[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Found $SKILL_COUNT skill dir(s) and $AGENT_COUNT agent file(s) to check."
+
+      # ── Run vally lint check ───────────────────────────────────────
+      - name: Run vally lint check
+        id: check
+        if: steps.detect.outputs.total != '0'
+        env:
+          SKILL_DIRS_RAW: ${{ steps.detect.outputs.skill_dirs }}
+          AGENT_FILES_RAW: ${{ steps.detect.outputs.agent_files }}
+        run: |
+          SKILL_DIRS=()
+          AGENT_FILES=()
+
+          if [ -n "$SKILL_DIRS_RAW" ]; then
+            while IFS= read -r dir; do
+              [ -n "$dir" ] && SKILL_DIRS+=("$dir")
+            done <<< "$SKILL_DIRS_RAW"
+          fi
+
+          if [ -n "$AGENT_FILES_RAW" ]; then
+            while IFS= read -r file; do
+              [ -n "$file" ] && AGENT_FILES+=("$file")
+            done <<< "$AGENT_FILES_RAW"
+          fi
+
+          EXIT_CODE=0
+          : > vally-output.txt
+
+          if [ ${#SKILL_DIRS[@]} -eq 0 ] && [ ${#AGENT_FILES[@]} -eq 0 ]; then
+            echo "No skills or agents to validate." | tee -a vally-output.txt
+          fi
+
+          for skill_dir in "${SKILL_DIRS[@]}"; do
+            echo "### Linting ${skill_dir}" | tee -a vally-output.txt
+            set +e
+            OUTPUT=$(npx --yes @microsoft/vally-cli lint "$skill_dir" --verbose 2>&1)
+            CMD_EXIT=$?
+            set -e
+            echo "$OUTPUT" | tee -a vally-output.txt
+            echo "" >> vally-output.txt
+
+            if [ "$CMD_EXIT" -ne 0 ]; then
+              EXIT_CODE=1
+            fi
+          done
+
+          if [ ${#AGENT_FILES[@]} -gt 0 ]; then
+            {
+              echo "### Agent files detected (not linted by vally)"
+              echo "ℹ️ Vally currently lints SKILL.md content. Agent files were detected but skipped:"
+              printf '%s\n' "${AGENT_FILES[@]}"
+              echo ""
+            } | tee -a vally-output.txt
+          fi
+
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+      # ── Upload results for the commenting workflow ────────────────
+      - name: Save metadata
+        if: always()
+        run: |
+          mkdir -p vally-results
+          echo "${{ github.event.pull_request.number }}" > vally-results/pr-number.txt
+          echo "${{ steps.detect.outputs.total }}" > vally-results/total.txt
+          echo "${{ steps.detect.outputs.skill_count }}" > vally-results/skill-count.txt
+          echo "${{ steps.detect.outputs.agent_count }}" > vally-results/agent-count.txt
+          echo "${{ steps.check.outputs.exit_code }}" > vally-results/exit-code.txt
+          if [ -f vally-output.txt ]; then
+            cp vally-output.txt vally-results/vally-output.txt
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vally-lint-results
+          path: vally-results/
+          retention-days: 1
+
+      - name: Post skip notice if no skills changed
+        if: steps.detect.outputs.total == '0'
+        run: echo "No skill or agent files changed in this PR — skipping validation."

@@ -1,0 +1,45 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#![deny(unsafe_code)]
+
+pub mod common;
+pub mod constants;
+
+#[cfg(feature = "ftps")]
+pub mod ftps;
+
+#[cfg(feature = "swift")]
+pub mod swift;
+
+#[cfg(feature = "webdav")]
+pub mod webdav;
+
+#[cfg(feature = "sftp")]
+pub mod sftp;
+
+pub use common::session::Protocol;
+pub use common::{AuthorizationError, ProtocolPrincipal, S3Action, SessionContext, authorize_operation};
+
+#[cfg(feature = "ftps")]
+pub use ftps::{config::FtpsConfig, server::FtpsServer};
+
+#[cfg(feature = "swift")]
+pub use swift::handler::SwiftService;
+
+#[cfg(feature = "webdav")]
+pub use webdav::{config::WebDavConfig, server::WebDavServer};
+
+#[cfg(feature = "sftp")]
+pub use sftp::{SftpConfig, SftpInitError, SftpServer};

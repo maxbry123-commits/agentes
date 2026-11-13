@@ -1,0 +1,35 @@
+operators:
+- id: load_codeforces
+  config:
+    type: hf_source
+    dataset: simplescaling/s1K-1.1
+    split: train
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: gemini_thinking_trajectory
+      solution_column: gemini_attempt
+      output_column: final_reasoning_trace
+  input_ids:
+  - load_codeforces
+- id: get_question_answer_string
+  config:
+    type: function
+    function: data_strategies.QuestionAnswerFiltering.utils.get_combined_question_answer_string
+    function_config:
+      question_column: question
+      answer_column: final_reasoning_trace
+      output_column: question_answer_string
+  input_ids:
+  - convert_reasoning_trace_to_final
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:
+      - question_answer_string
+  input_ids:
+  - get_question_answer_string

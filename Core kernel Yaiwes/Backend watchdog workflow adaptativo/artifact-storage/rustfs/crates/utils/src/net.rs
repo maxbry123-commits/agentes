@@ -1,0 +1,857 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use bytes::Bytes;
+use futures::{Stream, StreamExt, pin_mut};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+    io::Error,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, ToSocketAddrs},
+    sync::{Arc, LazyLock, Mutex, RwLock},
+    time::{Duration, Instant},
+};
+use tracing::{error, info};
+use transform_stream::AsyncTryStream;
+use url::{Host, Url};
+
+static LOCAL_IPS: LazyLock<Vec<IpAddr>> = LazyLock::new(get_local_ips_with_fallback);
+
+#[derive(Debug, Clone)]
+struct DnsCacheEntry {
+    ips: HashSet<IpAddr>,
+    cached_at: Instant,
+}
+
+impl DnsCacheEntry {
+    fn new(ips: HashSet<IpAddr>) -> Self {
+        Self {
+            ips,
+            cached_at: Instant::now(),
+        }
+    }
+
+    fn is_expired(&self, ttl: Duration) -> bool {
+        self.cached_at.elapsed() > ttl
+    }
+}
+
+static DNS_CACHE: LazyLock<Mutex<HashMap<String, DnsCacheEntry>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Environment variable to tune the DNS resolver cache TTL, in seconds.
+///
+/// Rust has no runtime-level DNS cache or global TTL knob (unlike the JVM's
+/// `networkaddress.cache.ttl`), so this application cache is the only cache in the stack on
+/// musl-based images. On orchestrated networks (Docker Swarm, Kubernetes) a peer's DNS name is
+/// its only durable identity while its IP changes on reschedule; a fixed cache can keep a member
+/// dialing a dead IP after a peer restarts. Making the TTL tunable removes an invisible,
+/// unconfigurable cache between rustfs and the platform DNS.
+///
+/// `0` disables caching entirely (every `get_host_ip` consults the system resolver).
+const ENV_DNS_CACHE_TTL_SECS: &str = "RUSTFS_DNS_CACHE_TTL_SECS";
+const DEFAULT_DNS_CACHE_TTL_SECS: u64 = 300; // 5 minutes
+
+/// Resolved DNS cache TTL, read once from `RUSTFS_DNS_CACHE_TTL_SECS` at first use.
+///
+/// A value of `Duration::ZERO` means caching is disabled. The configured value is logged once so
+/// operators debugging cluster membership on dynamic networks can rule the cache in or out from
+/// the logs alone.
+static DNS_CACHE_TTL: LazyLock<Duration> = LazyLock::new(|| {
+    let secs = crate::envs::get_env_u64(ENV_DNS_CACHE_TTL_SECS, DEFAULT_DNS_CACHE_TTL_SECS);
+    if secs == 0 {
+        info!("DNS resolver cache disabled ({ENV_DNS_CACHE_TTL_SECS}=0); every lookup consults the system resolver");
+    } else {
+        info!("DNS resolver cache TTL set to {secs}s ({ENV_DNS_CACHE_TTL_SECS})");
+    }
+    Duration::from_secs(secs)
+});
+
+/// Whether the DNS resolver cache is enabled (TTL greater than zero).
+fn dns_cache_enabled() -> bool {
+    !DNS_CACHE_TTL.is_zero()
+}
+type DynDnsResolver = dyn Fn(&str) -> std::io::Result<HashSet<IpAddr>> + Send + Sync + 'static;
+static CUSTOM_DNS_RESOLVER: LazyLock<RwLock<Option<Arc<DynDnsResolver>>>> = LazyLock::new(|| RwLock::new(None));
+
+fn resolve_domain(domain: &str) -> std::io::Result<HashSet<IpAddr>> {
+    if let Some(resolver) = get_custom_dns_resolver() {
+        return resolver(domain);
+    }
+
+    (domain, 0)
+        .to_socket_addrs()
+        .map(|v| v.map(|v| v.ip()).collect::<HashSet<_>>())
+}
+
+#[cfg(test)]
+fn clear_dns_cache() {
+    if let Ok(mut cache) = DNS_CACHE.lock() {
+        cache.clear();
+    }
+}
+
+#[cfg(test)]
+static DNS_RESOLVER_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+#[cfg(test)]
+fn reset_dns_resolver_inner() {
+    *CUSTOM_DNS_RESOLVER.write().unwrap() = None;
+    clear_dns_cache();
+}
+
+#[cfg(test)]
+pub struct MockResolverGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl Drop for MockResolverGuard {
+    fn drop(&mut self) {
+        reset_dns_resolver_inner();
+    }
+}
+
+#[cfg(test)]
+pub fn set_mock_dns_resolver<F>(resolver: F) -> MockResolverGuard
+where
+    F: Fn(&str) -> std::io::Result<HashSet<IpAddr>> + Send + Sync + 'static,
+{
+    let lock = DNS_RESOLVER_TEST_LOCK.lock().unwrap();
+    *CUSTOM_DNS_RESOLVER.write().unwrap() = Some(Arc::new(resolver));
+    clear_dns_cache();
+    MockResolverGuard { _lock: lock }
+}
+
+#[cfg(test)]
+pub fn reset_dns_resolver() {
+    let _lock = DNS_RESOLVER_TEST_LOCK.lock().unwrap();
+    reset_dns_resolver_inner();
+}
+
+/// helper for validating if the provided arg is an ip address.
+pub fn is_socket_addr(addr: &str) -> bool {
+    addr.parse::<SocketAddr>().is_ok() || addr.parse::<IpAddr>().is_ok() || is_ipv6_addr_with_zone(addr)
+}
+
+fn is_ipv6_addr_with_zone(addr: &str) -> bool {
+    let Some(zone_start) = addr.find('%') else {
+        return false;
+    };
+
+    if addr.starts_with('[') {
+        let Some(end_bracket) = addr[zone_start..].find(']').map(|pos| zone_start + pos) else {
+            return false;
+        };
+        let zone = &addr[zone_start + 1..end_bracket];
+        return zone_start > 1
+            && is_valid_ipv6_zone(zone)
+            && addr[end_bracket..].starts_with("]:")
+            && addr[1..zone_start].parse::<Ipv6Addr>().is_ok()
+            && addr[end_bracket + 2..].parse::<u16>().is_ok();
+    }
+
+    let zone = &addr[zone_start + 1..];
+    zone_start > 0 && is_valid_ipv6_zone(zone) && addr[..zone_start].parse::<Ipv6Addr>().is_ok()
+}
+
+fn is_valid_ipv6_zone(zone: &str) -> bool {
+    !zone.is_empty()
+        && zone
+            .bytes()
+            .all(|ch| matches!(ch, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~'))
+}
+
+/// checks if server_addr is valid and local host.
+pub fn check_local_server_addr(server_addr: &str) -> std::io::Result<SocketAddr> {
+    let addr: Vec<SocketAddr> = match server_addr.to_socket_addrs() {
+        Ok(addr) => addr.collect(),
+        Err(err) => return Err(Error::other(err)),
+    };
+
+    // 0.0.0.0 is a wildcard address and refers to local network
+    // addresses. I.e, 0.0.0.0:9000 like ":9000" refers to port
+    // 9000 on localhost.
+    for a in addr {
+        if a.ip().is_unspecified() {
+            return Ok(a);
+        }
+
+        let host = match a {
+            SocketAddr::V4(a) => Host::<&str>::Ipv4(*a.ip()),
+            SocketAddr::V6(a) => Host::Ipv6(*a.ip()),
+        };
+
+        if is_local_host(host, 0, 0)? {
+            return Ok(a);
+        }
+    }
+
+    Err(Error::other("host in server address should be this server"))
+}
+
+/// checks if the given parameter correspond to one of
+/// the local IP of the current machine
+pub fn is_local_host(host: Host<&str>, port: u16, local_port: u16) -> std::io::Result<bool> {
+    let local_set: HashSet<IpAddr> = LOCAL_IPS.iter().copied().collect();
+    let is_local_host = match host {
+        Host::Domain(domain) => {
+            let ips = resolve_domain(domain)?.into_iter().collect::<Vec<_>>();
+
+            ips.iter().any(|ip| local_set.contains(ip))
+        }
+        Host::Ipv4(ip) => local_set.contains(&IpAddr::V4(ip)),
+        Host::Ipv6(ip) => local_set.contains(&IpAddr::V6(ip)),
+    };
+
+    if port > 0 {
+        return Ok(is_local_host && port == local_port);
+    }
+
+    Ok(is_local_host)
+}
+
+fn get_custom_dns_resolver() -> Option<Arc<DynDnsResolver>> {
+    match CUSTOM_DNS_RESOLVER.read() {
+        Ok(guard) => guard.clone(),
+        Err(poisoned) => {
+            error!("CUSTOM_DNS_RESOLVER RwLock is poisoned; using resolver value despite poisoning");
+            let guard = poisoned.into_inner();
+            guard.clone()
+        }
+    }
+}
+
+fn has_custom_dns_resolver() -> bool {
+    get_custom_dns_resolver().is_some()
+}
+
+fn get_local_ips_with_fallback() -> Vec<IpAddr> {
+    match must_get_local_ips() {
+        Ok(ips) if !ips.is_empty() => ips,
+        _ => vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), IpAddr::V6(Ipv6Addr::LOCALHOST)],
+    }
+}
+
+/// returns IP address of given host using layered DNS resolution.
+///
+/// This is the async version of `get_host_ip()` that provides enhanced DNS resolution
+/// with Kubernetes support when the "net" feature is enabled.
+pub async fn get_host_ip(host: Host<&str>) -> std::io::Result<HashSet<IpAddr>> {
+    match host {
+        Host::Domain(domain) => {
+            // The cache is bypassed entirely when a custom resolver is installed or when the TTL
+            // is configured to 0 (disabled), in which case every lookup consults the resolver.
+            let cache_enabled = dns_cache_enabled() && !has_custom_dns_resolver();
+
+            // Check cache first
+            if cache_enabled
+                && let Ok(mut cache) = DNS_CACHE.lock()
+                && let Some(entry) = cache.get(domain)
+            {
+                if !entry.is_expired(*DNS_CACHE_TTL) {
+                    return Ok(entry.ips.clone());
+                }
+                // Remove expired entry
+                cache.remove(domain);
+            }
+
+            // Fallback to standard resolution when DNS resolver is not available
+            match resolve_domain(domain) {
+                Ok(ips) => {
+                    if cache_enabled {
+                        // Cache the result
+                        if let Ok(mut cache) = DNS_CACHE.lock() {
+                            cache.insert(domain.to_string(), DnsCacheEntry::new(ips.clone()));
+                            // Limit cache size to prevent memory bloat
+                            if cache.len() > 1000 {
+                                cache.retain(|_, v| !v.is_expired(*DNS_CACHE_TTL));
+                            }
+                        }
+                    }
+                    Ok(ips)
+                }
+                Err(err) => {
+                    error!("Failed to resolve domain {domain} using system resolver, err: {err}");
+                    Err(err)
+                }
+            }
+        }
+        Host::Ipv4(ip) => Ok([IpAddr::V4(ip)].into_iter().collect()),
+        Host::Ipv6(ip) => Ok([IpAddr::V6(ip)].into_iter().collect()),
+    }
+}
+
+pub fn get_available_port() -> u16 {
+    try_get_available_port().unwrap_or_default()
+}
+
+fn try_get_available_port() -> std::io::Result<u16> {
+    let mut last_err = None;
+
+    for _ in 0..8 {
+        for candidate in ["127.0.0.1:0", "0.0.0.0:0"] {
+            match TcpListener::bind(candidate) {
+                Ok(listener) => {
+                    return listener
+                        .local_addr()
+                        .map(|addr| addr.port())
+                        .map_err(|err| Error::new(err.kind(), format!("Failed to read ephemeral port: {err}")));
+                }
+                Err(err)
+                    if matches!(
+                        err.kind(),
+                        std::io::ErrorKind::AddrInUse
+                            | std::io::ErrorKind::AddrNotAvailable
+                            | std::io::ErrorKind::Interrupted
+                            | std::io::ErrorKind::WouldBlock
+                            | std::io::ErrorKind::PermissionDenied
+                    ) =>
+                {
+                    last_err = Some(err);
+                }
+                Err(err) => {
+                    return Err(Error::new(err.kind(), format!("Failed to bind for ephemeral port on {candidate}: {err}")));
+                }
+            }
+        }
+
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    match last_err {
+        Some(err) => Err(Error::new(err.kind(), format!("Failed to bind for ephemeral port: {err}"))),
+        None => Err(Error::other("failed to bind for ephemeral port: unknown bind failure")),
+    }
+}
+
+/// returns IPs of local interface
+pub fn must_get_local_ips() -> std::io::Result<Vec<IpAddr>> {
+    match netif::up() {
+        Ok(up) => Ok(up.map(|x| x.address().to_owned()).collect()),
+        Err(err) => Err(Error::other(format!("Unable to get IP addresses of this host: {err}"))),
+    }
+}
+
+pub fn get_default_location(_u: Url, _region_override: &str) -> String {
+    if !_region_override.is_empty() {
+        return _region_override.to_string();
+    }
+
+    _u.host().map(|host| host.to_string()).unwrap_or_default()
+}
+
+pub fn get_endpoint_url(endpoint: &str, secure: bool) -> Result<Url, Error> {
+    let mut scheme = "https";
+    if !secure {
+        scheme = "http";
+    }
+
+    let endpoint_url_str = format!("{scheme}://{endpoint}");
+    let Ok(endpoint_url) = Url::parse(&endpoint_url_str) else {
+        return Err(Error::other("url parse error."));
+    };
+
+    //is_valid_endpoint_url(endpoint_url)?;
+    Ok(endpoint_url)
+}
+
+pub const DEFAULT_DIAL_TIMEOUT: i64 = 5;
+
+const ALLOWED_CUSTOM_QUERY_PREFIX: &str = "x-";
+
+pub fn is_custom_query_value(qs_key: &str) -> bool {
+    qs_key.starts_with(ALLOWED_CUSTOM_QUERY_PREFIX)
+}
+
+#[derive(Debug, Clone)]
+pub struct XHost {
+    pub name: String,
+    pub port: u16,
+    pub is_port_set: bool,
+}
+
+impl Display for XHost {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if !self.is_port_set {
+            write!(f, "{}", self.name)
+        } else if self.name.contains(':') {
+            write!(f, "[{}]:{}", self.name, self.port)
+        } else {
+            write!(f, "{}:{}", self.name, self.port)
+        }
+    }
+}
+
+impl TryFrom<String> for XHost {
+    type Error = Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if let Some(addr) = value.to_socket_addrs()?.next() {
+            Ok(Self {
+                name: addr.ip().to_string(),
+                port: addr.port(),
+                is_port_set: addr.port() > 0,
+            })
+        } else {
+            Err(Error::new(std::io::ErrorKind::InvalidData, "value invalid"))
+        }
+    }
+}
+
+pub fn parse_and_resolve_address(addr_str: &str) -> std::io::Result<SocketAddr> {
+    let resolved_addr: SocketAddr = if let Some(port) = addr_str.strip_prefix(":") {
+        let port_str = port;
+        let port: u16 = port_str
+            .parse()
+            .map_err(|e| Error::other(format!("Invalid port format: {addr_str}, err:{e:?}")))?;
+        let final_port = if port == 0 {
+            try_get_available_port()? // assume get_available_port is available here
+        } else {
+            port
+        };
+        SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), final_port)
+    } else {
+        let mut addr = check_local_server_addr(addr_str)?; // assume check_local_server_addr is available here
+        if addr.port() == 0 {
+            addr.set_port(try_get_available_port()?);
+        }
+        addr
+    };
+    Ok(resolved_addr)
+}
+
+pub fn bytes_stream<S, E>(stream: S, content_length: usize) -> impl Stream<Item = Result<Bytes, E>> + Send + 'static
+where
+    S: Stream<Item = Result<Bytes, E>> + Send + 'static,
+    E: Send + 'static,
+{
+    AsyncTryStream::<Bytes, E, _>::new(|mut y| async move {
+        pin_mut!(stream);
+        let mut remaining: usize = content_length;
+        while let Some(result) = stream.next().await {
+            let mut bytes = result?;
+            if bytes.len() > remaining {
+                bytes.truncate(remaining);
+            }
+            remaining -= bytes.len();
+            y.yield_ok(bytes).await;
+        }
+        Ok(())
+    })
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::{collections::HashSet, io::Error as IoError};
+
+    fn mock_resolver(domain: &str) -> std::io::Result<HashSet<IpAddr>> {
+        match domain {
+            "localhost" => Ok([
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
+            ]
+            .into_iter()
+            .collect()),
+            "example.org" => Ok([IpAddr::V4(Ipv4Addr::new(192, 0, 2, 10))].into_iter().collect()),
+            "invalid.nonexistent.domain.example" => Err(IoError::other("mock DNS failure")),
+            _ => Ok(HashSet::new()),
+        }
+    }
+
+    #[test]
+    fn test_is_socket_addr() {
+        let test_cases = [
+            // Valid IP addresses
+            ("192.168.1.0", true),
+            ("127.0.0.1", true),
+            ("10.0.0.1", true),
+            ("0.0.0.0", true),
+            ("255.255.255.255", true),
+            // Valid IPv6 addresses
+            ("2001:db8::1", true),
+            ("::1", true),
+            ("::", true),
+            ("fe80::1", true),
+            // Valid socket addresses
+            ("192.168.1.0:8080", true),
+            ("127.0.0.1:9000", true),
+            ("[2001:db8::1]:9000", true),
+            ("[::1]:8080", true),
+            ("0.0.0.0:0", true),
+            // Invalid addresses
+            ("localhost", false),
+            ("localhost:9000", false),
+            ("example.com", false),
+            ("example.com:8080", false),
+            ("http://192.168.1.0", false),
+            ("http://192.168.1.0:9000", false),
+            ("256.256.256.256", false),
+            ("192.168.1", false),
+            ("192.168.1.0.1", false),
+            ("", false),
+            (":", false),
+            (":::", false),
+            ("invalid_ip", false),
+        ];
+
+        for (addr, expected) in test_cases {
+            let result = is_socket_addr(addr);
+            assert_eq!(expected, result, "addr: '{addr}', expected: {expected}, got: {result}");
+        }
+    }
+
+    #[test]
+    fn test_check_local_server_addr() {
+        // Test valid local addresses
+        let valid_cases = ["localhost:54321", "127.0.0.1:9000", "0.0.0.0:9000", "[::1]:8080", "::1:8080"];
+
+        for addr in valid_cases {
+            let result = check_local_server_addr(addr);
+            assert!(result.is_ok(), "Expected '{addr}' to be valid, but got error: {result:?}");
+        }
+
+        // Test invalid addresses
+        let invalid_cases = [
+            ("localhost", "invalid socket address"),
+            ("", "invalid socket address"),
+            ("203.0.113.1:54321", "host in server address should be this server"),
+            ("8.8.8.8:53", "host in server address should be this server"),
+            (":-10", "invalid port value"),
+            ("invalid:port", "invalid port value"),
+        ];
+
+        for (addr, expected_error_pattern) in invalid_cases {
+            let result = check_local_server_addr(addr);
+            assert!(result.is_err(), "Expected '{addr}' to be invalid, but it was accepted: {result:?}");
+
+            let error_msg = result.unwrap_err().to_string();
+            assert!(
+                error_msg.contains(expected_error_pattern) || error_msg.contains("invalid socket address"),
+                "Error message '{error_msg}' doesn't contain expected pattern '{expected_error_pattern}' for address '{addr}'"
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_local_host() {
+        let _resolver_guard = set_mock_dns_resolver(mock_resolver);
+
+        // Test localhost domain
+        let localhost_host = Host::Domain("localhost");
+        assert!(is_local_host(localhost_host, 0, 0).unwrap());
+
+        // Test loopback IP addresses
+        let ipv4_loopback = Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1));
+        assert!(is_local_host(ipv4_loopback, 0, 0).unwrap());
+
+        let ipv6_loopback = Host::Ipv6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
+        assert!(is_local_host(ipv6_loopback, 0, 0).unwrap());
+
+        // Test port matching
+        let localhost_with_port1 = Host::Domain("localhost");
+        assert!(is_local_host(localhost_with_port1, 8080, 8080).unwrap());
+        let localhost_with_port2 = Host::Domain("localhost");
+        assert!(!is_local_host(localhost_with_port2, 8080, 9000).unwrap());
+
+        // Test non-local host
+        let external_host = Host::Ipv4(Ipv4Addr::new(8, 8, 8, 8));
+        assert!(!is_local_host(external_host, 0, 0).unwrap());
+
+        // Test invalid domain should return error
+        let invalid_host = Host::Domain("invalid.nonexistent.domain.example");
+        assert!(is_local_host(invalid_host, 0, 0).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_host_ip() {
+        let _resolver_guard = set_mock_dns_resolver(mock_resolver);
+
+        // Test IPv4 address
+        let ipv4_host = Host::Ipv4(Ipv4Addr::new(192, 168, 1, 1));
+        let ipv4_result = get_host_ip(ipv4_host).await.unwrap();
+        assert_eq!(ipv4_result.len(), 1);
+        assert!(ipv4_result.contains(&IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1))));
+
+        // Test IPv6 address
+        let ipv6_host = Host::Ipv6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1));
+        let ipv6_result = get_host_ip(ipv6_host).await.unwrap();
+        assert_eq!(ipv6_result.len(), 1);
+        assert!(ipv6_result.contains(&IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1))));
+
+        // Test localhost domain
+        let localhost_host = Host::Domain("localhost");
+        let localhost_result = get_host_ip(localhost_host).await.unwrap();
+        assert!(!localhost_result.is_empty());
+        // Should contain at least loopback address
+        assert!(
+            localhost_result.contains(&IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))
+                || localhost_result.contains(&IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)))
+        );
+
+        // Test invalid domain
+        let invalid_host = Host::Domain("invalid.nonexistent.domain.example");
+        assert!(get_host_ip(invalid_host).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_host_ip_preserves_resolver_error_provenance() {
+        let _resolver_guard = set_mock_dns_resolver(|_| Err(IoError::from_raw_os_error(-3)));
+
+        let err = get_host_ip(Host::Domain("temporarily-unavailable.example"))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.raw_os_error(), Some(-3));
+    }
+
+    #[test]
+    fn test_resolve_domain_preserves_system_resolver_error_provenance() {
+        let _resolver_lock = DNS_RESOLVER_TEST_LOCK.lock().unwrap();
+        reset_dns_resolver_inner();
+
+        // DNS labels are limited to 63 bytes, so the system resolver rejects this before lookup.
+        let err = resolve_domain("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.invalid").unwrap_err();
+
+        assert_ne!(err.kind(), std::io::ErrorKind::Other, "system resolver error was wrapped: {err}");
+    }
+
+    #[test]
+    fn test_dns_cache_entry_expiry() {
+        let ips: HashSet<IpAddr> = [IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))].into_iter().collect();
+
+        // A freshly cached entry is not expired under a normal TTL.
+        let fresh = DnsCacheEntry::new(ips.clone());
+        assert!(!fresh.is_expired(Duration::from_secs(300)));
+
+        // An entry whose age exceeds the TTL is expired; a longer TTL keeps it valid.
+        let aged = DnsCacheEntry {
+            ips,
+            cached_at: Instant::now()
+                .checked_sub(Duration::from_secs(600))
+                .expect("instant in range"),
+        };
+        assert!(aged.is_expired(Duration::from_secs(300)));
+        assert!(!aged.is_expired(Duration::from_secs(900)));
+    }
+
+    #[test]
+    fn test_get_available_port() {
+        let port1 = get_available_port();
+        let port2 = get_available_port();
+
+        if port1 == 0 || port2 == 0 {
+            return;
+        }
+
+        // Port should be in valid range (u16 max is always <= 65535)
+        assert!(port1 > 0);
+        assert!(port2 > 0);
+    }
+
+    #[test]
+    fn test_must_get_local_ips() {
+        let local_ips = must_get_local_ips().unwrap();
+        let local_set: HashSet<IpAddr> = local_ips.into_iter().collect();
+
+        // Should contain loopback addresses
+        assert!(local_set.contains(&IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))));
+
+        // Should not be empty
+        assert!(!local_set.is_empty());
+
+        // All IPs should be valid
+        for ip in &local_set {
+            match ip {
+                IpAddr::V4(_) | IpAddr::V6(_) => {} // Valid
+            }
+        }
+    }
+
+    #[test]
+    fn test_xhost_display() {
+        // Test without port
+        let host_no_port = XHost {
+            name: "example.com".to_string(),
+            port: 0,
+            is_port_set: false,
+        };
+        assert_eq!(host_no_port.to_string(), "example.com");
+
+        // Test with port (IPv4-like name)
+        let host_with_port = XHost {
+            name: "192.168.1.1".to_string(),
+            port: 8080,
+            is_port_set: true,
+        };
+        assert_eq!(host_with_port.to_string(), "192.168.1.1:8080");
+
+        // Test with port (IPv6-like name)
+        let host_ipv6_with_port = XHost {
+            name: "2001:db8::1".to_string(),
+            port: 9000,
+            is_port_set: true,
+        };
+        assert_eq!(host_ipv6_with_port.to_string(), "[2001:db8::1]:9000");
+
+        // Test domain name with port
+        let host_domain_with_port = XHost {
+            name: "example.com".to_string(),
+            port: 443,
+            is_port_set: true,
+        };
+        assert_eq!(host_domain_with_port.to_string(), "example.com:443");
+    }
+
+    #[test]
+    fn test_xhost_try_from() {
+        // Test valid IPv4 address with port
+        let result = XHost::try_from("192.168.1.1:8080".to_string()).unwrap();
+        assert_eq!(result.name, "192.168.1.1");
+        assert_eq!(result.port, 8080);
+        assert!(result.is_port_set);
+
+        // Test valid IPv4 address without port
+        let result = XHost::try_from("192.168.1.1:0".to_string()).unwrap();
+        assert_eq!(result.name, "192.168.1.1");
+        assert_eq!(result.port, 0);
+        assert!(!result.is_port_set);
+
+        // Test valid IPv6 address with port
+        let result = XHost::try_from("[2001:db8::1]:9000".to_string()).unwrap();
+        assert_eq!(result.name, "2001:db8::1");
+        assert_eq!(result.port, 9000);
+        assert!(result.is_port_set);
+
+        // Test localhost with port (localhost may resolve to either IPv4 or IPv6)
+        let result = XHost::try_from("localhost:3000".to_string()).unwrap();
+        // localhost can resolve to either 127.0.0.1 or ::1 depending on system configuration
+        assert!(result.name == "127.0.0.1" || result.name == "::1");
+        assert_eq!(result.port, 3000);
+        assert!(result.is_port_set);
+
+        // Test invalid format
+        let result = XHost::try_from("invalid_format".to_string());
+        assert!(result.is_err());
+
+        // Test empty string
+        let result = XHost::try_from("".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_and_resolve_address() {
+        // Test port-only format
+        let result = parse_and_resolve_address(":8080").unwrap();
+        assert_eq!(result.ip(), IpAddr::V6(Ipv6Addr::UNSPECIFIED));
+        assert_eq!(result.port(), 8080);
+
+        // Test port-only format with port 0 (should get available port)
+        let result = match parse_and_resolve_address(":0") {
+            Ok(result) => result,
+            Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => return,
+            Err(err) => panic!("expected dynamic port resolution for :0: {err}"),
+        };
+        assert_eq!(result.ip(), IpAddr::V6(Ipv6Addr::UNSPECIFIED));
+        assert!(result.port() > 0);
+
+        // Test localhost with port
+        let result = parse_and_resolve_address("localhost:9000").unwrap();
+        assert_eq!(result.port(), 9000);
+
+        // Test localhost with port 0 (should get available port)
+        let result = match parse_and_resolve_address("localhost:0") {
+            Ok(result) => result,
+            Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => return,
+            Err(err) => panic!("expected dynamic port resolution for localhost:0: {err}"),
+        };
+        assert!(result.port() > 0);
+
+        // Test 0.0.0.0 with port
+        let result = parse_and_resolve_address("0.0.0.0:7000").unwrap();
+        assert_eq!(result.ip(), IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
+        assert_eq!(result.port(), 7000);
+
+        // Test invalid port format
+        let result = parse_and_resolve_address(":invalid_port");
+        assert!(result.is_err());
+
+        // Test invalid address
+        let result = parse_and_resolve_address("example.org:8080");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_edge_cases() {
+        // Test empty string for is_socket_addr
+        assert!(!is_socket_addr(""));
+
+        // Test single colon for is_socket_addr
+        assert!(!is_socket_addr(":"));
+
+        // Test malformed IPv6 for is_socket_addr
+        assert!(!is_socket_addr("[::]"));
+        assert!(!is_socket_addr("[::1"));
+
+        // Test very long strings
+        let long_string = "a".repeat(1000);
+        assert!(!is_socket_addr(&long_string));
+
+        // Test unicode characters
+        assert!(!is_socket_addr("пример.example.com"));
+
+        // Test special characters
+        assert!(!is_socket_addr("test@example.com:8080"));
+        assert!(!is_socket_addr("http://example.com:8080"));
+    }
+
+    #[test]
+    fn test_boundary_values() {
+        // Test port boundaries
+        assert!(is_socket_addr("127.0.0.1:0"));
+        assert!(is_socket_addr("127.0.0.1:65535"));
+        assert!(!is_socket_addr("127.0.0.1:65536"));
+
+        // Test IPv4 boundaries
+        assert!(is_socket_addr("0.0.0.0"));
+        assert!(is_socket_addr("255.255.255.255"));
+        assert!(!is_socket_addr("256.0.0.0"));
+        assert!(!is_socket_addr("0.0.0.256"));
+
+        // Test XHost with boundary ports
+        let host_max_port = XHost {
+            name: "example.com".to_string(),
+            port: 65535,
+            is_port_set: true,
+        };
+        assert_eq!(host_max_port.to_string(), "example.com:65535");
+
+        let host_zero_port = XHost {
+            name: "example.com".to_string(),
+            port: 0,
+            is_port_set: true,
+        };
+        assert_eq!(host_zero_port.to_string(), "example.com:0");
+    }
+
+    #[test]
+    fn test_is_socket_addr_accepts_ipv6_zone_identifier() {
+        assert!(is_socket_addr("fe80::1%en0"));
+        assert!(is_socket_addr("[fe80::1%en0]:9000"));
+        assert!(!is_socket_addr("fe80::1%en0:9000"));
+        assert!(!is_socket_addr("fe80::1%en0 "));
+        assert!(!is_socket_addr("fe80::1%\t"));
+    }
+}

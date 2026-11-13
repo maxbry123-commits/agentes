@@ -1,0 +1,28 @@
+# Axolotl on aarch64 (Grace) + Blackwell (B200 sm_100) for Empire AI Beta.
+# Base = NGC PyTorch arm64 (CUDA>=12.8, torch already Blackwell-built, flash-attn/TE prebuilt for arm).
+# Canonical recipe. On beta there is NO docker daemon -> materialize this into an enroot .sqsh with
+# build_image_enroot.sh (enroot import base -> start --rw -> run these pip lines -> export .sqsh),
+# or run the pip block at job start into a mounted venv. Keep torch as shipped (do NOT let axolotl
+# pull a different torch/cuda that would drop sm_100).
+FROM nvcr.io/nvidia/pytorch:26.06-py3
+
+ENV DEBIAN_FRONTEND=noninteractive PIP_NO_CACHE_DIR=1
+ENV HF_HOME=/workspace/hf_home
+
+# Axolotl + trainer deps. --no-build-isolation so flash-attn/torch from the base are reused.
+# Constrain torch/torchvision/torchaudio/triton to "already installed" to prevent clobbering the
+# Blackwell-built wheels that ship in the NGC base.
+RUN python -m pip install --upgrade pip packaging ninja && \
+    TORCH_V="$(python -c 'import torch;print(torch.__version__.split("+")[0])')" && \
+    printf 'torch==%s\n' "$TORCH_V" > /tmp/torch-constraint.txt && \
+    pip install --no-build-isolation -c /tmp/torch-constraint.txt \
+        "axolotl[flash-attn,deepspeed]" \
+        "transformers>=4.46" "datasets" "accelerate" "peft" "trl" "sentencepiece" "bitsandbytes" && \
+    python -c "import axolotl, transformers, torch; \
+print('axolotl OK', 'torch', torch.__version__, 'cuda', torch.version.cuda, \
+'cap', torch.cuda.get_device_capability(0) if torch.cuda.is_available() else 'no-cuda-at-build')"
+
+WORKDIR /workspace
+# NOTE: flash-attn on arm64+sm_100 is the usual sharp edge. If the base's flash-attn is incompatible,
+# either (a) drop the [flash-attn] extra and set flash_attention: false / sdpa in the axolotl yaml, or
+# (b) pip install flash-attn built against the base's torch/CUDA. Validate in the Phase-1 smoke.

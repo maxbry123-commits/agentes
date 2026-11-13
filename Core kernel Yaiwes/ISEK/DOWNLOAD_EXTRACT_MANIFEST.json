@@ -1,0 +1,38 @@
+{
+  "bundle_bytes": 24576558,
+  "bundle_sha256": "871626d897914f7885d52233c2095b8c20a3cda83157c43421b5d41edfa0f29f",
+  "extracted_tree": {
+    "bytes": 25012998,
+    "files": 82,
+    "sha256": "5932cc111f13fa4aaab521b2ef6c6204cb94ed8a7c68911dbd289a96edbadc2e"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "ISEK.bundle.zip.part-0001",
+      "sha256": "d2abe8b3aaa25c07b9b56b0729877ddf2c2494bc058ade12f66b4d022ef4746a"
+    },
+    {
+      "bytes": 11993646,
+      "name": "ISEK.bundle.zip.part-0002",
+      "sha256": "d90b0d67bd6d291409f8640d88aba0b9a59b98c6f8eb2c926479dd1e33d7aabb"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "ISEK",
+  "source_bytes": 25012998,
+  "source_commit": "e2959f3c5209c396510b567faabe22982a231ad5",
+  "source_files": 82,
+  "source_ref": "HEAD",
+  "source_repo": "isekOS/ISEK",
+  "source_tree": {
+    "bytes": 25012998,
+    "files": 82,
+    "sha256": "5932cc111f13fa4aaab521b2ef6c6204cb94ed8a7c68911dbd289a96edbadc2e"
+  }
+}

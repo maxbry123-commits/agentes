@@ -1,0 +1,18 @@
+[project]
+name = "package-c"
+version = "23.42"
+description = "some package C"
+license = { text = "Apache-2.0 OR MIT" } # intentional a SPDX Expression
+authors = []
+requires-python = ">=3.8"
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+  "License :: OSI Approved :: MIT License"
+]
+
+[tool.setuptools]
+py-modules = ["module_c"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

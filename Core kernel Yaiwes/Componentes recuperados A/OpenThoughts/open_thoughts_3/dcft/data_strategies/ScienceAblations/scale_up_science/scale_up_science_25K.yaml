@@ -1,0 +1,5 @@
+operators:
+- id: load_preexisting_scale_up_science
+  config:
+    type: load_preexisting
+    framework_name: base_scale_up_science

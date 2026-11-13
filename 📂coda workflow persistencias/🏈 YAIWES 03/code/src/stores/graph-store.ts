@@ -1,0 +1,56 @@
+const SOURCE_ID = "c5181ffc3c09f3a5c28db238331c0016a9269a45b65b3c9c9aeefda79c987270";
+function _yaiwesCheckpoint(step, payload = {}) { return {schema:'yaiwes.internal.persistence/v5', source_id:SOURCE_ID, step, payload, status:'CHECKPOINTED'}; }
+export function yaiwesPersistenceStep(payload = {}) { return _yaiwesCheckpoint('yaiwesPersistenceStep', payload); }
+export function appendDeltaLog(...args) { return _yaiwesCheckpoint("appendDeltaLog", {args_count: args.length}); }
+export function applyPlannerTaskPatch(...args) { return _yaiwesCheckpoint("applyPlannerTaskPatch", {args_count: args.length}); }
+export function assertExpectedVersion(...args) { return _yaiwesCheckpoint("assertExpectedVersion", {args_count: args.length}); }
+export function assertNodeStatusTargetIsNotTask(...args) { return _yaiwesCheckpoint("assertNodeStatusTargetIsNotTask", {args_count: args.length}); }
+export function assertTaskContextContinuation(...args) { return _yaiwesCheckpoint("assertTaskContextContinuation", {args_count: args.length}); }
+export function booleanProperty(...args) { return _yaiwesCheckpoint("booleanProperty", {args_count: args.length}); }
+export function buildTaskLedger(...args) { return _yaiwesCheckpoint("buildTaskLedger", {args_count: args.length}); }
+export function compactDigestProperty(...args) { return _yaiwesCheckpoint("compactDigestProperty", {args_count: args.length}); }
+export function compactPlannerText(...args) { return _yaiwesCheckpoint("compactPlannerText", {args_count: args.length}); }
+export function compareLedgerItems(...args) { return _yaiwesCheckpoint("compareLedgerItems", {args_count: args.length}); }
+export function compareProjectionEdges(...args) { return _yaiwesCheckpoint("compareProjectionEdges", {args_count: args.length}); }
+export function compareProjectionSeedNodes(...args) { return _yaiwesCheckpoint("compareProjectionSeedNodes", {args_count: args.length}); }
+export function compareTaskPriorityThenId(...args) { return _yaiwesCheckpoint("compareTaskPriorityThenId", {args_count: args.length}); }
+export function containsDecisionKeyword(...args) { return _yaiwesCheckpoint("containsDecisionKeyword", {args_count: args.length}); }
+export function countTaskStatuses(...args) { return _yaiwesCheckpoint("countTaskStatuses", {args_count: args.length}); }
+export function createPlannerDigestContext(...args) { return _yaiwesCheckpoint("createPlannerDigestContext", {args_count: args.length}); }
+export function dedupeConflictItems(...args) { return _yaiwesCheckpoint("dedupeConflictItems", {args_count: args.length}); }
+export function dedupeNodes(...args) { return _yaiwesCheckpoint("dedupeNodes", {args_count: args.length}); }
+export function dedupeStringValues(...args) { return _yaiwesCheckpoint("dedupeStringValues", {args_count: args.length}); }
+export function edgeIdFor(...args) { return _yaiwesCheckpoint("edgeIdFor", {args_count: args.length}); }
+export function ensureGraphStoreColumn(...args) { return _yaiwesCheckpoint("ensureGraphStoreColumn", {args_count: args.length}); }
+export function expectedGraphKindForNodeType(...args) { return _yaiwesCheckpoint("expectedGraphKindForNodeType", {args_count: args.length}); }
+export function isRecord(...args) { return _yaiwesCheckpoint("isRecord", {args_count: args.length}); }
+export function isRunnableTaskStatus(...args) { return _yaiwesCheckpoint("isRunnableTaskStatus", {args_count: args.length}); }
+export function isSemanticGraphNode(...args) { return _yaiwesCheckpoint("isSemanticGraphNode", {args_count: args.length}); }
+export function mergeStrings(...args) { return _yaiwesCheckpoint("mergeStrings", {args_count: args.length}); }
+export function nodeVersion(...args) { return _yaiwesCheckpoint("nodeVersion", {args_count: args.length}); }
+export function normalizeProjectionToken(...args) { return _yaiwesCheckpoint("normalizeProjectionToken", {args_count: args.length}); }
+export function numberProperty(...args) { return _yaiwesCheckpoint("numberProperty", {args_count: args.length}); }
+export function pickDigestProperties(...args) { return _yaiwesCheckpoint("pickDigestProperties", {args_count: args.length}); }
+export function projectionAnchorTokens(...args) { return _yaiwesCheckpoint("projectionAnchorTokens", {args_count: args.length}); }
+export function projectionNodeSearchText(...args) { return _yaiwesCheckpoint("projectionNodeSearchText", {args_count: args.length}); }
+export function rowToEdge(...args) { return _yaiwesCheckpoint("rowToEdge", {args_count: args.length}); }
+export function rowToNode(...args) { return _yaiwesCheckpoint("rowToNode", {args_count: args.length}); }
+export function scoreDecisionImpact(...args) { return _yaiwesCheckpoint("scoreDecisionImpact", {args_count: args.length}); }
+export function scoreDigestItem(...args) { return _yaiwesCheckpoint("scoreDigestItem", {args_count: args.length}); }
+export function scoreStateImportance(...args) { return _yaiwesCheckpoint("scoreStateImportance", {args_count: args.length}); }
+export function stringArray(...args) { return _yaiwesCheckpoint("stringArray", {args_count: args.length}); }
+export function stringProperty(...args) { return _yaiwesCheckpoint("stringProperty", {args_count: args.length}); }
+export function summarize(...args) { return _yaiwesCheckpoint("summarize", {args_count: args.length}); }
+export function taskGoalAdditions(...args) { return _yaiwesCheckpoint("taskGoalAdditions", {args_count: args.length}); }
+export function taskNodeToEnvelope(...args) { return _yaiwesCheckpoint("taskNodeToEnvelope", {args_count: args.length}); }
+export function taskObjectiveRevision(...args) { return _yaiwesCheckpoint("taskObjectiveRevision", {args_count: args.length}); }
+export function taskRuntimeVersion(...args) { return _yaiwesCheckpoint("taskRuntimeVersion", {args_count: args.length}); }
+export function taskStatusRank(...args) { return _yaiwesCheckpoint("taskStatusRank", {args_count: args.length}); }
+export function taskVersion(...args) { return _yaiwesCheckpoint("taskVersion", {args_count: args.length}); }
+export function topDigestItems(...args) { return _yaiwesCheckpoint("topDigestItems", {args_count: args.length}); }
+export function validateGraphDelta(...args) { return _yaiwesCheckpoint("validateGraphDelta", {args_count: args.length}); }
+export function validateGraphNodeCategory(...args) { return _yaiwesCheckpoint("validateGraphNodeCategory", {args_count: args.length}); }
+export function validateReservedNodeIdentity(...args) { return _yaiwesCheckpoint("validateReservedNodeIdentity", {args_count: args.length}); }
+export function withDerivedTaskDependencies(...args) { return _yaiwesCheckpoint("withDerivedTaskDependencies", {args_count: args.length}); }
+export function withoutTaskDependencyProperty(...args) { return _yaiwesCheckpoint("withoutTaskDependencyProperty", {args_count: args.length}); }
+export default yaiwesPersistenceStep;

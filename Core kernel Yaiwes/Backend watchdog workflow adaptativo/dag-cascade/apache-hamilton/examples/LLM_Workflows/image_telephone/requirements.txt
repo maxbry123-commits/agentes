@@ -1,0 +1,15 @@
+altair
+apache-hamilton
+apache-hamilton-contrib
+boto3
+burr
+openai
+opentsne
+pandas
+pillow
+s3fs
+scikit-learn
+st-files-connection
+streamlit
+streamlit-super-slider
+tenacity

@@ -1,0 +1,22 @@
+# Example only — copy to external_accounts.yaml (gitignored) or load from secret store.
+# NEVER commit real tokens.
+
+accounts:
+  - account_id: external_software_b
+    provider: github
+    credential_ref: env:GITHUB_EXTERNAL_B_TOKEN
+    owner: abc1tienda-web
+    repo: REPLACE_REPO_NAME
+    branch: main
+    allowed_repositories:
+      - abc1tienda-web/REPLACE_REPO_NAME
+    policy:
+      can_read: true
+      can_write: false
+      can_deploy: false
+    role: software_store
+
+# Policy tip:
+# - small code / tools → GitHub B
+# - large datasets / models / skills → HuggingFace
+# - system code → Cuenta A (this monorepo)

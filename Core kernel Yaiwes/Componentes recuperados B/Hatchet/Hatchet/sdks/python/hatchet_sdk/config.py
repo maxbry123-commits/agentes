@@ -1,0 +1,339 @@
+import json
+from collections.abc import Callable
+from datetime import timedelta
+from enum import Enum
+from logging import Logger, getLogger
+from typing import overload
+
+import tenacity
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from hatchet_sdk.logger import logger
+from hatchet_sdk.token import get_addresses_from_jwt, get_tenant_id_from_jwt
+from hatchet_sdk.utils.opentelemetry import OTelAttribute
+
+
+def create_settings_config(env_prefix: str) -> SettingsConfigDict:
+    return SettingsConfigDict(
+        env_prefix=env_prefix,
+        env_file=(".env", ".env.hatchet", ".env.dev", ".env.local"),
+        extra="ignore",
+    )
+
+
+class ClientTLSConfig(BaseSettings):
+    model_config = create_settings_config(
+        env_prefix="HATCHET_CLIENT_TLS_",
+    )
+
+    strategy: str = "tls"
+    cert_file: str | None = None
+    key_file: str | None = None
+    root_ca_file: str | None = None
+    server_name: str = ""
+
+
+class HealthcheckConfig(BaseSettings):
+    model_config = create_settings_config(
+        env_prefix="HATCHET_CLIENT_WORKER_HEALTHCHECK_",
+    )
+
+    port: int = 8001
+    enabled: bool = False
+    event_loop_block_threshold_seconds: timedelta = Field(
+        default=timedelta(seconds=5),
+        description="If the worker listener process event loop appears blocked longer than this threshold, /health returns 503. Value is interpreted as seconds.",
+    )
+    bind_address: str | None = "0.0.0.0"
+
+    @field_validator("event_loop_block_threshold_seconds", mode="before")
+    @classmethod
+    def validate_event_loop_block_threshold_seconds(
+        cls, value: timedelta | int | float | str
+    ) -> timedelta:
+        if isinstance(value, timedelta):
+            return value
+
+        if isinstance(value, int | float):
+            return timedelta(seconds=float(value))
+
+        v = value.strip()
+        if v.endswith("s"):
+            v = v[:-1].strip()
+
+        return timedelta(seconds=float(v))
+
+    @field_validator("bind_address", mode="after")
+    @classmethod
+    def validate_bind_address(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        if value.lower() == "none" or not value.strip():
+            return None
+
+        return value
+
+
+class OpenTelemetryConfig(BaseSettings):
+    model_config = create_settings_config(
+        env_prefix="HATCHET_CLIENT_OPENTELEMETRY_",
+    )
+
+    excluded_attributes: list[OTelAttribute] = Field(
+        default_factory=list,
+        description='Note that if specifying this field via an environment variable, the variable must be a valid JSON array. For example: \'["action_name", "action_payload"]\'',
+    )
+
+    include_task_name_in_start_step_run_span_name: bool = False
+
+    individual_run_spans_for_bulk_run: bool = Field(
+        default=False,
+        description=(
+            "If true, a child `hatchet.run_workflow` span is created for each "
+            "item in a bulk run (`run_workflows`), nested under the parent "
+            "`hatchet.run_workflows` span, and each item's traceparent points at "
+            "its own span. Defaults to false to preserve the existing span "
+            "structure for downstream OpenTelemetry collectors."
+        ),
+    )
+
+
+class HTTPMethod(str, Enum):
+    GET = "GET"
+    DELETE = "DELETE"
+    POST = "POST"
+    PUT = "PUT"
+    PATCH = "PATCH"
+    HEAD = "HEAD"
+    OPTIONS = "OPTIONS"
+
+
+def tenacity_before_sleep(retry_state: tenacity.RetryCallState) -> None:
+    """Called between tenacity retries."""
+    logger.debug(
+        f"retrying {retry_state.fn}: attempt "
+        f"{retry_state.attempt_number} ended with: {retry_state.outcome}",
+    )
+
+
+class TenacityConfig(BaseSettings):
+    model_config = create_settings_config(
+        env_prefix="HATCHET_CLIENT_TENACITY_",
+    )
+
+    max_attempts: int = 5
+
+    retry_429: bool = Field(
+        default=False,
+        description="Enable retries for HTTP 429 Too Many Requests responses. Default: off.",
+    )
+    retry_not_found: bool = Field(
+        default=False,
+        description="Enable retries for NOT_FOUND gRPC responses. For resources that may not yet exist due to async creation. Default: off.",
+    )
+    retry_transport_errors: bool = Field(
+        default=False,
+        description="Enable retries for REST transport errors (timeout, connection, TLS). Default: off.",
+    )
+    retry_transport_methods: list[HTTPMethod] = Field(
+        default_factory=lambda: [HTTPMethod.GET, HTTPMethod.DELETE],
+        description="HTTP methods to retry on transport errors when retry_transport_errors is enabled; excludes POST/PUT/PATCH by default due to idempotency concerns.",
+    )
+    wait: type[tenacity.wait.wait_base] = tenacity.wait_exponential_jitter
+    before_sleep: Callable[[tenacity.RetryCallState], None] = tenacity_before_sleep
+
+
+DEFAULT_READY_TIMEOUT_SECONDS = 300.0
+
+
+class EmbeddedHatchetConfig(BaseSettings):
+    model_config = create_settings_config(
+        env_prefix="HATCHET_CLIENT_EMBEDDED_",
+    )
+
+    version: str | None = Field(
+        default=None,
+        description=(
+            "hatchet-embedded release tag to download (defaults to latest). Tags "
+            "correspond to the Hatchet engine version baked into the sidecar, so "
+            "pinning this pins the engine."
+        ),
+    )
+
+    binary_path: str | None = Field(
+        default=None,
+        description="path to an existing sidecar binary, skips the download",
+    )
+
+    checksum: str | None = Field(
+        default=None,
+        description=(
+            "expected sha256 hex digest of the sidecar binary. When set, it "
+            "replaces the release's checksums.txt as the trust anchor, so a "
+            "compromised release channel cannot substitute the binary. Pin it "
+            "together with `version`."
+        ),
+    )
+
+    database_url: str | None = Field(
+        default=None,
+        description="use an existing Postgres instead of the bundled one",
+    )
+
+    postgres_data_dir: str | None = Field(
+        default=None,
+        description="store the bundled Postgres runtime and data under this directory",
+    )
+
+    grpc_port: int | None = None
+    api_port: int | None = None
+
+    start_api: bool = Field(
+        default=True,
+        description="set to False to start only the engine + gRPC, no REST API",
+    )
+
+    run_migrations: bool = Field(
+        default=True,
+        description="set to False to skip running migrations on startup",
+    )
+
+    rabbitmq_url: str | None = Field(
+        default=None,
+        description="use RabbitMQ instead of the Postgres message queue",
+    )
+
+    log_level: str | None = None
+    ready_timeout_seconds: float = DEFAULT_READY_TIMEOUT_SECONDS
+
+
+DEFAULT_HOST_PORT = "localhost:7070"
+
+
+class ClientConfig(BaseSettings):
+    model_config = create_settings_config(
+        env_prefix="HATCHET_CLIENT_",
+    )
+
+    token: str = ""
+    logger: Logger = getLogger()
+
+    debug: bool = False
+
+    tenant_id: str = ""
+    host_port: str = DEFAULT_HOST_PORT
+    server_url: str = "https://app.dev.hatchet-tools.com"
+    namespace: str = ""
+
+    tls_config: ClientTLSConfig = Field(default_factory=lambda: ClientTLSConfig())
+    healthcheck: HealthcheckConfig = Field(default_factory=lambda: HealthcheckConfig())
+    otel: OpenTelemetryConfig = Field(default_factory=lambda: OpenTelemetryConfig())
+
+    listener_v2_timeout: int | None = None
+    grpc_max_recv_message_length: int = Field(
+        default=4 * 1024 * 1024, description="4MB default"
+    )
+    grpc_max_send_message_length: int = Field(
+        default=4 * 1024 * 1024, description="4MB default"
+    )
+
+    worker_preset_labels: dict[str, str] = Field(default_factory=dict)
+
+    enable_force_kill_sync_threads: bool = False
+    enable_thread_pool_monitoring: bool = False
+
+    terminate_worker_after_num_tasks: int | None = None
+    disable_log_capture: bool = False
+    log_queue_size: int = 1000
+    force_shutdown_on_shutdown_signal: bool = False
+    tenacity: TenacityConfig = TenacityConfig()
+    embedded: EmbeddedHatchetConfig | None = None
+
+    @model_validator(mode="after")
+    def validate_token_and_tenant(self) -> "ClientConfig":
+        # the embedded engine issues its own token once it starts, so a config
+        # with `embedded` set but no token yet is a valid, pre-flight state;
+        # `resolve_embedded_connection` fills the token in, and this validator
+        # runs for real on the resulting config
+        if self.embedded is not None and not self.token:
+            return self
+
+        if not self.token:
+            raise ValueError("Token must be set")
+
+        if not self.token.startswith("ey"):
+            raise ValueError(
+                f"Token must be a valid JWT. Hint: These are the first few characters of the token provided: {self.token[:5]}"
+            )
+
+        if not self.tenant_id:
+            self.tenant_id = get_tenant_id_from_jwt(self.token)
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_addresses(self) -> "ClientConfig":
+        if self.embedded is not None and not self.token:
+            return self
+
+        ## If nothing is set, read from the token
+        ## If either is set, override what's in the JWT
+        server_url_from_jwt, grpc_broadcast_address_from_jwt = get_addresses_from_jwt(
+            self.token
+        )
+
+        if "host_port" not in self.model_fields_set:
+            self.host_port = grpc_broadcast_address_from_jwt
+
+        if "server_url" not in self.model_fields_set:
+            self.server_url = server_url_from_jwt
+
+        if not self.tls_config.server_name:
+            self.tls_config.server_name = self.host_port.split(":")[0]
+
+        if not self.tls_config.server_name:
+            self.tls_config.server_name = "localhost"
+
+        return self
+
+    @field_validator("namespace")
+    @classmethod
+    def validate_namespace(cls, namespace: str) -> str:
+        if not namespace:
+            return ""
+
+        if not namespace.endswith("_"):
+            namespace = f"{namespace}_"
+
+        return namespace.lower()
+
+    def __hash__(self) -> int:
+        return hash(json.dumps(self.model_dump(), default=str))
+
+    @overload
+    def apply_namespace(
+        self, resource_name: str, namespace_override: str | None = None
+    ) -> str: ...
+
+    @overload
+    def apply_namespace(
+        self, resource_name: None, namespace_override: str | None = None
+    ) -> None: ...
+
+    def apply_namespace(
+        self, resource_name: str | None, namespace_override: str | None = None
+    ) -> str | None:
+        if resource_name is None:
+            return None
+
+        namespace = namespace_override or self.namespace
+
+        if not namespace:
+            return resource_name
+
+        if resource_name.startswith(namespace):
+            return resource_name
+
+        return namespace + resource_name

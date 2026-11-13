@@ -1,0 +1,34 @@
+# Stage 2: Embed and filter out similar instructions
+operators:
+- id: load_stage_1
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_gpt-4o-mini_v1_3_0_25x
+- id: filter_none_responses
+  config:
+    type: function
+    function: data_strategies.commons.filter_out_falsey_values
+    function_config:
+      filter_column: instruction
+  input_ids:
+    - load_stage_1
+- id: embed_airoboros
+  config:
+    type: embedding
+    model: thenlper/gte-small
+    input_text_column: instruction
+    output_embedding_column: embedding
+    num_workers_per_shard: 50
+  input_ids:
+    - filter_none_responses
+- id: filter_similar_instructions
+  config:
+    type: similarity_filtering
+    input_embedding_column: embedding
+    input_min_distance_column: min_docsearch_score
+    input_text_column: instruction
+    output_similar_text_column: similar_instruction
+    output_filter_decision_column: too_similar
+    should_filter: true
+  input_ids:
+    - embed_airoboros

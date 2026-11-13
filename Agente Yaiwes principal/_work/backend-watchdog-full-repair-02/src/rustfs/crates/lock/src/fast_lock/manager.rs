@@ -1,0 +1,654 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use tokio::time::{Instant, interval};
+use tracing::warn;
+
+use crate::LockError;
+use crate::fast_lock::{
+    guard::FastLockGuard,
+    manager_trait::LockManager,
+    metrics::{AggregatedMetrics, GlobalMetrics},
+    shard::LockShard,
+    types::{BatchLockRequest, BatchLockResult, LockConfig, LockResult, ObjectKey, ObjectLockInfo, ObjectLockRequest},
+};
+
+/// High-performance object lock manager
+#[derive(Debug)]
+pub struct FastObjectLockManager {
+    pub shards: Vec<Arc<LockShard>>,
+    shard_mask: usize,
+    config: LockConfig,
+    metrics: Arc<GlobalMetrics>,
+    cleanup_handle: RwLock<Option<tokio::task::JoinHandle<()>>>,
+}
+
+impl FastObjectLockManager {
+    /// Create new lock manager with default config
+    pub fn new() -> Self {
+        Self::with_config(LockConfig::default())
+    }
+
+    /// Create new lock manager with custom config
+    pub fn with_config(config: LockConfig) -> Self {
+        if let Err(err) = Self::validate_config(&config) {
+            warn!(
+                error = %err,
+                shard_count = config.shard_count,
+                fallback_shard_count = crate::fast_lock::DEFAULT_SHARD_COUNT,
+                "Invalid lock manager configuration, falling back to defaults"
+            );
+            return Self::build(LockConfig::default());
+        }
+
+        Self::build(config)
+    }
+
+    /// Create new lock manager with custom config, returning an explicit error for invalid input.
+    pub fn try_with_config(config: LockConfig) -> crate::Result<Self> {
+        Self::validate_config(&config)?;
+        Ok(Self::build(config))
+    }
+
+    fn validate_config(config: &LockConfig) -> crate::Result<()> {
+        if config.shard_count == 0 || !config.shard_count.is_power_of_two() {
+            return Err(LockError::configuration(format!(
+                "shard count must be a non-zero power of 2, got {}",
+                config.shard_count
+            )));
+        }
+        Ok(())
+    }
+
+    fn build(config: LockConfig) -> Self {
+        let shard_count = config.shard_count;
+
+        let shards: Vec<Arc<LockShard>> = (0..shard_count).map(|i| Arc::new(LockShard::new(i))).collect();
+
+        let metrics = Arc::new(GlobalMetrics::new(shard_count));
+
+        let manager = Self {
+            shards,
+            shard_mask: shard_count - 1,
+            config,
+            metrics,
+            cleanup_handle: RwLock::new(None),
+        };
+
+        // Start background cleanup task
+        manager.start_cleanup_task();
+        manager
+    }
+
+    /// Acquire object lock
+    pub async fn acquire_lock(&self, request: ObjectLockRequest) -> Result<FastLockGuard, LockResult> {
+        let shard = self.get_shard(&request.key);
+        match shard.acquire_lock(&request).await {
+            Ok(()) => {
+                let guard = FastLockGuard::new(request.key, request.mode, request.owner, shard.clone());
+                // Register guard to prevent premature cleanup
+                shard.register_guard_with_info(guard.guard_id(), guard.key(), guard.mode(), guard.owner());
+                Ok(guard)
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Acquire shared (read) lock
+    pub async fn acquire_read_lock(&self, key: ObjectKey, owner: impl Into<Arc<str>>) -> Result<FastLockGuard, LockResult> {
+        let request = ObjectLockRequest::new_read(key, owner);
+        self.acquire_lock(request).await
+    }
+
+    /// Acquire shared (read) lock for specific version
+    pub async fn acquire_write_lock(&self, key: ObjectKey, owner: impl Into<Arc<str>>) -> Result<FastLockGuard, LockResult> {
+        let request = ObjectLockRequest::new_write(key, owner);
+        self.acquire_lock(request).await
+    }
+
+    /// Acquire high-priority read lock - optimized for database queries
+    pub async fn acquire_high_priority_read_lock(
+        &self,
+        key: ObjectKey,
+        owner: impl Into<Arc<str>>,
+    ) -> Result<FastLockGuard, LockResult> {
+        let request = ObjectLockRequest::new_read(key, owner).with_priority(crate::fast_lock::types::LockPriority::High);
+        self.acquire_lock(request).await
+    }
+
+    /// Acquire high-priority write lock - optimized for database queries
+    pub async fn acquire_high_priority_write_lock(
+        &self,
+        key: ObjectKey,
+        owner: impl Into<Arc<str>>,
+    ) -> Result<FastLockGuard, LockResult> {
+        let request = ObjectLockRequest::new_write(key, owner).with_priority(crate::fast_lock::types::LockPriority::High);
+        self.acquire_lock(request).await
+    }
+
+    /// Acquire critical priority read lock - for system operations
+    pub async fn acquire_critical_read_lock(
+        &self,
+        key: ObjectKey,
+        owner: impl Into<Arc<str>>,
+    ) -> Result<FastLockGuard, LockResult> {
+        let request = ObjectLockRequest::new_read(key, owner).with_priority(crate::fast_lock::types::LockPriority::Critical);
+        self.acquire_lock(request).await
+    }
+
+    /// Acquire critical priority write lock - for system operations
+    pub async fn acquire_critical_write_lock(
+        &self,
+        key: ObjectKey,
+        owner: impl Into<Arc<str>>,
+    ) -> Result<FastLockGuard, LockResult> {
+        let request = ObjectLockRequest::new_write(key, owner).with_priority(crate::fast_lock::types::LockPriority::Critical);
+        self.acquire_lock(request).await
+    }
+
+    /// Acquire multiple locks atomically - optimized version
+    pub async fn acquire_locks_batch(&self, batch_request: BatchLockRequest) -> BatchLockResult {
+        // Pre-sort requests by (shard_id, key) to avoid deadlocks
+        let mut sorted_requests = batch_request.requests;
+        sorted_requests.sort_unstable_by(|a, b| {
+            let shard_a = a.key.shard_index(self.shard_mask);
+            let shard_b = b.key.shard_index(self.shard_mask);
+            shard_a.cmp(&shard_b).then_with(|| a.key.cmp(&b.key))
+        });
+
+        // Preserve shard order so every concurrent batch acquires locks in the same global order.
+        let shard_groups = self.group_requests_by_shard(sorted_requests);
+
+        // Choose strategy based on request type
+        if batch_request.all_or_nothing {
+            self.acquire_locks_two_phase_commit(&shard_groups).await
+        } else {
+            self.acquire_locks_best_effort(&shard_groups).await
+        }
+    }
+
+    /// Group requests by shard with proper fallback handling
+    fn group_requests_by_shard(&self, requests: Vec<ObjectLockRequest>) -> Vec<(usize, Vec<ObjectLockRequest>)> {
+        let mut shard_groups: Vec<(usize, Vec<ObjectLockRequest>)> = Vec::new();
+
+        for request in requests {
+            let shard_id = request.key.shard_index(self.shard_mask);
+            match shard_groups.last_mut() {
+                Some((last_shard_id, grouped_requests)) if *last_shard_id == shard_id => grouped_requests.push(request),
+                _ => shard_groups.push((shard_id, vec![request])),
+            }
+        }
+
+        shard_groups
+    }
+
+    /// Best effort acquisition (allows partial success)
+    async fn acquire_locks_best_effort(&self, shard_groups: &[(usize, Vec<ObjectLockRequest>)]) -> BatchLockResult {
+        let mut all_successful = Vec::new();
+        let mut all_failed = Vec::new();
+        let mut guards = Vec::new();
+
+        for (shard_id, requests) in shard_groups {
+            let shard = self.shards[*shard_id].clone();
+
+            for request in requests {
+                let key = request.key.clone();
+                let owner = request.owner.clone();
+                let mode = request.mode;
+
+                let acquired = if shard.try_fast_path_only(request) {
+                    true
+                } else {
+                    match shard.acquire_lock(request).await {
+                        Ok(()) => true,
+                        Err(err) => {
+                            all_failed.push((key.clone(), err));
+                            false
+                        }
+                    }
+                };
+
+                if acquired {
+                    let guard = FastLockGuard::new(key.clone(), mode, owner.clone(), shard.clone());
+                    shard.register_guard_with_info(guard.guard_id(), guard.key(), guard.mode(), guard.owner());
+                    all_successful.push(key);
+                    guards.push(guard);
+                }
+            }
+        }
+
+        let all_acquired = all_failed.is_empty();
+        BatchLockResult {
+            successful_locks: all_successful,
+            failed_locks: all_failed,
+            all_acquired,
+            guards,
+        }
+    }
+
+    /// Two-phase commit for atomic acquisition
+    async fn acquire_locks_two_phase_commit(&self, shard_groups: &[(usize, Vec<ObjectLockRequest>)]) -> BatchLockResult {
+        // Phase 1: Try to acquire all locks
+        let mut acquired_guards = Vec::new();
+        let mut failed_locks = Vec::new();
+
+        'outer: for (shard_id, requests) in shard_groups {
+            let shard = self.shards[*shard_id].clone();
+
+            for request in requests {
+                match shard.acquire_lock(request).await {
+                    Ok(()) => {
+                        let guard = FastLockGuard::new(request.key.clone(), request.mode, request.owner.clone(), shard.clone());
+                        shard.register_guard_with_info(guard.guard_id(), guard.key(), guard.mode(), guard.owner());
+                        acquired_guards.push(guard);
+                    }
+                    Err(err) => {
+                        failed_locks.push((request.key.clone(), err));
+                        break 'outer; // Stop on first failure
+                    }
+                }
+            }
+        }
+
+        // Phase 2: If any failed, release all acquired locks with error tracking
+        if !failed_locks.is_empty() {
+            // Drop guards to release any acquired locks.
+            drop(acquired_guards);
+            return BatchLockResult {
+                successful_locks: Vec::new(),
+                failed_locks,
+                all_acquired: false,
+                guards: Vec::new(),
+            };
+        }
+
+        let successful_locks = acquired_guards.iter().map(|guard| guard.key().clone()).collect();
+        BatchLockResult {
+            successful_locks,
+            failed_locks: Vec::new(),
+            all_acquired: true,
+            guards: acquired_guards,
+        }
+    }
+
+    /// Get lock information for monitoring
+    pub fn get_lock_info(&self, key: &crate::fast_lock::types::ObjectKey) -> Option<crate::fast_lock::types::ObjectLockInfo> {
+        let shard = self.get_shard(key);
+        shard.get_lock_info(key)
+    }
+
+    /// Enumerate every currently held lock across all shards.
+    ///
+    /// Powers the admin "top locks" view. Order is shard-then-insertion and is
+    /// not otherwise stable across calls.
+    pub fn list_locks(&self) -> Vec<crate::fast_lock::types::ObjectLockInfo> {
+        self.list_locks_with_holder_counts()
+            .into_iter()
+            .map(|(info, _)| info)
+            .collect()
+    }
+
+    /// Enumerate held locks with the number of guards represented by each owner.
+    pub fn list_locks_with_holder_counts(&self) -> Vec<(crate::fast_lock::types::ObjectLockInfo, u32)> {
+        let mut infos = Vec::new();
+        for shard in &self.shards {
+            infos.extend(shard.list_locks_with_holder_counts());
+        }
+        infos
+    }
+
+    /// Enumerate held locks with holder counts and stable holder identities.
+    pub fn list_locks_with_holder_generations(&self) -> Vec<(crate::fast_lock::types::ObjectLockInfo, u32, Option<Vec<u64>>)> {
+        let mut infos = Vec::new();
+        for shard in &self.shards {
+            infos.extend(shard.list_locks_with_holder_generations());
+        }
+        infos
+    }
+
+    /// Force-release every holder of the lock on `key`.
+    ///
+    /// Returns the number of owners released (0 if the resource was not locked).
+    /// This bypasses guard tracking and is intended only for administrative
+    /// recovery of a stuck resource.
+    pub fn force_unlock(&self, key: &crate::fast_lock::types::ObjectKey) -> usize {
+        let shard = self.get_shard(key);
+        shard.force_release_all(key)
+    }
+
+    /// Get aggregated metrics
+    pub fn get_metrics(&self) -> crate::fast_lock::metrics::AggregatedMetrics {
+        let shard_metrics: Vec<_> = self.shards.iter().map(|shard| shard.metrics().snapshot()).collect();
+
+        self.metrics.aggregate_shard_metrics(&shard_metrics)
+    }
+
+    /// Get total number of active locks across all shards
+    pub fn total_lock_count(&self) -> usize {
+        self.shards.iter().map(|shard| shard.lock_count()).sum()
+    }
+
+    /// Get pool statistics from all shards
+    pub fn get_pool_stats(&self) -> Vec<(u64, u64, u64, usize)> {
+        self.shards.iter().map(|shard| shard.pool_stats()).collect()
+    }
+
+    /// Force cleanup of expired locks using adaptive strategy
+    pub async fn cleanup_expired(&self) -> usize {
+        let mut total_cleaned = 0;
+
+        for shard in &self.shards {
+            total_cleaned += shard.adaptive_cleanup();
+        }
+
+        self.metrics.record_cleanup_run(total_cleaned);
+        total_cleaned
+    }
+
+    /// Force cleanup with traditional strategy (for compatibility)
+    pub async fn cleanup_expired_traditional(&self) -> usize {
+        let max_idle_millis = self.config.max_idle_time.as_millis() as u64;
+        let mut total_cleaned = 0;
+
+        for shard in &self.shards {
+            total_cleaned += shard.cleanup_expired_millis(max_idle_millis);
+        }
+
+        self.metrics.record_cleanup_run(total_cleaned);
+        total_cleaned
+    }
+
+    /// Shutdown the lock manager and cleanup resources
+    pub async fn shutdown(&self) {
+        if let Some(handle) = self.cleanup_handle.write().await.take() {
+            handle.abort();
+        }
+
+        // Final cleanup
+        self.cleanup_expired().await;
+    }
+
+    /// Get shard for object key
+    pub fn get_shard(&self, key: &crate::fast_lock::types::ObjectKey) -> &Arc<LockShard> {
+        let index = key.shard_index(self.shard_mask);
+        &self.shards[index]
+    }
+
+    /// Start background cleanup task
+    fn start_cleanup_task(&self) {
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            tracing::debug!("Skipping fast lock cleanup task startup because no Tokio runtime is active");
+            return;
+        };
+
+        let shards = self.shards.clone();
+        let metrics = self.metrics.clone();
+        let cleanup_interval = self.config.cleanup_interval;
+        let _max_idle_time = self.config.max_idle_time;
+
+        let handle = handle.spawn(async move {
+            let mut interval = interval(cleanup_interval);
+
+            loop {
+                interval.tick().await;
+
+                let start = Instant::now();
+                let mut total_cleaned = 0;
+
+                // Use adaptive cleanup for better performance
+                for shard in &shards {
+                    total_cleaned += shard.adaptive_cleanup();
+                }
+
+                if total_cleaned > 0 {
+                    metrics.record_cleanup_run(total_cleaned);
+                    tracing::debug!("Cleanup completed: {} objects cleaned in {:?}", total_cleaned, start.elapsed());
+                }
+            }
+        });
+
+        // Store handle for shutdown
+        if let Ok(mut cleanup_handle) = self.cleanup_handle.try_write() {
+            *cleanup_handle = Some(handle);
+        }
+    }
+}
+
+impl Default for FastObjectLockManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// Implement Drop to ensure cleanup
+impl Drop for FastObjectLockManager {
+    fn drop(&mut self) {
+        // Note: We can't use async in Drop, so we just abort the cleanup task
+        if let Ok(handle_guard) = self.cleanup_handle.try_read()
+            && let Some(handle) = handle_guard.as_ref()
+        {
+            handle.abort();
+        }
+    }
+}
+
+impl Clone for FastObjectLockManager {
+    fn clone(&self) -> Self {
+        Self {
+            shards: self.shards.clone(),
+            shard_mask: self.shard_mask,
+            config: self.config.clone(),
+            metrics: self.metrics.clone(),
+            cleanup_handle: RwLock::new(None), // Don't clone the cleanup task
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl LockManager for FastObjectLockManager {
+    async fn acquire_lock(&self, request: ObjectLockRequest) -> Result<FastLockGuard, LockResult> {
+        self.acquire_lock(request).await
+    }
+
+    async fn acquire_read_lock(&self, key: ObjectKey, owner: impl Into<Arc<str>> + Send) -> Result<FastLockGuard, LockResult> {
+        self.acquire_read_lock(key, owner).await
+    }
+
+    async fn acquire_write_lock(&self, key: ObjectKey, owner: impl Into<Arc<str>> + Send) -> Result<FastLockGuard, LockResult> {
+        self.acquire_write_lock(key, owner).await
+    }
+
+    async fn acquire_locks_batch(&self, batch_request: BatchLockRequest) -> BatchLockResult {
+        self.acquire_locks_batch(batch_request).await
+    }
+
+    fn get_lock_info(&self, key: &ObjectKey) -> Option<ObjectLockInfo> {
+        self.get_lock_info(key)
+    }
+
+    fn get_metrics(&self) -> AggregatedMetrics {
+        self.get_metrics()
+    }
+
+    fn total_lock_count(&self) -> usize {
+        self.total_lock_count()
+    }
+
+    fn get_pool_stats(&self) -> Vec<(u64, u64, u64, usize)> {
+        self.get_pool_stats()
+    }
+
+    async fn cleanup_expired(&self) -> usize {
+        self.cleanup_expired().await
+    }
+
+    async fn cleanup_expired_traditional(&self) -> usize {
+        self.cleanup_expired_traditional().await
+    }
+
+    async fn shutdown(&self) {
+        self.shutdown().await
+    }
+
+    fn is_disabled(&self) -> bool {
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fast_lock::types::LockMode;
+
+    fn make_request(manager: &FastObjectLockManager, shard_id: usize, suffix: usize) -> ObjectLockRequest {
+        let mut candidate = 0usize;
+        loop {
+            let object = format!("object-{shard_id}-{suffix}-{candidate}");
+            let key = ObjectKey::new("bucket", object);
+            if key.shard_index(manager.shard_mask) == shard_id {
+                return ObjectLockRequest::new_write(key, "owner");
+            }
+            candidate += 1;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_group_requests_by_shard_preserves_sorted_shard_order() {
+        let manager = FastObjectLockManager::new();
+        let mut requests = vec![
+            make_request(&manager, 3, 0),
+            make_request(&manager, 1, 0),
+            make_request(&manager, 2, 0),
+            make_request(&manager, 1, 1),
+            make_request(&manager, 3, 1),
+        ];
+
+        requests.sort_unstable_by(|a, b| {
+            let shard_a = a.key.shard_index(manager.shard_mask);
+            let shard_b = b.key.shard_index(manager.shard_mask);
+            shard_a.cmp(&shard_b).then_with(|| a.key.cmp(&b.key))
+        });
+
+        let shard_groups = manager.group_requests_by_shard(requests);
+        let shard_ids: Vec<_> = shard_groups.iter().map(|(shard_id, _)| *shard_id).collect();
+
+        assert_eq!(shard_ids, vec![1, 2, 3]);
+        assert_eq!(shard_groups[0].1.len(), 2);
+        assert_eq!(shard_groups[1].1.len(), 1);
+        assert_eq!(shard_groups[2].1.len(), 2);
+
+        manager.shutdown().await;
+    }
+
+    #[test]
+    fn test_manager_construction_without_runtime_does_not_panic() {
+        let manager = FastObjectLockManager::new();
+        assert_eq!(manager.shards.len(), crate::fast_lock::DEFAULT_SHARD_COUNT);
+    }
+
+    #[tokio::test]
+    async fn test_list_locks_reports_held_locks() {
+        let manager = FastObjectLockManager::new();
+        let write_key = ObjectKey::new("bucket", "write-object");
+        let read_key = ObjectKey::new("bucket", "read-object");
+
+        let write_guard = manager
+            .acquire_write_lock(write_key.clone(), "writer")
+            .await
+            .expect("write lock should acquire");
+        let read_guard = manager
+            .acquire_read_lock(read_key.clone(), "reader")
+            .await
+            .expect("read lock should acquire");
+        let second_read_guard = manager
+            .acquire_read_lock(read_key.clone(), "reader")
+            .await
+            .expect("second read lock should acquire");
+
+        let mut locks = manager.list_locks();
+        locks.sort_by(|a, b| a.key.object.cmp(&b.key.object));
+        assert_eq!(locks.len(), 2);
+
+        let read = locks.iter().find(|l| l.key == read_key).expect("read lock listed");
+        assert_eq!(read.mode, LockMode::Shared);
+        assert_eq!(read.owner.as_ref(), "reader");
+
+        let write = locks.iter().find(|l| l.key == write_key).expect("write lock listed");
+        assert_eq!(write.mode, LockMode::Exclusive);
+        assert_eq!(write.owner.as_ref(), "writer");
+
+        let counts = manager.list_locks_with_holder_counts();
+        let (_, read_holder_count) = counts
+            .iter()
+            .find(|(info, _)| info.key == read_key)
+            .expect("read holder count listed");
+        assert_eq!(*read_holder_count, 2);
+        let (_, write_holder_count) = counts
+            .iter()
+            .find(|(info, _)| info.key == write_key)
+            .expect("write holder count listed");
+        assert_eq!(*write_holder_count, 1);
+
+        let generations = manager.list_locks_with_holder_generations();
+        let (_, _, read_generations) = generations
+            .iter()
+            .find(|(info, _, _)| info.key == read_key)
+            .expect("read holder generations listed");
+        let mut expected_read_generations = vec![read_guard.guard_id(), second_read_guard.guard_id()];
+        expected_read_generations.sort_unstable();
+        assert_eq!(read_generations.as_ref(), Some(&expected_read_generations));
+
+        let (_, _, write_generations) = generations
+            .iter()
+            .find(|(info, _, _)| info.key == write_key)
+            .expect("write holder generation listed");
+        assert_eq!(write_generations.as_ref(), Some(&vec![write_guard.guard_id()]));
+
+        drop(read_guard);
+        let remaining = manager.list_locks_with_holder_generations();
+        let (_, remaining_count, remaining_generations) = remaining
+            .iter()
+            .find(|(info, _, _)| info.key == read_key)
+            .expect("remaining read holder generation listed");
+        assert_eq!(*remaining_count, 1);
+        assert_eq!(remaining_generations.as_ref(), Some(&vec![second_read_guard.guard_id()]));
+
+        manager.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_force_unlock_releases_stuck_lock() {
+        let manager = FastObjectLockManager::new();
+        let key = ObjectKey::new("bucket", "stuck-object");
+
+        let guard = manager
+            .acquire_write_lock(key.clone(), "owner")
+            .await
+            .expect("write lock should acquire");
+        // Leak the guard so it cannot release on drop, mimicking a stuck lock.
+        std::mem::forget(guard);
+        assert_eq!(manager.total_lock_count(), 1);
+
+        let released = manager.force_unlock(&key);
+        assert_eq!(released, 1);
+        assert!(manager.list_locks().is_empty());
+
+        // Force-unlocking an already-clear resource is a no-op.
+        assert_eq!(manager.force_unlock(&key), 0);
+
+        manager.shutdown().await;
+    }
+}

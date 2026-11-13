@@ -1,0 +1,177 @@
+import { TooltipProvider } from '@app/components/ui/tooltip';
+import { type ApiHealthResult, useApiHealth } from '@app/hooks/useApiHealth';
+import {
+  mockMatchMedia as installMatchMedia,
+  mockBrowserProperty,
+  restoreBrowserMocks,
+} from '@app/tests/browserMocks';
+import { useTestTimers } from '@app/tests/timers';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import LauncherPage from './page';
+import type { DefinedUseQueryResult } from '@tanstack/react-query';
+import type { Mock } from 'vitest';
+
+const mockFetch = vi.fn();
+
+const mockLocalStorage = {
+  getItem: vi.fn(),
+  removeItem: vi.fn(),
+  setItem: vi.fn(),
+};
+
+let mockMatchMedia: ReturnType<typeof installMatchMedia>;
+
+const renderLauncher = () => {
+  return render(
+    <TooltipProvider delayDuration={0}>
+      <MemoryRouter>
+        <LauncherPage />
+      </MemoryRouter>
+    </TooltipProvider>,
+  );
+};
+
+vi.mock('@app/hooks/useApiHealth', () => ({
+  useApiHealth: vi.fn().mockReturnValue({
+    data: { status: 'unknown', message: null },
+    refetch: vi.fn(),
+    isLoading: false,
+  } as unknown as DefinedUseQueryResult<ApiHealthResult, Error>),
+}));
+
+describe('LauncherPage', () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    mockLocalStorage.getItem.mockReset();
+    mockLocalStorage.removeItem.mockReset();
+    mockLocalStorage.setItem.mockReset();
+    mockBrowserProperty(globalThis, 'fetch', mockFetch as typeof fetch);
+    mockBrowserProperty(window, 'localStorage', mockLocalStorage as unknown as Storage);
+    mockMatchMedia = installMatchMedia();
+  });
+
+  afterEach(() => {
+    restoreBrowserMocks();
+    vi.clearAllMocks();
+  });
+
+  it('renders welcome message', async () => {
+    renderLauncher();
+    await waitFor(() => {
+      expect(screen.getByText('Welcome to Promptfoo')).toBeInTheDocument();
+    });
+  });
+
+  it('shows connecting status initially', async () => {
+    renderLauncher();
+    await waitFor(() => {
+      expect(screen.getByText(/Connecting to Promptfoo on localhost:15500/)).toBeInTheDocument();
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    });
+  });
+
+  it('loads dark mode preference from localStorage', async () => {
+    mockLocalStorage.getItem.mockReturnValue('true');
+    renderLauncher();
+
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    });
+  });
+
+  it('sets dark mode from the theme selector', async () => {
+    mockLocalStorage.getItem.mockReturnValue(null);
+    document.documentElement.removeAttribute('data-theme'); // Ensure light mode at start
+    renderLauncher();
+
+    await act(async () => {
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Theme preference: System theme (light). Switch to Dark theme.',
+        }),
+      );
+    });
+
+    expect(mockLocalStorage.setItem).toHaveBeenCalledWith('darkMode', 'true');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('displays getting started instructions', async () => {
+    renderLauncher();
+
+    await waitFor(() => {
+      expect(screen.getByText('Getting Started')).toBeInTheDocument();
+      expect(screen.getByText(/promptfoo view -n/)).toBeInTheDocument();
+      expect(screen.getByText(/npx promptfoo@latest view -n/)).toBeInTheDocument();
+    });
+  });
+
+  it('displays browser support information', async () => {
+    renderLauncher();
+
+    await waitFor(() => {
+      expect(screen.getByText('Using Safari or Brave?')).toBeInTheDocument();
+      expect(screen.getByText(/mkcert -install/)).toBeInTheDocument();
+      expect(screen.getByText(/On Brave you can disable Brave Shields./)).toBeInTheDocument();
+    });
+  });
+
+  it('contains correct links', async () => {
+    renderLauncher();
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /installation guide/i })).toHaveAttribute(
+        'href',
+        'https://promptfoo.dev/docs/installation',
+      );
+      expect(screen.getByRole('link', { name: /mkcert installation steps/i })).toHaveAttribute(
+        'href',
+        'https://github.com/FiloSottile/mkcert#installation',
+      );
+    });
+  });
+
+  it('uses system preference for dark mode when no localStorage value exists', async () => {
+    mockLocalStorage.getItem.mockReturnValue(null);
+    mockMatchMedia.mockImplementation((query) => ({
+      matches: query === '(prefers-color-scheme: dark)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+
+    renderLauncher();
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    });
+  });
+
+  it('should call checkHealth every 2 seconds after the initial 3-second delay', async () => {
+    const timers = useTestTimers();
+
+    const checkHealthMock = vi.fn();
+    (useApiHealth as Mock).mockReturnValue({
+      data: { status: 'unknown', message: null },
+      refetch: checkHealthMock,
+      isLoading: false,
+    } as unknown as DefinedUseQueryResult<ApiHealthResult, Error>);
+
+    renderLauncher();
+
+    timers.advanceBy(3000);
+    expect(checkHealthMock).toHaveBeenCalledTimes(1);
+
+    timers.advanceBy(2000);
+    expect(checkHealthMock).toHaveBeenCalledTimes(2);
+
+    timers.advanceBy(2000);
+    expect(checkHealthMock).toHaveBeenCalledTimes(3);
+  });
+});

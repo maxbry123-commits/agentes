@@ -1,0 +1,379 @@
+"""Shell-Tool fuer Cognithor -- mit echter Sandbox-Isolation.
+
+Fuehrt Shell-Befehle in einer isolierten Umgebung aus:
+  - bubblewrap (bwrap): Linux-Namespaces, staerkste Isolation
+  - firejail: Application Sandboxing, gute Isolation
+  - bare: Fallback ohne Sandbox (nur Timeout + Output-Limit)
+
+Der Gatekeeper blockiert destruktive Befehle VOR der Ausfuehrung.
+Die Sandbox isoliert die Ausfuehrung zusaetzlich auf OS-Level.
+Zusammen bilden sie ein Defense-in-Depth-System.
+
+Bibel-Referenz: §5.3 (jarvis-shell Server), §4.3 (Sandbox)
+"""
+
+from __future__ import annotations
+
+import contextlib
+import re
+import shlex
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from cognithor.core.sandbox import (
+    NetworkPolicy,
+    SandboxConfig,
+    SandboxExecutor,
+    SandboxLevel,
+)
+from cognithor.i18n import t
+from cognithor.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from cognithor.config import CognithorConfig
+
+log = get_logger(__name__)
+
+# Log-Limits
+MAX_LOG_COMMAND_LENGTH = 200
+MAX_REDACTED_LOG_PREFIX = 50
+
+# Pfad-Validierung (Layer 0)
+_NULL_BYTE_RE = re.compile(r"\x00")
+_PATH_TRAVERSAL_RE = re.compile(r"(?:^|[\s;|&])(?:\.\.[/\\]){1,}")
+_FILE_COMMANDS = frozenset(
+    {
+        "cat",
+        "head",
+        "tail",
+        "less",
+        "more",
+        "cp",
+        "mv",
+        "rm",
+        "chmod",
+        "chown",
+        "ln",
+        "readlink",
+        "stat",
+        "file",
+        "touch",
+        "mkdir",
+        "rmdir",
+    }
+)
+
+__all__ = [
+    "ShellError",
+    "ShellTools",
+    "register_shell_tools",
+]
+
+
+class ShellError(Exception):
+    """Fehler bei Shell-Ausführung."""
+
+
+class ShellTools:
+    """Shell-Befehlsausfuehrung mit echter Sandbox-Isolation. [B§5.3]
+
+    Security-Architektur (Defense in Depth):
+      Layer 1: Gatekeeper -- Regex-Blocklist + Policy-Regeln
+      Layer 2: Sandbox -- OS-Level Prozess-Isolation (bwrap/firejail)
+      Layer 3: Resource-Limits -- Timeout, Memory, Disk, Processes
+    """
+
+    def __init__(self, config: CognithorConfig) -> None:
+        """Initialisiert ShellTools mit Sandbox.
+
+        Erkennt automatisch das beste verfuegbare Sandbox-Level.
+        """
+        self._config = config
+
+        # Konfigurierbare Limits aus config.shell (mit sicheren Defaults)
+        _shell_cfg = getattr(config, "shell", None)
+        self._default_timeout: int = getattr(_shell_cfg, "default_timeout_seconds", 30)
+        self._max_log_command_length: int = getattr(
+            _shell_cfg, "max_log_command_length", MAX_LOG_COMMAND_LENGTH
+        )
+        self._max_redacted_log_prefix: int = getattr(
+            _shell_cfg, "max_redacted_log_prefix", MAX_REDACTED_LOG_PREFIX
+        )
+
+        # Sandbox-Konfiguration aus CognithorConfig ableiten
+        # Wire UI SandboxConfig (models.py) → execution SandboxConfig (core/sandbox.py)
+        _ui_sandbox = getattr(config, "sandbox", None)
+        sandbox_config = SandboxConfig(
+            workspace_dir=config.workspace_dir,
+            default_timeout=self._default_timeout,
+        )
+
+        if _ui_sandbox is not None:
+            # Memory limit from UI config
+            _mem = getattr(_ui_sandbox, "max_memory_mb", None)
+            if _mem and isinstance(_mem, int):
+                sandbox_config.max_memory_mb = _mem
+            # CPU time limit from UI config
+            _cpu = getattr(_ui_sandbox, "max_cpu_seconds", None)
+            if _cpu and isinstance(_cpu, int):
+                sandbox_config.max_cpu_seconds = _cpu
+            # Network access from UI config
+            _net = getattr(_ui_sandbox, "network_access", None)
+            if _net is not None:
+                sandbox_config.network = NetworkPolicy.ALLOW if _net else NetworkPolicy.BLOCK
+            # Sandbox level from UI config
+            _level = getattr(_ui_sandbox, "level", None)
+            if _level is not None:
+                level_val = _level.value if hasattr(_level, "value") else str(_level)
+                if level_val in ("bwrap", "firejail", "bare", "process"):
+                    with contextlib.suppress(ValueError):
+                        sandbox_config.preferred_level = SandboxLevel(level_val)
+            # Env vars from UI config
+            _env = getattr(_ui_sandbox, "env_vars", None)
+            if _env and isinstance(_env, dict):
+                sandbox_config.env_passthrough.extend(_env.keys())
+
+        # Legacy: direct config attributes (backward compat)
+        sandbox_level = getattr(config, "sandbox_level", None)
+        if sandbox_level and sandbox_level in ("bwrap", "firejail", "bare"):
+            sandbox_config.preferred_level = SandboxLevel(sandbox_level)
+
+        sandbox_network = getattr(config, "sandbox_network", None)
+        if sandbox_network and sandbox_network in ("allow", "block"):
+            sandbox_config.network = NetworkPolicy(sandbox_network)
+
+        self._sandbox = SandboxExecutor(sandbox_config)
+        self._default_cwd = str(config.workspace_dir)
+
+        log.info(
+            "shell_tools_init",
+            sandbox_level=self._sandbox.level.value,
+            workspace=self._default_cwd,
+        )
+
+    @property
+    def sandbox_level(self) -> str:
+        """Aktives Sandbox-Level."""
+        return self._sandbox.level.value
+
+    @staticmethod
+    def _validate_command(command: str, workspace_root: str) -> str | None:
+        """Layer-0-Validierung: Null-Bytes, Path-Traversal, File-Path-Escape.
+
+        Returns:
+            Fehlermeldung bei Hard Block, None wenn ok.
+        """
+        # 1. Null-Byte → Hard Block
+        if _NULL_BYTE_RE.search(command):
+            log.warning("shell_null_byte_blocked", command_prefix=command[:50])
+            return "Befehl blockiert: Null-Byte erkannt."
+
+        # 2. Path Traversal (../../..) → Hard Block
+        if _PATH_TRAVERSAL_RE.search(command):
+            log.warning("shell_path_traversal_blocked", command_prefix=command[:80])
+            return "Befehl blockiert: Path-Traversal erkannt."
+
+        # 3. File-Path-Escape: Pruefe ob File-Commands Pfade ausserhalb Workspace nutzen
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            return None  # Unparsbares Command → Sandbox entscheidet
+
+        if not parts:
+            return None
+
+        base_cmd = Path(parts[0]).name  # Nur Basisname (z.B. /usr/bin/cat → cat)
+        if base_cmd in _FILE_COMMANDS:
+            ws_root = Path(workspace_root).resolve()
+            for arg in parts[1:]:
+                if arg.startswith("-"):
+                    continue
+                try:
+                    resolved = (ws_root / arg).resolve()
+                    resolved.relative_to(ws_root)
+                except (ValueError, OSError):
+                    log.warning(
+                        "shell_path_escape_blocked",
+                        command=base_cmd,
+                        argument=arg[:100],
+                        workspace=str(ws_root),
+                    )
+                    return f"Befehl blockiert: Pfad '{arg[:100]}' liegt außerhalb des Workspace."
+
+        return None
+
+    async def exec_command(
+        self,
+        command: str,
+        working_dir: str | None = None,
+        timeout: int | None = None,
+        _sandbox_network: str | None = None,
+        _sandbox_max_memory_mb: int | None = None,
+        _sandbox_max_processes: int | None = None,
+    ) -> str:
+        """Fuehrt einen Shell-Befehl in der Sandbox aus.
+
+        Args:
+            command: Shell-Befehl als String.
+            working_dir: Arbeitsverzeichnis (Default: ~/.cognithor/workspace/).
+            timeout: Timeout in Sekunden (Default: 30).
+            _sandbox_network: Per-Agent Netzwerk-Override ("allow"/"block").
+            _sandbox_max_memory_mb: Per-Agent Memory-Limit in MB.
+            _sandbox_max_processes: Per-Agent Prozess-Limit.
+
+        Returns:
+            Kombinierter stdout + stderr Output.
+        """
+        if not command.strip():
+            return t("shell.no_command")
+
+        cwd = working_dir or self._default_cwd
+
+        # Working-Directory validieren -- muss unter Workspace liegen
+        cwd_path = Path(cwd).expanduser().resolve()
+        workspace_root = Path(self._default_cwd).expanduser().resolve()
+        try:
+            cwd_path.relative_to(workspace_root)
+        except ValueError:
+            return (
+                f"Zugriff verweigert: Arbeitsverzeichnis '{cwd}' liegt ausserhalb "
+                f"des Workspace ({workspace_root})"
+            )
+        cwd_path.mkdir(parents=True, exist_ok=True)
+
+        # Layer-0-Validierung: Null-Bytes, Path-Traversal
+        if getattr(self._config, "security", None) and getattr(
+            self._config.security, "shell_validate_paths", True
+        ):
+            validation_error = self._validate_command(command, str(workspace_root))
+            if validation_error:
+                return validation_error
+
+        # Layer-1: Semantische Command-Validierung (6-Stufen-Pipeline)
+        try:
+            from cognithor.security.shell_validator import (
+                ValidationVerdict,
+            )
+            from cognithor.security.shell_validator import (
+                validate_command as validate_shell,
+            )
+
+            _perm_mode = "full_access"
+            _sec = getattr(self._config, "security", None)
+            if _sec:
+                _perm_mode = getattr(_sec, "shell_permission_mode", "full_access")
+
+            _vr = validate_shell(command, _perm_mode, str(workspace_root))
+            if _vr.verdict == ValidationVerdict.BLOCK:
+                log.warning(
+                    "shell_validation_blocked",
+                    stage=_vr.stage,
+                    reason=_vr.reason,
+                    intent=_vr.intent.value,
+                    command_prefix=command[:80],
+                )
+                return f"Befehl blockiert ({_vr.stage}): {_vr.reason}"
+            if _vr.verdict == ValidationVerdict.WARN:
+                log.info(
+                    "shell_validation_warn",
+                    stage=_vr.stage,
+                    reason=_vr.reason,
+                    intent=_vr.intent.value,
+                    command_prefix=command[:80],
+                )
+        except ImportError:
+            pass  # Validator nicht installiert — weiter ohne
+
+        # Per-Agent Overrides
+        network_override = None
+        if _sandbox_network:
+            with contextlib.suppress(ValueError):
+                network_override = NetworkPolicy(_sandbox_network)
+
+        # Befehls-Logging: Kuerzen und sensitive Muster maskieren
+        _log_cmd = command[: self._max_log_command_length]
+        for _pattern in ("API_KEY=", "TOKEN=", "PASSWORD=", "SECRET=", "BEARER "):
+            if _pattern.lower() in _log_cmd.lower():
+                _log_cmd = _log_cmd[: self._max_redacted_log_prefix] + " [REDACTED]"
+                break
+
+        log.info(
+            "shell_exec_start",
+            command=_log_cmd,
+            cwd=str(cwd_path),
+            sandbox=self._sandbox.level.value,
+            timeout=timeout,
+            network_override=_sandbox_network,
+            memory_override=_sandbox_max_memory_mb,
+            processes_override=_sandbox_max_processes,
+        )
+
+        # In Sandbox ausfuehren (mit per-Agent Overrides)
+        result = await self._sandbox.execute(
+            command,
+            working_dir=str(cwd_path),
+            timeout=timeout,
+            network=network_override,
+            max_memory_mb=_sandbox_max_memory_mb,
+            max_processes=_sandbox_max_processes,
+        )
+
+        log_method = log.warning if result.truncated else log.info
+        log_method(
+            "shell_exec_done",
+            command=_log_cmd,
+            exit_code=result.exit_code,
+            sandbox=result.sandbox_level,
+            stdout_len=len(result.stdout),
+            stderr_len=len(result.stderr),
+            timed_out=result.timed_out,
+            truncated=result.truncated,
+        )
+
+        return result.output
+
+
+def register_shell_tools(
+    mcp_client: Any,
+    config: CognithorConfig,
+) -> ShellTools:
+    """Registriert Shell-Tools beim MCP-Client.
+
+    Returns:
+        ShellTools-Instanz.
+    """
+    shell = ShellTools(config)
+
+    mcp_client.register_builtin_handler(
+        "exec_command",
+        shell.exec_command,
+        description=(
+            f"Führt einen Shell-Befehl in einer Sandbox ({shell.sandbox_level}) aus. "
+            "Arbeitsverzeichnis: ~/.cognithor/workspace/. "
+            "Destruktive Befehle werden vom Gatekeeper blockiert."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Shell-Befehl"},
+                "working_dir": {
+                    "type": "string",
+                    "description": "Arbeitsverzeichnis (Default: ~/.cognithor/workspace/)",
+                    "default": None,
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Timeout in Sekunden (Default: 30)",
+                    "default": 30,
+                },
+            },
+            "required": ["command"],
+        },
+    )
+
+    log.info(
+        "shell_tools_registered",
+        tools=["exec_command"],
+        sandbox_level=shell.sandbox_level,
+    )
+    return shell

@@ -1,0 +1,78 @@
+{
+  "bundle_bytes": 121300686,
+  "bundle_sha256": "92e123309e0c3ad14dd84006226d83dae6a1bccdadb2f0f4365c1e4c72a87492",
+  "extracted_tree": {
+    "bytes": 151969848,
+    "files": 2243,
+    "sha256": "e9af10dc82fde95d315823a95d3a6426f04aa186e5d30a9d4c431d29f40bbab4"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "CAMEL.bundle.zip.part-0001",
+      "sha256": "e3eeaecae998ad6f15aa1b1eab1ef0b9f668c977b6321b715dc4a81796daf884"
+    },
+    {
+      "bytes": 12582912,
+      "name": "CAMEL.bundle.zip.part-0002",
+      "sha256": "06cd5f31251674745bdee73888dbd081395eca70076db671d0417ba231740bc9"
+    },
+    {
+      "bytes": 12582912,
+      "name": "CAMEL.bundle.zip.part-0003",
+      "sha256": "741fd24b213bf32ffff09ebd547f10be28600a091edb4f59d3b97fa665d1d80d"
+    },
+    {
+      "bytes": 12582912,
+      "name": "CAMEL.bundle.zip.part-0004",
+      "sha256": "4a91f3098368a1f3ef74f582d84906f1907e703095cf4a8b418fc3615d4fc9a2"
+    },
+    {
+      "bytes": 12582912,
+      "name": "CAMEL.bundle.zip.part-0005",
+      "sha256": "d02d9f9616f9beabf92c46a60d0bbe4b403f7c0a93c8ce991b8fc8a3cfa0e6b2"
+    },
+    {
+      "bytes": 12582912,
+      "name": "CAMEL.bundle.zip.part-0006",
+      "sha256": "f58ddb0a7cdf50683371d198133f244aa225dd208772cd91cc9991a759aad7b6"
+    },
+    {
+      "bytes": 12582912,
+      "name": "CAMEL.bundle.zip.part-0007",
+      "sha256": "0143feb8fcd8bec641f253fa5ba888a87f7b957e3fec428404351f4e4234df06"
+    },
+    {
+      "bytes": 12582912,
+      "name": "CAMEL.bundle.zip.part-0008",
+      "sha256": "3acfdb81c1bf14347c04e76949a000e4ebe34ab190d2b7fc0dfd3c9fd599f8bb"
+    },
+    {
+      "bytes": 12582912,
+      "name": "CAMEL.bundle.zip.part-0009",
+      "sha256": "d46da8f2894d56c96da0a500222d7a7245d4b464798de58be45f7e74affe2c8e"
+    },
+    {
+      "bytes": 8054478,
+      "name": "CAMEL.bundle.zip.part-0010",
+      "sha256": "3ba9cd65634ec2d2cf707af7a3ecf81f5fb9d8263f7d96597f04f4df8044aec2"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "CAMEL",
+  "source_bytes": 151969848,
+  "source_commit": "8c791b7b9cf7deab56cb5a92818c34499af9097f",
+  "source_files": 2243,
+  "source_ref": "HEAD",
+  "source_repo": "camel-ai/camel",
+  "source_tree": {
+    "bytes": 151969848,
+    "files": 2243,
+    "sha256": "e9af10dc82fde95d315823a95d3a6426f04aa186e5d30a9d4c431d29f40bbab4"
+  }
+}

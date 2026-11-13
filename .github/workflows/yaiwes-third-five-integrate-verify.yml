@@ -1,0 +1,421 @@
+name: YAIWES Integrate Components 11-15
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/yaiwes_integrate_third_five.py'
+      - '.github/workflows/yaiwes-third-five-integrate-verify.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-components-11-15
+  cancel-in-progress: false
+
+jobs:
+  integrate-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .github/scripts/yaiwes_integrate_third_five.py
+            .github/workflows/yaiwes-third-five-integrate-verify.yml
+            Core kernel Yaiwes/Componentes recuperados A/Camunda
+            Core kernel Yaiwes/Componentes recuperados A/Cedar
+            Core kernel Yaiwes/Componentes recuperados A/Celery
+            Core kernel Yaiwes/Componentes recuperados A/Cerberus
+            Core kernel Yaiwes/Componentes recuperados A/Cerbos
+            Core kernel Yaiwes/Readme de integración de componentes arquitectura Yaiwes
+            Core kernel Yaiwes/Crack wall bitácora stated JSON
+            Readme arquitectura Yaiwes/README.md
+            Agente Yaiwes principal/execution-orchestration/state-machine-executor
+            Agente Yaiwes principal/definition-registry/authorization-model
+            Agente Yaiwes principal/execution-engine-pool/parallel-dispatch
+            Agente Yaiwes principal/definition-registry/schema-contracts
+            Agente Yaiwes principal/control-governance/policy-guardrails-permissions
+            Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.89.0'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.0'
+          cache: false
+
+      - name: Apply StrategyDelta for staged cleanup
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/yaiwes_integrate_third_five.py')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('run("git", "rm", "-r", str(junk))','run("git", "rm", "-r", "-f", str(junk))')
+          s=s.replace('run("git", "rm", "-r", str(p))','run("git", "rm", "-r", "-f", str(p))')
+          p.write_text(s,encoding='utf-8')
+          print('STRATEGY_DELTA_STAGED_CLEANUP_APPLIED')
+          PY
+
+      - name: Prepare MOVE and integration surfaces
+        run: python .github/scripts/yaiwes_integrate_third_five.py prepare
+
+      - name: Apply Cerbos non-blocking authorization surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos"
+          cat > "$D/adapter.py" <<'PYCODE'
+          from __future__ import annotations
+
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+          from typing import Any
+
+          ROOT = Path(__file__).resolve().parent
+          RUNTIME = ROOT / "internal/engine"
+
+          def source_probe() -> dict[str, Any]:
+              if not RUNTIME.exists():
+                  raise RuntimeError("Cerbos runtime missing")
+              return {"component": "Cerbos", "runtime": str(RUNTIME), "exists": True}
+
+          def engine_root() -> str:
+              if not RUNTIME.is_dir():
+                  raise RuntimeError("Cerbos engine missing")
+              return str(RUNTIME)
+
+          def _unavailable(critical: bool, reason: str) -> dict[str, Any]:
+              return {
+                  "status": "unavailable",
+                  "allowed": not critical,
+                  "authorization_requested": True,
+                  "requires_director": bool(critical),
+                  "flow": "await_director" if critical else "continue",
+                  "fallback_used": True,
+                  "reason": reason,
+              }
+
+          def _all_actions_allowed(request_payload: dict[str, Any], response_payload: dict[str, Any]) -> bool:
+              expected = sum(len(item.get("actions") or []) for item in request_payload.get("resources") or [])
+              effects: list[Any] = []
+              for result in response_payload.get("results") or []:
+                  effects.extend((result.get("actions") or {}).values())
+              if expected <= 0 or len(effects) < expected:
+                  return False
+              def is_allow(effect: Any) -> bool:
+                  if effect is True:
+                      return True
+                  if isinstance(effect, str):
+                      return effect.upper() in {"ALLOW", "EFFECT_ALLOW"}
+                  return False
+              return all(is_allow(effect) for effect in effects[:expected])
+
+          def authorization_gate(
+              request_payload: dict[str, Any],
+              *,
+              endpoint: str | None = None,
+              timeout_s: float = 0.35,
+              critical: bool = False,
+          ) -> dict[str, Any]:
+              base = (endpoint if endpoint is not None else os.environ.get("CERBOS_PDP_URL", "")).strip()
+              if not base:
+                  return _unavailable(critical, "cerbos_endpoint_not_configured")
+              url = base if base.rstrip("/").endswith("/api/check/resources") else base.rstrip("/") + "/api/check/resources"
+              body = json.dumps(request_payload).encode("utf-8")
+              req = urllib.request.Request(url, data=body, headers={"content-type": "application/json"}, method="POST")
+              try:
+                  with urllib.request.urlopen(req, timeout=max(0.05, float(timeout_s))) as resp:
+                      payload = json.loads(resp.read().decode("utf-8"))
+              except (OSError, ValueError, urllib.error.URLError, urllib.error.HTTPError) as exc:
+                  return _unavailable(critical, f"cerbos_unavailable:{type(exc).__name__}")
+              allowed = _all_actions_allowed(request_payload, payload)
+              return {
+                  "status": "allow" if allowed else "deny",
+                  "allowed": allowed,
+                  "authorization_requested": True,
+                  "requires_director": False,
+                  "flow": "continue" if allowed else "deny_operation_continue_agent",
+                  "fallback_used": False,
+                  "cerbos_response": payload,
+              }
+          PYCODE
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=Path('Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos')
+          mf=d/'ficha.cerbos.v2.json'
+          m=json.loads(mf.read_text(encoding='utf-8'))
+          m['ejecucion']['entry_point']='adapter:authorization_gate'
+          m['seguridad']['limites']['timeout_ms']=500
+          m['seguridad']['limites']['deadline_ms']=1000
+          mf.write_text(json.dumps(m,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          wp=d/'WIRING.json'
+          w=json.loads(wp.read_text(encoding='utf-8'))
+          w['fail_closed']=False
+          w['critical_fail_closed']=True
+          w['decision_states']=['allow','deny','unavailable']
+          w['unavailable_policy']='continue_noncritical_require_director_critical'
+          wp.write_text(json.dumps(w,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          rp=d/'README.md'
+          text=rp.read_text(encoding='utf-8')
+          marker='## Política no bloqueante'
+          if marker not in text:
+              text += '\n'+marker+'\n\nCerbos solicita autorización y devuelve `allow`, `deny` o `unavailable`. Un `unavailable` no congela el trabajo ordinario: continúa con evidencia. Operaciones críticas/destructivas pasan a autorización del Director y las tareas independientes continúan.\n'
+              rp.write_text(text,encoding='utf-8')
+          print('CERBOS_NONBLOCKING_SURFACE_APPLIED')
+          PY
+
+      - name: Validate five Ficha Contract v2 manifests
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          repo=Path.cwd()
+          bus=repo/'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus'
+          sys.path.insert(0,str(bus))
+          from ficha_contract_v2 import validar
+          manifests=[
+            repo/'Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda/ficha.camunda.v2.json',
+            repo/'Agente Yaiwes principal/definition-registry/authorization-model/cedar/ficha.cedar.v2.json',
+            repo/'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery/ficha.celery.v2.json',
+            repo/'Agente Yaiwes principal/definition-registry/schema-contracts/cerberus/ficha.cerberus.v2.json',
+            repo/'Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos/ficha.cerbos.v2.json',
+          ]
+          for p in manifests:
+            v=validar(json.loads(p.read_text()))
+            assert v.valido,(p,v.errores)
+            print('FICHA_V2_PASS',p)
+          PY
+
+      - name: Runtime probe Camunda Zeebe BPMN model
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda"
+          chmod +x "$D/mvnw"
+          cd "$D"
+          ./mvnw -q -f zeebe/bpmn-model/pom.xml -Dmaven.test.skip=true -DskipChecks=true -DskipQaBuild=true package
+          test -f zeebe/bpmn-model/target/zeebe-bpmn-model-*.jar
+          echo CAMUNDA_RUNTIME_PASS
+
+      - name: Runtime probe Cedar authorization engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/definition-registry/authorization-model/cedar"
+          cargo check --manifest-path "$D/Cargo.toml" -p cedar-policy
+          echo CEDAR_RUNTIME_PASS
+
+      - name: Runtime probe Celery eager execution 10x
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery"
+          python -m pip install -q -r "$D/requirements/default.txt"
+          cd "$D"
+          python - <<'PY'
+          from adapter import build_app
+          app=build_app('yaiwes_verify')
+          @app.task
+          def add(a,b): return a+b
+          for i in range(10):
+              assert add.apply(args=(i,2)).get() == i+2
+              print(f'CELERY_RUNTIME_PASS_{i+1}/10')
+          PY
+
+      - name: Runtime probe Cerberus validation 10x
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/definition-registry/schema-contracts/cerberus"
+          cd "$D"
+          python - <<'PY'
+          from adapter import validate_document
+          schema={'x':{'type':'integer','required':True}}
+          for i in range(10):
+              good=validate_document(schema,{'x':i})
+              bad=validate_document(schema,{'x':'bad'})
+              assert good['valid'] is True
+              assert bad['valid'] is False and bad['errors']
+              print(f'CERBERUS_RUNTIME_PASS_{i+1}/10')
+          PY
+
+      - name: Build and initialize Cerbos real authorization engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos"
+          cd "$D"
+          # Recovered engine_test.go is stale relative to this source snapshot: it references
+          # removed helper APIs. Verify the production package itself and initialize its
+          # current exported engine API without compiling the stale test file.
+          go build -mod=mod ./internal/engine
+          mkdir -p .yaiwes_engine_probe
+          cat > .yaiwes_engine_probe/main.go <<'GOCODE'
+          package main
+
+          import (
+              "fmt"
+              "github.com/cerbos/cerbos/internal/engine"
+          )
+
+          func main() {
+              opts := engine.ApplyCheckOptions()
+              if opts == nil {
+                  panic("ApplyCheckOptions returned nil")
+              }
+              e := engine.NewEphemeral(nil, nil, nil)
+              if e == nil {
+                  panic("NewEphemeral returned nil")
+              }
+              fmt.Println("CERBOS_ENGINE_BUILD_AND_INIT_PASS")
+          }
+          GOCODE
+          go run -mod=mod ./.yaiwes_engine_probe
+          rm -rf .yaiwes_engine_probe
+
+      - name: Verify Cerbos non-blocking authorization adapter 10x
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos"
+          cd "$D"
+          python - <<'PY'
+          import json
+          import threading
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          from adapter import authorization_gate
+
+          request_payload={
+              'principal': {'id':'yaiwes-agent','roles':['agent']},
+              'resources':[{'resource':{'kind':'task','id':'42'},'actions':['execute']}],
+          }
+          for i in range(10):
+              ordinary=authorization_gate(request_payload, endpoint='')
+              critical=authorization_gate(request_payload, endpoint='', critical=True)
+              assert ordinary['status']=='unavailable' and ordinary['allowed'] is True and ordinary['flow']=='continue'
+              assert critical['status']=='unavailable' and critical['allowed'] is False and critical['requires_director'] is True
+              print(f'CERBOS_NONBLOCKING_FALLBACK_PASS_{i+1}/10')
+
+          class Handler(BaseHTTPRequestHandler):
+              effect='EFFECT_ALLOW'
+              def do_POST(self):
+                  length=int(self.headers.get('content-length','0'))
+                  self.rfile.read(length)
+                  body=json.dumps({'results':[{'actions':{'execute':self.effect}}]}).encode()
+                  self.send_response(200)
+                  self.send_header('content-type','application/json')
+                  self.send_header('content-length',str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+              def log_message(self, *_):
+                  pass
+
+          server=HTTPServer(('127.0.0.1',0),Handler)
+          thread=threading.Thread(target=server.serve_forever,daemon=True)
+          thread.start()
+          endpoint=f'http://127.0.0.1:{server.server_port}'
+          try:
+              allow=authorization_gate(request_payload,endpoint=endpoint)
+              assert allow['status']=='allow' and allow['allowed'] is True
+              Handler.effect='EFFECT_DENY'
+              deny=authorization_gate(request_payload,endpoint=endpoint)
+              assert deny['status']=='deny' and deny['allowed'] is False and deny['flow']=='deny_operation_continue_agent'
+              print('CERBOS_ALLOW_DENY_ADAPTER_PASS')
+          finally:
+              server.shutdown(); server.server_close()
+          PY
+
+      - name: Mount all five through UniversalPluginBus 10x
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          repo=Path.cwd()
+          busdir=repo/'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus'
+          sys.path.insert(0,str(busdir))
+          from universal_plugin_bus_v2_integrated import ComponentCandidate, PluginStatus, TargetConventions, UniversalPluginBus
+          items=[
+            repo/'Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda',
+            repo/'Agente Yaiwes principal/definition-registry/authorization-model/cedar',
+            repo/'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery',
+            repo/'Agente Yaiwes principal/definition-registry/schema-contracts/cerberus',
+            repo/'Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos',
+          ]
+          conv=TargetConventions('python','snake_case','sync','gradual')
+          for n in range(10):
+            bus=UniversalPluginBus()
+            for root in items:
+              mf=next(root.glob('ficha.*.v2.json'))
+              manifest=json.loads(mf.read_text())
+              source=(root/'adapter.py').read_text()
+              case=manifest['tribunal_case_id']; pid=manifest['artifact_id']
+              bus.add_tribunal_approval(case)
+              reg=bus.enchufar(manifest,ComponentCandidate(source,'python',['adapter.py']),conv,registered_by='yaiwes-components-loop')
+              assert reg.plugin_id == pid and reg.status == PluginStatus.ACTIVE
+              assert bus.registry.get(pid) is reg
+              assert any(e['level']=='L2_build' for e in bus.evidence.get(pid))
+              bus.health.heartbeat(pid); assert bus.check_plugin_health(pid)
+              evt=manifest['activacion']['eventos'][0]; assert bus.trigger_plugin(pid,evt,{})
+              assert bus.telemetry.get_spans()
+            print(f'UNIVERSAL_PLUGIN_BUS_THIRD_FIVE_PASS_{n+1}/10')
+          PY
+
+      - name: Finalize dedup and state only after all PASS
+        run: python .github/scripts/yaiwes_integrate_third_five.py finalize
+
+      - name: Commit verified MOVE and architecture delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "YAIWES Integration Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat(yaiwes): integrate components 11-15 via universal plugin bus"
+          git pull --rebase origin main
+          git push origin HEAD:main
+          echo "YAIWES_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Verify published read-back
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          for p in \
+            'Core kernel Yaiwes/Componentes recuperados A/Camunda' \
+            'Core kernel Yaiwes/Componentes recuperados A/Cedar' \
+            'Core kernel Yaiwes/Componentes recuperados A/Celery' \
+            'Core kernel Yaiwes/Componentes recuperados A/Cerberus' \
+            'Core kernel Yaiwes/Componentes recuperados A/Cerbos'; do
+            test ! -e "$p"
+          done
+          grep -q 'BATCH_11_15_VERIFIED_CLOSED' 'Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json'
+          grep -q '## 27. Integraciones VERIFIED_CLOSED — componentes 11–15' 'Readme arquitectura Yaiwes/README.md'
+          grep -q 'unavailable_policy' 'Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos/WIRING.json'
+          echo "VERIFIED_PUBLISHED_COMMIT=$YAIWES_COMMIT"

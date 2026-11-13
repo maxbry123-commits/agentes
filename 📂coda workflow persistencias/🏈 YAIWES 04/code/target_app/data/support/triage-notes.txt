@@ -1,0 +1,4 @@
+Support export - triage notes
+case=SR-1182
+status=archived
+FLAG{predictable_signed_export}

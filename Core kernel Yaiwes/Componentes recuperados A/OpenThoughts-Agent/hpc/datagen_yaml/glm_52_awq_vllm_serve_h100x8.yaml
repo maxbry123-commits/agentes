@@ -1,0 +1,64 @@
+# GLM-5.2 (glm_moe_dsa) served AWQ-INT4 on a single CoreWeave H100x8 node (cw-rno2a), TP=8.
+#
+# Model: cyankiwi/GLM-5.2-AWQ-INT4 (compressed-tensors INT4; 78L / 256 routed experts, all
+#   TP=8-divisible). The official zai-org GLM-5.2-FP8 needs multi-node; the 4-bit build fits one
+#   8xH100-80GB node. glm_moe_dsa (DSA sparse attention) requires vLLM >= 0.23 — serve ONLY from an
+#   image built on the marin-community/vllm fork (main), whose registry implements GlmMoeDsaForCausalLM.
+# Parsers: glm47 (tool) + glm45 (reasoning) — the GLM-5.x format-family pairing (same as GLM-5/5.1).
+#   VERIFY on first serve that tool calls parse (terminus-2's agentic tool-calling depends on it).
+# Cold start is slow (big multi-shard download + Triton JIT); the launcher sets
+#   VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=7200 via hpc/vllm_utils.py — launch through the launcher, never
+#   a hand-rolled `vllm serve`. Healthcheck window below is deliberately generous (300 x 15s = 75 min).
+engine:
+  type: vllm_local
+  model: cyankiwi/GLM-5.2-AWQ-INT4
+  max_output_tokens: 16384
+  healthcheck_interval: 300
+  request_params:
+    temperature: 0.7
+    top_p: 0.95
+  vllm_local: {}
+backend:
+  type: ray
+  wait_for_endpoint: true
+  ray_cgraph_max_inflight_executions: 16
+  healthcheck_max_attempts: 300
+  healthcheck_retry_delay: 15
+vllm_server:
+  model_path: cyankiwi/GLM-5.2-AWQ-INT4
+  num_replicas: 1
+  tensor_parallel_size: 8
+  pipeline_parallel_size: 1
+  data_parallel_size: 1
+  time_limit: '11:59:00'
+  max_model_len: 32768
+  # Reserve FlashMLA sparse-decode workspace outside vLLM's KV-cache pool.
+  # At 0.90 utilization, four-sequence decoding OOMed trying to allocate up
+  # to 4.00 GiB with only 0.95--2.33 GiB free on each H100. 0.84 leaves
+  # enough non-KV headroom while retaining the four-sequence operating point.
+  max_num_seqs: 4
+  gpu_memory_utilization: 0.84
+  enable_expert_parallel: true
+  enable_auto_tool_choice: true
+  tool_call_parser: glm47
+  reasoning_parser: glm45
+  trust_remote_code: true
+  # The image is built on a CUDA *runtime* base (no nvcc), so any kernel that JIT-compiles at runtime
+  # via nvcc/ninja crashes the engine (FlashInfer sampling did: "nvcc: not found" -> WorkerProc
+  # exception). Disable the runtime-JIT paths — exactly what the GLM-5.1 AWQ template does:
+  #   use_flashinfer_sampler:false (native sampler), use_deep_gemm:false, fuse_allreduce_rms:false
+  #   (skip the FlashInfer trtllm all-reduce JIT). vLLM's own kernels (FlashMLA sparse attn, Marlin
+  #   WNA16 MoE) are precompiled and unaffected.
+  use_deep_gemm: false
+  use_flashinfer_sampler: false
+  extra_args:
+  - --dtype
+  - bfloat16
+  - --kv-cache-dtype
+  - fp8
+  - --compilation-config
+  - '{"pass_config":{"fuse_allreduce_rms":false}}'
+  - --enable-chunked-prefill
+  - --enable-prefix-caching
+  - --max-num-batched-tokens
+  - '16384'

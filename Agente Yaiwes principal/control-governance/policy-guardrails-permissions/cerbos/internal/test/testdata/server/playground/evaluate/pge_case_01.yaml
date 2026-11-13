@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=../../../.jsonschema/ServerTestCase.schema.json
+---
+description: "Valid Request"
+wantStatus:
+  httpStatusCode: 200
+  grpcStatusCode: 0
+playgroundEvaluate:
+  input: {
+    "playgroundId": "test",
+    "files": [
+      {
+        "fileName": "common_roles.yaml",
+        "contents": "{{ fileString `store/derived_roles/common_roles.yaml` | b64enc }}",
+      },
+      {
+        "fileName": "resource.yaml",
+        "contents": "{{ fileString `store/resource_policies/policy_04.yaml` | b64enc }}",
+      }
+    ],
+    "actions": ["view", "delete"],
+    "principal": {
+      "id": "eduardo",
+      "roles": ["user"]
+    },
+    "resource": {
+      "kind": "album_object",
+      "id": "XX125",
+      "attr": {
+        "owner": "alicia",
+        "public": false
+      }
+    }
+  }
+  wantResponse: {
+    "playgroundId": "test",
+    "success": {
+      "results": [
+        {
+          "action": "view",
+          "effect": "EFFECT_DENY",
+          "policy": "resource.album_object.vdefault"
+        },
+        {
+          "action": "delete",
+          "effect": "EFFECT_DENY",
+          "policy": "resource.album_object.vdefault"
+        }
+      ]
+    }
+  }

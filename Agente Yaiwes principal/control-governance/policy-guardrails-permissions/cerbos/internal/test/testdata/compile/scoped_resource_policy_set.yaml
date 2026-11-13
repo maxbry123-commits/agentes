@@ -1,0 +1,3 @@
+# yaml-language-server: $schema=../.jsonschema/CompileTestCase.schema.json
+---
+mainDef: "leave_request.acme.hr.uk.yaml"

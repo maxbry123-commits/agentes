@@ -1,0 +1,30 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4.2",
+  "component": "🏈 16-Autonomous-Pentest-Agent",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.2",
+  "source_files_audited": 28,
+  "last_delta_candidates": 0,
+  "last_delta_changed": 0,
+  "active_surfaces_transformed_cumulative": 1,
+  "component_runtime": "yaiwes_internal/persistence_runtime.py",
+  "link_count": 2,
+  "links": [
+    {
+      "order": 1,
+      "path": "src/tools/executor.py",
+      "original_sha256": "f7019c7621f898c34ed65058307584515f7cb0481805ea82ad87d559d10112f9",
+      "active_sha256": "6f33c2ab8a6e9146a47f1d8efed0440a0e393d70759bfd8a310ea16d70ad117c",
+      "quarantine": "_yaiwes_upstream_quarantine/src/tools/executor.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "yaiwes_internal/persistence_runtime.py",
+      "active_sha256": "53ac38712e8bb3f57d4528e5e7f1ae879768eb8b1c1fd07b5990a307dbc58139",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "GENERATED_INTERNAL_RUNTIME_V4_2"
+    }
+  ]
+}

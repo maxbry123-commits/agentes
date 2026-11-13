@@ -1,0 +1,154 @@
+{
+    "nodes": [],
+    "links": [],
+    "universe_data": {
+        "episodes": {
+            "episode_1": {
+                "episode_data": {
+                    "completed": true,
+                    "max_timestep": 45,
+                    "total_blocks": 3,
+                    "completed_blocks": 2
+                },
+                "task_data": {
+                    "Block_0": {
+                        "final_success": false,
+                        "completion_time": null,
+                        "start_time": 5,
+                        "templates": {
+                            "template_1": {
+                                "instances": [
+                                    {"success": false, "start_time": 5}
+                                ]
+                            }
+                        }
+                    },
+                    "Block_1": {
+                        "final_success": true,
+                        "completion_time": 25,
+                        "start_time": 8,
+                        "templates": {
+                            "template_1": {
+                                "instances": [
+                                    {"success": true, "start_time": 8}
+                                ]
+                            }
+                        }
+                    },
+                    "Block_2": {
+                        "final_success": true,
+                        "completion_time": 35,
+                        "start_time": 12,
+                        "templates": {
+                            "template_1": {
+                                "instances": [
+                                    {"success": true, "start_time": 12}
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+            "episode_2": {
+                "episode_data": {
+                    "completed": true,
+                    "max_timestep": 50,
+                    "total_blocks": 3,
+                    "completed_blocks": 3
+                },
+                "task_data": {
+                    "Block_0": {
+                        "final_success": true,
+                        "completion_time": 18,
+                        "start_time": 3,
+                        "templates": {
+                            "template_1": {
+                                "instances": [
+                                    {"success": true, "start_time": 3}
+                                ]
+                            }
+                        }
+                    },
+                    "Block_1": {
+                        "final_success": true,
+                        "completion_time": 30,
+                        "start_time": 15,
+                        "templates": {
+                            "template_1": {
+                                "instances": [
+                                    {"success": true, "start_time": 15}
+                                ]
+                            }
+                        }
+                    },
+                    "Block_2": {
+                        "final_success": true,
+                        "completion_time": 42,
+                        "start_time": 20,
+                        "templates": {
+                            "template_1": {
+                                "instances": [
+                                    {"success": true, "start_time": 20}
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+            "episode_3": {
+                "episode_data": {
+                    "completed": false,
+                    "max_timestep": 40,
+                    "total_blocks": 3,
+                    "completed_blocks": 1
+                },
+                "task_data": {
+                    "Block_0": {
+                        "final_success": true,
+                        "completion_time": 22,
+                        "start_time": 7,
+                        "templates": {
+                            "template_1": {
+                                "instances": [
+                                    {"success": true, "start_time": 7}
+                                ]
+                            }
+                        }
+                    },
+                    "Block_1": {
+                        "final_success": false,
+                        "completion_time": null,
+                        "start_time": 25,
+                        "templates": {
+                            "template_1": {
+                                "instances": [
+                                    {"success": false, "start_time": 25}
+                                ]
+                            }
+                        }
+                    },
+                    "Block_2": {
+                        "final_success": false,
+                        "completion_time": null,
+                        "start_time": 10,
+                        "templates": {
+                            "template_1": {
+                                "instances": [
+                                    {"success": false, "start_time": 10}
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "views": {
+            "COG": {
+                "Block_0": {"completion_rate": 0.67, "avg_t": 20.0},
+                "Block_1": {"completion_rate": 0.67, "avg_t": 27.5},
+                "Block_2": {"completion_rate": 0.33, "avg_t": 35.0}
+            }
+        },
+        "stats": {}
+    }
+}

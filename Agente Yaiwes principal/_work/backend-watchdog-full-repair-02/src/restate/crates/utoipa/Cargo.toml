@@ -1,0 +1,24 @@
+[package]
+name = "restate-utoipa"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+publish = false
+
+[features]
+default = ["debug"]
+debug = []
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+indexmap = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]
+restate-utoipa = { path = ".", features = ["debug"] }
+
+[lints]
+workspace = true

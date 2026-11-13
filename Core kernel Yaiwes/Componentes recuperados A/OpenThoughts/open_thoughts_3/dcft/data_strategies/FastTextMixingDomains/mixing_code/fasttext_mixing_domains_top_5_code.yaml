@@ -1,0 +1,101 @@
+
+operators:
+- id: load_top_1
+  config:
+    type: load_preexisting
+    framework_name: seed_code_codefeedback
+- id: sample_dataset_top_1
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 500
+  input_ids:
+  - load_top_1
+
+- id: load_top_2
+  config:
+    type: load_preexisting
+    framework_name: seed_code_share_gpt_code
+- id: sample_dataset_top_2
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 500
+  input_ids:
+  - load_top_2
+
+- id: load_top_3
+  config:
+    type: load_preexisting
+    framework_name: seed_code_dolphin
+- id: sample_dataset_top_3
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 500
+  input_ids:
+  - load_top_3
+
+- id: load_top_4
+  config:
+    type: load_preexisting
+    framework_name: seed_code_glaive
+- id: sample_dataset_top_4
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 500
+  input_ids:
+  - load_top_4
+
+- id: load_top_5
+  config:
+    type: load_preexisting
+    framework_name: seed_code_magicoder
+- id: sample_dataset_top_5
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 500
+  input_ids:
+  - load_top_5
+
+- id: annotate
+  config:
+    type: completions
+    map: chat
+    map_config:
+      user_message_column: instruction_seed
+      output_column: r1_distill_70b_response
+    model: "together_ai/deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+    batch: False
+    temperature: 1.0
+    backend_params:
+      max_requests_per_minute: 6_000
+      max_tokens_per_minute: 2_000_000
+      invalid_finish_reasons: ['content_filter']
+    generation_params:
+      max_tokens: 32_000
+  input_ids:
+    - sample_dataset_top_1
+    - sample_dataset_top_2
+    - sample_dataset_top_3
+    - sample_dataset_top_4
+    - sample_dataset_top_5
+    
+    
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: r1_distill_70b_response
+      output_sharegpt_column: conversations
+  input_ids:
+    - annotate

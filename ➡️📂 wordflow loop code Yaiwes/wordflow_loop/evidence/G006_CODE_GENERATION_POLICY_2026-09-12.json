@@ -1,0 +1,43 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "contract": "tel.workflow/v4",
+  "node": "G-006",
+  "worker": "SOL_2",
+  "status": "PASS",
+  "date": "2026-09-12",
+  "scope": "➡️📂 Wordflow LOOP Yaiwes/",
+  "research": {
+    "reuse_policy": "G-005 REUSE>PATCH>ADAPT>GENERATE remains prerequisite",
+    "module": "runtime/src/core/code_generation_policy.py",
+    "module_blob": "384633550b995aae1187806017fb16b9411f0eed",
+    "abi_protocol": ["GenerationRequest", "GenerationDecision"],
+    "fables_dependency": "G-018 PASS exact blob pytest"
+  },
+  "motor": {
+    "required": false,
+    "reason": "No download/extract/copy/move operation was required."
+  },
+  "wire_test": {
+    "test": "runtime/tests/test_code_generation_policy.py",
+    "test_blob": "ac54453f5c3467956410b63fef8df78d6ae70cb5",
+    "test_commit": "525a76af888e17310069ab745dda47115191725e",
+    "combined_command": "PYTHONPATH=/tmp/g018 python -m pytest -q runtime/tests/test_code_generation_policy.py runtime/tests/test_fables_binding_gate.py",
+    "result": "PASS_9_OF_9",
+    "summary": "9 passed, 25 warnings in 0.05s",
+    "warnings": "datetime.utcnow deprecation only"
+  },
+  "verified_gates": [
+    "reuse decision must be GENERATE",
+    "placement must be approved",
+    "target path must be safe relative and cannot target .github/workflows",
+    "canonical Fables binding must be verified, not string-only",
+    "missing required fields fail closed",
+    "LLM may request candidate generation but cannot authorize execution",
+    "execution_authorized=false",
+    "deployment_authorized=false"
+  ],
+  "no_parallel_bus": true,
+  "no_lfs": true,
+  "no_force": true,
+  "decision": "G006_CLOSED_VERIFIED_LOCAL"
+}

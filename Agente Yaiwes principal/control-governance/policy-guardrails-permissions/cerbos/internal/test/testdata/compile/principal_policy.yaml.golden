@@ -1,0 +1,279 @@
+{
+  "fqn": "cerbos.principal.donald_duck.v20210210",
+  "principalPolicy": {
+    "meta": {
+      "fqn": "cerbos.principal.donald_duck.v20210210",
+      "principal": "donald_duck",
+      "version": "20210210",
+      "sourceAttributes": {
+        "principal.donald_duck.v20210210": {
+          "attributes": {
+            "source": "principal_policies/donald_duck_20210210.yaml"
+          }
+        }
+      }
+    },
+    "policies": [
+      {
+        "resourceRules": {
+          "leave_request": {
+            "actionRules": [
+              {
+                "action": "*",
+                "name": "leave_request_rule-001",
+                "condition": {
+                  "expr": {
+                    "original": "request.resource.attr.dev_record == true",
+                    "checked": {
+                      "referenceMap": {
+                        "1": {
+                          "overloadId": [
+                            "equals"
+                          ]
+                        },
+                        "5": {
+                          "name": "request"
+                        }
+                      },
+                      "typeMap": {
+                        "1": {
+                          "primitive": "BOOL"
+                        },
+                        "2": {
+                          "dyn": {}
+                        },
+                        "3": {
+                          "mapType": {
+                            "keyType": {
+                              "primitive": "STRING"
+                            },
+                            "valueType": {
+                              "dyn": {}
+                            }
+                          }
+                        },
+                        "4": {
+                          "messageType": "cerbos.engine.v1.Request.Resource"
+                        },
+                        "5": {
+                          "messageType": "cerbos.engine.v1.Request"
+                        },
+                        "6": {
+                          "primitive": "BOOL"
+                        }
+                      },
+                      "sourceInfo": {
+                        "location": "<input>",
+                        "lineOffsets": [
+                          41
+                        ],
+                        "positions": {
+                          "1": 33,
+                          "2": 21,
+                          "3": 16,
+                          "4": 7,
+                          "5": 0,
+                          "6": 36
+                        }
+                      },
+                      "expr": {
+                        "id": "1",
+                        "callExpr": {
+                          "function": "_==_",
+                          "args": [
+                            {
+                              "id": "2",
+                              "selectExpr": {
+                                "operand": {
+                                  "id": "3",
+                                  "selectExpr": {
+                                    "operand": {
+                                      "id": "4",
+                                      "selectExpr": {
+                                        "operand": {
+                                          "id": "5",
+                                          "identExpr": {
+                                            "name": "request"
+                                          }
+                                        },
+                                        "field": "resource"
+                                      }
+                                    },
+                                    "field": "attr"
+                                  }
+                                },
+                                "field": "dev_record"
+                              }
+                            },
+                            {
+                              "id": "6",
+                              "constExpr": {
+                                "boolValue": true
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "effect": "EFFECT_ALLOW",
+                "emitOutput": {
+                  "when": {
+                    "ruleActivated": {
+                      "original": "\"donald_duck_dev_record_override:%s\".format([request.resource.attr.dev_record == true])",
+                      "checked": {
+                        "referenceMap": {
+                          "1": {
+                            "overloadId": [
+                              "string_format"
+                            ]
+                          },
+                          "4": {
+                            "overloadId": [
+                              "equals"
+                            ]
+                          },
+                          "8": {
+                            "name": "request"
+                          }
+                        },
+                        "typeMap": {
+                          "1": {
+                            "primitive": "STRING"
+                          },
+                          "2": {
+                            "primitive": "STRING"
+                          },
+                          "3": {
+                            "listType": {
+                              "elemType": {
+                                "primitive": "BOOL"
+                              }
+                            }
+                          },
+                          "4": {
+                            "primitive": "BOOL"
+                          },
+                          "5": {
+                            "dyn": {}
+                          },
+                          "6": {
+                            "mapType": {
+                              "keyType": {
+                                "primitive": "STRING"
+                              },
+                              "valueType": {
+                                "dyn": {}
+                              }
+                            }
+                          },
+                          "7": {
+                            "messageType": "cerbos.engine.v1.Request.Resource"
+                          },
+                          "8": {
+                            "messageType": "cerbos.engine.v1.Request"
+                          },
+                          "9": {
+                            "primitive": "BOOL"
+                          }
+                        },
+                        "sourceInfo": {
+                          "location": "<input>",
+                          "lineOffsets": [
+                            88
+                          ],
+                          "positions": {
+                            "1": 43,
+                            "2": 0,
+                            "3": 44,
+                            "4": 78,
+                            "5": 66,
+                            "6": 61,
+                            "7": 52,
+                            "8": 45,
+                            "9": 81
+                          }
+                        },
+                        "expr": {
+                          "id": "1",
+                          "callExpr": {
+                            "target": {
+                              "id": "2",
+                              "constExpr": {
+                                "stringValue": "donald_duck_dev_record_override:%s"
+                              }
+                            },
+                            "function": "format",
+                            "args": [
+                              {
+                                "id": "3",
+                                "listExpr": {
+                                  "elements": [
+                                    {
+                                      "id": "4",
+                                      "callExpr": {
+                                        "function": "_==_",
+                                        "args": [
+                                          {
+                                            "id": "5",
+                                            "selectExpr": {
+                                              "operand": {
+                                                "id": "6",
+                                                "selectExpr": {
+                                                  "operand": {
+                                                    "id": "7",
+                                                    "selectExpr": {
+                                                      "operand": {
+                                                        "id": "8",
+                                                        "identExpr": {
+                                                          "name": "request"
+                                                        }
+                                                      },
+                                                      "field": "resource"
+                                                    }
+                                                  },
+                                                  "field": "attr"
+                                                }
+                                              },
+                                              "field": "dev_record"
+                                            }
+                                          },
+                                          {
+                                            "id": "9",
+                                            "constExpr": {
+                                              "boolValue": true
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "salary_record": {
+            "actionRules": [
+              {
+                "action": "*",
+                "name": "salary_record_rule-001",
+                "effect": "EFFECT_DENY"
+              }
+            ]
+          }
+        },
+        "scopePermissions": "SCOPE_PERMISSIONS_OVERRIDE_PARENT"
+      }
+    ]
+  },
+  "compilerVersion": 2
+}

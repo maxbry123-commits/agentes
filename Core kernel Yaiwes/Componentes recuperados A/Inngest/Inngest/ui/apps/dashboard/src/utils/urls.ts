@@ -1,0 +1,334 @@
+import { defaultStringifySearch } from '@tanstack/react-router';
+
+export const WEBSITE_PRICING_URL = 'https://www.inngest.com/pricing';
+export const WEBSITE_CONTACT_URL = 'https://www.inngest.com/contact';
+export const DISCORD_URL = 'https://www.inngest.com/discord';
+
+export const DOCS_URLS = {
+  SERVE: 'https://www.inngest.com/docs/sdk/serve',
+};
+
+export const skipCacheSearchParam = {
+  name: 'skipCache',
+  value: 'true',
+} as const;
+
+/**
+ * Adds a query param that asks data fetchers to skip their cache.
+ */
+export function setSkipCacheSearchParam(url: string): string {
+  let value = `${skipCacheSearchParam.name}=${skipCacheSearchParam.value}`;
+  if (url.includes('?')) {
+    url += '&' + value;
+  } else {
+    url += '?' + value;
+  }
+  return url;
+}
+
+/**
+ * Builds an absolute `<link rel="canonical">` descriptor for a route's `head`
+ * option. Splat routes (e.g. Clerk's /sign-in/factor-one) should pass their
+ * base path so all sub-paths collapse to one canonical URL.
+ */
+/** Resolves an app-relative path to an absolute URL. */
+export function absoluteUrl(path: string) {
+  return new URL(path, import.meta.env.VITE_APP_URL).toString();
+}
+
+export function canonicalLink(path: string) {
+  return {
+    rel: 'canonical',
+    href: absoluteUrl(path),
+  };
+}
+
+export function getManageKey(pathname: string) {
+  const regex = /\/manage\/(\w+)/;
+  const match = pathname.match(regex);
+  if (match && match[1]) {
+    return match[1];
+  } else {
+    return null;
+  }
+}
+
+export const pathCreator = {
+  dashboard({ envSlug }: { envSlug: string }) {
+    return `/env/${envSlug}/`;
+  },
+  aiOverview({ envSlug }: { envSlug: string }) {
+    return `/env/${envSlug}/ai-overview`;
+  },
+  apps({ envSlug }: { envSlug: string }) {
+    return `/env/${envSlug}/apps`;
+  },
+  app({ envSlug, externalAppID }: { envSlug: string; externalAppID: string }) {
+    return `/env/${envSlug}/apps/${encodeURIComponent(externalAppID)}`;
+  },
+  appSyncs({
+    envSlug,
+    externalAppID,
+  }: {
+    envSlug: string;
+    externalAppID: string;
+  }) {
+    return `/env/${envSlug}/apps/${encodeURIComponent(externalAppID)}/syncs`;
+  },
+  billing({
+    ref,
+    tab,
+    highlight,
+  }: {
+    ref?: string;
+    tab?: string;
+    highlight?: string;
+  } = {}) {
+    let path = '/billing';
+    if (tab) {
+      path += `/${tab}`;
+    }
+
+    const query = new URLSearchParams();
+    if (highlight) {
+      query.set('highlight', highlight);
+    }
+    if (ref) {
+      query.set('ref', ref);
+    }
+    if (query.toString()) {
+      path += `?${query.toString()}`;
+    }
+
+    return path;
+  },
+  billingUsage({
+    dimension,
+    previous,
+  }: {
+    dimension?: string;
+    previous?: boolean;
+  } = {}) {
+    let path = '/billing/usage';
+    const query = new URLSearchParams();
+    if (dimension) {
+      query.set('dimension', dimension);
+    }
+    if (previous) {
+      query.set('previous', previous.toString());
+    }
+    if (query.toString()) {
+      path += `?${query.toString()}`;
+    }
+    return path;
+  },
+  createApp({ envSlug }: { envSlug: string }) {
+    return `/env/${envSlug}/apps/sync-new`;
+  },
+  eventPopout({ envSlug, eventID }: { envSlug: string; eventID: string }) {
+    return `/env/${envSlug}/events/${eventID}`;
+  },
+  eventType({ envSlug, eventName }: { envSlug: string; eventName: string }) {
+    return `/env/${envSlug}/event-types/${encodeURIComponent(eventName)}`;
+  },
+  eventTypes({ envSlug }: { envSlug: string }) {
+    return `/env/${envSlug}/event-types`;
+  },
+  eventTypeEvents({
+    envSlug,
+    eventName,
+  }: {
+    envSlug: string;
+    eventName: string;
+  }) {
+    return `/env/${envSlug}/event-types/${encodeURIComponent(
+      eventName,
+    )}/events`;
+  },
+  envs() {
+    return '/env';
+  },
+  functions({
+    envSlug,
+    appIDs,
+    archived,
+  }: {
+    envSlug: string;
+    appIDs?: string[];
+    archived?: boolean;
+  }) {
+    const path = `/env/${envSlug}/functions`;
+    const search: Record<string, string> = {};
+    if (appIDs?.length) {
+      // The functions table reads its app filter from a JSON-encoded array of
+      // app IDs, matching `useStringArraySearchParam('filterApp')`.
+      search.filterApp = JSON.stringify(appIDs);
+    }
+    // The table defaults to active functions, so archived functions are only
+    // visible when the status filter is explicitly set.
+    if (archived) {
+      search.archived = 'true';
+    }
+
+    // Both filters read their params as strings. The router's serializer
+    // double-encodes JSON-looking strings so they survive parsing as strings,
+    // so build the query with it rather than by hand: URLSearchParams would
+    // emit `filterApp=["id"]`, which the router parses into an array and the
+    // filter hooks then discard.
+    return `${path}${defaultStringifySearch(search)}`;
+  },
+  function({
+    envSlug,
+    functionSlug,
+  }: {
+    envSlug: string;
+    functionSlug: string;
+  }) {
+    return `/env/${envSlug}/functions/${encodeURIComponent(functionSlug)}`;
+  },
+  functionReplays({
+    envSlug,
+    functionSlug,
+  }: {
+    envSlug: string;
+    functionSlug: string;
+  }) {
+    return `/env/${envSlug}/functions/${encodeURIComponent(
+      functionSlug,
+    )}/replays`;
+  },
+  functionReplay({
+    envSlug,
+    functionSlug,
+    replayID,
+  }: {
+    envSlug: string;
+    functionSlug: string;
+    replayID: string;
+  }) {
+    return `/env/${envSlug}/functions/${encodeURIComponent(
+      functionSlug,
+    )}/replays/${replayID}`;
+  },
+  functionCancellations({
+    envSlug,
+    functionSlug,
+  }: {
+    envSlug: string;
+    functionSlug: string;
+  }) {
+    return `/env/${envSlug}/functions/${encodeURIComponent(
+      functionSlug,
+    )}/cancellations`;
+  },
+  // The function slug is part of the URL so two functions sharing an
+  // experiment name don't collide.
+  functionExperiment({
+    envSlug,
+    functionSlug,
+    experimentName,
+  }: {
+    envSlug: string;
+    functionSlug: string;
+    experimentName: string;
+  }) {
+    return `/env/${envSlug}/experiments/${encodeURIComponent(
+      functionSlug,
+    )}/${encodeURIComponent(experimentName)}`;
+  },
+  experiments({ envSlug }: { envSlug: string }) {
+    return `/env/${envSlug}/experiments`;
+  },
+  insights({ envSlug, ref }: { envSlug: string; ref?: string }) {
+    return `/env/${envSlug}/insights${ref ? `?ref=${ref}` : ''}`;
+  },
+  integrations() {
+    return `/settings/integrations`;
+  },
+  metrics({ envSlug, ref }: { envSlug: string; ref?: string }) {
+    return `/env/${envSlug}/metrics${ref ? `?ref=${ref}` : ''}`;
+  },
+  keys({ envSlug }: { envSlug: string }) {
+    return `/env/${envSlug}/manage/keys`;
+  },
+  pgIntegrationStep({
+    integration,
+    step,
+  }: {
+    integration: string;
+    step?: string;
+  }) {
+    return `/settings/integrations/${integration}${step ? `/${step}` : ''}`;
+  },
+  onboarding({ envSlug = 'production' }: { envSlug?: string } = {}) {
+    return `/env/${envSlug}/onboarding`;
+  },
+  onboardingSteps({
+    envSlug = 'production',
+    step,
+    ref,
+  }: {
+    envSlug?: string;
+    step?: string;
+    ref?: string;
+  }) {
+    return `/env/${envSlug}/onboarding${step ? `/${step}` : ''}${
+      ref ? `?ref=${ref}` : ''
+    }`;
+  },
+  runPopout({ envSlug, runID }: { envSlug: string; runID: string }) {
+    return `/env/${envSlug}/runs/${runID}`;
+  },
+  debugger({
+    envSlug,
+    functionSlug,
+    runID,
+  }: {
+    envSlug: string;
+    functionSlug: string;
+    runID?: string;
+  }) {
+    return `/env/${envSlug}/debugger/${functionSlug}${
+      runID ? `?runID=${runID}` : ''
+    }`;
+  },
+  runs({ envSlug }: { envSlug: string }) {
+    return `/env/${envSlug}/runs`;
+  },
+  sessions({ envSlug, sessionKey }: { envSlug: string; sessionKey?: string }) {
+    return sessionKey
+      ? `/env/${envSlug}/sessions/${encodeURIComponent(sessionKey)}`
+      : `/env/${envSlug}/sessions`;
+  },
+  session({
+    envSlug,
+    sessionKey,
+    sessionId,
+  }: {
+    envSlug: string;
+    sessionKey: string;
+    sessionId: string;
+  }) {
+    return `/env/${envSlug}/sessions/${encodeURIComponent(
+      sessionKey,
+    )}/${encodeURIComponent(sessionId)}`;
+  },
+  signingKeys({ envSlug }: { envSlug: string }) {
+    return `/env/${envSlug}/manage/signing-key`;
+  },
+  support({ ref }: { ref?: string } = {}) {
+    return `https://support.inngest.com/${ref ? `?ref=${ref}` : ''}`;
+  },
+  unattachedSyncs({ envSlug }: { envSlug: string }) {
+    return `/env/${envSlug}/unattached-syncs`;
+  },
+  vercel() {
+    return `/settings/integrations/vercel`;
+  },
+  vercelSetup() {
+    return `/settings/integrations/vercel/connect`;
+  },
+  neon() {
+    return `/settings/integrations/neon`;
+  },
+};

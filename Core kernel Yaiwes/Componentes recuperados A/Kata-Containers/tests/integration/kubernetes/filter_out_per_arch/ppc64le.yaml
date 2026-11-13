@@ -1,0 +1,18 @@
+#
+# Copyright (c) 2019 IBM
+#
+# SPDX-License-Identifier: Apache-2.0
+
+kubernetes:
+  - k8s-block-volume
+  - k8s-inotify
+  - k8s-memory
+  # Confidential Computing not supported
+  - k8s-confidential-attestation
+  - k8s-confidential
+  - k8s-guest-pull-image
+  # Memory limit <512MB not supported
+  - k8s-limit-range
+  - k8s-number-cpus
+  - k8s-oom
+  - k8s-cpu-ns

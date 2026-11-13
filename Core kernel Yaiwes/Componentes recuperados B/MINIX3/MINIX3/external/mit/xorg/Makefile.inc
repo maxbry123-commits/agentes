@@ -1,0 +1,1 @@
+LDSTATIC:=-dynamic

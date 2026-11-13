@@ -1,0 +1,58 @@
+[package]
+name = "restate-tracing-instrumentation"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+options_schema = []
+rt-tokio = ["dep:tokio"]
+prometheus = [
+    "dep:tokio",
+    "dep:metrics",
+    "dep:metrics-exporter-prometheus",
+    "tokio/tracing",
+]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-serde-util = { workspace = true }
+restate-types = { workspace = true }
+
+console-subscriber = { version = "0.5.0", features = ["parking_lot"], optional = true }
+http = { workspace = true }
+indexmap = { workspace = true }
+metrics = { workspace = true, optional = true }
+metrics-exporter-prometheus = { workspace = true, optional = true }
+nu-ansi-term = "0.50.3"
+opentelemetry = { workspace = true }
+opentelemetry-contrib = { workspace = true, features = ["jaeger_json_exporter", "rt-tokio"] }
+opentelemetry-otlp = { workspace = true, features = ["http-json", "http-proto", "reqwest-client", "tls", "tls-roots", "grpc-tonic"] }
+opentelemetry-semantic-conventions = { workspace = true, features = ["semconv_experimental"] }
+opentelemetry_sdk = { workspace = true, features = ["rt-tokio", "experimental_trace_batch_span_processor_with_async_runtime"] }
+reqwest = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, optional = true }
+tonic = { workspace = true, features = ["tls-native-roots"]}
+tracing = { workspace = true }
+tracing-appender = { version = "0.2.3", features = ["parking_lot"] }
+tracing-core = { version = "0.1" }
+tracing-opentelemetry = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["json"] }
+
+[dev-dependencies]
+restate-types = { workspace = true, features = ["test-util"] }
+tokio = { workspace = true }
+criterion = { workspace = true, features = ["async_tokio"] }
+
+[[bench]]
+name = "exporter_builder_benches"
+harness = false
+
+[lints]
+workspace = true

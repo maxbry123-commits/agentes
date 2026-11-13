@@ -1,0 +1,81 @@
+# syntax=docker/dockerfile:1
+FROM node:24.20.0-alpine AS base
+
+# Update Alpine packages to get latest security patches
+RUN apk upgrade --no-cache
+
+RUN addgroup -S promptfoo && adduser -S promptfoo -G promptfoo
+# Python version pin. Empty by default so `apk` installs whatever python3 the
+# Alpine base ships — py3-pip/py3-setuptools depend on that exact minor, so any
+# fixed minor goes stale and makes `apk add` unsatisfiable when the base advances
+# (e.g. Alpine moving 3.12 -> 3.14 broke the release build). Self-hosters can pin a
+# specific minor for reproducibility with `--build-arg PYTHON_VERSION=3.14`.
+ARG PYTHON_VERSION=
+
+# Install Python for python providers, prompts, asserts, etc. The `${VAR:+~=$VAR}`
+# expansion adds the `~=<minor>` constraint only when PYTHON_VERSION is set.
+RUN apk add --no-cache "python3${PYTHON_VERSION:+~=${PYTHON_VERSION}}" py3-pip py3-setuptools curl && \
+    ln -sf python3 /usr/bin/python
+
+# Install dependencies only when needed
+FROM base AS builder
+# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+ARG VITE_PUBLIC_BASENAME
+ARG PROMPTFOO_REMOTE_API_BASE_URL
+
+# Set environment variables for the build
+ENV VITE_IS_HOSTED=1 \
+    VITE_TELEMETRY_DISABLED=1 \
+    VITE_PUBLIC_BASENAME=${VITE_PUBLIC_BASENAME} \
+    PROMPTFOO_REMOTE_API_BASE_URL=${PROMPTFOO_REMOTE_API_BASE_URL}
+
+# Install dependencies (deterministic + cached). Copy workspace package manifests
+# before npm ci so the root lockfile can install all workspaces reproducibly.
+COPY package.json package-lock.json ./
+COPY src/app/package.json ./src/app/package.json
+COPY site/package.json ./site/package.json
+# Block dependency lifecycle scripts during install, then rebuild only the two native
+# packages the build needs. The specs must be exact directories: `npm rebuild esbuild`
+# matches every folder of that name anywhere in the tree, so a nested dependency aliased
+# to `esbuild` would get its install script run and defeat --ignore-scripts.
+# Leverage BuildKit cache
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --install-links --include=peer --ignore-scripts && \
+    npm rebuild ./node_modules/esbuild ./node_modules/@swc/core
+
+# Copy the rest of the application code
+COPY . .
+
+WORKDIR /app
+RUN npm run build
+
+FROM base AS server
+WORKDIR /app
+COPY --from=builder --chown=promptfoo:promptfoo /app/node_modules ./node_modules
+COPY --from=builder --chown=promptfoo:promptfoo /app/package.json ./package.json
+COPY --from=builder --chown=promptfoo:promptfoo /app/dist ./dist
+
+RUN ln -s /app /app/node_modules/promptfoo && \
+    chown -h promptfoo:promptfoo /app/node_modules/promptfoo && \
+    ln -s /app/dist/src/entrypoint.js /usr/local/bin/promptfoo && \
+    ln -s /app/dist/src/entrypoint.js /usr/local/bin/pf && \
+    mkdir -p /home/promptfoo/.promptfoo && chown promptfoo:promptfoo /home/promptfoo/.promptfoo
+
+ENV API_PORT=3000
+ENV HOST=0.0.0.0
+ENV PROMPTFOO_SELF_HOSTED=1
+ENV PROMPTFOO_RUNNING_IN_DOCKER=1
+ARG PROMPTFOO_OFFICIAL_DOCKER_IMAGE=0
+ENV PROMPTFOO_OFFICIAL_DOCKER_IMAGE=${PROMPTFOO_OFFICIAL_DOCKER_IMAGE}
+
+USER promptfoo
+
+EXPOSE 3000
+
+# Set up healthcheck using Node, which is present in every stage.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s CMD node -e "const http = require('node:http'); const req = http.get('http://127.0.0.1:3000/health', (res) => process.exit(res.statusCode >= 200 && res.statusCode < 400 ? 0 : 1)); req.on('error', () => process.exit(1)); req.setTimeout(5000, () => { req.destroy(); process.exit(1); });"
+
+CMD ["node", "dist/src/server/index.js"]

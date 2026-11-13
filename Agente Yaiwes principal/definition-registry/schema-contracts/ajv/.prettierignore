@@ -1,0 +1,9 @@
+spec/JSON-Schema-Test-Suite
+spec/json-typedef-spec
+.browser
+coverage
+dist
+bundle
+.nyc_output
+spec/_json
+docs/.vuepress/components/_contributors.js

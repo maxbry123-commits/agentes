@@ -1,0 +1,212 @@
+# =========================
+# Stage 1 — Builder
+# =========================
+# Pinned to opencode's packageManager (root package.json: bun@1.3.14); the
+# upstream build hard-fails on an older bun. Track after each fork sync.
+FROM oven/bun:1.3.14 AS builder
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    git \
+    python3 \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone OpenCode
+RUN git clone https://github.com/ASCIT31/opencode.git .
+
+# Install deps
+# Resilience: the synced opencode pulls ghostty-web from a GitHub tarball
+# (github:anomalyco/ghostty-web). codeload.github.com rate-limits (HTTP 429) the
+# self-hosted runner's shared IP, so retry the fetch with backoff.
+RUN n=0; until bun install; do \
+      n=$((n+1)); [ "$n" -ge 6 ] && { echo "install: giving up after $n attempts"; exit 1; }; \
+      echo "bun install failed (attempt $n) — codeload 429 likely; backing off $((n*20))s"; \
+      sleep $((n*20)); \
+    done
+
+# Darkmoon branding on the CURRENT upstream opencode layout (see Dark-Moon-Front-API
+# for full rationale): upstream moved the TUI to @opencode-ai/tui and rewrote
+# installation/index.ts + cli/ui.ts (Effect). The old full-file overrides are stale
+# and break the build. Minimal, resilient footprint instead:
+#   1) Logo    -> pure-data module rendered by packages/tui/src/component/logo.tsx.
+#   2) Version -> OPENCODE_VERSION env (script resolver is env-first -> InstallationVersion).
+COPY conf/tui/logo.ts \
+     /app/packages/tui/src/logo.ts
+
+ENV OPENCODE_VERSION=opencode-darkmoon-1.2.0
+
+# Brand the non-TTY (headless/piped) banner too: ui.ts logo() uses a hardcoded
+# "opencode" wordmark when stdout is not a TTY. Point it at our DARK MOON logo.ts
+# (already imported as `glyphs`), so headless output matches the TTY logo.
+RUN sed -i 's|for (const row of wordmark) {|for (const row of glyphs.left.map((l, i) => l + "  " + (glyphs.right[i] ?? ""))) {|' packages/opencode/src/cli/ui.ts
+
+ENV BUN_INSTALL_CACHE_DIR=/tmp/bun-cache
+RUN rm -rf ~/.bun /tmp/bun-cache
+# Build OpenCode
+# Same codeload/429 resilience for the build (build.ts resolves github: deps too).
+RUN cd packages/opencode && n=0; until bun ./script/build.ts --single; do \
+      n=$((n+1)); [ "$n" -ge 6 ] && { echo "opencode build: giving up after $n attempts"; exit 1; }; \
+      echo "opencode build failed (attempt $n) — codeload 429 likely; backing off $((n*20))s"; \
+      sleep $((n*20)); \
+    done
+
+# Extract binary
+RUN cd packages/opencode && \
+    find dist -type f -path "*/bin/opencode" -exec cp {} /opencode-bin \;
+
+# =========================
+# Stage 2 — Runtime
+# =========================
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    bash \
+    docker.io \
+    inotify-tools \
+ && rm -rf /var/lib/apt/lists/*
+
+# ------------------------------------------------------------
+# OpenCode Agents (Darkmoon) - ensuite c'est l'entrypoint qui copie-collera dans /root/.opencode/agents
+# ------------------------------------------------------------
+
+# Agents par défaut (dans l'image)
+RUN mkdir -p /opt/darkmoon/default-agents
+COPY conf/agents/ /opt/darkmoon/default-agents/
+
+# Darkmoon privacy plugin (issue #40, section 3): pre-model prompt tokenization.
+# A stable file:// opencode plugin (uses only the public `chat.message` hook +
+# Bun fetch to the MCP's local unix socket) — no opencode core patching, so an
+# opencode fork sync cannot break it. Registered in opencode.json by apply-settings.sh.
+COPY conf/plugins/ /opt/darkmoon/plugins/
+
+# ------------------------------------------------------------
+# Darkmoon MCP Server (embedded, CLEAN)
+# ------------------------------------------------------------
+
+ENV DM_MCP_HOME=/opt/darkmoon/mcp
+
+# Dépendances runtime strictement nécessaires au MCP
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-venv \
+    python3-pip \
+    bc \
+ && rm -rf /var/lib/apt/lists/*
+
+# Copie du serveur MCP Darkmoon
+COPY mcp ${DM_MCP_HOME}/server
+
+# Copie des workflow vers default-workflow qui seront ensuite copié vers le volume partagé pour éviter des écraser
+RUN mkdir -p /opt/darkmoon/default-workflows
+COPY mcp/src/tools/workflows /opt/darkmoon/default-workflows
+
+# Installation MCP (EXTRACTION PROPRE de install.sh)
+RUN cd ${DM_MCP_HOME}/server \
+ && python3 -m venv .venv \
+ && . .venv/bin/activate \
+ && pip install --upgrade pip \
+ && pip install -r requirements.txt
+
+# Entrypoint MCP local
+RUN printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'cd /opt/darkmoon/mcp/server' \
+  'source .venv/bin/activate' \
+  'exec python -m src.server' \
+  > /usr/local/bin/darkmoon-mcp \
+ && chmod +x /usr/local/bin/darkmoon-mcp
+
+# ------------------------------------------------------------
+# Darkmoon CLI (Interactive Monitoring)
+# ------------------------------------------------------------
+
+# Install prompt_toolkit inside MCP venv
+RUN cd ${DM_MCP_HOME}/server \
+ && . .venv/bin/activate \
+ && pip install prompt_toolkit
+
+# Expose CLI as system binary
+RUN printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'cd /opt/darkmoon/mcp/server' \
+  'source .venv/bin/activate' \
+  'exec python -m src.mcp_monitoring' \
+  > /usr/local/bin/darkmoon-cli \
+ && chmod +x /usr/local/bin/darkmoon-cli
+
+COPY --from=builder /opencode-bin /usr/local/bin/opencode
+RUN chmod +x /usr/local/bin/opencode
+
+ENV TERM=xterm-256color
+ENV LANG=C.UTF-8
+
+RUN mkdir -p /root/.local/share/opencode/sessions \
+ && mkdir -p /root/.local/share/opencode/reports \
+ && cat >> /root/.bashrc <<'EOF'
+
+# ============================
+# Darkmoon environment
+# ============================
+
+export opencode_PROMPT_DIR="$HOME/.local/share/opencode/sessions"
+export opencode_REPORTS_DIR="$HOME/.local/share/opencode/reports"
+export PYTHONUNBUFFERED=1
+
+# ============================
+# 🔥 Universal PTY wrapper
+# ============================
+
+_darkmoon_exec() {
+  local BIN="/usr/local/bin/opencode"
+
+  # Resolve -f <file>
+  if [[ "$1" == "-f" && -n "$2" ]]; then
+    local f="$2"
+    if [[ ! -f "$f" && -f "$opencode_PROMPT_DIR/$f" ]]; then
+      shift 2
+      set -- -f "$opencode_PROMPT_DIR/$f" "$@"
+    fi
+  fi
+
+  # ============================
+  # 🧠 MODE TUI PUR (NE PAS exec)
+  # ============================
+  if [[ $# -eq 0 ]]; then
+    "$BIN"
+    return $?
+  fi
+
+  # ============================
+  # 📄 MODE TEXTE / CLI / LOG
+  # ============================
+  exec script -q -c "$BIN $*" /dev/null < /dev/tty \
+    | sed 's/\bopencode\b/darkmoon/g'
+}
+
+darkmoon() {
+  _darkmoon_exec "$@"
+}
+
+opencode() {
+  _darkmoon_exec "$@"
+}
+EOF
+
+
+COPY conf/apply-settings.sh /root/conf/apply-settings.sh
+RUN sed -i 's/\r$//' /root/conf/apply-settings.sh \
+ && chmod +x /root/conf/apply-settings.sh
+
+COPY conf/entrypoint-opencode.sh /entrypoint-opencode.sh
+RUN sed -i 's/\r$//' /entrypoint-opencode.sh \
+ && chmod +x /entrypoint-opencode.sh
+
+# 🔒 Normalisation LF (CRLF Windows safe)
+RUN sed -i 's/\r$//' /root/.bashrc
+
+ENTRYPOINT ["/entrypoint-opencode.sh"]
+CMD ["bash"]

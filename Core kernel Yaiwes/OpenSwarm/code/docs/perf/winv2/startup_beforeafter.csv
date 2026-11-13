@@ -1,0 +1,3 @@
+metric,before_ms,after_ms
+cold backend-ready (54-138s -> 22.5s),96000,22500
+warm backend-ready (9-10s -> 5.0s),9500,5000

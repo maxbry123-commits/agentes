@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../.jsonschema/CelTestCase.schema.json
+---
+condition:
+  none:
+    of:
+      - expr: P.attr.x
+      - expr: R.attr.department == "engineering"
+request: {
+  "principal": {
+    "id": "john",
+    "roles": ["employee"]
+  },
+  "resource": {
+    "kind": "leave_request",
+    "id": "test",
+    "attr": {
+      "department": "marketing"
+    }
+  }
+}
+want: true

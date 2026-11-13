@@ -1,0 +1,7 @@
+# tb2 priority-1 re-fire — 2026-07-13 crud-purge#2 below-gate re-registration
+# 2 terminal Leonardo tb2 legs, below-gate auto-registrations just PURGED → warm-resume toward re-registration
+# NO live successor; each is a warm RESUME of its own below-gate partial (--force-reeval flips Finished->Pending, no dupes)
+# r383 synatra (prior leg 49265434 done, vc 73.0%, purged row 7ac6f61d)
+# r389 unitsyn_python (prior leg 49269772 done, vc 65.2%, purged row 0fd47f00)
+DCAgent/a1-synatra
+DCAgent/a1-unitsyn_python

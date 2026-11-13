@@ -1,0 +1,6 @@
+# Runtime dependencies derived from the recovered APScheduler pyproject.toml
+anyio~=4.0
+attrs>=22.1
+tenacity>=8.0,<10.0
+tzlocal>=3.0
+typing_extensions>=4.0; python_version < "3.11"

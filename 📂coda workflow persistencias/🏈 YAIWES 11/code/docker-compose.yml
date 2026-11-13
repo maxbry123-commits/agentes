@@ -1,0 +1,53 @@
+# 启动 CTF 模式:
+#   docker compose run --rm ctf-agent --mode ctf
+#
+# 启动渗透测试模式:
+#   docker compose run --rm ctf-agent --mode pentest
+#
+# 交互式终端 (手动审批):
+#   docker compose run --rm ctf-agent --mode ctf
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ctf-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  ctf-agent:
+    build: .
+    image: ctf-agent:latest
+    container_name: ctf-agent
+    stdin_open: true
+    tty: true
+    volumes:
+      # 配置文件（含 API Key，必须挂载）
+      - ./config.json:/app/config.json:ro
+      # 题目 / 授权范围文件
+      - ./question.txt:/app/question.txt:ro
+      - ./scope.txt:/app/scope.txt:ro
+      # 附件目录（CTF 题目附件）
+      - ./attachments:/app/attachments:ro
+      # 持久化数据
+      - rag_db:/app/rag_db
+      - logs:/app/logs
+      # 可选：Writeup / 报告输出
+      - ./writeups:/app/writeups
+      - ./reports:/app/reports
+    environment:
+      # 可选：通过环境变量覆盖 API Key（比 config.json 中的优先级更高）
+      # LLM_API_KEY_SOLVE_AGENT: sk-xxx
+      # LLM_API_KEY_ANALYZER: sk-xxx
+      # LLM_API_KEY_PRE_PROCESSOR: sk-xxx
+      # LLM_API_KEY_EMBEDDING: sk-xxx
+      # Sandbox 模式：默认 subprocess，设 docker 使用容器隔离执行
+      - AGENT_PYTHON_SANDBOX=subprocess
+    restart: "no"
+
+volumes:
+  rag_db:
+  logs:
+  redis_data:

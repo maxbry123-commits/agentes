@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 1249138,
+  "bundle_sha256": "23118a7526fbe58d37839cc57a7480aee1eb354d3741a55c2b091f7f1ee9988b",
+  "extracted_tree": {
+    "bytes": 2299937,
+    "files": 39,
+    "sha256": "09246fccab55f87854f52ae0e9f85c20e4cb6a0b114b7676b52985ee17442da7"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 1249138,
+      "name": "CognitiveKernel-Pro.bundle.zip.part-0001",
+      "sha256": "23118a7526fbe58d37839cc57a7480aee1eb354d3741a55c2b091f7f1ee9988b"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "CognitiveKernel-Pro",
+  "source_bytes": 2299937,
+  "source_commit": "827eea52c3894e6d3edbc4ff82c2bba23b7259d9",
+  "source_files": 39,
+  "source_ref": "HEAD",
+  "source_repo": "Tencent/CognitiveKernel-Pro",
+  "source_tree": {
+    "bytes": 2299937,
+    "files": 39,
+    "sha256": "09246fccab55f87854f52ae0e9f85c20e4cb6a0b114b7676b52985ee17442da7"
+  }
+}

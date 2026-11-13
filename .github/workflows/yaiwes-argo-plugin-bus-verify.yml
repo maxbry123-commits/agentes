@@ -1,0 +1,41 @@
+name: YAIWES Argo Plugin Bus Verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-argo-plugin-bus-verify.yml'
+      - 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/verification/test_yaiwes_argo_mount.py'
+      - 'Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus
+            Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pytest
+        run: python -m pip install pytest
+      - name: Argo source and contract gate
+        run: |
+          python 'Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows/verify_integration.py'
+          python -m py_compile 'Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows/adapter.py' 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/verification/test_yaiwes_argo_mount.py'
+      - name: Mount Argo through UniversalPluginBus ten times
+        run: |
+          for i in $(seq 1 10); do
+            echo "ARGO_PLUGIN_BUS_PASS_${i}/10"
+            python -m pytest -q 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/verification/test_yaiwes_argo_mount.py'
+          done

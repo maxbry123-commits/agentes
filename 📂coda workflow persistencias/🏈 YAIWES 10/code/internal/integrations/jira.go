@@ -1,0 +1,95 @@
+package integrations
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/pipeline"
+)
+
+// JiraClient creates issues from findings.
+type JiraClient struct {
+	url       string
+	apiToken  string
+	project   string
+	issueType string
+	client    *http.Client
+}
+
+// NewJiraClient creates a Jira integration client.
+func NewJiraClient(url, apiToken, project, issueType string) *JiraClient {
+	if issueType == "" {
+		issueType = "Bug"
+	}
+	return &JiraClient{
+		url: url, apiToken: apiToken, project: project,
+		issueType: issueType, client: &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+// CreateIssue creates a Jira issue from a classified finding.
+func (j *JiraClient) CreateIssue(ctx context.Context, finding pipeline.ClassifiedFinding) (string, error) {
+	priority := severityToPriority(finding.Severity)
+
+	body := map[string]any{
+		"fields": map[string]any{
+			"project":     map[string]string{"key": j.project},
+			"summary":     fmt.Sprintf("[pentestswarm] %s", finding.Title),
+			"description": formatJiraDescription(finding),
+			"issuetype":   map[string]string{"name": j.issueType},
+			"priority":    map[string]string{"name": priority},
+			"labels":      []string{"security", "pentestswarm", string(finding.Severity)},
+		},
+	}
+
+	jsonBody, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(ctx, "POST", j.url+"/rest/api/3/issue", bytes.NewReader(jsonBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Basic "+j.apiToken)
+
+	resp, err := j.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("creating Jira issue: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Key string `json:"key"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	return result.Key, nil
+}
+
+func severityToPriority(s pipeline.Severity) string {
+	switch s {
+	case pipeline.SeverityCritical:
+		return "Highest"
+	case pipeline.SeverityHigh:
+		return "High"
+	case pipeline.SeverityMedium:
+		return "Medium"
+	case pipeline.SeverityLow:
+		return "Low"
+	default:
+		return "Lowest"
+	}
+}
+
+func formatJiraDescription(f pipeline.ClassifiedFinding) string {
+	desc := fmt.Sprintf("h2. %s\n\n", f.Title)
+	desc += fmt.Sprintf("*Severity:* %s | *CVSS:* %.1f\n\n", f.Severity, f.CVSSScore)
+	desc += f.Description + "\n\n"
+	if len(f.CVEIDs) > 0 {
+		desc += "*CVEs:* " + fmt.Sprintf("%v", f.CVEIDs) + "\n\n"
+	}
+	desc += fmt.Sprintf("*Target:* %s\n*Category:* %s\n", f.Target, f.AttackCategory)
+	return desc
+}

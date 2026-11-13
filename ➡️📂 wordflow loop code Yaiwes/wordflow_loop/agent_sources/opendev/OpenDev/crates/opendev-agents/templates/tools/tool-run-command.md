@@ -1,0 +1,41 @@
+<!--
+name: 'Tool Description: Bash'
+description: Execute a bash/shell command
+version: 2.0.0
+-->
+
+Execute a bash/shell command with optional timeout.
+
+## Before Executing
+
+1. **Directory verification**: If the command creates new directories or files, first verify the parent directory exists using Glob.
+2. **Path quoting**: Always quote file paths that contain spaces with double quotes.
+   - `python "/path/with spaces/script.py"` (correct)
+   - `python /path/with spaces/script.py` (incorrect — will fail)
+
+## Usage notes
+
+- Commands are subject to safety checks and may require user approval
+- Output is capped at 30,000 characters. If the output exceeds this limit, content is middle-truncated before being returned
+- Use the `workdir` parameter to set the working directory for a command instead of `cd <dir> && <command>`. AVOID using `cd` — use `workdir` instead
+- You can specify an optional timeout in seconds (default 120s, max 600s). Long commands may need a longer timeout
+- Include a `description` parameter (5-10 words) explaining what the command does — this improves audit trails and TUI display
+- Use background=true for long-running servers (Flask, Django, npm start, dev servers). You will be notified when background commands complete. You do not need to add '&' when using background mode
+- IMPORTANT: Do NOT use Bash for file operations when a dedicated tool exists. Specifically:
+  - Use Read instead of cat, head, tail
+  - Use Edit instead of sed or awk
+  - Use Write instead of echo/cat with redirection
+  - Use search instead of grep or rg
+  - Use Glob instead of find or ls
+- If a command fails, analyze the error before retrying. Do not blindly retry the same command
+- When running multiple independent commands, issue separate direct tool calls only when the system supports parallel execution for that tool mix
+- When chaining dependent commands, use '&&' to ensure each succeeds before the next runs. Do NOT use newlines to separate commands
+
+## Command Safety
+
+Before executing commands, check for injection risks:
+- Never interpolate untrusted user input directly into shell commands
+- Use parameterized approaches or proper escaping when constructing commands with variable data
+- Be cautious with pipe chains that process user-provided data
+- Avoid `eval`, backtick substitution, or `$()` with untrusted input
+- When in doubt about a command's safety, ask the user before executing

@@ -1,0 +1,114 @@
+package integrations
+
+import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+)
+
+// WebhookEvent is the payload sent to webhook subscribers.
+type WebhookEvent struct {
+	EventType string    `json:"event_type"`
+	Timestamp time.Time `json:"timestamp"`
+	Data      any       `json:"data"`
+}
+
+// WebhookConfig defines a webhook subscription.
+type WebhookConfig struct {
+	URL    string   `json:"url"`
+	Secret string   `json:"secret"` // HMAC signing secret
+	Events []string `json:"events"` // event types to subscribe to
+}
+
+// WebhookSender delivers events to configured webhooks.
+type WebhookSender struct {
+	configs []WebhookConfig
+	client  *http.Client
+}
+
+// NewWebhookSender creates a webhook sender.
+func NewWebhookSender(configs []WebhookConfig) *WebhookSender {
+	return &WebhookSender{
+		configs: configs,
+		client:  &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+// Send delivers an event to all matching webhook subscribers.
+func (w *WebhookSender) Send(event WebhookEvent) {
+	for _, cfg := range w.configs {
+		if !w.shouldSend(cfg, event.EventType) {
+			continue
+		}
+
+		go w.deliver(cfg, event)
+	}
+}
+
+func (w *WebhookSender) shouldSend(cfg WebhookConfig, eventType string) bool {
+	if len(cfg.Events) == 0 {
+		return true // no filter = send all
+	}
+	for _, e := range cfg.Events {
+		if e == eventType || e == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *WebhookSender) deliver(cfg WebhookConfig, event WebhookEvent) {
+	body, _ := json.Marshal(event)
+
+	// Retry with exponential backoff (3 attempts: 1s, 2s, 4s)
+	delays := []time.Duration{0, 1 * time.Second, 2 * time.Second, 4 * time.Second}
+
+	for attempt, delay := range delays {
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+
+		req, err := http.NewRequest("POST", cfg.URL, bytes.NewReader(body))
+		if err != nil {
+			continue
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "pentestswarm-webhook/1.0")
+		req.Header.Set("X-Autopentest-Event", event.EventType)
+
+		// HMAC signature
+		if cfg.Secret != "" {
+			signature := computeHMAC(body, cfg.Secret)
+			req.Header.Set("X-Autopentest-Signature", "sha256="+signature)
+		}
+
+		resp, err := w.client.Do(req)
+		if err != nil {
+			if attempt < len(delays)-1 {
+				continue
+			}
+			return
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return // success
+		}
+
+		if attempt >= len(delays)-1 {
+			fmt.Printf("webhook delivery failed after %d attempts: %s returned %d\n", attempt+1, cfg.URL, resp.StatusCode)
+		}
+	}
+}
+
+func computeHMAC(body []byte, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	return hex.EncodeToString(mac.Sum(nil))
+}

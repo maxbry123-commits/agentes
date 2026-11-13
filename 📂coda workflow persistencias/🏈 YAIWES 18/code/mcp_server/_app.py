@@ -1,0 +1,264 @@
+"""
+Shared MCP application state
+==============================
+Single source of truth for the FastMCP instance and the helpers that
+every tool module needs.  Import from here; never create a second instance.
+
+  from mcp_server._app import mcp, _run, _clip, _record, _session_tools_called
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sys
+import traceback
+from datetime import datetime, timezone
+
+
+def _app_phase(label: str) -> None:
+    """Write a timestamped phase marker to stderr (→ mcp_crash.log)."""
+    msg = f"[_app.py {datetime.now(timezone.utc).strftime('%H:%M:%S.%f')[:-3]}Z] {label}\n"
+    sys.stderr.write(msg)
+    sys.stderr.flush()
+
+
+_app_phase("importing FastMCP")
+try:
+    from mcp.server.fastmcp import FastMCP
+    _app_phase("FastMCP imported OK")
+except BaseException:
+    _app_phase("FAILED importing FastMCP")
+    traceback.print_exc(file=sys.stderr)
+    raise
+
+_app_phase("importing core modules")
+try:
+    from core import cost as cost_tracker
+    from core import session as scan_session
+    _app_phase("core modules imported OK")
+except BaseException:
+    _app_phase("FAILED importing core modules")
+    traceback.print_exc(file=sys.stderr)
+    raise
+
+# ── FastMCP singleton ──────────────────────────────────────────────────────────
+
+_app_phase("instantiating FastMCP('pentest-agent')")
+try:
+    mcp = FastMCP("pentest-agent")
+    _app_phase("FastMCP instance created OK")
+except BaseException:
+    _app_phase("FAILED instantiating FastMCP")
+    traceback.print_exc(file=sys.stderr)
+    raise
+
+# ── Session tool-call tracking (reset on start_scan) ─────────────────────────
+
+_session_tools_called: set[str] = set()
+
+
+def _record(tool_name: str) -> None:
+    _session_tools_called.add(tool_name)
+    scan_session.add_tool_called(tool_name)
+
+
+def _rehydrate_tools() -> None:
+    """Repopulate _session_tools_called from session.json after an MCP process restart.
+
+    Without this, all in-memory tool tracking is lost on restart and completion
+    gates (httpx→spider, coverage matrix checks) would incorrectly report that
+    no web tools were run, even for an active scan.
+    """
+    import json as _json
+    import os as _os
+    _session_file = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "session.json")
+    try:
+        if not _os.path.isfile(_session_file):
+            return
+        data = _json.loads(open(_session_file).read())
+        if data.get("status") == "running":
+            for tool in data.get("tools_called", []):
+                _session_tools_called.add(tool)
+    except Exception:
+        pass  # silently ignore — fresh set is safe
+
+
+_rehydrate_tools()
+
+
+# ── Parameter coercion ────────────────────────────────────────────────────
+
+def _ensure_dict(value):
+    """Coerce a dict-ish tool argument to a dict (or None).
+
+    LLMs — especially smaller local models — serialize dict params as JSON
+    strings, or send an empty string for "no options". A bare ``json.loads``
+    raised on ``''`` and crashed the tool call (the validation/loop error that
+    spun the watchdog). Empty/blank or unparseable strings now coerce to None;
+    callers do ``_ensure_dict(x) or {}``.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        try:
+            return json.loads(s)
+        except (ValueError, TypeError):
+            return None
+    return value
+
+
+# ── QA alert injection ────────────────────────────────────────────────────────
+
+_QA_STATE_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "qa_state.json")
+_last_qa_shown_ts: str = ""   # ISO timestamp of last alert batch shown to Smith
+
+
+def _inject_qa_alerts(result: str) -> str:
+    """
+    DEPRECATED: QA alert injection now happens inside scan_engine.wrap() where
+    alerts are placed into the structured envelope (warnings[] + summary) rather
+    than appended as plaintext. This function is kept for import compatibility
+    only and is a no-op pass-through.
+    """
+    return result  # no-op — logic lives in scan_engine/envelope.py _inject_qa_alerts_into_envelope()
+
+
+# ── Output clipping ───────────────────────────────────────────────────────────
+
+def _clip(text: str, limit: int = 8_000) -> str:
+    """
+    Smart head+tail truncation.
+    Keeps the first 2/3 and last 1/3 of the limit, dropping the middle.
+    Security tools (sqlmap, nikto, nuclei) emit the most important results
+    at the END, so preserving the tail is critical.
+    """
+    if len(text) <= limit:
+        return text
+    head    = (limit * 2) // 3
+    tail    = limit - head
+    dropped = len(text) - head - tail
+    return text[:head] + f"\n\n[… {dropped:,} chars clipped …]\n\n" + text[-tail:]
+
+
+# ── Docker tool runner ────────────────────────────────────────────────────────
+
+async def _append_quick_log(name: str, kwargs: dict, result: str, elapsed: float) -> None:
+    """DEPRECATED: Quick log now fires inside scan_engine.wrap() via _quick_log_tool().
+    Kept as no-op for import compatibility only."""
+    pass
+
+
+async def _run(name: str, **kwargs) -> str:
+    """Run a lightweight Docker tool from the registry with logging + cost tracking."""
+    import time
+    from core import logger as log
+    from tools import REGISTRY
+    from tools.docker_runner import run_container
+
+    try:
+        stop = scan_session.check_limits(cost_tracker.get_summary())
+        if stop:
+            return stop
+
+        log.tool_call(name, kwargs)
+        call_id = cost_tracker.start(name)
+        tool    = REGISTRY[name]
+        args    = tool.build_args(**kwargs)
+        mount   = os.environ.get("PENTEST_TARGET_PATH", os.getcwd()) if tool.needs_mount else None
+        # forward_env entries are "VAR" or "SRC:DST" — the SRC:DST form forwards SRC's value into the
+        # tool subprocess under the name DST. This lets us keep the anthropic AI-testing key in .env
+        # as AITEST_ANTHROPIC_API_KEY (so Claude Code never picks it up for model billing) while the
+        # red-team tools still receive it as the ANTHROPIC_API_KEY they expect. Server-side only.
+        env_vars = {}
+        for _spec in tool.forward_env:
+            _src, _, _dst = _spec.partition(":")
+            if _src in os.environ:
+                env_vars[_dst or _src] = os.environ[_src]
+        env_vars = env_vars or None
+
+        try:
+            stdout, stderr, _ = await run_container(
+                tool.image, args, timeout=tool.default_timeout,
+                mount_path=mount, extra_volumes=tool.extra_volumes or None,
+                env_vars=env_vars,
+                network=tool.network, cap_add=tool.cap_add or None,
+            )
+        except asyncio.TimeoutError:
+            result = f"[{name} timed out after {tool.default_timeout}s — increase timeout or reduce scope]"
+            cost_tracker.finish(call_id, result)
+            log.tool_result(name, result)
+            return result
+
+        # Log full verbose output before any clipping
+        log.tool_result_verbose(name, stdout, stderr)
+
+        if tool.parser is None:
+            result = _clip(stdout or stderr, tool.max_output)
+        else:
+            parsed = tool.parser(stdout, stderr)
+            result = json.dumps({"findings": parsed, "raw": _clip(stdout, tool.max_output)}, indent=2)
+
+        cost_tracker.finish(call_id, result)
+        log.tool_result(name, result)
+
+        # QA alerts and quick_log are now handled inside scan_engine.wrap(),
+        # which every tool handler calls after _run() returns raw output.
+        # Do NOT re-add _inject_qa_alerts or _append_quick_log here — that
+        # would pollute artifacts with QA text and double-log to quick_log.
+
+        return result
+
+    except BaseException as exc:
+        # Catch everything including asyncio.CancelledError (BaseException in Python 3.8+).
+        # Never let any exception propagate to FastMCP — that crashes the stdio transport.
+        err = f"[{name} error: {type(exc).__name__}: {exc}]"
+        try:
+            log.tool_result(name, err)
+        except Exception:
+            pass
+        try:
+            import sentry_sdk
+            with sentry_sdk.new_scope() as scope:
+                scope.set_tag("tool", name)
+                scope.set_context("tool_call", {"tool": name, "kwargs": str(kwargs)})
+                sentry_sdk.capture_exception(exc)
+        except Exception:
+            pass
+        return err
+
+
+# ── .env loader ───────────────────────────────────────────────────────────────
+
+def _load_dotenv() -> None:
+    """Read .env from the project root into os.environ.
+
+    .env values always win over inherited environment so that editing the file
+    and restarting the dashboard picks up the new values without requiring a
+    full MCP server restart.
+    """
+    env_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    if not os.path.isfile(env_file):
+        return
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key:
+                os.environ[key] = val
+
+    # Server-only: the AI-testing anthropic key lives in .env as AITEST_ANTHROPIC_API_KEY so an
+    # interactive Claude Code can't pick it up and bill the Smith agent's model calls to it. Inside the
+    # server we re-expose it as ANTHROPIC_API_KEY for the QA agent + red-team tool forwarding; the
+    # spawned Smith strips ANTHROPIC_API_KEY unless SMITH_SPAWN_USE_API_KEY=1, so it never bills the
+    # agent. A real ANTHROPIC_API_KEY (SMITH_USE_API_KEY=yes / legacy) takes precedence if present.
+    _aitest = os.environ.get("AITEST_ANTHROPIC_API_KEY")
+    if _aitest and not os.environ.get("ANTHROPIC_API_KEY"):
+        os.environ["ANTHROPIC_API_KEY"] = _aitest

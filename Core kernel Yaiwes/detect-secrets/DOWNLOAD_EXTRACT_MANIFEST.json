@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 370044,
+  "bundle_sha256": "cc0682e74190652ab6860679692ed8f7cf279b0a6f6dd88958a2999d827e7100",
+  "extracted_tree": {
+    "bytes": 801676,
+    "files": 214,
+    "sha256": "6ce64ee2bb2c340248c18b5b3def6e776e6f5802260ba36b216057eca50b19a4"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 370044,
+      "name": "detect-secrets.bundle.zip.part-0001",
+      "sha256": "cc0682e74190652ab6860679692ed8f7cf279b0a6f6dd88958a2999d827e7100"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "detect-secrets",
+  "source_bytes": 801676,
+  "source_commit": "5e141933554a0b74e7341841f318be21e895339c",
+  "source_files": 214,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/Yelp/detect-secrets.git",
+  "source_tree": {
+    "bytes": 801676,
+    "files": 214,
+    "sha256": "6ce64ee2bb2c340248c18b5b3def6e776e6f5802260ba36b216057eca50b19a4"
+  }
+}

@@ -1,0 +1,298 @@
+V1WorkflowRun:
+  properties:
+    metadata:
+      $ref: ".././metadata.yaml#/APIResourceMeta"
+    status:
+      $ref: "./task.yaml#/V1TaskStatus"
+    startedAt:
+      type: string
+      format: date-time
+      description: The timestamp the task run started.
+    finishedAt:
+      type: string
+      format: date-time
+      description: The timestamp the task run finished.
+    duration:
+      type: integer
+      description: The duration of the task run, in milliseconds.
+    tenantId:
+      type: string
+      description: The ID of the tenant.
+      example: bb214807-246e-43a5-a25d-41761d1cff9e
+      minLength: 36
+      maxLength: 36
+      format: uuid
+    additionalMetadata:
+      type: object
+      description: Additional metadata for the task run.
+    displayName:
+      type: string
+      description: The display name of the task run.
+    workflowId:
+      type: string
+      format: uuid
+    output:
+      type: object
+      x-go-type: openapi.NonNullableJSON
+      x-go-type-import:
+        path: github.com/hatchet-dev/hatchet/api/v1/server/oas
+        name: NonNullableJSON
+      x-nullable: false
+      description: The output of the task run (for the latest run)
+    errorMessage:
+      type: string
+      description: The error message of the task run (for the latest run)
+    workflowVersionId:
+      type: string
+      format: uuid
+      description: The ID of the workflow version.
+    input:
+      type: object
+      x-go-type: openapi.NonNullableJSON
+      x-go-type-import:
+        path: github.com/hatchet-dev/hatchet/api/v1/server/oas
+        name: NonNullableJSON
+      x-nullable: false
+      description: The input of the task run.
+    createdAt:
+      type: string
+      format: date-time
+      description: The timestamp the task run was created.
+    parentTaskExternalId:
+      type: string
+      format: uuid
+      minLength: 36
+      maxLength: 36
+    payloadsRestricted:
+      type: boolean
+      description: True when input, output, and event payload fields were omitted because the caller cannot view payloads. Additional metadata is still included.
+  required:
+    - metadata
+    - id
+    - status
+    - tenantId
+    - displayName
+    - workflowId
+    - output
+    - input
+
+WorkflowRunShapeItemForWorkflowRunDetails:
+  type: object
+  properties:
+    taskExternalId:
+      type: string
+      format: uuid
+      minLength: 36
+      maxLength: 36
+    stepId:
+      type: string
+      format: uuid
+      minLength: 36
+      maxLength: 36
+    childrenStepIds:
+      type: array
+      items:
+        type: string
+        format: uuid
+        minLength: 36
+        maxLength: 36
+    taskName:
+      type: string
+  required:
+    - taskExternalId
+    - stepId
+    - childrenStepIds
+    - taskName
+
+WorkflowRunShapeForWorkflowRunDetails:
+  type: array
+  items:
+    $ref: "#/WorkflowRunShapeItemForWorkflowRunDetails"
+
+V1WorkflowRunDetails:
+  properties:
+    run:
+      $ref: "#/V1WorkflowRun"
+    taskEvents:
+      type: array
+      items:
+        $ref: "./task.yaml#/V1TaskEvent"
+      description: The list of task events for the workflow run
+    shape:
+      $ref: "#/WorkflowRunShapeForWorkflowRunDetails"
+    tasks:
+      type: array
+      items:
+        $ref: "./task.yaml#/V1TaskSummary"
+    workflowConfig:
+      type: object
+  required:
+    - run
+    - taskEvents
+    - shape
+    - tasks
+
+V1TriggerWorkflowRunRequest:
+  properties:
+    workflowName:
+      type: string
+      description: The name of the workflow.
+    input:
+      type: object
+    additionalMetadata:
+      type: object
+    priority:
+      type: integer
+      description: The priority of the workflow run.
+    return_only_id:
+      type: boolean
+      description: A boolean flag indicating whether to only return the id of the created run.
+  required:
+    - workflowName
+    - input
+
+V1DurableEventLogKind:
+  type: string
+  enum:
+    - RUN
+    - WAIT_FOR
+    - MEMO
+
+V1DurableWaitConditionKind:
+  type: string
+  enum:
+    - SLEEP
+    - USER_EVENT
+    - CHILD_WORKFLOW
+
+V1DurableWaitCondition:
+  type: object
+  properties:
+    kind:
+      $ref: "#/V1DurableWaitConditionKind"
+    sleepDurationMs:
+      type: integer
+      format: int64
+    eventKey:
+      type: string
+    workflowName:
+      type: string
+  required:
+    - kind
+
+V1WaitItem:
+  type: object
+  properties:
+    kind:
+      $ref: "#/V1DurableWaitConditionKind"
+    sleepDurationMs:
+      type: integer
+      format: int64
+    eventKey:
+      type: string
+    workflowName:
+      type: string
+    or:
+      type: array
+      items:
+        $ref: "#/V1DurableWaitCondition"
+
+V1WaitData:
+  type: array
+  items:
+    $ref: "#/V1WaitItem"
+
+V1DurableEventLogEntry:
+  type: object
+  properties:
+    nodeId:
+      type: integer
+      format: int64
+      description: The monotonically increasing node id in the event log.
+    branchId:
+      type: integer
+      format: int64
+      description: The branch id when this entry was first seen.
+    kind:
+      $ref: "#/V1DurableEventLogKind"
+    waitData:
+      $ref: "#/V1WaitData"
+    isSatisfied:
+      type: boolean
+      description: Whether this entry has been satisfied.
+    satisfiedAt:
+      type: string
+      format: date-time
+      description: When this entry was satisfied, if it has been satisfied.
+    insertedAt:
+      type: string
+      format: date-time
+      description: When this entry was inserted.
+    userMessage:
+      type: string
+      description: A user-provided message or label, sent when establishing a durable wait.
+    taskExternalId:
+      type: string
+      format: uuid
+      minLength: 36
+      maxLength: 36
+      description: The external id of the durable task this event log entry is associated with.
+    taskDisplayName:
+      type: string
+      description: The display name of the durable task this event log entry is associated with.
+  required:
+    - nodeId
+    - branchId
+    - kind
+    - isSatisfied
+    - insertedAt
+    - taskExternalId
+    - taskDisplayName
+
+V1DurableEventLogList:
+  type: array
+  items:
+    $ref: "#/V1DurableEventLogEntry"
+
+
+V1BranchDurableTaskRequest:
+  properties:
+    taskExternalId:
+      type: string
+      format: uuid
+      minLength: 36
+      maxLength: 36
+      description: The external id of the durable task to branch.
+    nodeId:
+      type: integer
+      format: int64
+      description: The node id to replay from.
+    branchId:
+      type: integer
+      format: int64
+      description: The branch id to replay from.
+  required:
+    - taskExternalId
+    - nodeId
+    - branchId
+
+V1BranchDurableTaskResponse:
+  properties:
+    taskExternalId:
+      type: string
+      format: uuid
+      minLength: 36
+      maxLength: 36
+      description: The external id of the durable task.
+    nodeId:
+      type: integer
+      format: int64
+      description: The node id of the new entry.
+    branchId:
+      type: integer
+      format: int64
+      description: The branch id of the new entry.
+  required:
+    - taskExternalId
+    - nodeId
+    - branchId

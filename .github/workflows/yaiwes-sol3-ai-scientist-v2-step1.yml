@@ -1,0 +1,124 @@
+name: YAIWES SOL3 AI-Scientist-v2 STEP1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-sol3-ai-scientist-v2-step1.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-sol3-ai-scientist-v2-step1
+  cancel-in-progress: false
+
+jobs:
+  step1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      WALL: '📂 Bitácora stated JSON Craxy wall.json'
+      INVENTORY: 'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json'
+      README: 'Core kernel Yaiwes/Componentes recuperados B/AI-Scientist-v2/README.md'
+      LAUNCH: 'Core kernel Yaiwes/Componentes recuperados B/AI-Scientist-v2/launch_scientist_bfts.py'
+      TARGET_PARENT: 'Agente Yaiwes principal/agent-fleet-parallelism'
+      TARGET: 'Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist-v2/'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 10
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /📂 Bitácora stated JSON Craxy wall.json
+            /Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json
+            /Core kernel Yaiwes/Componentes recuperados B/AI-Scientist-v2/README.md
+            /Core kernel Yaiwes/Componentes recuperados B/AI-Scientist-v2/launch_scientist_bfts.py
+            /Agente Yaiwes principal/agent-fleet-parallelism/
+
+      - name: Register and CLAIM STEP1
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in $(seq 1 10); do
+            git fetch origin main; git reset --hard origin/main
+            python3 - <<'PY'
+          import json,os
+          from datetime import datetime,timezone
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          with open(os.environ['WALL'],encoding='utf-8') as f:data=json.load(f)
+          old=next((n for n in data['nodes'] if n.get('component')=='AI-Scientist-v2'),None)
+          if old: raise SystemExit(f"ALREADY_REGISTERED:{old.get('id')}:{old.get('owner')}:{old.get('lock')}:{old.get('status')}")
+          nid=max(n.get('id',0) for n in data['nodes'])+1
+          data['nodes'].append({'id':nid,'component':'AI-Scientist-v2','source':'Core kernel Yaiwes/Componentes recuperados B/AI-Scientist-v2/','current_step':1,'status':'PENDING_STEP1','abc':None,'target':None,'owner':'SOL','lock':'CLAIMED','checkpoint':{'before':f'{now} SOL integración 3 fresh physical inventory wall_node_id=null; README+launch_scientist_bfts present; execute STEP1 only','after':None},'evidence':['worker:SOL integración 3'],'history':[{'at':now,'actor':'SOL','label':'SOL integración 3','event':'CLAIM_STEP1'}],'next_action':'STEP_1_ANALYZE_ABC_DESTINATION'})
+          data['updated_at']=now
+          with open(os.environ['INVENTORY'],encoding='utf-8') as f:inv=json.load(f)
+          c=next(c for c in inv['components'] if c.get('name')=='AI-Scientist-v2')
+          if c.get('wall_node_id') is not None: raise SystemExit(f"INVENTORY_RACE:{c.get('wall_node_id')}")
+          c.update({'wall_node_id':nid,'wall_status':'PENDING_STEP1','wall_current_step':1,'wall_target':None})
+          with open(os.environ['WALL'],'w',encoding='utf-8') as f:json.dump(data,f,ensure_ascii=False,indent=2);f.write('\n')
+          with open(os.environ['INVENTORY'],'w',encoding='utf-8') as f:json.dump(inv,f,ensure_ascii=False,indent=2);f.write('\n')
+          PY
+            git add -- "$WALL" "$INVENTORY"; git commit -m 'crazy-wall: SOL integración 3 claim AI-Scientist-v2 STEP1'
+            if git push origin HEAD:main; then ok=1; break; fi
+            sleep $((attempt*2))
+          done
+          test "$ok" -eq 1
+
+      - name: Verify classification evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main; git reset --hard origin/main
+          test "$(git hash-object "$README")" = '3bb62d43ab4632b3bbffc2642f12beafe869d3a4'
+          test "$(git hash-object "$LAUNCH")" = 'e854af0efce00ea8be0cfe21abf4b0066f703224'
+          test -d "$TARGET_PARENT"
+          grep -Fq 'generalized end-to-end agentic system' "$README"
+          grep -Fq 'autonomously generates hypotheses, runs experiments, analyzes data, and writes scientific manuscripts' "$README"
+
+      - name: STEP1 PASS release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'; ok=0
+          for attempt in $(seq 1 10); do
+            git fetch origin main; git reset --hard origin/main
+            python3 - <<'PY'
+          import json,os
+          from datetime import datetime,timezone
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          with open(os.environ['WALL'],encoding='utf-8') as f:data=json.load(f)
+          n=next(n for n in data['nodes'] if n.get('component')=='AI-Scientist-v2')
+          if n.get('owner')!='SOL' or n.get('lock')!='CLAIMED' or n.get('current_step')!=1: raise SystemExit('LOCK_CHANGED')
+          n['abc']='A';n['target']=os.environ['TARGET'];n['status']='PASS_STEP1';n['current_step']=2
+          n['checkpoint']['after']='STEP1 PASS: upstream identifies generalized end-to-end agentic system that autonomously generates hypotheses, runs experiments, analyzes data and writes manuscripts; launch_scientist_bfts real entrypoint present; classify A; exact agent-fleet-parallelism destination.'
+          for x in ['step1:readme_blob:3bb62d43ab4632b3bbffc2642f12beafe869d3a4','step1:launch_blob:e854af0efce00ea8be0cfe21abf4b0066f703224','step1:classification:A','step1:target:Agente Yaiwes principal/agent-fleet-parallelism/ai-scientist-v2/','step1:reason:autonomous scientific research agent with agentic tree search']:
+              if x not in n['evidence']:n['evidence'].append(x)
+          n['history'].append({'at':now,'actor':'SOL','label':'SOL integración 3','event':'STEP1_PASS_RELEASE'});n['owner']=None;n['lock']='FREE';n['next_action']='STEP_2_MOVE_WITH_CANONICAL_MOTOR';data['updated_at']=now
+          with open(os.environ['INVENTORY'],encoding='utf-8') as f:inv=json.load(f)
+          c=next(c for c in inv['components'] if c.get('name')=='AI-Scientist-v2');c.update({'wall_node_id':n['id'],'wall_status':'PASS_STEP1','wall_current_step':2,'wall_target':n['target']})
+          with open(os.environ['WALL'],'w',encoding='utf-8') as f:json.dump(data,f,ensure_ascii=False,indent=2);f.write('\n')
+          with open(os.environ['INVENTORY'],'w',encoding='utf-8') as f:json.dump(inv,f,ensure_ascii=False,indent=2);f.write('\n')
+          PY
+            git add -- "$WALL" "$INVENTORY"; git commit -m 'crazy-wall: SOL integración 3 AI-Scientist-v2 STEP1 PASS release'
+            if git push origin HEAD:main; then ok=1; break; fi
+            sleep $((attempt*2))
+          done
+          test "$ok" -eq 1
+
+      - name: Final read-back
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          python3 - <<'PY'
+          import json,subprocess
+          d=json.loads(subprocess.check_output(['git','show','origin/main:📂 Bitácora stated JSON Craxy wall.json'],text=True));n=next(n for n in d['nodes'] if n.get('component')=='AI-Scientist-v2')
+          assert n['status']=='PASS_STEP1' and n['current_step']==2 and n['abc']=='A' and n['owner'] is None and n['lock']=='FREE'
+          print('AI_SCIENTIST_V2_STEP1_READBACK_PASS node='+str(n['id']))
+          PY

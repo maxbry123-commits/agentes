@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "SWE-agent",
+    "path": "tests/test_data/data_sources/ctf/forensics/flash/flash_c8429a430278283c0e571baebca3d139.zip",
+    "chunks_dir": "SWE-agent/tests/test_data/data_sources/ctf/forensics/flash/flash_c8429a430278283c0e571baebca3d139.zip.chunks",
+    "bytes": 21260965,
+    "chunk_bytes": 8388608
+  }
+]

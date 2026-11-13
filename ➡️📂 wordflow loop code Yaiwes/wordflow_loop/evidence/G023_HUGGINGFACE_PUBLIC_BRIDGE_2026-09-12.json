@@ -1,0 +1,71 @@
+{
+  "schema": "yaiwes.huggingface_bridge_evidence/v1",
+  "gap_id": "G-023",
+  "date": "2026-09-12",
+  "result": "CLOSED_VERIFIED_PUBLIC_HF_METADATA",
+  "claim_commit": "14e9f158951ac14688cf7612fcc20fe892c34191",
+  "proven_gaps": [
+    "runtime/src/storage/artifact_router.py raised NameError because List was not imported and used caller-provided raw_data as mock acquisition.",
+    "runtime/src/conn/manager.py marked Hugging Face ACTIVE and HEALTHY without any network probe.",
+    "No constrained bridge verified allowed Hugging Face resource kinds against a pinned Hub revision."
+  ],
+  "implemented": [
+    "Read-only public Hugging Face Hub metadata verification for MODEL, DATASET, SKILL and RESOURCE.",
+    "Mandatory lowercase 40-hex revision and exact remote SHA equality.",
+    "Exact SKILL.md/resource path validation with blob id and size metadata.",
+    "Private/gated resources, revision drift, unsafe paths and incomplete metadata fail closed.",
+    "Injected test transports never produce externally verified status.",
+    "HF Jobs, HF CI, inference, secrets, downloads and LFS transfers remain disabled."
+  ],
+  "live_public_api_runs": [
+    {
+      "kind": "MODEL",
+      "repo_id": "openai-community/gpt2",
+      "revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+      "status": "VERIFIED_PUBLIC_HF_RESOURCE",
+      "evidence_ref": "sha256:cacd32a4948ee92eeb6f502519229a1a7a2c99ecb6ff96f404faaaf3dd2ce952"
+    },
+    {
+      "kind": "DATASET",
+      "repo_id": "stanfordnlp/imdb",
+      "revision": "e6281661ce1c48d982bc483cf8a173c1bbeb5d31",
+      "status": "VERIFIED_PUBLIC_HF_RESOURCE",
+      "evidence_ref": "sha256:9fd6ee2e4ca99e12d9485aff235c75ed510faf098dd66adda84132d1d00e1cc5"
+    },
+    {
+      "kind": "RESOURCE",
+      "repo_id": "openai-community/gpt2",
+      "revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+      "path": "config.json",
+      "blob_id": "10c66461e4c109db5a2196bff4bb59be30396ed8",
+      "size": 665,
+      "status": "VERIFIED_PUBLIC_HF_RESOURCE",
+      "evidence_ref": "sha256:efa6d93d014ad28448b28f617ee9a73001471f911345d6a90fb0ef9df6d89a01"
+    }
+  ],
+  "tests": {
+    "unit_command": "python -m unittest -v runtime.tests.test_huggingface_bridge_g023",
+    "unit_result": "PASS_6_OF_6",
+    "live_result": "PASS_3_OF_3",
+    "compileall": "PASS",
+    "schema_json_readback": "PASS"
+  },
+  "sha256": {
+    "runtime/src/conn/huggingface_bridge.py": "f15d67f924d200d4d2885c2bcd2853912acaada54a758276cf26eab23ac49e02",
+    "runtime/src/conn/manager.py": "27480dae4a275cf969cd5065b1b7f83caa2a3b5395bab2c352da344b61d219b1",
+    "runtime/src/storage/artifact_router.py": "388396c575ea2c883ed6739fc8a2c9641103f01382cc549fbdc63cfc7e7853a3",
+    "runtime/schemas/huggingface-bridge-v1.schema.json": "298b0c41fe3b50cf5649323890019ada0577c60d0c4be5c65be01febfc64f142",
+    "runtime/tests/test_huggingface_bridge_g023.py": "7e33d49fee820183536539e6fbab12667a7d3fdf399a9caba23d8f09078ff216"
+  },
+  "constraints": {
+    "new_component_installed": false,
+    "canonical_transfer_motor_required": false,
+    "secrets_used": false,
+    "hf_jobs_used": false,
+    "hf_ci_used": false,
+    "lfs_used": false,
+    "force_used": false,
+    "authenticated_or_private_hf_claimed": false,
+    "global_pass_claimed": false
+  }
+}

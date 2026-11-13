@@ -1,0 +1,79 @@
+import { useNavigate } from 'react-router-dom';
+import { Icon, check } from '@wordpress/icons';
+import {
+  getVisibleSteps,
+  stepIndex,
+  type OnboardingStepKey,
+} from './state';
+
+interface Props {
+  currentKey: OnboardingStepKey;
+  /** Highest-completed step in the original 4-entry ONBOARDING_STEPS
+   *  (NOT in the filtered visible list — App + OnboardingShell think in
+   *  the canonical index space, the stepper translates). */
+  highestCompleted: number;
+}
+
+// Custom stepper — no stable WPDS stepper exists. Built from semantic markup
+// + tokens per CLAUDE.md. Numbers turn into checks once a step completes.
+//
+// Renders `getVisibleSteps()`, not the full ONBOARDING_STEPS, so the
+// embedded-UI flow shows 3 steps (Connect store / Model / Ready) and Vite
+// dev shows all 4. The `currentKey` and `highestCompleted` props are in
+// the canonical index space (always 0..3); we re-index against the
+// visible list for marker numbers + completion math.
+export default function Stepper({ currentKey, highestCompleted }: Props) {
+  const nav = useNavigate();
+  const visible = getVisibleSteps();
+  const currentCanonicalIdx = stepIndex(currentKey);
+
+  return (
+    <nav aria-label="Onboarding progress" className="wa-stepper">
+      {visible.map((step, i) => {
+        const canonicalIdx = stepIndex(step.key);
+        const isCurrent = canonicalIdx === currentCanonicalIdx;
+        // A step is "done" only if the user has moved past it. The current
+        // step always shows its number — even when the daemon already has
+        // the underlying data (paired store, configured provider) — because
+        // the user hasn't visibly completed THIS screen yet.
+        const isDone =
+          !isCurrent &&
+          (canonicalIdx < currentCanonicalIdx ||
+            canonicalIdx <= highestCompleted - 1);
+        const isReachable =
+          canonicalIdx <= highestCompleted ||
+          canonicalIdx <= currentCanonicalIdx;
+        const stateClass = isCurrent
+          ? 'wa-stepper__step--current'
+          : isDone
+            ? 'wa-stepper__step--done'
+            : isReachable
+              ? 'wa-stepper__step--upcoming'
+              : 'wa-stepper__step--locked';
+
+        return (
+          <div key={step.key} className="wa-stepper__item">
+            {i > 0 && (
+              <span className="wa-stepper__connector" aria-hidden="true" />
+            )}
+            {/* CUSTOM: onboarding stepper step button — marker + label with done/current/upcoming/locked states. (a) WPDS has no Stepper component. (b) <button> with .wa-stepper__step chrome and aria-current. (c) Documented as the Stepper composite in DESIGN.md (Onboarding card section). */}
+            <button
+              type="button"
+              className={`wa-stepper__step ${stateClass}`}
+              onClick={() => {
+                if (isReachable && !isCurrent) nav(step.path);
+              }}
+              disabled={!isReachable}
+              aria-current={isCurrent ? 'step' : undefined}
+            >
+              <span className="wa-stepper__marker" aria-hidden="true">
+                {isDone ? <Icon icon={check} size={16} /> : i + 1}
+              </span>
+              <span className="wa-stepper__label">{step.label}</span>
+            </button>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}

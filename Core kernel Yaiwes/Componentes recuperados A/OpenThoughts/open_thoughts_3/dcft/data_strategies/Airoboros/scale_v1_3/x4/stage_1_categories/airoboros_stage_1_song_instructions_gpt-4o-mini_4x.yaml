@@ -1,0 +1,69 @@
+operators:
+- id: args_dataset
+  config:
+    type: function
+    function: data_strategies.commons.create_constant_dataset
+    function_config:
+      language: English
+      topic_avoidance: Avoid any tasks that would be related to climate change, green tech, remewable energy, DEI, sex and/or gender, religion, politics, social issues, race, ethnicity, artificial intelligence, baking/cooking, or any topic that you would likely not respond to, or any task which a language model would not be able to respond to, e.g. tasks about emotions, feelings, physical senses, etc.
+      batch_size: 25
+      min_docsearch_score: 0.15
+      airoboros_subset: song
+
+- id: generate_general_instructions
+  config:
+    type: completions
+    map: list
+    map_config:
+      user_message: |
+        I would like you to help me create tasks that can be used to write lyrics.
+
+        Here are a few examples:
+        1. Draft a psychedelic rock song about love transcending time and space. The lyrics should:
+        - Utilize cosmic and astral imagery.
+        - Portray the intensity and depth of love.
+        - Use philosophical or metaphysical concepts.
+
+        2. Write a motivational hip-hop song about fighting for your dreams despite facing various obstacles. The lyrics should convey a strong message of resilience and determination, include real-life struggles and how they were overcome, and have a catchy hook that encourages listeners to believe in themselves.
+
+        3. Compose a folk song that encapsulates the beauty and tranquility of life in the countryside.
+
+        End of examples.
+
+        All output text should be in {{language}}.
+
+        {{topic_avoidance}}
+
+        Include exactly {{batch_size}} tasks in your response.
+
+        Be sure to include a variety of styles, topics, formatting of the task, etc. Some tasks should start with a main synopsis followed by a set of criteria as a list, some tasks should have criteria as normal text, and other tasks should not really specify much in terms of requirements and be open-ended.
+      output_column: instruction
+    model: gpt-4o-mini
+    temperature: 0.99
+    top_p: 0.5
+    presence_penalty: 2.0
+    n_repeat: 8000 # to get to target count
+  input_ids:
+    - args_dataset
+
+- id: cleanup_task
+  config:
+    type: function
+    function: data_strategies.Airoboros.utils.cleanup_tsk
+  input_ids: 
+    - generate_general_instructions
+
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns: 
+        - language
+        - batch_size
+        - topic_avoidance
+  input_ids:
+    - cleanup_task
+
+# target count is 2000
+# min doc search score is 0.25 

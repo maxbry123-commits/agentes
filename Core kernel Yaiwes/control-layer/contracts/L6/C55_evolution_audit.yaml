@@ -1,0 +1,18 @@
+# C55 — L6 Evolution. B5 SALIDA4
+id: C55
+layer: L6
+name: evolution_audit
+implementado: true
+critical: false
+description: "Auditoría de cambios evolutivos"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C55 aplica en capa L6 evolution"
+  - "sin simulación previa → DENY en C53"
+checks:
+  - evolution_audit_check
+evidence:
+  type: evolution_audit_marker
+  required: true

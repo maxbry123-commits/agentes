@@ -1,0 +1,45 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "exported-handler-with-assets",
+	"main": "./workers/exported-handler.ts",
+	"compatibility_date": "2025-05-01",
+	"assets": {
+		"directory": "./assets",
+	},
+	"services": [
+		{
+			"binding": "SERVICE_WORKER",
+			"service": "service-worker",
+		},
+		{
+			"binding": "EXPORTED_HANDLER",
+			"service": "exported-worker",
+		},
+		{
+			"binding": "WORKER_ENTRYPOINT",
+			"service": "worker-entrypoint",
+		},
+		{
+			"binding": "WORKER_ENTRYPOINT_WITH_ASSETS",
+			"service": "worker-entrypoint-with-assets",
+		},
+		{
+			"binding": "NAMED_ENTRYPOINT",
+			"service": "worker-entrypoint",
+			"entrypoint": "NamedEntrypoint",
+		},
+		{
+			"binding": "NAMED_ENTRYPOINT_WITH_ASSETS",
+			"service": "worker-entrypoint-with-assets",
+			"entrypoint": "NamedEntrypoint",
+		},
+	],
+	// Middle link of the one-directional tail chain described in
+	// wrangler.worker-entrypoint.jsonc. Pointing this back at worker-entrypoint
+	// would close the cycle.
+	"tail_consumers": [
+		{
+			"service": "exported-handler",
+		},
+	],
+}

@@ -1,0 +1,124 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[package]
+name = "rustfs-scanner"
+version.workspace = true
+edition.workspace = true
+authors = ["RustFS Team"]
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+homepage.workspace = true
+description = "RustFS Scanner provides scanning capabilities for data integrity checks, health monitoring, and storage analysis."
+keywords = ["RustFS", "scanner", "health-monitoring", "data-integrity", "storage-analysis"]
+categories = ["web-programming", "development-tools", "filesystem"]
+documentation = "https://docs.rs/rustfs-scanner/latest/rustfs_scanner/"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+hotpath = [
+    "hotpath/hotpath",
+    "hotpath/tokio",
+    "hotpath/futures",
+    "rustfs-common/hotpath",
+    "rustfs-config/hotpath",
+    "rustfs-credentials/hotpath",
+    "rustfs-data-usage/hotpath",
+    "rustfs-ecstore/hotpath",
+    "rustfs-filemeta/hotpath",
+    "rustfs-storage-api/hotpath",
+    "rustfs-utils/hotpath",
+]
+hotpath-alloc = [
+    "hotpath",
+    "hotpath/hotpath-alloc",
+    "rustfs-common/hotpath-alloc",
+    "rustfs-config/hotpath-alloc",
+    "rustfs-credentials/hotpath-alloc",
+    "rustfs-data-usage/hotpath-alloc",
+    "rustfs-ecstore/hotpath-alloc",
+    "rustfs-filemeta/hotpath-alloc",
+    "rustfs-storage-api/hotpath-alloc",
+    "rustfs-utils/hotpath-alloc",
+]
+hotpath-cpu = [
+    "hotpath",
+    "hotpath/hotpath-cpu",
+    "rustfs-common/hotpath-cpu",
+    "rustfs-config/hotpath-cpu",
+    "rustfs-credentials/hotpath-cpu",
+    "rustfs-data-usage/hotpath-cpu",
+    "rustfs-ecstore/hotpath-cpu",
+    "rustfs-filemeta/hotpath-cpu",
+    "rustfs-storage-api/hotpath-cpu",
+    "rustfs-utils/hotpath-cpu",
+]
+
+[dependencies]
+hotpath.workspace = true
+rustfs-config = { workspace = true, features = ["server-config-model"] }
+rustfs-common = { workspace = true }
+rustfs-concurrency = { workspace = true }
+rustfs-heal-contracts = { workspace = true }
+rustfs-lifecycle = { workspace = true }
+rustfs-scanner-metrics = { workspace = true }
+rustfs-credentials = { workspace = true }
+rustfs-utils = { workspace = true }
+tokio = { workspace = true, features = ["fs", "sync", "time", "macros", "rt-multi-thread"] }
+tracing = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+time = { workspace = true, features = ["parsing", "formatting", "macros", "serde"] }
+chrono = { workspace = true, features = ["serde"] }
+rmp-serde = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+rustfs-filemeta = { workspace = true }
+rustfs-lock.workspace = true
+tokio-util = { workspace = true, features = ["io", "compat", "rt"] }
+rustfs-ecstore = { workspace = true }
+rustfs-storage-api = { workspace = true }
+http = { workspace = true }
+rand = { workspace = true, features = ["serde"] }
+s3s = { workspace = true, features = ["minio"] }
+metrics = { workspace = true }
+rustfs-data-usage = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde", "fast-rng"] }
+bytes.workspace = true
+hex-simd.workspace = true
+
+[dev-dependencies]
+rustfs-heal.workspace = true
+tracing-subscriber = { workspace = true, features = ["json", "env-filter", "time"] }
+serial_test = { workspace = true }
+temp-env = { workspace = true, features = ["async_closure"] }
+tempfile = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde", "fast-rng", "macro-diagnostics"] }
+tokio = { workspace = true, features = ["test-util", "fs", "rt-multi-thread"] }
+# Test-only: pins the emitted scanner alert wire names against the canonical
+# EventName string forms subscribers configure (rustfs/backlog#1868).
+rustfs-s3-types.workspace = true
+# Enables the shared MockWarmBackend / xl.meta assertion helpers exposed via
+# the ecstore `api::tier::test_util` facade module (rustfs/backlog#1148 ilm-6).
+rustfs-ecstore = { workspace = true, features = ["test-util"] }
+
+[lib]
+doctest = false

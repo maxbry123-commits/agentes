@@ -1,0 +1,1056 @@
+package hatchet
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"reflect"
+	"sync"
+	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+
+	v1 "github.com/hatchet-dev/hatchet/internal/services/shared/proto/v1"
+	v0Client "github.com/hatchet-dev/hatchet/pkg/client"
+	"github.com/hatchet-dev/hatchet/pkg/client/create"
+	"github.com/hatchet-dev/hatchet/pkg/client/types"
+	"github.com/hatchet-dev/hatchet/pkg/worker"
+	"github.com/hatchet-dev/hatchet/pkg/worker/condition"
+	"github.com/hatchet-dev/hatchet/sdks/go/features"
+	"github.com/hatchet-dev/hatchet/sdks/go/internal"
+	hatchetotel "github.com/hatchet-dev/hatchet/sdks/go/opentelemetry"
+)
+
+// injectTraceparentToMap serializes the current span's W3C traceparent from ctx
+// into the metadata map so child workflows inherit the trace.
+func injectTraceparentToMap(ctx context.Context, meta *map[string]string) *map[string]string {
+	propagator := propagation.TraceContext{}
+	carrier := propagation.MapCarrier{}
+	propagator.Inject(ctx, carrier)
+
+	tp, ok := carrier["traceparent"]
+	if !ok || tp == "" {
+		return meta
+	}
+
+	if meta == nil {
+		m := map[string]string{"traceparent": tp}
+		return &m
+	}
+
+	(*meta)["traceparent"] = tp
+	return meta
+}
+
+type RunPriority = features.RunPriority
+
+type DesiredWorkerLabel = types.DesiredWorkerLabel
+
+type WorkerLabelComparator = types.WorkerLabelComparator
+
+type runOpts struct {
+	AdditionalMetadata  *map[string]string
+	Priority            *RunPriority
+	Sticky              *bool
+	Key                 *string
+	DesiredWorkerLabels map[string]*DesiredWorkerLabel
+}
+
+type RunOptFunc func(*runOpts)
+
+// WithRunMetadata sets the additional metadata for the workflow run.
+func WithRunMetadata(metadata map[string]string) RunOptFunc {
+	return func(opts *runOpts) {
+		opts.AdditionalMetadata = &metadata
+	}
+}
+
+// WithRunPriority sets the priority for the workflow run.
+func WithRunPriority(priority RunPriority) RunOptFunc {
+	return func(opts *runOpts) {
+		opts.Priority = &priority
+	}
+}
+
+// WithRunSticky enables stickiness for the child workflow run.
+func WithRunSticky(sticky bool) RunOptFunc {
+	return func(opts *runOpts) {
+		opts.Sticky = &sticky
+	}
+}
+
+// WithRunKey sets the key for the child workflow run.
+func WithRunKey(key string) RunOptFunc {
+	return func(opts *runOpts) {
+		opts.Key = &key
+	}
+}
+
+// WithDesiredWorkerLabels sets desired worker labels for routing the workflow run to specific workers.
+func WithDesiredWorkerLabels(labels map[string]*DesiredWorkerLabel) RunOptFunc {
+	return func(opts *runOpts) {
+		opts.DesiredWorkerLabels = labels
+	}
+}
+
+// convertInputToType converts input (typically map[string]interface{}) to the expected struct type
+func convertInputToType(input any, expectedType reflect.Type) reflect.Value {
+	if input == nil {
+		return reflect.Zero(expectedType)
+	}
+
+	inputValue := reflect.ValueOf(input)
+	if inputValue.Type().AssignableTo(expectedType) {
+		return inputValue
+	}
+
+	// Try to convert using JSON marshal/unmarshal
+	if expectedType.Kind() == reflect.Struct {
+		// Marshal the input to JSON
+		jsonData, err := json.Marshal(input)
+		if err != nil {
+			// If marshaling fails, return the original input value
+			return reflect.ValueOf(input)
+		}
+
+		// Create a new instance of the expected type
+		result := reflect.New(expectedType)
+
+		// Unmarshal JSON into the new instance
+		err = json.Unmarshal(jsonData, result.Interface())
+		if err != nil {
+			panic(err)
+		}
+
+		// Return the dereferenced value (not the pointer)
+		return result.Elem()
+	}
+
+	return reflect.ValueOf(input)
+}
+
+// Workflow defines a Hatchet workflow, which can then declare tasks and be run, scheduled, and so on.
+type Workflow struct {
+	declaration internal.WorkflowDeclaration[any, any]
+	v0Client    v0Client.Client
+}
+
+// GetName returns the resolved workflow name (including namespace if applicable).
+func (w *Workflow) GetName() string {
+	return w.declaration.Name()
+}
+
+// WorkflowOption configures a workflow instance.
+type WorkflowOption func(*workflowConfig)
+
+// IdempotencyMethod determines how the lifetime of an idempotency key is managed.
+type IdempotencyMethod = create.IdempotencyMethod
+
+const (
+	// IdempotencyMethodTTL evicts the idempotency key after a fixed time-to-live window.
+	IdempotencyMethodTTL = create.IdempotencyMethodTTL
+
+	// IdempotencyMethodStatus keeps the idempotency key alive until the associated run
+	// reaches a terminal status. TTL acts as a fallback that caps how long the key can live.
+	IdempotencyMethodStatus = create.IdempotencyMethodStatus
+)
+
+// IdempotencyConfig configures idempotency behavior for a workflow or standalone task.
+// When set, runs triggered with the same computed key return an IdempotencyCollisionError
+// instead of creating a new run. The Method controls how long the key lives: TTL evicts
+// after a fixed window, while STATUS keeps the key until the run reaches a terminal status
+// (using TTL as a fallback cap).
+type IdempotencyConfig struct {
+	// Expression is a CEL expression evaluated against the workflow input to produce an idempotency key.
+	Expression string
+
+	// TTL is the duration during which duplicate runs with the same key are rejected.
+	// When Method is STATUS, this acts as a fallback: the longest the key can live before it's evicted.
+	TTL time.Duration
+
+	// Method determines how the idempotency key's lifetime is managed. Defaults to TTL.
+	Method IdempotencyMethod
+}
+
+type workflowConfig struct {
+	onCron          []string
+	onEvents        []string
+	concurrency     []types.Concurrency
+	version         string
+	description     string
+	taskDefaults    *create.TaskDefaults
+	defaultPriority *RunPriority
+	stickyStrategy  *types.StickyStrategy
+	cronInput       *string
+	defaultFilters  []types.DefaultFilter
+	idempotency     *IdempotencyConfig
+}
+
+// WithWorkflowCron configures the workflow to run on a cron schedule.
+// Multiple cron expressions can be provided.
+func WithWorkflowCron(cronExpressions ...string) WorkflowOption {
+	return func(config *workflowConfig) {
+		config.onCron = cronExpressions
+	}
+}
+
+// WithWorkflowCronInput sets the input for cron workflows.
+func WithWorkflowCronInput(input any) WorkflowOption {
+	return func(config *workflowConfig) {
+		inputJSON := "{}"
+
+		if input != nil {
+			bytes, err := json.Marshal(input)
+			if err != nil {
+				panic(fmt.Errorf("could not marshal cron input: %w", err))
+			}
+
+			inputJSON = string(bytes)
+		}
+
+		config.cronInput = &inputJSON
+	}
+}
+
+// WithWorkflowEvents configures the workflow to trigger on specific events.
+func WithWorkflowEvents(events ...string) WorkflowOption {
+	return func(config *workflowConfig) {
+		config.onEvents = events
+	}
+}
+
+// WithWorkflowVersion sets the version identifier for the workflow.
+func WithWorkflowVersion(version string) WorkflowOption {
+	return func(config *workflowConfig) {
+		config.version = version
+	}
+}
+
+// WithWorkflowDescription sets a human-readable description for the workflow.
+func WithWorkflowDescription(description string) WorkflowOption {
+	return func(config *workflowConfig) {
+		config.description = description
+	}
+}
+
+// WithWorkflowConcurrency sets concurrency controls for the workflow.
+func WithWorkflowConcurrency(concurrency ...types.Concurrency) WorkflowOption {
+	return func(config *workflowConfig) {
+		config.concurrency = concurrency
+	}
+}
+
+// WithWorkflowTaskDefaults sets the default configuration for all tasks in the workflow.
+func WithWorkflowTaskDefaults(defaults *create.TaskDefaults) WorkflowOption {
+	return func(config *workflowConfig) {
+		config.taskDefaults = defaults
+	}
+}
+
+// WithWorkflowDefaultPriority sets the default priority for the workflow.
+func WithWorkflowDefaultPriority(priority RunPriority) WorkflowOption {
+	return func(config *workflowConfig) {
+		config.defaultPriority = &priority
+	}
+}
+
+// WithWorkflowStickyStrategy sets the sticky strategy for the workflow.
+func WithWorkflowStickyStrategy(stickyStrategy types.StickyStrategy) WorkflowOption {
+	return func(config *workflowConfig) {
+		config.stickyStrategy = &stickyStrategy
+	}
+}
+
+// WithWorkflowIdempotency configures idempotency for the workflow.
+// When set, runs triggered with the same computed key within the TTL window return an
+// IdempotencyCollisionError instead of creating a new run.
+func WithWorkflowIdempotency(config IdempotencyConfig) WorkflowOption {
+	return func(c *workflowConfig) {
+		c.idempotency = &config
+	}
+}
+
+// newWorkflow creates a new workflow definition.
+func newWorkflow(name string, v0Client v0Client.Client, options ...WorkflowOption) *Workflow {
+	config := &workflowConfig{}
+
+	for _, opt := range options {
+		opt(config)
+	}
+
+	if len(config.onCron) > 0 && config.cronInput == nil {
+		emptyJSON := "{}"
+		config.cronInput = &emptyJSON
+	}
+
+	createOpts := create.WorkflowCreateOpts[any]{
+		Name:           name,
+		Version:        config.version,
+		Description:    config.description,
+		OnEvents:       config.onEvents,
+		OnCron:         config.onCron,
+		CronInput:      config.cronInput,
+		Concurrency:    config.concurrency,
+		TaskDefaults:   config.taskDefaults,
+		StickyStrategy: config.stickyStrategy,
+		DefaultFilters: config.defaultFilters,
+	}
+
+	if config.defaultPriority != nil {
+		priority := int32(*config.defaultPriority)
+		createOpts.DefaultPriority = &priority
+	}
+
+	if config.idempotency != nil {
+		createOpts.Idempotency = &create.IdempotencyConfig{
+			Expression: config.idempotency.Expression,
+			TTL:        config.idempotency.TTL,
+			Method:     config.idempotency.Method,
+		}
+	}
+
+	declaration := internal.NewWorkflowDeclaration[any, any](createOpts, v0Client)
+
+	return &Workflow{
+		declaration: declaration,
+		v0Client:    v0Client,
+	}
+}
+
+// TaskOption configures a task instance.
+type TaskOption func(*taskConfig)
+
+type taskConfig struct {
+	retries                int32
+	retryBackoffFactor     float32
+	retryMaxBackoffSeconds int32
+	executionTimeout       time.Duration
+	scheduleTimeout        time.Duration
+	onCron                 []string
+	onEvents               []string
+	concurrency            []*types.Concurrency
+	rateLimits             []*types.RateLimit
+	isDurable              bool
+	parents                []create.NamedTask
+	waitFor                condition.Condition
+	skipIf                 condition.Condition
+	description            string
+	evictionPolicy         *EvictionPolicy
+	slotCost               *int32
+}
+
+// WithRetries sets the number of retry attempts for failed tasks.
+func WithRetries(retries int) TaskOption {
+	return func(config *taskConfig) {
+		config.retries = int32(retries) // #nosec G115 -- developer-configured retry count, not attacker-controlled
+	}
+}
+
+// WithRetryBackoff configures exponential backoff for task retries.
+func WithRetryBackoff(factor float32, maxBackoffSeconds int) TaskOption {
+	return func(config *taskConfig) {
+		config.retryBackoffFactor = factor
+		config.retryMaxBackoffSeconds = int32(maxBackoffSeconds) // #nosec G115 -- developer-configured backoff, not attacker-controlled
+	}
+}
+
+// WithSlotCost sets the number of default worker slots this task consumes. A normal task consumes
+// one. Set it higher for a task that needs more memory or CPU, so a worker runs fewer of them at
+// once. A single worker must have that many free slots to run it. Durable tasks ignore it. Panics
+// if cost is not positive.
+func WithSlotCost(cost int) TaskOption {
+	if cost <= 0 || cost > math.MaxInt32 {
+		panic("slot cost must be a positive integer")
+	}
+
+	c := int32(cost)
+
+	return func(config *taskConfig) {
+		config.slotCost = &c
+	}
+}
+
+// WithScheduleTimeout sets the maximum time a task can wait to be scheduled.
+func WithScheduleTimeout(timeout time.Duration) TaskOption {
+	return func(config *taskConfig) {
+		config.scheduleTimeout = timeout
+	}
+}
+
+// WithExecutionTimeout sets the maximum execution duration for a task.
+func WithExecutionTimeout(timeout time.Duration) TaskOption {
+	return func(config *taskConfig) {
+		config.executionTimeout = timeout
+	}
+}
+
+// WithCron configures standalone tasks to run on a cron schedule.
+// Only applicable to standalone tasks, not workflow tasks.
+func WithCron(cronExpressions ...string) TaskOption {
+	return func(config *taskConfig) {
+		config.onCron = cronExpressions
+	}
+}
+
+// WithEvents configures standalone tasks to trigger on specific events.
+// Only applicable to standalone tasks, not workflow tasks.
+func WithEvents(events ...string) TaskOption {
+	return func(config *taskConfig) {
+		config.onEvents = events
+	}
+}
+
+// WithDefaultFilters sets default filters for event-triggered workflows or standalone tasks.
+func WithDefaultFilters(filters ...types.DefaultFilter) WorkflowOption {
+	return func(config *workflowConfig) {
+		config.defaultFilters = filters
+	}
+}
+
+// WithConcurrency sets concurrency limits for task execution.
+func WithConcurrency(concurrency ...*types.Concurrency) TaskOption {
+	return func(config *taskConfig) {
+		config.concurrency = concurrency
+	}
+}
+
+// withDurable marks a task as durable, enabling persistent state and long-running operations.
+func withDurable() TaskOption {
+	return func(config *taskConfig) {
+		config.isDurable = true
+	}
+}
+
+// WithRateLimits sets rate limiting for task execution.
+func WithRateLimits(rateLimits ...*types.RateLimit) TaskOption {
+	return func(config *taskConfig) {
+		config.rateLimits = rateLimits
+	}
+}
+
+// WithParents sets parent task dependencies.
+func WithParents(parents ...*Task) TaskOption {
+	return func(config *taskConfig) {
+		// Convert *Task to create.NamedTask
+		namedTasks := make([]create.NamedTask, len(parents))
+		for i, parent := range parents {
+			namedTasks[i] = parent
+		}
+		config.parents = namedTasks
+	}
+}
+
+// WithWaitFor sets a condition that must be met before the task executes.
+func WithWaitFor(condition condition.Condition) TaskOption {
+	return func(config *taskConfig) {
+		config.waitFor = condition
+	}
+}
+
+// WithSkipIf sets a condition that will skip the task if met.
+func WithSkipIf(condition condition.Condition) TaskOption {
+	return func(config *taskConfig) {
+		config.skipIf = condition
+	}
+}
+
+// WithDescription sets a human-readable description for the task.
+func WithDescription(description string) TaskOption {
+	return func(config *taskConfig) {
+		config.description = description
+	}
+}
+
+// Task represents a task reference for building DAGs and conditions.
+type Task struct {
+	name string
+}
+
+// GetName returns the name of the task.
+func (t *Task) GetName() string {
+	return t.name
+}
+
+// NewTask transforms a function into a Hatchet task that runs as part of a workflow.
+//
+// The function parameter must have the signature:
+//
+//	func(ctx hatchet.Context, input any) (any, error)
+//
+// Function signatures are validated at runtime using reflection.
+func (w *Workflow) NewTask(name string, fn any, options ...TaskOption) *Task {
+	if name == "" {
+		panic("task name cannot be empty")
+	}
+
+	if fn == nil {
+		panic("task '" + name + "' has a nil input function")
+	}
+
+	config := &taskConfig{}
+
+	for _, opt := range options {
+		opt(config)
+	}
+
+	fnValue := reflect.ValueOf(fn)
+	fnType := fnValue.Type()
+
+	if fnType.Kind() != reflect.Func {
+		panic("fn must be a function")
+	}
+
+	if fnType.NumIn() != 2 {
+		panic("fn must have exactly 2 parameters: (ctx hatchet.Context, input T)")
+	}
+
+	if fnType.NumOut() != 2 {
+		panic("fn must return exactly 2 values: (output T, err error)")
+	}
+
+	contextType := reflect.TypeOf((*Context)(nil)).Elem()
+	durableContextType := reflect.TypeOf((*worker.DurableHatchetContext)(nil)).Elem()
+
+	if config.isDurable {
+		if !fnType.In(0).Implements(durableContextType) && fnType.In(0) != durableContextType {
+			panic("first parameter for durable task must be hatchet.DurableContext")
+		}
+	} else {
+		if !fnType.In(0).Implements(contextType) && fnType.In(0) != contextType {
+			panic("first parameter must be hatchet.Context")
+		}
+	}
+
+	errorType := reflect.TypeOf((*error)(nil)).Elem()
+	if !fnType.Out(1).Implements(errorType) {
+		panic("second return value must be error")
+	}
+
+	wrapper := func(ctx Context, input any) (any, error) {
+		// Convert the input to the expected type
+		expectedInputType := fnType.In(1)
+		convertedInput := convertInputToType(input, expectedInputType)
+
+		// For durable tasks, we need to pass the context as the expected type
+		var contextArg reflect.Value
+		durableContextType := reflect.TypeOf((*worker.DurableHatchetContext)(nil)).Elem()
+		if fnType.In(0).Implements(durableContextType) || fnType.In(0) == durableContextType {
+			// For durable tasks, convert the context to DurableHatchetContext
+			durableCtx := worker.NewDurableHatchetContext(ctx)
+			contextArg = reflect.ValueOf(durableCtx)
+		} else {
+			contextArg = reflect.ValueOf(ctx)
+		}
+
+		args := []reflect.Value{
+			contextArg,
+			convertedInput,
+		}
+
+		results := fnValue.Call(args)
+
+		output := results[0].Interface()
+		var err error
+		if !results[1].IsNil() {
+			err = results[1].Interface().(error)
+		}
+
+		return output, err
+	}
+
+	taskOpts := create.WorkflowTask[any, any]{
+		Name:                   name,
+		Retries:                config.retries,
+		RetryBackoffFactor:     config.retryBackoffFactor,
+		RetryMaxBackoffSeconds: config.retryMaxBackoffSeconds,
+		ExecutionTimeout:       config.executionTimeout,
+		ScheduleTimeout:        config.scheduleTimeout,
+		Concurrency:            config.concurrency,
+		RateLimits:             config.rateLimits,
+		Parents:                config.parents,
+		WaitFor:                config.waitFor,
+		SkipIf:                 config.skipIf,
+		SlotCost:               config.slotCost,
+	}
+
+	if config.isDurable {
+		durableWrapper := func(ctx worker.DurableHatchetContext, input any) (any, error) {
+			return wrapper(ctx, input)
+		}
+		durableDecl := w.declaration.DurableTask(taskOpts, durableWrapper)
+		if config.evictionPolicy != nil {
+			durableDecl.EvictionPolicy = &internal.EvictionPolicyOpts{
+				TTL:                   config.evictionPolicy.TTL,
+				AllowCapacityEviction: config.evictionPolicy.AllowCapacityEviction,
+				Priority:              config.evictionPolicy.Priority,
+			}
+		}
+	} else {
+		w.declaration.Task(taskOpts, wrapper)
+	}
+
+	return &Task{name: name}
+}
+
+// NewBatchTask transforms a function into a Hatchet batch task that runs as part of a
+// workflow. Batch tasks buffer concurrent runs until Hatchet flushes the batch (size
+// reached or flush interval), then invoke the handler once with all buffered inputs keyed
+// by each run's external id (BatchMemberId). retries is always forced to 0 for batch tasks.
+//
+// The function parameter must have the signature:
+//
+//	func(ctx hatchet.Context, input map[string]T) (map[string]R, error)
+//
+// or, when batch.BroadcastOutput is true (the same result is returned to every caller):
+//
+//	func(ctx hatchet.Context, input map[string]T) (R, error)
+//
+// Function signatures are validated at runtime using reflection. Batch tasks cannot be
+// durable.
+//
+// Preview: batch tasks are in beta and may change in future releases.
+func (w *Workflow) NewBatchTask(name string, fn any, batch BatchConfig, options ...TaskOption) *Task {
+	if name == "" {
+		panic("task name cannot be empty")
+	}
+
+	if fn == nil {
+		panic("task '" + name + "' has a nil input function")
+	}
+
+	if batch.MaxSize <= 0 {
+		panic("batch task '" + name + "' must have a positive MaxSize")
+	}
+
+	if batch.MaxInterval != nil && *batch.MaxInterval <= 0 {
+		panic("batch task '" + name + "' MaxInterval must be positive when provided")
+	}
+
+	if batch.GroupMaxRuns != nil && *batch.GroupMaxRuns <= 0 {
+		panic("batch task '" + name + "' GroupMaxRuns must be positive when provided")
+	}
+
+	config := &taskConfig{}
+
+	for _, opt := range options {
+		opt(config)
+	}
+
+	if config.isDurable {
+		panic("batch task '" + name + "' cannot be durable")
+	}
+
+	fnValue := reflect.ValueOf(fn)
+	fnType := fnValue.Type()
+
+	if fnType.Kind() != reflect.Func {
+		panic("fn must be a function")
+	}
+
+	if fnType.NumIn() != 2 {
+		panic("fn must have exactly 2 parameters: (ctx hatchet.Context, input map[string]T)")
+	}
+
+	if fnType.NumOut() != 2 {
+		panic("fn must return exactly 2 values: (output T, err error)")
+	}
+
+	contextType := reflect.TypeOf((*Context)(nil)).Elem()
+	if !fnType.In(0).Implements(contextType) && fnType.In(0) != contextType {
+		panic("first parameter must be hatchet.Context")
+	}
+
+	if fnType.In(1).Kind() != reflect.Map || fnType.In(1).Key().Kind() != reflect.String {
+		panic("second parameter must be a map[string]T keyed by batch member id")
+	}
+
+	errorType := reflect.TypeOf((*error)(nil)).Elem()
+	if !fnType.Out(1).Implements(errorType) {
+		panic("second return value must be error")
+	}
+
+	if !batch.BroadcastOutput && (fnType.Out(0).Kind() != reflect.Map || fnType.Out(0).Key().Kind() != reflect.String) {
+		panic("batch task '" + name + "' handler must return a map[string]T keyed by batch member id unless BroadcastOutput is set")
+	}
+
+	elemType := fnType.In(1).Elem()
+
+	wrapper := func(ctx Context, input any) (any, error) {
+		inputMap, ok := input.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("batch task '%s' input must be a map keyed by batch member id", name)
+		}
+
+		convertedMap := reflect.MakeMapWithSize(fnType.In(1), len(inputMap))
+		for id, raw := range inputMap {
+			convertedMap.SetMapIndex(reflect.ValueOf(id), convertInputToType(raw, elemType))
+		}
+
+		args := []reflect.Value{
+			reflect.ValueOf(ctx),
+			convertedMap,
+		}
+
+		results := fnValue.Call(args)
+
+		var err error
+		if !results[1].IsNil() {
+			err = results[1].Interface().(error)
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		output := results[0].Interface()
+
+		if batch.BroadcastOutput {
+			out := make(map[string]interface{}, len(inputMap))
+			for id := range inputMap {
+				out[id] = output
+			}
+			return out, nil
+		}
+
+		outVal := reflect.ValueOf(output)
+		out := make(map[string]interface{}, outVal.Len())
+		for _, k := range outVal.MapKeys() {
+			out[fmt.Sprintf("%v", k.Interface())] = outVal.MapIndex(k).Interface()
+		}
+
+		if len(out) != len(inputMap) {
+			return nil, fmt.Errorf("batch task '%s' handler returned %d results but batch has %d items", name, len(out), len(inputMap))
+		}
+
+		for id := range inputMap {
+			if _, ok := out[id]; !ok {
+				return nil, fmt.Errorf("batch task '%s' handler result missing entry for batch member %s", name, id)
+			}
+		}
+
+		return out, nil
+	}
+
+	taskOpts := create.WorkflowTask[any, any]{
+		Name:                   name,
+		RetryBackoffFactor:     config.retryBackoffFactor,
+		RetryMaxBackoffSeconds: config.retryMaxBackoffSeconds,
+		ExecutionTimeout:       config.executionTimeout,
+		ScheduleTimeout:        config.scheduleTimeout,
+		Concurrency:            config.concurrency,
+		RateLimits:             config.rateLimits,
+		Parents:                config.parents,
+		WaitFor:                config.waitFor,
+		SkipIf:                 config.skipIf,
+		SlotCost:               config.slotCost,
+	}
+
+	batchCopy := batch
+	w.declaration.BatchTask(taskOpts, &batchCopy, wrapper)
+
+	return &Task{name: name}
+}
+
+// NewDurableTask transforms a function into a durable Hatchet task that runs as part of a workflow.
+//
+// The function parameter must have the signature:
+//
+//	func(ctx hatchet.DurableContext, input any) (any, error)
+//
+// Function signatures are validated at runtime using reflection.
+func (w *Workflow) NewDurableTask(name string, fn any, options ...TaskOption) *Task {
+	durableOptions := make([]TaskOption, len(options), len(options)+1)
+	copy(durableOptions, options)
+	durableOptions = append(durableOptions, withDurable())
+	return w.NewTask(name, fn, durableOptions...)
+}
+
+// Dump implements the WorkflowBase interface for internal use.
+func (w *Workflow) Dump() (*v1.CreateWorkflowVersionRequest, []internal.NamedFunction, []internal.NamedFunction, internal.WrappedTaskFn) {
+	return w.declaration.Dump()
+}
+
+// OnFailure sets a failure handler for the workflow.
+// The handler will be called when any task in the workflow fails.
+func (w *Workflow) OnFailure(fn any) {
+	fnValue := reflect.ValueOf(fn)
+	fnType := fnValue.Type()
+
+	if fnType.Kind() != reflect.Func {
+		panic("onFailure function must be a function")
+	}
+	if fnType.NumIn() != 2 {
+		panic("onFailure function must have exactly 2 parameters: (ctx Context, input T)")
+	}
+	if fnType.NumOut() != 2 {
+		panic("onFailure function must return exactly 2 values: (output T, error)")
+	}
+
+	contextType := reflect.TypeOf((*Context)(nil)).Elem()
+	if !fnType.In(0).Implements(contextType) && fnType.In(0) != contextType {
+		panic("first parameter must be Context")
+	}
+
+	errorType := reflect.TypeOf((*error)(nil)).Elem()
+	if !fnType.Out(1).Implements(errorType) {
+		panic("second return value must be error")
+	}
+
+	wrapper := func(ctx Context, input any) (any, error) {
+		// Convert the input to the expected type
+		expectedInputType := fnType.In(1)
+		convertedInput := convertInputToType(input, expectedInputType)
+
+		// For durable tasks, we need to pass the context as the expected type
+		var contextArg reflect.Value
+		durableContextType := reflect.TypeOf((*worker.DurableHatchetContext)(nil)).Elem()
+		if fnType.In(0).Implements(durableContextType) || fnType.In(0) == durableContextType {
+			// For durable tasks, convert the context to DurableHatchetContext
+			durableCtx := worker.NewDurableHatchetContext(ctx)
+			contextArg = reflect.ValueOf(durableCtx)
+		} else {
+			contextArg = reflect.ValueOf(ctx)
+		}
+
+		args := []reflect.Value{
+			contextArg,
+			convertedInput,
+		}
+
+		results := fnValue.Call(args)
+
+		output := results[0].Interface()
+		var err error
+		if !results[1].IsNil() {
+			err = results[1].Interface().(error)
+		}
+
+		return output, err
+	}
+
+	w.declaration.OnFailure(
+		create.WorkflowOnFailureTask[any, any]{},
+		wrapper,
+	)
+}
+
+// Workflow execution methods
+
+// Run executes the workflow with the provided input and waits for completion.
+func (w *Workflow) Run(ctx context.Context, input any, opts ...RunOptFunc) (*WorkflowResult, error) {
+	tracer := otel.Tracer("github.com/hatchet-dev/hatchet/sdks/go")
+	otelCtx := ctx
+	var resultWaitContext context.Context
+	if hCtx, ok := ctx.(Context); ok {
+		otelCtx = hCtx.GetContext()
+		resultWaitContext = otelCtx
+	}
+	otelCtx, span := tracer.Start(otelCtx, hatchetotel.SpanRunWorkflow,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String(hatchetotel.AttrInstrumentor, hatchetotel.AttrInstrumentorValue),
+			attribute.String(hatchetotel.AttrWorkflowName, w.declaration.Name()),
+		),
+	)
+	defer span.End()
+
+	workflowRunRef, err := w.runWorkflowInternal(ctx, otelCtx, span, input, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	workflowResult, err := workflowRunRef.resultWithContext(resultWaitContext)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
+		return nil, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return workflowResult, nil
+}
+
+// RunNoWait executes the workflow with the provided input without waiting for completion.
+// Returns a workflow run reference that can be used to track the run status.
+func (w *Workflow) RunNoWait(ctx context.Context, input any, opts ...RunOptFunc) (*WorkflowRunRef, error) {
+	tracer := otel.Tracer("github.com/hatchet-dev/hatchet/sdks/go")
+	otelCtx := ctx
+	if hCtx, ok := ctx.(Context); ok {
+		otelCtx = hCtx.GetContext()
+	}
+	otelCtx, span := tracer.Start(otelCtx, hatchetotel.SpanRunWorkflow,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String(hatchetotel.AttrInstrumentor, hatchetotel.AttrInstrumentorValue),
+			attribute.String(hatchetotel.AttrWorkflowName, w.declaration.Name()),
+		),
+	)
+	defer span.End()
+
+	return w.runWorkflowInternal(ctx, otelCtx, span, input, opts...)
+}
+
+// runWorkflowInternal contains the shared logic for Run and RunNoWait.
+// It uses the original ctx for HatchetContext detection and otelCtx for trace propagation.
+func (w *Workflow) runWorkflowInternal(ctx context.Context, otelCtx context.Context, span trace.Span, input any, opts ...RunOptFunc) (*WorkflowRunRef, error) {
+	runOpts := &runOpts{}
+	for _, opt := range opts {
+		opt(runOpts)
+	}
+
+	var priority *int32
+	if runOpts.Priority != nil {
+		priority = &[]int32{int32(*runOpts.Priority)}[0]
+	}
+
+	// Inject traceparent for cross-workflow trace propagation.
+	// Use otelCtx (not ctx) so the span's trace context is propagated.
+	runOpts.AdditionalMetadata = injectTraceparentToMap(otelCtx, runOpts.AdditionalMetadata)
+
+	var v0Opts []v0Client.RunOptFunc
+
+	if runOpts.AdditionalMetadata != nil {
+		v0Opts = append(v0Opts, v0Client.WithRunMetadata(*runOpts.AdditionalMetadata))
+	}
+
+	if priority != nil {
+		v0Opts = append(v0Opts, v0Client.WithPriority(*priority))
+	}
+
+	if runOpts.DesiredWorkerLabels != nil {
+		v0Opts = append(v0Opts, v0Client.WithDesiredWorkerLabels(runOpts.DesiredWorkerLabels))
+	}
+
+	var v0Workflow *v0Client.Workflow
+	var err error
+
+	hCtx, ok := ctx.(Context)
+	if ok {
+		durableRef, handled, durableErr := runDurableChildWorkflowIfSupported(ctx, w.declaration.Name(), input, runOpts)
+		if handled {
+			if durableErr != nil {
+				span.SetStatus(codes.Error, durableErr.Error())
+				span.RecordError(durableErr)
+				return nil, durableErr
+			}
+			span.SetAttributes(attribute.String(hatchetotel.AttrChildWorkflowRunID, durableRef.RunId))
+			return durableRef, nil
+		}
+
+		v0Workflow, err = hCtx.SpawnWorkflow(w.declaration.Name(), input, &worker.SpawnWorkflowOpts{
+			Key:                 runOpts.Key,
+			Sticky:              runOpts.Sticky,
+			Priority:            priority,
+			AdditionalMetadata:  runOpts.AdditionalMetadata,
+			DesiredWorkerLabels: runOpts.DesiredWorkerLabels,
+		})
+	} else {
+		v0Workflow, err = w.v0Client.Admin().RunWorkflow(w.declaration.Name(), input, v0Opts...)
+	}
+
+	if err != nil {
+		var idempViolation *v0Client.IdempotencyViolationErr
+		if errors.As(err, &idempViolation) {
+			span.SetStatus(codes.Error, err.Error())
+			span.RecordError(err)
+			return nil, &IdempotencyCollisionError{
+				ExistingRunExternalId: idempViolation.ExistingRunExternalId,
+			}
+		}
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
+		return nil, err
+	}
+
+	span.SetAttributes(attribute.String(hatchetotel.AttrChildWorkflowRunID, v0Workflow.RunId()))
+
+	return &WorkflowRunRef{RunId: v0Workflow.RunId(), v0Workflow: v0Workflow}, nil
+}
+
+// RunMany executes multiple workflow instances with different inputs.
+func (w *Workflow) RunMany(ctx context.Context, inputs []RunManyOpt) ([]WorkflowRunRef, error) {
+	tracer := otel.Tracer("github.com/hatchet-dev/hatchet/sdks/go")
+	originalCtx := ctx
+	otelCtx := ctx
+	if hCtx, ok := ctx.(Context); ok {
+		otelCtx = hCtx.GetContext()
+	}
+	otelCtx, span := tracer.Start(otelCtx, hatchetotel.SpanRunWorkflows,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String(hatchetotel.AttrInstrumentor, hatchetotel.AttrInstrumentorValue),
+			attribute.String(hatchetotel.AttrWorkflowName, w.declaration.Name()),
+			attribute.Int(hatchetotel.AttrNumWorkflows, len(inputs)),
+		),
+	)
+	defer span.End()
+
+	if durableRefs, handled, err := runManyDurableChildWorkflows(originalCtx, otelCtx, w.declaration.Name(), inputs); handled {
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			return durableRefs, err
+		}
+
+		span.SetStatus(codes.Ok, "")
+		return durableRefs, nil
+	}
+
+	var workflowRefs []WorkflowRunRef
+
+	var wg sync.WaitGroup
+	var otherErrs []error
+	var collisions []*IdempotencyCollisionError
+	var errsMutex sync.Mutex
+	var workflowRefsMutex sync.Mutex
+	wg.Add(len(inputs))
+
+	for _, input := range inputs {
+		go func() {
+			defer wg.Done()
+
+			workflowRef, err := w.RunNoWait(originalCtx, input.Input, input.Opts...)
+			if err != nil {
+				errsMutex.Lock()
+				if collision, ok := IsIdempotencyCollisionError(err); ok {
+					collisions = append(collisions, collision)
+				} else {
+					otherErrs = append(otherErrs, err)
+				}
+				errsMutex.Unlock()
+				return
+			}
+			workflowRefsMutex.Lock()
+			workflowRefs = append(workflowRefs, *workflowRef)
+			workflowRefsMutex.Unlock()
+		}()
+	}
+
+	wg.Wait()
+
+	if err := errors.Join(otherErrs...); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return workflowRefs, err
+	}
+
+	if len(collisions) > 0 {
+		successfulIds := make([]string, 0, len(workflowRefs))
+		for _, ref := range workflowRefs {
+			successfulIds = append(successfulIds, ref.RunId)
+		}
+		bulkErr := &BulkTriggerIdempotencyCollisionError{
+			SuccessfulRunExternalIds: successfulIds,
+			Collisions:               collisions,
+		}
+		span.SetStatus(codes.Error, bulkErr.Error())
+		return workflowRefs, bulkErr
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return workflowRefs, nil
+}

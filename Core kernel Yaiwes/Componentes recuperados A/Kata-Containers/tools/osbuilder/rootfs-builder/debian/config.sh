@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#
+# Copyright (c) 2018 SUSE
+#
+# SPDX-License-Identifier: Apache-2.0
+
+OS_VERSION=${OS_VERSION:-10.11}
+
+# Set OS_NAME to the desired debian "codename"
+OS_NAME=${OS_NAME:-"stretch"}
+
+# shellcheck disable=SC2034
+PACKAGES="systemd coreutils init iptables chrony kmod"
+
+# NOTE: Re-using ubuntu rootfs configuration, see 'ubuntu' folder for full content.
+# shellcheck disable=SC2154
+# shellcheck source=/dev/null
+source "${script_dir}/ubuntu/${CONFIG_SH}"
+
+# Init process must be one of {systemd,kata-agent}
+# shellcheck disable=SC2034
+INIT_PROCESS=systemd
+# List of zero or more architectures to exclude from build,
+# as reported by  `uname -m`
+# shellcheck disable=SC2034
+ARCH_EXCLUDE_LIST=()

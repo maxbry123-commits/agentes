@@ -1,0 +1,35 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`featureSchema constraints 1`] = `
+{
+  "errors": [
+    {
+      "instancePath": "/environments/0/strategies/0/constraints/0",
+      "keyword": "required",
+      "message": "must have required property 'operator'",
+      "params": {
+        "missingProperty": "operator",
+      },
+      "schemaPath": "#/components/schemas/constraintSchema/required",
+    },
+  ],
+  "schema": "#/components/schemas/featureSchema",
+}
+`;
+
+exports[`featureSchema variant override values must be an array in an environment 1`] = `
+{
+  "errors": [
+    {
+      "instancePath": "/environments/0/variants/0/overrides/0/values",
+      "keyword": "type",
+      "message": "must be array",
+      "params": {
+        "type": "array",
+      },
+      "schemaPath": "#/components/schemas/overrideSchema/properties/values/type",
+    },
+  ],
+  "schema": "#/components/schemas/featureSchema",
+}
+`;

@@ -1,0 +1,110 @@
+name: Python
+env:
+  WORKING_DIRECTORY: bindings/python
+
+on:
+  pull_request:
+    paths:
+      - 'bindings/python/**'
+      - 'core/**'
+      - 'test-data/**'
+      - '.github/workflows/python.yaml'
+  push:
+    tags:
+      - 'python-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  # The build jobs skip on release events for other components (release-please fires
+  # one `release` event per component; only `python-v*` should build/publish here).
+  wheels:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            target: x86_64
+            args: --release --out dist --find-interpreter --locked -m bindings/python/Cargo.toml --zig --compatibility manylinux_2_28
+            manylinux: auto
+          - os: ubuntu-latest
+            platform: linux
+            target: aarch64
+            args: --release --out dist --find-interpreter --locked -m bindings/python/Cargo.toml --zig --compatibility manylinux_2_28
+            manylinux: auto
+          - os: windows-latest
+            platform: windows
+            target: x64
+            architecture: x64
+            args: --release --out dist --find-interpreter --locked -m bindings/python/Cargo.toml
+          - os: macos-latest
+            platform: macos
+            target: x86_64
+            args: --release --out dist --find-interpreter --locked -m bindings/python/Cargo.toml
+          - os: macos-latest
+            platform: macos
+            target: aarch64
+            args: --release --out dist --find-interpreter --locked -m bindings/python/Cargo.toml
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+          architecture: ${{ matrix.architecture }}
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: ${{ matrix.args }}
+          manylinux: ${{ matrix.manylinux || 'auto' }}
+          sccache: 'true'
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.platform }}-${{ matrix.target }}
+          path: dist
+
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist -m bindings/python/Cargo.toml
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: dist
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    environment: release
+    # Publishes only on the release-please GitHub Release for the python component.
+    if: "github.ref_type == 'tag'"
+    needs: [ wheels, sdist ]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: PyO3/maturin-action@v1
+        env:
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        with:
+          command: upload
+          args: --skip-existing *

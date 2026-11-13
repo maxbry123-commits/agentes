@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AcquireMissionState",
+  "type": "object",
+  "required": ["mission_id", "nodos", "status"],
+  "properties": {
+    "mission_id": {"type": "string"},
+    "status": {
+      "type": "string",
+      "enum": ["pending", "running", "completed", "failed", "held"]
+    },
+    "nodos": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["pending", "running", "PASS", "FAILED", "SKIPPED_EXPECTED"]
+      }
+    },
+    "recipe_id": {"type": "string"},
+    "artifact_id": {"type": "string"},
+    "enabled": {"type": "boolean", "default": false}
+  }
+}

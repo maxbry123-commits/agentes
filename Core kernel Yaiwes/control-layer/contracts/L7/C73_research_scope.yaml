@@ -1,0 +1,17 @@
+# C73 — L7. B6 SALIDA4
+id: C73
+layer: L7
+name: research_scope
+implementado: true
+critical: false
+description: "Alcance de research"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C73 aplica en capa L7"
+checks:
+  - research_scope_check
+evidence:
+  type: research_scope_marker
+  required: false

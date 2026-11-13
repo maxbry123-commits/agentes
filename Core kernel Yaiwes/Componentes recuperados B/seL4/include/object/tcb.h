@@ -1,0 +1,295 @@
+/*
+ * Copyright 2014, General Dynamics C4 Systems
+ *
+ * SPDX-License-Identifier: GPL-2.0-only
+ */
+
+#pragma once
+
+#include <types.h>
+#include <api/failures.h>
+#include <object/structures.h>
+
+#include <machine/registerset.h>
+#include <object/cnode.h>
+
+#ifdef CONFIG_DEBUG_BUILD
+/* Maximum length of the tcb name, including null terminator */
+#define TCB_NAME_LENGTH (BIT(seL4_TCBBits-1) - (tcbCNodeEntries * sizeof(cte_t)) - sizeof(debug_tcb_t))
+compile_assert(tcb_name_fits, TCB_NAME_LENGTH > 0)
+#endif
+
+struct tcb_queue {
+    tcb_t *head;
+    tcb_t *end;
+};
+typedef struct tcb_queue tcb_queue_t;
+
+static inline unsigned int setMR(tcb_t *receiver, word_t *receiveIPCBuffer,
+                                 unsigned int offset, word_t reg)
+{
+    if (offset >= n_msgRegisters) {
+        if (receiveIPCBuffer) {
+            receiveIPCBuffer[offset + 1] = reg;
+            return offset + 1;
+        } else {
+            return n_msgRegisters;
+        }
+    } else {
+        setRegister(receiver, msgRegisters[offset], reg);
+        return offset + 1;
+    }
+}
+
+void tcbSchedEnqueue(tcb_t *tcb);
+void tcbSchedAppend(tcb_t *tcb);
+void tcbSchedDequeue(tcb_t *tcb);
+tcb_queue_t tcb_queue_remove(tcb_queue_t queue, tcb_t *tcb);
+
+static inline bool_t PURE tcb_queue_empty(tcb_queue_t queue)
+{
+    return queue.head == NULL;
+}
+
+static inline tcb_queue_t tcb_queue_prepend(tcb_queue_t queue, tcb_t *tcb)
+{
+    if (tcb_queue_empty(queue)) {
+        queue.end = tcb;
+    } else {
+        tcb->tcbSchedNext = queue.head;
+        queue.head->tcbSchedPrev = tcb;
+    }
+
+    queue.head = tcb;
+
+    return queue;
+}
+
+static inline tcb_queue_t tcb_queue_append(tcb_queue_t queue, tcb_t *tcb)
+{
+    if (tcb_queue_empty(queue)) {
+        queue.head = tcb;
+    } else {
+        tcb->tcbSchedPrev = queue.end;
+        queue.end->tcbSchedNext = tcb;
+    }
+
+    queue.end = tcb;
+
+    return queue;
+}
+
+/* Insert a TCB into a queue immediately before another item in the queue
+   (the queue must initially contain at least two items) */
+static inline void tcb_queue_insert(tcb_t *tcb, tcb_t *after)
+{
+    tcb_t *before;
+    before = after->tcbSchedPrev;
+
+    assert(before != NULL);
+    assert(before != after);
+
+    tcb->tcbSchedPrev = before;
+    tcb->tcbSchedNext = after;
+
+    after->tcbSchedPrev = tcb;
+    before->tcbSchedNext = tcb;
+}
+
+#ifdef CONFIG_DEBUG_BUILD
+void tcbDebugAppend(tcb_t *tcb);
+void tcbDebugRemove(tcb_t *tcb);
+#endif
+#ifdef CONFIG_KERNEL_MCS
+void tcbReleaseRemove(tcb_t *tcb);
+void tcbReleaseEnqueue(tcb_t *tcb);
+#endif
+
+#ifdef ENABLE_SMP_SUPPORT
+void remoteQueueUpdate(tcb_t *tcb);
+void remoteTCBStall(tcb_t *tcb);
+
+#define SCHED_ENQUEUE(_t) do {      \
+    tcbSchedEnqueue(_t);            \
+    remoteQueueUpdate(_t);          \
+} while (0)
+
+#define SCHED_APPEND(_t) do {       \
+    tcbSchedAppend(_t);             \
+    remoteQueueUpdate(_t);          \
+} while (0)
+
+#else
+#define SCHED_ENQUEUE(_t)           tcbSchedEnqueue(_t)
+#define SCHED_APPEND(_t)            tcbSchedAppend(_t)
+#endif /* ENABLE_SMP_SUPPORT */
+
+#define SCHED_ENQUEUE_CURRENT_TCB   tcbSchedEnqueue(NODE_STATE(ksCurThread))
+#define SCHED_APPEND_CURRENT_TCB    tcbSchedAppend(NODE_STATE(ksCurThread))
+
+#ifdef CONFIG_KERNEL_MCS
+
+static inline bool_t PURE higher_than_tcb_prio(tcb_t *tcb, prio_t priority)
+{
+    return tcb != NULL && priority > tcb->tcbPriority;
+}
+
+/* Find the rightmost TCB in the given queue that has a priority which is
+   strictly greater than the given priority */
+static tcb_t *find_tcb_with_higher_prio(tcb_queue_t queue, prio_t priority)
+{
+    tcb_t *tcb = queue.end;
+
+    while (higher_than_tcb_prio(tcb, priority)) {
+        tcb = tcb->tcbSchedPrev;
+    }
+
+    return tcb;
+}
+
+/* Insert a TCB into a queue immediately after another item in the queue
+   (the queue must initially contain at least two items) */
+static inline void tcb_queue_insert_after(tcb_t *tcb, tcb_t *before)
+{
+    tcb_t *after;
+    after = before->tcbSchedNext;
+
+    tcb->tcbSchedPrev = before;
+    tcb->tcbSchedNext = after;
+
+    after->tcbSchedPrev = tcb;
+    before->tcbSchedNext = tcb;
+}
+
+/* Add TCB into the priority ordered endpoint or notification queue */
+static inline tcb_queue_t tcbAppend(tcb_t *tcb, tcb_queue_t queue)
+{
+    prio_t priority = tcb->tcbPriority;
+    tcb_queue_t new_queue = queue;
+
+    if (tcb_queue_empty(queue) || priority > queue.head->tcbPriority) {
+        new_queue = tcb_queue_prepend(queue, tcb);
+    } else {
+        if (queue.end->tcbPriority >= priority) {
+            new_queue = tcb_queue_append(queue, tcb);
+        } else {
+            tcb_t *before;
+            before = find_tcb_with_higher_prio(queue, priority);
+            tcb_queue_insert_after(tcb, before);
+        }
+    }
+
+    return new_queue;
+}
+
+/* Check for NullCap or EndpointCap with sufficient access rights */
+bool_t validFaultHandler(cap_t cap);
+#else
+
+tcb_queue_t tcbEPAppend(tcb_t *tcb, tcb_queue_t queue);
+tcb_queue_t tcbEPDequeue(tcb_t *tcb, tcb_queue_t queue);
+
+void setupCallerCap(tcb_t *sender, tcb_t *receiver, bool_t canGrant);
+void deleteCallerCap(tcb_t *receiver);
+#endif
+
+word_t copyMRs(tcb_t *sender, word_t *sendBuf, tcb_t *receiver,
+               word_t *recvBuf, word_t n);
+exception_t decodeTCBInvocation(word_t invLabel, word_t length, cap_t cap,
+                                cte_t *slot, bool_t call, word_t *buffer);
+exception_t decodeCopyRegisters(cap_t cap, word_t length, word_t *buffer);
+exception_t decodeReadRegisters(cap_t cap, word_t length, bool_t call,
+                                word_t *buffer);
+exception_t decodeWriteRegisters(cap_t cap, word_t length, word_t *buffer);
+exception_t decodeTCBConfigure(cap_t cap, word_t length,
+                               cte_t *slot, word_t *buffer);
+exception_t decodeSetPriority(cap_t cap, word_t length, word_t *buffer);
+exception_t decodeSetMCPriority(cap_t cap, word_t length, word_t *buffer);
+#ifdef CONFIG_KERNEL_MCS
+exception_t decodeSetSchedParams(cap_t cap, word_t length, cte_t *slot, word_t *buffer);
+#else
+exception_t decodeSetSchedParams(cap_t cap, word_t length, word_t *buffer);
+#endif
+exception_t decodeSetIPCBuffer(cap_t cap, word_t length,
+                               cte_t *slot, word_t *buffer);
+exception_t decodeSetSpace(cap_t cap, word_t length,
+                           cte_t *slot, word_t *buffer);
+exception_t decodeBindNotification(cap_t cap);
+exception_t decodeUnbindNotification(cap_t cap);
+#ifdef CONFIG_KERNEL_MCS
+exception_t decodeSetTimeoutEndpoint(cap_t cap, cte_t *slot);
+#endif
+
+
+#ifdef CONFIG_KERNEL_MCS
+enum thread_control_caps_flag {
+    thread_control_caps_update_ipc_buffer = 0x1,
+    thread_control_caps_update_space = 0x2,
+    thread_control_caps_update_fault = 0x4,
+    thread_control_caps_update_timeout = 0x8,
+};
+
+enum thread_control_sched_flag {
+    thread_control_sched_update_priority = 0x1,
+    thread_control_sched_update_mcp = 0x2,
+    thread_control_sched_update_sc = 0x4,
+    thread_control_sched_update_fault = 0x8,
+};
+#else
+enum thread_control_flag {
+    thread_control_update_priority = 0x1,
+    thread_control_update_ipc_buffer = 0x2,
+    thread_control_update_space = 0x4,
+    thread_control_update_mcp = 0x8,
+};
+#endif
+
+typedef word_t thread_control_flag_t;
+
+exception_t invokeTCB_Suspend(tcb_t *thread);
+exception_t invokeTCB_Resume(tcb_t *thread);
+#ifdef CONFIG_KERNEL_MCS
+exception_t invokeTCB_ThreadControlCaps(tcb_t *target, cte_t *slot,
+                                        cap_t fh_newCap, cte_t *fh_srcSlot,
+                                        cap_t th_newCap, cte_t *th_srcSlot,
+                                        cap_t cRoot_newCap, cte_t *cRoot_srcSlot,
+                                        cap_t vRoot_newCap, cte_t *vRoot_srcSlot,
+                                        word_t bufferAddr, cap_t bufferCap,
+                                        cte_t *bufferSrcSlot,
+                                        thread_control_flag_t updateFlags);
+exception_t invokeTCB_ThreadControlSched(tcb_t *target, cte_t *slot,
+                                         cap_t fh_newCap, cte_t *fh_srcSlot,
+                                         prio_t mcp, prio_t priority,
+                                         sched_context_t *sc,
+                                         thread_control_flag_t updateFlags);
+#else
+exception_t invokeTCB_ThreadControl(tcb_t *target, cte_t *slot, cptr_t faultep,
+                                    prio_t mcp, prio_t priority, cap_t cRoot_newCap,
+                                    cte_t *cRoot_srcSlot, cap_t vRoot_newCap,
+                                    cte_t *vRoot_srcSlot, word_t bufferAddr,
+                                    cap_t bufferCap, cte_t *bufferSrcSlot,
+                                    thread_control_flag_t updateFlags);
+#endif
+exception_t invokeTCB_CopyRegisters(tcb_t *dest, tcb_t *src,
+                                    bool_t suspendSource, bool_t resumeTarget,
+                                    bool_t transferFrame, bool_t transferInteger,
+                                    word_t transferArch);
+exception_t invokeTCB_ReadRegisters(tcb_t *src, bool_t suspendSource,
+                                    word_t n, word_t arch, bool_t call);
+exception_t invokeTCB_WriteRegisters(tcb_t *dest, bool_t resumeTarget,
+                                     word_t n, word_t arch, word_t *buffer);
+exception_t invokeTCB_NotificationControl(tcb_t *tcb, notification_t *ntfnPtr);
+
+cptr_t PURE getExtraCPtr(word_t *bufferPtr, word_t i);
+void setExtraBadge(word_t *bufferPtr, word_t badge, word_t i);
+
+exception_t lookupExtraCaps(tcb_t *thread, word_t *bufferPtr, seL4_MessageInfo_t info);
+word_t setMRs_syscall_error(tcb_t *thread, word_t *receiveIPCBuffer);
+word_t CONST Arch_decodeTransfer(word_t flags);
+exception_t CONST Arch_performTransfer(word_t arch, tcb_t *tcb_src,
+                                       tcb_t *tcb_dest);
+
+#ifdef CONFIG_DEBUG_BUILD
+void setThreadName(tcb_t *thread, const char *name);
+#endif /* CONFIG_DEBUG_BUILD */
+

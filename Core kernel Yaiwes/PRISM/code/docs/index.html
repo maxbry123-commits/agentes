@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRISM — Pareto-Efficient Retrieval over Intent-Aware Structured Memory</title>
+<meta name="description" content="PRISM: a training-free, retrieval-side memory framework for long-horizon LLM agents. High accuracy at an order-of-magnitude smaller context budget.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Spline+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#15212e; --ink-soft:#3d4f60; --paper:#f6f4ee; --paper-warm:#efebe1;
+  --line:#d9d3c6; --prism:#1f5fa8; --prism-deep:#163f6e; --prism-light:#e8f0f9;
+  --accent:#e07b39; --accent-soft:#f6e2d2; --green:#2f8f5b; --white:#fffefb;
+  --shadow:rgba(21,33,46,.10);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:78px}
+body{font-family:'Spline Sans',sans-serif;background:var(--paper);color:var(--ink);line-height:1.65;-webkit-font-smoothing:antialiased}
+::selection{background:var(--prism);color:#fff}
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:14px clamp(20px,5vw,64px);background:rgba(246,244,238,.82);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+nav .brand{font-family:'Fraunces',serif;font-weight:600;font-size:1.32rem;letter-spacing:.02em;color:var(--prism-deep);display:flex;align-items:center;gap:.5rem}
+nav .brand .dot{width:11px;height:11px;border-radius:50%;background:linear-gradient(135deg,var(--prism),var(--accent));display:inline-block}
+nav .links{display:flex;gap:clamp(.6rem,2vw,1.9rem);align-items:center}
+nav .links a{text-decoration:none;color:var(--ink-soft);font-size:.92rem;font-weight:500;transition:color .2s}
+nav .links a:hover{color:var(--prism)}
+nav .links a.paper-link{color:var(--prism);font-weight:600}
+@media(max-width:720px){nav .links a:not(.paper-link){display:none}}
+header{padding:clamp(110px,16vh,170px) clamp(20px,5vw,64px) clamp(50px,7vh,80px);max-width:1080px;margin:0 auto;text-align:center;position:relative}
+header::before{content:"";position:absolute;inset:0;z-index:-1;background:radial-gradient(ellipse 70% 50% at 50% 0%,rgba(31,95,168,.07),transparent 70%)}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:.78rem;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);margin-bottom:1.4rem;font-weight:500}
+header h1{font-family:'Fraunces',serif;font-size:clamp(3.4rem,9vw,6.2rem);font-weight:600;line-height:.95;letter-spacing:-.02em;color:var(--prism-deep);margin-bottom:1.1rem}
+header h1 .grad{background:linear-gradient(118deg,var(--prism) 20%,var(--accent) 95%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+header .subtitle{font-family:'Fraunces',serif;font-style:italic;font-size:clamp(1.15rem,2.6vw,1.55rem);color:var(--ink-soft);font-weight:400;max-width:780px;margin:0 auto 2rem;line-height:1.4}
+.tagline{font-size:clamp(1rem,2vw,1.12rem);color:var(--ink);max-width:680px;margin:0 auto 2.4rem}
+.tagline b{color:var(--prism-deep);font-weight:600}
+.authors{font-size:1rem;color:var(--ink);margin-bottom:.4rem;font-weight:500}
+.authors sup{color:var(--prism);font-weight:600}
+.affil{font-size:.86rem;color:var(--ink-soft);margin-bottom:.3rem}
+.corr{font-size:.8rem;color:var(--ink-soft);font-family:'JetBrains Mono',monospace;margin-bottom:2.2rem}
+.corr a{color:var(--prism);text-decoration:none}
+.corr a:hover{text-decoration:underline}
+.btn-row{display:flex;gap:.85rem;justify-content:center;flex-wrap:wrap;margin-bottom:2.6rem}
+.btn{display:inline-flex;align-items:center;gap:.5rem;padding:.7rem 1.4rem;border-radius:100px;font-weight:600;font-size:.95rem;text-decoration:none;transition:transform .18s,box-shadow .18s;border:1.5px solid var(--ink)}
+.btn:hover{transform:translateY(-2px)}
+.btn-dark{background:var(--ink);color:var(--paper);box-shadow:0 5px 18px var(--shadow)}
+.btn-dark:hover{box-shadow:0 9px 26px var(--shadow)}
+.btn-light{background:transparent;color:var(--ink)}
+.btn-light:hover{background:var(--white)}
+.chips{display:flex;gap:.7rem;justify-content:center;flex-wrap:wrap}
+.chip{font-family:'JetBrains Mono',monospace;font-size:.82rem;padding:.4rem .9rem;border-radius:8px;background:var(--white);border:1px solid var(--line);color:var(--ink-soft)}
+.chip b{color:var(--prism-deep)}
+section{padding:clamp(56px,9vh,100px) clamp(20px,5vw,64px);max-width:1140px;margin:0 auto}
+.sec-tag{font-family:'JetBrains Mono',monospace;font-size:.76rem;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:.8rem;font-weight:500}
+h2{font-family:'Fraunces',serif;font-weight:600;font-size:clamp(2rem,4.5vw,2.9rem);letter-spacing:-.015em;color:var(--prism-deep);line-height:1.05;margin-bottom:1.5rem}
+h3{font-family:'Fraunces',serif;font-weight:600;font-size:1.4rem;color:var(--ink);margin:2rem 0 .7rem}
+p.lead{font-size:1.08rem;color:var(--ink-soft);max-width:820px;margin-bottom:1.1rem}
+p.body{color:var(--ink-soft);max-width:820px;margin-bottom:1rem}
+.divider{height:1px;background:var(--line);max-width:1140px;margin:0 auto}
+.mod-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;margin-top:2rem}
+.mod-card{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:1.5rem;transition:transform .2s,box-shadow .2s;position:relative;overflow:hidden}
+.mod-card:hover{transform:translateY(-4px);box-shadow:0 14px 34px var(--shadow)}
+.mod-card .tag{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:.82rem;color:#fff;background:var(--prism);padding:.15rem .55rem;border-radius:6px;display:inline-block;margin-bottom:.8rem}
+.mod-card.n3 .tag{background:var(--accent)}
+.mod-card.n4 .tag{background:#7a4fb5}
+.mod-card.n2 .tag{background:var(--green)}
+.mod-card h4{font-family:'Fraunces',serif;font-size:1.18rem;color:var(--ink);margin-bottom:.5rem;font-weight:600}
+.mod-card p{font-size:.92rem;color:var(--ink-soft);line-height:1.55}
+figure{margin:2rem 0;text-align:center}
+figure img{max-width:100%;height:auto;border-radius:14px;border:1px solid var(--line);background:var(--white);padding:14px;box-shadow:0 8px 30px var(--shadow)}
+figure.plain img{border:none;box-shadow:none;background:transparent;padding:0}
+figure.fig-sm img{max-width:80%}
+@media(max-width:760px){figure.fig-sm img{max-width:100%}}
+figcaption{font-size:.88rem;color:var(--ink-soft);margin-top:.9rem;max-width:760px;margin-left:auto;margin-right:auto}
+figcaption b{color:var(--ink);font-weight:600}
+.fig-pair{display:grid;grid-template-columns:1fr 1fr;gap:1.6rem;align-items:start;margin:2rem 0}
+.fig-pair figure{margin:0;display:flex;flex-direction:column}
+.fig-pair figure img{flex:0 0 auto}
+.fig-pair figcaption{font-size:.82rem;margin-top:.8rem}
+@media(max-width:760px){.fig-pair{grid-template-columns:1fr;gap:1rem}}
+.band{background:var(--prism-deep);color:var(--paper);position:relative;overflow:hidden}
+.band::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 85% 20%,rgba(224,123,57,.18),transparent 45%);pointer-events:none}
+.band-inner{max-width:1140px;margin:0 auto;padding:clamp(56px,9vh,90px) clamp(20px,5vw,64px);position:relative;z-index:1}
+.band h2{color:var(--white)}
+.band .sec-tag{color:var(--accent-soft)}
+.band-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1.6rem;margin-top:2.4rem}
+.band-stat .num{font-family:'Fraunces',serif;font-size:clamp(2.6rem,6vw,3.8rem);font-weight:600;line-height:1;color:var(--white)}
+.band-stat .num .unit{font-size:1.4rem;color:var(--accent-soft)}
+.band-stat .lbl{font-size:.9rem;color:rgba(246,244,238,.72);margin-top:.5rem}
+.table-wrap{overflow-x:auto;margin-top:1.6rem;border-radius:14px;border:1px solid var(--line);background:var(--white)}
+table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:620px}
+th,td{padding:.7rem .9rem;text-align:center;border-bottom:1px solid var(--paper-warm)}
+th{background:var(--paper-warm);font-weight:600;color:var(--prism-deep);font-size:.82rem;letter-spacing:.02em}
+td:first-child,th:first-child{text-align:left;font-weight:500}
+tbody tr:last-child td{border-bottom:none}
+tr.ours{background:var(--prism-light)}
+tr.ours td{font-weight:600;color:var(--prism-deep)}
+tr.ours td:first-child::after{content:" ◆";color:var(--accent)}
+tr.ours-soft{background:rgba(232,240,249,.5)}
+tr.ours-soft td{color:var(--prism-deep)}
+tr.ours-soft td:first-child{font-weight:600}
+.ours-tag{font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:#fff;background:var(--prism);padding:.1rem .4rem;border-radius:5px;margin-left:.45rem;vertical-align:middle}
+.tnote{font-size:.82rem;color:var(--ink-soft);margin-top:.7rem;font-style:italic}
+.grp-label{font-family:'JetBrains Mono',monospace;font-size:.74rem;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-soft);text-align:left;background:var(--paper);padding:.5rem .9rem;font-weight:500}
+.find-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.1rem;margin-top:2rem}
+.find{background:var(--white);border:1px solid var(--line);border-left:4px solid var(--prism);border-radius:0 12px 12px 0;padding:1.3rem 1.5rem}
+.find:nth-child(2){border-left-color:var(--accent)}
+.find:nth-child(3){border-left-color:var(--green)}
+.find h4{font-family:'Fraunces',serif;font-size:1.12rem;color:var(--ink);margin-bottom:.5rem;font-weight:600}
+.find p{font-size:.92rem;color:var(--ink-soft);line-height:1.55}
+code{font-family:'JetBrains Mono',monospace;font-size:.86em;background:var(--paper-warm);padding:.12em .42em;border-radius:5px;color:var(--prism-deep)}
+.cite-box{background:var(--ink);color:#d7e3f0;border-radius:14px;padding:1.5rem 1.7rem;font-family:'JetBrains Mono',monospace;font-size:.84rem;line-height:1.7;overflow-x:auto;margin-top:1.4rem;position:relative}
+.cite-box .copy{position:absolute;top:1rem;right:1rem;background:var(--prism);color:#fff;border:none;border-radius:7px;padding:.35rem .8rem;font-family:'Spline Sans',sans-serif;font-size:.8rem;font-weight:600;cursor:pointer;transition:background .2s}
+.cite-box .copy:hover{background:var(--accent)}
+.cite-box pre{white-space:pre-wrap;word-break:break-word}
+footer{background:var(--paper-warm);border-top:1px solid var(--line);padding:2.6rem clamp(20px,5vw,64px);text-align:center;color:var(--ink-soft);font-size:.88rem}
+footer a{color:var(--prism);text-decoration:none}
+footer a:hover{text-decoration:underline}
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .7s ease,transform .7s ease}
+.reveal.in{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand"><span class="dot"></span>PRISM</span>
+  <span class="links">
+    <a href="#overview">Overview</a>
+    <a href="#method">Method</a>
+    <a href="#results">Results</a>
+    <a href="#findings">Findings</a>
+    <a href="#cite">Cite</a>
+    <a class="paper-link" href="https://arxiv.org/abs/2605.12260" target="_blank" rel="noopener">arXiv ↗</a>
+  </span>
+</nav>
+
+<header>
+  <div class="eyebrow">Long-Horizon Agent Memory</div>
+  <h1>PR<span class="grad">I</span>SM</h1>
+  <p class="subtitle">Pareto-Efficient Retrieval over Intent-Aware Structured Memory for Long-Horizon Agents</p>
+  <p class="tagline">A <b>training-free, retrieval-side</b> memory framework that reaches high answer accuracy at an <b>order-of-magnitude smaller</b> context budget — by treating long-horizon memory as a joint retrieval-and-compression problem over a graph.</p>
+
+  <p class="authors">
+    Jingyi Peng<sup>1</sup>,&nbsp; Zhongwei Wan<sup>2</sup>,&nbsp; Weiting Liu<sup>3</sup>,&nbsp; Qiuzhuang Sun<sup>1</sup>
+  </p>
+  <p class="affil"><sup>1</sup>Singapore Management University &nbsp;·&nbsp; <sup>2</sup>The Ohio State University &nbsp;·&nbsp; <sup>3</sup>Fudan University</p>
+  <p class="corr">Corresponding author: <a href="mailto:qzsun@smu.edu.sg">qzsun@smu.edu.sg</a></p>
+
+  <div class="btn-row">
+    <a class="btn btn-dark" href="https://arxiv.org/abs/2605.12260" target="_blank" rel="noopener">📄 Paper</a>
+    <a class="btn btn-light" href="https://github.com/jingyip-cat/PRISM" target="_blank" rel="noopener">⭐ Code</a>
+    <a class="btn btn-light" href="#results">📈 Results</a>
+  </div>
+
+  <div class="chips">
+    <span class="chip"><b>0.831</b> LLM-judge</span>
+    <span class="chip"><b>~2K</b> tokens/query</span>
+    <span class="chip"><b>13×</b> context reduction</span>
+    <span class="chip"><b>Training-free</b></span>
+  </div>
+</header>
+
+<div class="divider"></div>
+
+<section id="overview" class="reveal">
+  <div class="sec-tag">Introduction</div>
+  <h2>The high-accuracy, low-cost corner was empty.</h2>
+  <p class="lead">Long-horizon language agents accumulate conversation history far faster than any fixed context window can hold. The quality of a memory system is governed by two coupled quantities: the <b>accuracy</b> of the answers it supports, and the <b>context cost</b> — the number of tokens packed into the answer model's prompt for every query.</p>
+  <p class="body">Prior systems advance these along separate axes. Ingestion-heavy systems reach high accuracy but retrieve large candidate pools; long-context backbones pay a heavy token cost for moderate accuracy; graph-based memory adds relational structure but sits at moderate accuracy and cost. The high-accuracy / low-cost corner of the frontier is left largely empty — and <b>PRISM</b> is built to occupy it.</p>
+
+  <div class="fig-pair">
+    <figure>
+      <img src="assets/landscape.png" alt="Accuracy–cost landscape showing PRISM in the high-accuracy, low-cost corner">
+      <figcaption><b>(a) The accuracy–context-cost landscape.</b> Existing memory designs cluster in three regions, leaving the high-accuracy / low-cost corner underfilled. PRISM occupies that corner: small context, high accuracy.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/capabilities.png" alt="Design dimensions comparison table across systems">
+      <figcaption><b>(b) Design dimensions.</b> PRISM is the only system that combines all six design dimensions identified as relevant to the long-horizon memory problem.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section id="method" class="reveal">
+  <div class="sec-tag">How It Works</div>
+  <h2>Four orthogonal inference-time modules.</h2>
+  <p class="lead">PRISM operates over an existing graph memory — a four-layer hierarchy of <code>Entity → FacetPoint → Facet → Episode</code> connected by typed relation edges. At query time, four modules compose into a fixed sequence. No fine-tuning, no per-query policy, no modification to the upstream ingestion pipeline.</p>
+
+  <div class="mod-grid">
+    <div class="mod-card n4">
+      <span class="tag">N4</span>
+      <h4>Adaptive Intent Routing</h4>
+      <p>Routes each query through a cheapest-first cascade — keyword → prototype → LLM fallback — so most queries never spend a classifier-side LLM call.</p>
+    </div>
+    <div class="mod-card n2">
+      <span class="tag">N2</span>
+      <h4>Query-Sensitive Edge Cost</h4>
+      <p>Re-weights traversal cost by detected intent: temporal and causal edges become cheaper exactly when the query needs them.</p>
+    </div>
+    <div class="mod-card">
+      <span class="tag">N1</span>
+      <h4>Hierarchical Bundle Search</h4>
+      <p>Scores each episode by the minimum-cost typed path that reaches it, recovering evidence that flat similarity search misses.</p>
+    </div>
+    <div class="mod-card n3">
+      <span class="tag">N3</span>
+      <h4>Evidence Compression</h4>
+      <p>A single content-only LLM call re-ranks and compresses the candidate bundle into a compact answer-side context.</p>
+    </div>
+  </div>
+
+  <figure>
+    <img src="assets/overview.png" alt="PRISM architecture overview showing the four modules and memory graph">
+    <figcaption><b>Architecture overview.</b> N4 routes query intent; N2 adjusts traversal costs over typed edges; N1 searches relation paths and assembles a candidate bundle; N3 compresses the retrieved evidence into a compact context for the answer model. The pipeline issues at most two LLM calls per query, and only one for the majority handled by N4's cheap tiers.</figcaption>
+  </figure>
+
+  <h3>Typed path templates</h3>
+  <p class="body">N1 enumerates eight typed path templates — five backbone paths over <code>belongs_to</code> edges, and three relation-bridge paths that cross one typed relation edge before re-entering the hierarchy. The bridges are the structural basis for answering multi-hop and causal questions.</p>
+
+  <figure class="fig-sm">
+    <img src="assets/paths.png" alt="Eight typed path templates: five backbone and three relation-bridge">
+    <figcaption><b>Eight path templates enumerated by N1.</b> Backbone paths capture evidence established by similarity to the anchor; relation-bridge paths surface indirect evidence whose target shares no surface similarity with the query.</figcaption>
+  </figure>
+</section>
+
+<div class="band reveal">
+  <div class="band-inner">
+    <div class="sec-tag">Headline Result</div>
+    <h2>An order-of-magnitude less context, higher accuracy.</h2>
+    <div class="band-stats">
+      <div class="band-stat">
+        <div class="num">0.831</div>
+        <div class="lbl">LLM-judge score on LoCoMo (cat 1–4), best of all same-protocol methods</div>
+      </div>
+      <div class="band-stat">
+        <div class="num">13<span class="unit">×</span></div>
+        <div class="lbl">context reduction vs. full-context replay (~26K → ~2K tokens)</div>
+      </div>
+      <div class="band-stat">
+        <div class="num">+35<span class="unit">pp</span></div>
+        <div class="lbl">judge gain over the full-context baseline, at a fraction of the cost</div>
+      </div>
+      <div class="band-stat">
+        <div class="num">42<span class="unit">%</span></div>
+        <div class="lbl">of queries routed through zero-LLM tiers, at no accuracy cost</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section id="results" class="reveal">
+  <div class="sec-tag">Experiments</div>
+  <h2>Results on LoCoMo.</h2>
+  <p class="lead">Evaluation on the LoCoMo benchmark, categories 1–4 (1,540 QA pairs). All same-protocol rows use <code>gpt-4o-mini</code> as both answer and judge model at temperature 0.0, sharing the same prompts, tokenizer, and token-counting procedure. Per-1K Eff. = judge points per 1K retrieved context tokens.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Method</th><th>Multi-Hop</th><th>Temporal</th><th>Open-Dom.</th><th>Single-Hop</th><th>Overall</th><th>Per-1K Eff.</th><th>Ctx / query</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="8" class="grp-label">Same-Protocol (gpt-4o-mini answer model)</td></tr>
+        <tr><td>Full Context</td><td>0.468</td><td>0.562</td><td>0.486</td><td>0.630</td><td>0.481</td><td>0.018</td><td>26,031</td></tr>
+        <tr><td>MAGMA</td><td>0.528</td><td>0.650</td><td>0.517</td><td>0.776</td><td>0.688</td><td>0.204</td><td>3,370</td></tr>
+        <tr><td>Mem0</td><td>0.512</td><td>0.555</td><td>0.729</td><td>0.671</td><td>0.669</td><td>0.379</td><td>1,764</td></tr>
+        <tr><td>Mem0<sup>g</sup></td><td>0.472</td><td>0.581</td><td>0.757</td><td>0.657</td><td>0.684</td><td>0.189</td><td>3,616</td></tr>
+        <tr class="ours"><td>PRISM (ours)</td><td>0.787</td><td>0.788</td><td>0.813</td><td>0.863</td><td>0.831</td><td>0.411</td><td>2,023</td></tr>
+        <tr><td colspan="8" class="grp-label">Different-Protocol (stronger LLM / managed pipeline — reference only)</td></tr>
+        <tr><td>M-Flow</td><td>0.752</td><td>0.794</td><td>0.583</td><td>0.876</td><td>0.818</td><td>0.316</td><td>2,588</td></tr>
+        <tr class="ours-soft"><td>PRISM (gpt-5.5)<span class="ours-tag">ours</span></td><td>0.890</td><td>0.879</td><td>0.927</td><td>0.892</td><td>0.891</td><td>0.440</td><td>2,023</td></tr>
+        <tr><td>Mem0 platform</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.916</td><td>0.131</td><td>~7,000</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="tnote">PRISM wins every same-protocol column and delivers the best accuracy-per-token. Swapping only the answer model to gpt-5.5 lifts the overall score to 0.891 at the same 2,023-token budget.</p>
+
+  <h3>The context-efficiency frontier</h3>
+  <p class="body">Compared with full-context replay, PRISM achieves a 13× context reduction with a +35 pp judge gain — the two improvements are aligned, not traded off. Evidence Compression (N3) is the structural reason PRISM sits at the <em>corner</em> of the frontier rather than along its slope.</p>
+
+  <figure class="plain">
+    <img src="assets/pareto.png" alt="Accuracy vs context trade-off curve with PRISM at the upper-left corner">
+    <figcaption><b>Accuracy–context trade-off on LoCoMo.</b> Each point is one system; x-axis is average retrieved context tokens per query (log scale), y-axis is LLM-judge score. PRISM sits in the upper-left corner: high judge at low context.</figcaption>
+  </figure>
+</section>
+
+<div class="divider"></div>
+
+<section id="findings" class="reveal">
+  <div class="sec-tag">Ablations &amp; Analysis</div>
+  <h2>What actually drives the gain.</h2>
+  <p class="lead">Each ablation changes one flag relative to PRISM, reusing the same ingest checkpoint. The analysis is deliberately honest about which components matter on this benchmark — and which are built for harder settings.</p>
+
+  <div class="find-grid">
+    <div class="find">
+      <h4>N3 is the dominant lever</h4>
+      <p>Removing the LLM re-ranker drops Evidence Recall@5 by 6.8 pp and roughly doubles answer-side context (2,023 → 4,108 tokens). Evidence Compression is what sets the frontier corner.</p>
+    </div>
+    <div class="find">
+      <h4>N1/N2 target harder benchmarks</h4>
+      <p>On LoCoMo, relation paths and edge costs are null — 73.4% of questions cite a single evidence entry and only ~3% need a two-hop bridge. They are built for lexically-mismatched multi-hop settings like MuSiQue or HotpotQA.</p>
+    </div>
+    <div class="find">
+      <h4>N4 cuts LLM calls at no accuracy cost</h4>
+      <p>Adaptive Intent Routing handles 42.3% of queries through zero-LLM tiers without any measurable accuracy loss. The savings concentrate on temporal queries, 82.6% of which are resolved by keyword triggers alone.</p>
+    </div>
+  </div>
+
+  <figure>
+    <img src="assets/routing.png" alt="Per-category routing distribution of Adaptive Intent Routing">
+    <figcaption><b>Per-category routing distribution of N4.</b> The <code>keyword-gated</code>, <code>prototype</code>, and <code>no-hint</code> paths incur zero LLM calls; only the LLM path costs one classifier-side call per query. Overall no-LLM rate: 42.3%.</figcaption>
+  </figure>
+</section>
+
+<div class="divider"></div>
+
+<section id="cite" class="reveal">
+  <div class="sec-tag">Citation</div>
+  <h2>Cite PRISM.</h2>
+  <p class="lead">If you use PRISM in your research, please cite our paper:</p>
+  <div class="cite-box">
+    <button class="copy" onclick="copyCite(this)">Copy</button>
+    <pre id="bib">@article{peng2026prism,
+  title   = {PRISM: Pareto-Efficient Retrieval over Intent-Aware
+             Structured Memory for Long-Horizon Agents},
+  author  = {Peng, Jingyi and Wan, Zhongwei and Liu, Weiting
+             and Sun, Qiuzhuang},
+  journal = {arXiv preprint arXiv:2605.12260},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2605.12260}
+}</pre>
+  </div>
+</section>
+
+<footer>
+  <p>PRISM — Pareto-Efficient Retrieval over Intent-Aware Structured Memory for Long-Horizon Agents.</p>
+  <p style="margin-top:.5rem">
+    <a href="https://arxiv.org/abs/2605.12260" target="_blank" rel="noopener">arXiv</a> ·
+    <a href="https://github.com/jingyip-cat/PRISM" target="_blank" rel="noopener">GitHub</a> ·
+    Released under the MIT License
+  </p>
+  <p style="margin-top:.8rem;font-size:.8rem;opacity:.7">© 2026 PRISM Team</p>
+</footer>
+
+<script>
+const obs=new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');obs.unobserve(e.target)}})
+},{threshold:.12});
+document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
+function copyCite(btn){
+  const t=document.getElementById('bib').innerText;
+  navigator.clipboard.writeText(t).then(()=>{
+    const o=btn.innerText;btn.innerText='Copied ✓';
+    setTimeout(()=>btn.innerText=o,1600);
+  });
+}
+</script>
+</body>
+</html>

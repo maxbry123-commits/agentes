@@ -1,0 +1,78 @@
+@use "src/styles/variables" as *;
+
+.vm-top-queries-table {
+  &__info-icon {
+    display: inline-flex;
+    align-items: center;
+    color: $color-text-secondary;
+    margin-left: 4px;
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
+}
+
+.vm-top-queries {
+  display: grid;
+  align-items: flex-start;
+  gap: $padding-medium;
+
+  &_mobile {
+    gap: $padding-small;
+  }
+
+  &-controls {
+    display: grid;
+    gap: $padding-small;
+
+    &-fields {
+      display: flex;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: $padding-medium;
+
+      &__item {
+        flex-grow: 1;
+        min-width: 200px;
+      }
+    }
+
+    &-bottom {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: $padding-medium;
+
+      &_mobile {
+        grid-template-columns: 1fr;
+        gap: $padding-small;
+      }
+
+      &__info {
+      }
+
+      &__button {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+      }
+    }
+  }
+
+  &-panels {
+    display: grid;
+    gap: $padding-medium;
+
+    &__table-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: $padding-small;
+      height: 100%;
+      padding: 0 $padding-small;
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "NodeNext",
+    "lib": ["ESNext"],
+    "allowJs": true,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "isolatedModules": true,
+    "strict": false,
+    "strictNullChecks": true,
+    "strictBindCallApply": true,
+    "noImplicitThis": true,
+    "moduleResolution": "nodenext",
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "useDefineForClassFields": false,
+    "types": ["node", "vitest/globals"]
+  },
+  "exclude": [
+    "bin",
+    "docs",
+    "docker",
+    "examples",
+    "migrations",
+    "node_modules",
+    "website",
+    "src/binver-dev.js",
+    "dist",
+    "snapshots",
+    "coverage",
+    "website",
+    "scripts",
+    "frontend",
+    "vitest.config.ts"
+  ]
+}

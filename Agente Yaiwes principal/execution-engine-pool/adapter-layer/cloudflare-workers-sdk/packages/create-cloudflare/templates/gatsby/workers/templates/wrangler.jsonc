@@ -1,0 +1,10 @@
+{
+  "name": "<WORKER_NAME>",
+  "compatibility_date": "<COMPATIBILITY_DATE>",
+  "assets": {
+    "directory": "./public"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

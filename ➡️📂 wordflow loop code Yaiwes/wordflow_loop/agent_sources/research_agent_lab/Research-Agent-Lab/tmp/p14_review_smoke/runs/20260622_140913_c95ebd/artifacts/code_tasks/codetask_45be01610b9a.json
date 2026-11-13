@@ -1,0 +1,66 @@
+{
+  "title": "Implement plan: Evidence-guided first experiment for pedestrian_trajectory_prediction",
+  "task_id": "codetask_45be01610b9a",
+  "experiment_id": "experiment_29f8eb5eb785",
+  "repository_path": "D:/Codes/VS/Intent-LED-mul-agent",
+  "allowed_paths": [
+    "models/*",
+    "trainer/*",
+    "data/dataloader_virat.py",
+    "cfg/virat/*",
+    "utils/*",
+    "main_led_nba.py",
+    "visualize_virat_prediction.py",
+    "work.md"
+  ],
+  "protected_paths": [
+    "results/checkpoints/*",
+    "results/led_virat/baseline_original/*",
+    "results/fig/*",
+    "../MID-main/*",
+    "data/raw/*",
+    "__pycache__/*"
+  ],
+  "proposed_files": [
+    "cfg/virat/led_virat_debug.yml",
+    "cfg/virat/led_virat.yml",
+    "data/dataloader_virat.py",
+    "trainer/train_led_trajectory_augment_input.py",
+    "models/model_led_initializer.py",
+    "work.md"
+  ],
+  "implementation_notes": [
+    "Read target repository before editing.",
+    "Generate a narrow patch for one experiment only.",
+    "Run the configured smoke test before full training.",
+    "Create file backups before editing a non-git project copy.",
+    "Keep long training and destructive cleanup behind human approval."
+  ],
+  "requires_human_approval": false,
+  "dry_run_first": true,
+  "backup_required": true,
+  "safety_policy": {
+    "repo_path": "D:/Codes/VS/Intent-LED-mul-agent",
+    "allowed_paths": [
+      "models/*",
+      "trainer/*",
+      "data/dataloader_virat.py",
+      "cfg/virat/*",
+      "utils/*",
+      "main_led_nba.py",
+      "visualize_virat_prediction.py",
+      "work.md"
+    ],
+    "protected_paths": [
+      "results/checkpoints/*",
+      "results/led_virat/baseline_original/*",
+      "results/fig/*",
+      "../MID-main/*",
+      "data/raw/*",
+      "__pycache__/*"
+    ],
+    "backup_required": true,
+    "dry_run_first": true,
+    "max_files_per_patch": 8
+  }
+}

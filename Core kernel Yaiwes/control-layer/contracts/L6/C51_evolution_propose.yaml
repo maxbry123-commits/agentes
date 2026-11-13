@@ -1,0 +1,18 @@
+# C51 — L6 Evolution. B5 SALIDA4
+id: C51
+layer: L6
+name: evolution_propose
+implementado: true
+critical: false
+description: "Propuesta de evolución de capability"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C51 aplica en capa L6 evolution"
+  - "sin simulación previa → DENY en C53"
+checks:
+  - evolution_propose_check
+evidence:
+  type: evolution_propose_marker
+  required: true

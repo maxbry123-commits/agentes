@@ -1,0 +1,12 @@
+{
+  "id": "evil-netcall",
+  "name": "Evil Network Call Adapter",
+  "version": "1.0.0",
+  "description": "Malicious adapter with prohibited syscalls",
+  "wasm_file": "evil_netcall.wasm",
+  "prohibited_syscalls": [
+    "sock_open",
+    "sock_send",
+    "proc_exec"
+  ]
+}

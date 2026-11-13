@@ -1,0 +1,282 @@
+from __future__ import annotations
+
+from importlib.util import find_spec
+
+import pytest
+
+from pettingzoo.atari import (
+    basketball_pong_v3,
+    boxing_v2,
+    combat_plane_v2,
+    combat_tank_v2,
+    double_dunk_v3,
+    entombed_competitive_v3,
+    entombed_cooperative_v3,
+    flag_capture_v2,
+    foozpong_v3,
+    ice_hockey_v2,
+    joust_v3,
+    mario_bros_v3,
+    maze_craze_v3,
+    othello_v3,
+    pong_v3,
+    quadrapong_v4,
+    space_invaders_v2,
+    space_war_v2,
+    surround_v2,
+    tennis_v3,
+    video_checkers_v4,
+    volleyball_pong_v3,
+    warlords_v3,
+    wizard_of_wor_v3,
+)
+from pettingzoo.butterfly import (
+    cooperative_pong_v6,
+    knights_archers_zombies_v11,
+    pistonball_v6,
+)
+from pettingzoo.classic import (
+    chess_v6,
+    connect_four_v3,
+    go_v5,
+    hanabi_v5,
+    leduc_holdem_v4,
+    rps_v2,
+    texas_holdem_no_limit_v6,
+    texas_holdem_v4,
+    tictactoe_v3,
+)
+from pettingzoo.sisl import multiwalker_v9, pursuit_v6
+from pettingzoo.test import max_cycles_test, parallel_api_test
+from pettingzoo.test.api_test import api_test
+from pettingzoo.test.render_test import render_test
+from pettingzoo.test.seed_test import parallel_seed_test, seed_test
+from pettingzoo.test.state_test import state_test
+
+parameterized_envs = [
+    ["atari/space_war_v2", space_war_v2, {"max_cycles": 50}],
+    ["atari/quadrapong_v4", quadrapong_v4, {"max_cycles": 50}],
+    ["atari/basketball_pong_v3", basketball_pong_v3, {"max_cycles": 50}],
+    [
+        "atari/basketball_pong_v3",
+        basketball_pong_v3,
+        {"num_players": 4, "max_cycles": 50},
+    ],
+    ["atari/wizard_of_wor_v3", wizard_of_wor_v3, {"max_cycles": 50}],
+    ["atari/ice_hockey_v2", ice_hockey_v2, {"max_cycles": 50}],
+    ["atari/pong_v3", pong_v3, {"max_cycles": 50}],
+    ["atari/pong_v3", pong_v3, {"num_players": 4, "max_cycles": 50}],
+    ["atari/surround_v2", surround_v2, {"max_cycles": 50}],
+    ["atari/entombed_competitive_v3", entombed_competitive_v3, {"max_cycles": 50}],
+    ["atari/flag_capture_v2", flag_capture_v2, {"max_cycles": 50}],
+    ["atari/entombed_cooperative_v3", entombed_cooperative_v3, {"max_cycles": 50}],
+    ["atari/tennis_v3", tennis_v3, {"max_cycles": 50}],
+    ["atari/warlords_v3", warlords_v3, {"max_cycles": 50}],
+    ["atari/mario_bros_v3", mario_bros_v3, {"max_cycles": 50}],
+    ["atari/joust_v3", joust_v3, {"max_cycles": 50}],
+    ["atari/foozpong_v3", foozpong_v3, {"max_cycles": 50}],
+    ["atari/foozpong_v3", foozpong_v3, {"num_players": 4, "max_cycles": 50}],
+    ["atari/video_checkers_v4", video_checkers_v4, {"max_cycles": 50}],
+    ["atari/othello_v3", othello_v3, {"max_cycles": 50}],
+    ["atari/double_dunk_v3", double_dunk_v3, {"max_cycles": 50}],
+    ["atari/volleyball_pong_v3", volleyball_pong_v3, {"max_cycles": 50}],
+    [
+        "atari/volleyball_pong_v3",
+        volleyball_pong_v3,
+        {"num_players": 4, "max_cycles": 50},
+    ],
+    ["butterfly/cooperative_pong_v6", cooperative_pong_v6, {"max_cycles": 50}],
+    [
+        "butterfly/cooperative_pong_v6",
+        cooperative_pong_v6,
+        {"bounce_randomness": True, "max_cycles": 50},
+    ],
+    ["classic/connect_four_v3", connect_four_v3, {}],
+    ["classic/rps_v2", rps_v2, {}],
+    ["classic/chess_v6", chess_v6, {}],
+    ["classic/tictactoe_v3", tictactoe_v3, {}],
+    ["atari/boxing_v2", boxing_v2, {"max_cycles": 50}],
+    ["atari/boxing_v2", boxing_v2, {"obs_type": "grayscale_image", "max_cycles": 50}],
+    ["atari/boxing_v2", boxing_v2, {"obs_type": "ram", "max_cycles": 50}],
+    [
+        "atari/combat_plane_v2",
+        combat_plane_v2,
+        {"game_version": "jet", "max_cycles": 50},
+    ],
+    [
+        "atari/combat_plane_v2",
+        combat_plane_v2,
+        {"guided_missile": True, "max_cycles": 50},
+    ],
+    ["atari/combat_tank_v2", combat_tank_v2, {"has_maze": True, "max_cycles": 50}],
+    ["atari/combat_tank_v2", combat_tank_v2, {"is_invisible": True, "max_cycles": 50}],
+    ["atari/combat_tank_v2", combat_tank_v2, {"billiard_hit": True, "max_cycles": 50}],
+    ["atari/maze_craze_v3", maze_craze_v3, {"game_version": "race", "max_cycles": 50}],
+    [
+        "atari/maze_craze_v3",
+        maze_craze_v3,
+        {"game_version": "capture", "max_cycles": 50},
+    ],
+    ["atari/maze_craze_v3", maze_craze_v3, {"visibilty_level": 1, "max_cycles": 50}],
+    ["atari/maze_craze_v3", maze_craze_v3, {"visibilty_level": 3, "max_cycles": 50}],
+    [
+        "atari/space_invaders_v2",
+        space_invaders_v2,
+        {
+            "alternating_control": True,
+            "moving_shields": True,
+            "zigzaging_bombs": True,
+            "fast_bomb": True,
+            "invisible_invaders": True,
+            "max_cycles": 50,
+        },
+    ],
+    ["classic/leduc_holdem_v4", leduc_holdem_v4, {}],
+    ["classic/texas_holdem_v4", texas_holdem_v4, {"num_players": 3}],
+    ["classic/texas_holdem_v4", texas_holdem_v4, {"num_players": 4}],
+    ["classic/texas_holdem_no_limit_v6", texas_holdem_no_limit_v6, {}],
+    ["classic/texas_holdem_no_limit_v6", texas_holdem_no_limit_v6, {"num_players": 3}],
+    ["classic/texas_holdem_no_limit_v6", texas_holdem_no_limit_v6, {"num_players": 4}],
+    [
+        "butterfly/knights_archers_zombies_v11",
+        knights_archers_zombies_v11,
+        {"max_cycles": 50},
+    ],
+    [
+        "butterfly/knights_archers_zombies_v11",
+        knights_archers_zombies_v11,
+        {"spawn_delay": 50, "max_cycles": 50},
+    ],
+    [
+        "butterfly/knights_archers_zombies_v11",
+        knights_archers_zombies_v11,
+        {"num_knights": 4, "num_archers": 5, "max_cycles": 50},
+    ],
+    [
+        "butterfly/knights_archers_zombies_v11",
+        knights_archers_zombies_v11,
+        {"killable_knights": False, "killable_archers": False, "max_cycles": 50},
+    ],
+    [
+        "butterfly/knights_archers_zombies_v11",
+        knights_archers_zombies_v11,
+        {"obs_method": "image", "max_cycles": 50},
+    ],
+    [
+        "butterfly/knights_archers_zombies_v11",
+        knights_archers_zombies_v11,
+        {"obs_method": "vector", "max_cycles": 50},
+    ],
+    [
+        "butterfly/knights_archers_zombies_v11",
+        knights_archers_zombies_v11,
+        {"obs_method": "vector-sequence", "max_cycles": 50},
+    ],
+    [
+        "butterfly/knights_archers_zombies_v11",
+        knights_archers_zombies_v11,
+        {"obs_method": "vector-masked", "max_cycles": 50},
+    ],
+    [
+        "butterfly/knights_archers_zombies_v11",
+        knights_archers_zombies_v11,
+        {"max_cycles": 100},
+    ],
+    [
+        "butterfly/knights_archers_zombies_v11",
+        knights_archers_zombies_v11,
+        {"max_zombies": 2, "max_arrows": 60, "max_cycles": 50},
+    ],
+    ["butterfly/pistonball_v6", pistonball_v6, {"max_cycles": 50}],
+    ["butterfly/pistonball_v6", pistonball_v6, {"n_pistons": 30, "max_cycles": 50}],
+    ["butterfly/pistonball_v6", pistonball_v6, {"continuous": False, "max_cycles": 50}],
+    [
+        "butterfly/pistonball_v6",
+        pistonball_v6,
+        {"random_drop": False, "random_rotate": False, "max_cycles": 50},
+    ],
+    ["classic/go_v5", go_v5, {"board_size": 13, "komi": 2.5}],
+    ["classic/go_v5", go_v5, {"board_size": 9, "komi": 0.0}],
+    ["classic/hanabi_v5", hanabi_v5, {}],
+    ["classic/hanabi_v5", hanabi_v5, {"colors": 3}],
+    ["classic/hanabi_v5", hanabi_v5, {"ranks": 3}],
+    ["classic/hanabi_v5", hanabi_v5, {"players": 4}],
+    ["classic/hanabi_v5", hanabi_v5, {"max_information_tokens": 3}],
+    ["classic/hanabi_v5", hanabi_v5, {"max_life_tokens": 2}],
+    [
+        "classic/hanabi_v5",
+        hanabi_v5,
+        {
+            "colors": 5,
+            "ranks": 3,
+            "players": 4,
+            "hand_size": 5,
+            "max_information_tokens": 3,
+            "max_life_tokens": 2,
+        },
+    ],
+    ["classic/hanabi_v5", hanabi_v5, {"observation_type": "minimal"}],
+    ["classic/hanabi_v5", hanabi_v5, {"observation_type": "seer"}],
+    ["classic/hanabi_v5", hanabi_v5, {"random_start_player": True}],
+    ["sisl/multiwalker_v9", multiwalker_v9, {"n_walkers": 10, "max_cycles": 50}],
+    ["sisl/multiwalker_v9", multiwalker_v9, {"shared_reward": False, "max_cycles": 50}],
+    [
+        "sisl/multiwalker_v9",
+        multiwalker_v9,
+        {"terminate_on_fall": False, "max_cycles": 50},
+    ],
+    [
+        "sisl/multiwalker_v9",
+        multiwalker_v9,
+        {"terminate_on_fall": False, "remove_on_fall": False, "max_cycles": 50},
+    ],
+    ["sisl/pursuit_v6", pursuit_v6, {"max_cycles": 50}],
+    ["sisl/pursuit_v6", pursuit_v6, {"x_size": 8, "y_size": 19, "max_cycles": 50}],
+    ["sisl/pursuit_v6", pursuit_v6, {"shared_reward": True, "max_cycles": 50}],
+    [
+        "sisl/pursuit_v6",
+        pursuit_v6,
+        {"n_evaders": 5, "n_pursuers": 16, "max_cycles": 50},
+    ],
+    ["sisl/pursuit_v6", pursuit_v6, {"obs_range": 15, "max_cycles": 50}],
+    ["sisl/pursuit_v6", pursuit_v6, {"n_catch": 3, "max_cycles": 50}],
+    ["sisl/pursuit_v6", pursuit_v6, {"freeze_evaders": True, "max_cycles": 50}],
+    [
+        "sisl/pursuit_v6",
+        pursuit_v6,
+        {"center_box_size": (4, 2), "max_cycles": 50},
+    ],
+]
+
+
+if find_spec("pyspiel") is None:  # open_spiel (Hanabi) is unavailable on Python < 3.11
+    parameterized_envs = [e for e in parameterized_envs if "hanabi" not in e[0]]
+
+
+@pytest.mark.parametrize(["name", "env_module", "kwargs"], parameterized_envs)
+def test_module(name, env_module, kwargs):
+    _env = env_module.env(**kwargs)
+    api_test(_env)
+
+    if "classic/" not in name:
+        parallel_api_test(env_module.parallel_env())
+        max_cycles_test(env_module)
+        parallel_seed_test(lambda: env_module.parallel_env(**kwargs), 500)
+
+    # some atari environments fail this test
+    if "atari/" not in name:
+        seed_test(lambda: env_module.env(**kwargs), 500)
+
+    render_test(lambda render_mode: env_module.env(render_mode=render_mode, **kwargs))
+
+    if "butterfly/" in name:
+        state_test(env_module.env(), env_module.parallel_env())
+
+    try:
+        if hasattr(env_module, "parallel_env") and "rps" not in name:
+            _env.state()
+            par_env = env_module.parallel_env(**kwargs)
+            state_test(_env, par_env)
+    except NotImplementedError:
+        # no issue if state is simply not implemented
+        pass

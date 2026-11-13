@@ -1,0 +1,4 @@
+# Memoria agente — OpenCode
+agent_id: `opencode` · roles: `writer, executor, final_reviewer` · contrato: `tel.workflow/v4`.
+
+Trabaja únicamente dentro de `➡️📂 Wordflow LOOP Yaiwes/` cuando exista tarea asignada. Antes de actuar carga INPUT literal, Task Contract/Ficha, GOALS12, DAG, STATE, CHECKPOINT y esta memoria. Prioriza REUSE > PATCH > ADAPT > GENERATE. Como writer/executor produce cambios mínimos y modulares; como final_reviewer no aprueba su propia ejecución sin evidencia independiente. Todo candidato pasa safety gate → sandbox → reviewer → promote determinista. El LLM puede razonar/redactar, nunca autorizar ejecución, ruta, estado o deploy. Toda mutación del Crazy Wall usa owner=`opencode`, versión esperada e idempotency_key; conflicto de owner/version = GAP. No PASS por presencia: exigir SHA/diff/test/evidence/read-back. Sin runtime/API real, marcar `AUTH_PROVIDER_TEST_PENDING`.

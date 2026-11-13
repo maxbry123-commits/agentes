@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 31273,
+  "bundle_sha256": "aaa9415071f9626b4499154ccca6c79463c373b53ca1afea55f5096594c9738a",
+  "extracted_tree": {
+    "bytes": 59194,
+    "files": 28,
+    "sha256": "815134d6186dbf61c321fd092423f1985de99208db42cc6fc79fd23645caf2cb"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 31273,
+      "name": "13-Auto-Pentest-LLM.bundle.zip.part-0001",
+      "sha256": "aaa9415071f9626b4499154ccca6c79463c373b53ca1afea55f5096594c9738a"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "13-Auto-Pentest-LLM",
+  "source_bytes": 59194,
+  "source_commit": "cd26463eb4dc288b43f3326587b115fcc8306ca0",
+  "source_files": 28,
+  "source_ref": "HEAD",
+  "source_repo": "knooob/Auto-Pentest-LLM",
+  "source_tree": {
+    "bytes": 59194,
+    "files": 28,
+    "sha256": "815134d6186dbf61c321fd092423f1985de99208db42cc6fc79fd23645caf2cb"
+  }
+}

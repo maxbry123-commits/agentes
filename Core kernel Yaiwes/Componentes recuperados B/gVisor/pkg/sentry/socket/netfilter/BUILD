@@ -1,0 +1,74 @@
+load("//tools:defs.bzl", "go_library", "go_test")
+
+package(
+    default_applicable_licenses = ["//:license"],
+    licenses = ["notice"],
+)
+
+go_library(
+    name = "netfilter",
+    srcs = [
+        "ct_target.go",
+        "dnat.go",
+        "extensions.go",
+        "ipv4.go",
+        "ipv6.go",
+        "mark_matcher.go",
+        "multiport_matcher.go",
+        "multiport_matcher_v1.go",
+        "netfilter.go",
+        "owner_matcher.go",
+        "owner_matcher_v1.go",
+        "snat.go",
+        "targets.go",
+        "tcp_matcher.go",
+        "udp_matcher.go",
+    ],
+    marshal = True,
+    # This target depends on netstack and should only be used by epsocket,
+    # which is allowed to depend on netstack.
+    visibility = ["//pkg/sentry:internal"],
+    deps = [
+        "//pkg/abi/linux",
+        "//pkg/bits",
+        "//pkg/hostarch",
+        "//pkg/log",
+        "//pkg/marshal",
+        "//pkg/sentry/kernel",
+        "//pkg/sentry/kernel/auth",
+        "//pkg/syserr",
+        "//pkg/tcpip",
+        "//pkg/tcpip/header",
+        "//pkg/tcpip/stack",
+    ],
+)
+
+go_test(
+    name = "netfilter_x_test",
+    srcs = ["netfilter_x_test.go"],
+    embedsrcs = [
+        "accept_blob",
+        "istio_blob",
+    ],
+    deps = [
+        ":netfilter",
+        "//pkg/sentry/kernel/auth",
+        "//pkg/tcpip/header",
+        "//pkg/tcpip/stack",
+    ],
+)
+
+go_test(
+    name = "netfilter_test",
+    srcs = [
+        "mark_matcher_test.go",
+        "netfilter_test.go",
+    ],
+    library = ":netfilter",
+    deps = [
+        "//pkg/abi/linux",
+        "//pkg/marshal",
+        "//pkg/syserr",
+        "//pkg/tcpip/stack",
+    ],
+)

@@ -1,0 +1,465 @@
+import { useEffect, useState } from 'react';
+import type { ProviderCatalogEntry, Settings } from '@redcell/api-client';
+import {
+  useClearNgrokToken,
+  useNgrokStatus,
+  useProviderKeys,
+  useProviders,
+  useRemoveProviderKey,
+  useSaveSettings,
+  useSetNgrokToken,
+  useSetProviderKey,
+  useSettings,
+} from '@/features/hooks';
+import { Spinner } from '@/components/ui/primitives';
+import { Dialog } from '@/components/ui/Dialog';
+import { Combobox } from '@/components/ui/Combobox';
+import { SelectTrigger } from '@/components/ui/fields';
+import { toast } from '@/components/ui/toast';
+
+type Tab = 'providers' | 'execution' | 'scope' | 'branding' | 'notifications' | 'integrations';
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'providers', label: 'Providers & keys' },
+  { id: 'execution', label: 'Execution' },
+  { id: 'scope', label: 'Scope guardrails' },
+  { id: 'branding', label: 'Report branding' },
+  { id: 'notifications', label: 'Notifications' },
+  { id: 'integrations', label: 'Integrations' },
+];
+
+const NOTIF_CATEGORIES: { key: keyof Settings['notifications']; label: string; desc: string }[] = [
+  { key: 'runFinished', label: 'Run finished', desc: 'When a run completes.' },
+  { key: 'runFailed', label: 'Run failed or stopped', desc: 'When a run fails or is stopped.' },
+  {
+    key: 'criticalFindings',
+    label: 'Critical & high findings',
+    desc: 'When a new critical or high severity finding is recorded.',
+  },
+  { key: 'reportReady', label: 'Report ready', desc: 'When a report finishes generating.' },
+  { key: 'infra', label: 'Infrastructure health', desc: 'When a server goes offline or a proxy goes dead.' },
+];
+
+export function SettingsPage() {
+  const { data: initial } = useSettings();
+  const { data: providers } = useProviders();
+  const { data: keys } = useProviderKeys();
+  const setKey = useSetProviderKey();
+  const removeKey = useRemoveProviderKey();
+  const save = useSaveSettings();
+  const { data: ngrok } = useNgrokStatus();
+  const setNgrok = useSetNgrokToken();
+  const clearNgrok = useClearNgrokToken();
+
+  const [tab, setTab] = useState<Tab>('providers');
+  const [draft, setDraft] = useState<Settings | null>(null);
+  const [keyFor, setKeyFor] = useState<ProviderCatalogEntry | null>(null);
+  const [keyInput, setKeyInput] = useState('');
+  const [ngrokInput, setNgrokInput] = useState('');
+
+  useEffect(() => {
+    if (initial && !draft) setDraft(structuredClone(initial));
+  }, [initial, draft]);
+
+  if (!draft || !providers) {
+    return (
+      <div className="wrap">
+        <div className="grid h-40 place-items-center">
+          <Spinner />
+        </div>
+      </div>
+    );
+  }
+
+  const setLLM = (p: Partial<Settings['llm']>) => setDraft((d) => (d ? { ...d, llm: { ...d.llm, ...p } } : d));
+  const setExec = (p: Partial<Settings['execution']>) =>
+    setDraft((d) => (d ? { ...d, execution: { ...d.execution, ...p } } : d));
+  const setScope = (p: Partial<Settings['scope']>) => setDraft((d) => (d ? { ...d, scope: { ...d.scope, ...p } } : d));
+  const setReport = (p: Partial<Settings['report']>) =>
+    setDraft((d) => (d ? { ...d, report: { ...d.report, ...p } } : d));
+  const setNotif = (p: Partial<Settings['notifications']>) =>
+    setDraft((d) => (d ? { ...d, notifications: { ...d.notifications, ...p } } : d));
+
+  const onSave = async () => {
+    try {
+      await save.mutateAsync(draft);
+      toast('Settings saved', 'success');
+    } catch {
+      toast('Could not save settings', 'error');
+    }
+  };
+
+  const keyedIds = new Set((keys ?? []).filter((k) => k.hasKey).map((k) => k.providerId));
+  const provider = providers.find((p) => p.id === draft.llm.provider);
+  const models = provider?.models ?? [];
+
+  const saveNgrok = async () => {
+    const token = ngrokInput.trim();
+    if (!token) return;
+    try {
+      await setNgrok.mutateAsync(token);
+      setNgrokInput('');
+      toast('ngrok token saved', 'success');
+    } catch {
+      toast('That does not look like an ngrok auth token', 'error');
+    }
+  };
+
+  const removeNgrok = async () => {
+    try {
+      await clearNgrok.mutateAsync();
+      toast('ngrok token removed', 'success');
+    } catch {
+      toast('Could not remove the ngrok token', 'error');
+    }
+  };
+
+  const saveKey = async () => {
+    if (!keyFor || !keyInput.trim() || !keys) return;
+    const apiBase = keys.find((k) => k.providerId === keyFor.id)?.apiBase ?? null;
+    try {
+      await setKey.mutateAsync({ providerId: keyFor.id, apiKey: keyInput.trim(), apiBase });
+      setKeyFor(null);
+      setKeyInput('');
+      toast(`Key saved for ${keyFor.label}`, 'success');
+    } catch {
+      toast(`Could not save the key for ${keyFor.label}`, 'error');
+    }
+  };
+
+  return (
+    <div className="wrap">
+      <div className="settings">
+        <div className="subnav">
+          {TABS.map((t) => (
+            <button type="button" key={t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div>
+          {tab === 'providers' && (
+            <>
+              <div className="card">
+                <div className="card-h">
+                  <h3>Default model</h3>
+                  <span className="cs">· used for new runs</span>
+                </div>
+                <div className="card-b">
+                  <div className="grid2">
+                    <div className="field">
+                      <span className="label">Provider</span>
+                      <Combobox
+                        block
+                        items={providers}
+                        current={provider}
+                        getKey={(p) => p.id}
+                        getLabel={(p) => p.label}
+                        onSelect={(p) => setLLM({ provider: p.id, model: p.models[0] ?? draft.llm.model })}
+                        placeholder="Search providers…"
+                        trigger={<SelectTrigger>{provider?.label ?? draft.llm.provider}</SelectTrigger>}
+                      />
+                    </div>
+                    <div className="field">
+                      <span className="label">Model</span>
+                      {models.length > 0 ? (
+                        <Combobox
+                          block
+                          items={models}
+                          current={draft.llm.model}
+                          getKey={(m) => m}
+                          getLabel={(m) => m}
+                          onSelect={(m) => setLLM({ model: m })}
+                          placeholder="Search models…"
+                          trigger={<SelectTrigger>{draft.llm.model || 'select model'}</SelectTrigger>}
+                        />
+                      ) : (
+                        <input className="input mono" value={draft.llm.model} onChange={(e) => setLLM({ model: e.target.value })} />
+                      )}
+                    </div>
+                  </div>
+                  <div className="field" style={{ margin: 0 }}>
+                    <span className="label">Reasoning effort</span>
+                    <div className="seg" style={{ width: 'fit-content' }}>
+                      {(['low', 'medium', 'high', 'xhigh'] as const).map((v) => (
+                        <button type="button" key={v} className={draft.llm.reasoningEffort === v ? 'on' : ''} onClick={() => setLLM({ reasoningEffort: v })}>
+                          {v === 'xhigh' ? 'xHigh' : v[0]!.toUpperCase() + v.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <button type="button" className="btn pri" style={{ marginTop: 14 }} disabled={save.isPending} onClick={onSave}>
+                    Save
+                  </button>
+                </div>
+              </div>
+              <div className="card" style={{ marginTop: 16 }}>
+                <div className="card-h">
+                  <h3>Model providers</h3>
+                  <span className="cs">· keys encrypted at rest</span>
+                </div>
+                <div className="card-b">
+                  {providers.map((p) => {
+                    const has = keyedIds.has(p.id);
+                    return (
+                      <div className="prow" key={p.id}>
+                        <span className="plogo">{p.label[0]}</span>
+                        <div style={{ flex: 1 }}>
+                          <div className="pn">{p.label}</div>
+                          <div className="pm">{p.models.slice(0, 4).join(', ') || 'no key needed'}</div>
+                        </div>
+                        {has ? (
+                          <span className="badge ok">
+                            <span className="hd ok" />
+                            Key set
+                          </span>
+                        ) : p.needsKey ? (
+                          <span className="badge off">
+                            <span className="hd un" />
+                            No key
+                          </span>
+                        ) : (
+                          <span className="badge off">Keyless</span>
+                        )}
+                        {p.needsKey && (
+                          <button type="button"
+                            className="btn sm"
+                            disabled={!keys}
+                            onClick={() => {
+                              setKeyFor(p);
+                              setKeyInput('');
+                            }}
+                          >
+                            {has ? 'Replace' : 'Add key'}
+                          </button>
+                        )}
+                        {has && (
+                          <button type="button"
+                            className="btn sm danger"
+                            disabled={removeKey.isPending}
+                            onClick={() =>
+                              void removeKey
+                                .mutateAsync(p.id)
+                                .then(() => toast(`Key removed for ${p.label}`, 'success'))
+                                .catch(() => toast(`Could not remove the key for ${p.label}`, 'error'))
+                            }
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {tab === 'execution' && (
+            <div className="card">
+              <div className="card-h">
+                <h3>Execution</h3>
+              </div>
+              <div className="card-b">
+                <label className="field">
+                  <span className="label">Kali image</span>
+                  <input className="input mono" value={draft.execution.dockerImage} onChange={(e) => setExec({ dockerImage: e.target.value })} />
+                </label>
+                <button type="button" className="btn pri" disabled={save.isPending} onClick={onSave}>
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tab === 'scope' && (
+            <div className="card">
+              <div className="card-h">
+                <h3>Scope guardrails</h3>
+                <span className="cs">· enforced before every command</span>
+              </div>
+              <div className="card-b">
+                <div className="formrow">
+                  <div>
+                    <div className="ft">Allow private / loopback targets</div>
+                    <div className="fd">Permit tool commands against RFC1918 and loopback hosts.</div>
+                  </div>
+                  <button type="button"
+                    className={`toggle${draft.scope.allowPrivateTargets ? ' on' : ''}`}
+                    role="switch"
+                    aria-checked={draft.scope.allowPrivateTargets}
+                    aria-label="Allow private / loopback targets"
+                    onClick={() => setScope({ allowPrivateTargets: !draft.scope.allowPrivateTargets })}
+                  >
+                    <i />
+                  </button>
+                </div>
+                <label className="field" style={{ marginTop: 14 }}>
+                  <span className="label">Max requests per second</span>
+                  <input
+                    className="input"
+                    type="number"
+                    style={{ width: 140 }}
+                    value={String(draft.scope.requestsPerSecond)}
+                    onChange={(e) => setScope({ requestsPerSecond: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <button type="button" className="btn pri" disabled={save.isPending} onClick={onSave}>
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tab === 'branding' && (
+            <div className="card">
+              <div className="card-h">
+                <h3>Report branding</h3>
+              </div>
+              <div className="card-b">
+                <div className="grid2">
+                  <label className="field">
+                    <span className="label">Company / team name</span>
+                    <input className="input" value={draft.report.companyName} placeholder="REDCELL" onChange={(e) => setReport({ companyName: e.target.value })} />
+                  </label>
+                  <label className="field">
+                    <span className="label">Classification</span>
+                    <input className="input" value={draft.report.classification} placeholder="CONFIDENTIAL" onChange={(e) => setReport({ classification: e.target.value })} />
+                  </label>
+                </div>
+                <label className="field">
+                  <span className="label">
+                    Prepared by / contact <span className="opt">(shown on the cover)</span>
+                  </span>
+                  <input
+                    className="input"
+                    value={draft.report.contact ?? ''}
+                    placeholder="Security Team, security@company.com"
+                    onChange={(e) => setReport({ contact: e.target.value })}
+                  />
+                </label>
+                <button type="button" className="btn pri" disabled={save.isPending} onClick={onSave}>
+                  Save branding
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tab === 'notifications' && (
+            <div className="card">
+              <div className="card-h">
+                <h3>Notifications</h3>
+                <span className="cs">· choose what shows in the bell</span>
+              </div>
+              <div className="card-b">
+                {NOTIF_CATEGORIES.map((c) => (
+                  <div className="formrow" key={c.key}>
+                    <div>
+                      <div className="ft">{c.label}</div>
+                      <div className="fd">{c.desc}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className={`toggle${draft.notifications[c.key] ? ' on' : ''}`}
+                      role="switch"
+                      aria-checked={draft.notifications[c.key]}
+                      aria-label={c.label}
+                      onClick={() => setNotif({ [c.key]: !draft.notifications[c.key] })}
+                    >
+                      <i />
+                    </button>
+                  </div>
+                ))}
+                <button type="button" className="btn pri" disabled={save.isPending} onClick={onSave}>
+                  Save notifications
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tab === 'integrations' && (
+            <div className="card">
+              <div className="card-h">
+                <h3>ngrok</h3>
+                <span className="cs">· catch reverse shells without opening a port</span>
+              </div>
+              <div className="card-b">
+                <p className="fd" style={{ marginBottom: 14 }}>
+                  With an ngrok auth token, REDCELL opens a TCP tunnel on demand so a target can call
+                  back through ngrok. Works on a free ngrok account and needs no inbound ports on the
+                  server.
+                </p>
+                <div className="prow">
+                  <span className="plogo">n</span>
+                  <div style={{ flex: 1 }}>
+                    <div className="pn">Auth token</div>
+                    <div className="pm">Encrypted at rest. Find it in your ngrok dashboard.</div>
+                  </div>
+                  {ngrok?.configured ? (
+                    <span className="badge ok">
+                      <span className="hd ok" />
+                      Configured
+                    </span>
+                  ) : (
+                    <span className="badge off">
+                      <span className="hd un" />
+                      Not set
+                    </span>
+                  )}
+                  {ngrok?.configured && (
+                    <button type="button" className="btn sm danger" disabled={clearNgrok.isPending} onClick={() => void removeNgrok()}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <div className="field" style={{ marginTop: 14 }}>
+                  <span className="label">{ngrok?.configured ? 'Replace token' : 'Auth token'}</span>
+                  <input
+                    className="input mono"
+                    type="password"
+                    value={ngrokInput}
+                    placeholder="2a…"
+                    onChange={(e) => setNgrokInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && ngrokInput.trim() && void saveNgrok()}
+                  />
+                </div>
+                <button type="button" className="btn pri" disabled={!ngrokInput.trim() || setNgrok.isPending} onClick={() => void saveNgrok()}>
+                  Save token
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <Dialog
+        open={!!keyFor}
+        onClose={() => setKeyFor(null)}
+        title={keyFor ? `${keyFor.label} API key` : 'API key'}
+        footer={
+          <>
+            <button type="button" className="btn" onClick={() => setKeyFor(null)}>
+              Cancel
+            </button>
+            <button type="button" className="btn pri" disabled={!keyInput.trim() || setKey.isPending || !keys} onClick={saveKey}>
+              Save key
+            </button>
+          </>
+        }
+      >
+        <label className="field" style={{ margin: 0 }}>
+          <span className="label">API key</span>
+          <input
+            className="input mono"
+            type="password"
+            autoFocus
+            value={keyInput}
+            placeholder="sk-…"
+            onChange={(e) => setKeyInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && keyInput.trim() && void saveKey()}
+          />
+        </label>
+      </Dialog>
+    </div>
+  );
+}

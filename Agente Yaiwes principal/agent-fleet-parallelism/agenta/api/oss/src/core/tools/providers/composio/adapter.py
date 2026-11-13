@@ -1,0 +1,320 @@
+from typing import Any, Dict, List, Optional
+
+import httpx
+from pydantic import ValidationError
+
+from oss.src.utils.logging import get_module_logger
+
+from agenta.sdk.models.workflows import JsonSchemas
+
+from oss.src.core.tools.dtos import (
+    ToolCatalogActionDetails,
+    ToolCatalogProvider,
+    ToolExecutionRequest,
+    ToolExecutionResponse,
+)
+from oss.src.core.tools.interfaces import ToolsGatewayInterface
+from oss.src.core.tools.exceptions import AdapterError
+from oss.src.core.tools.providers.composio.catalog import (
+    COMPOSIO_TOOLKIT_VERSION,
+    ComposioCatalogClient,
+    _derive_read_only,
+)
+from oss.src.core.tools.providers.composio.dtos import ComposioSearchResult
+from oss.src.core.gateway.providers.composio.errors import composio_error_detail
+from oss.src.utils.env import env
+
+
+log = get_module_logger(__name__)
+
+
+class ComposioToolsAdapter(ComposioCatalogClient, ToolsGatewayInterface):
+    """Composio V3 API adapter — uses httpx directly (no SDK).
+
+    Catalog operations (list/get integrations and actions) are provided by
+    ``ComposioCatalogClient``. Tool execution is implemented here. Connection
+    auth lives in ``ComposioConnectionsAdapter``.
+    """
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        api_url: Optional[str] = None,
+    ):
+        self.api_key = api_key
+        self.api_url = (api_url or env.composio.api_url).rstrip("/")
+        # Shared client — one connection pool for the adapter's lifetime.
+        # Call close() on shutdown (wired in entrypoints/routers.py lifespan).
+        self._client = httpx.AsyncClient(timeout=30.0)
+
+    async def close(self) -> None:
+        """Close the shared HTTP client and release connection pool resources."""
+        await self._client.aclose()
+
+    def _headers(self) -> Dict[str, str]:
+        return {
+            "x-api-key": self.api_key,
+            "Content-Type": "application/json",
+        }
+
+    async def _get(
+        self,
+        path: str,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        resp = await self._client.get(
+            f"{self.api_url}{path}",
+            headers=self._headers(),
+            params=params,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def _post(
+        self,
+        path: str,
+        *,
+        json: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        resp = await self._client.post(
+            f"{self.api_url}{path}",
+            headers=self._headers(),
+            json=json or {},
+        )
+        if not resp.is_success:
+            log.error(
+                "Composio POST %s → %s: %s",
+                path,
+                resp.status_code,
+                resp.text,
+            )
+        resp.raise_for_status()
+        return resp.json()
+
+    # -----------------------------------------------------------------------
+    # Catalog — provider listing
+    # -----------------------------------------------------------------------
+
+    async def list_providers(self) -> List[ToolCatalogProvider]:
+        integrations_count = await self.count_integrations()
+        return [
+            ToolCatalogProvider(
+                key="composio",
+                name="Composio",
+                description="Third-party tool integrations via Composio",
+                integrations_count=integrations_count,
+            )
+        ]
+
+    # list_integrations, get_integration, list_actions are inherited from
+    # ComposioCatalogClient and satisfy the ToolsGatewayInterface contract.
+
+    # -----------------------------------------------------------------------
+    # Catalog — action detail
+    # -----------------------------------------------------------------------
+
+    async def get_action(
+        self,
+        *,
+        action_key: str,
+        provider_action_id: str,
+        toolkit_version: Optional[str] = None,
+    ) -> Optional[ToolCatalogActionDetails]:
+        try:
+            # `version`, not `toolkit_versions`: this endpoint takes the singular name, and
+            # without it a slug that exists only in the latest toolkit version 404s.
+            item = await self._get(
+                f"/tools/{provider_action_id}",
+                params={"version": toolkit_version or COMPOSIO_TOOLKIT_VERSION},
+            )
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise AdapterError(
+                provider_key="composio",
+                operation="get_action",
+                detail=composio_error_detail(e),
+            ) from e
+        except httpx.HTTPError as e:
+            raise AdapterError(
+                provider_key="composio",
+                operation="get_action",
+                detail=composio_error_detail(e),
+            ) from e
+
+        input_params = item.get("input_parameters")
+        output_params = item.get("output_parameters")
+
+        return ToolCatalogActionDetails(
+            key=action_key,
+            provider_action_id=provider_action_id,
+            name=item.get("name", ""),
+            description=item.get("description"),
+            schemas=JsonSchemas(
+                inputs=input_params,
+                outputs=output_params,
+            )
+            if input_params or output_params
+            else None,
+            scopes=item.get("scopes") or None,
+            read_only=_derive_read_only(item.get("tags")),
+        )
+
+    # -----------------------------------------------------------------------
+    # Execution
+    # -----------------------------------------------------------------------
+
+    async def execute(
+        self,
+        *,
+        request: ToolExecutionRequest,
+    ) -> ToolExecutionResponse:
+        composio_slug = request.provider_action_id
+
+        # In the BODY. The query form of this parameter is accepted and ignored, so a
+        # latest-only slug still 404s — verified live. Execute must resolve the same
+        # toolkit version the catalog listed, or the schema the model was given does not
+        # match the tool that runs.
+        payload: Dict[str, Any] = {
+            "arguments": request.arguments,
+            "version": request.toolkit_version,
+        }
+        # No-auth toolkits run without a connected account; only send the id when set.
+        if request.provider_connection_id:
+            payload["connected_account_id"] = request.provider_connection_id
+        if request.user_id:
+            payload["user_id"] = request.user_id
+
+        log.debug(
+            "[composio.execute] slug=%s connected_account=%s user_id=%s",
+            composio_slug,
+            request.provider_connection_id or "(none)",
+            request.user_id or "(none)",
+        )
+
+        try:
+            result = await self._post(
+                f"/tools/execute/{composio_slug}",
+                json=payload,
+            )
+        except httpx.HTTPStatusError as e:
+            raise AdapterError(
+                provider_key="composio",
+                operation="execute",
+                detail=composio_error_detail(e),
+            ) from e
+        except httpx.HTTPError as e:
+            raise AdapterError(
+                provider_key="composio",
+                operation="execute",
+                detail=composio_error_detail(e),
+            ) from e
+
+        log.debug(
+            "[composio.execute] slug=%s successful=%s error=%s",
+            composio_slug,
+            result.get("successful", False),
+            str(result.get("error"))[:300],
+        )
+
+        return ToolExecutionResponse(
+            data=result.get("data"),
+            error=result.get("error"),
+            successful=result.get("successful", False),
+        )
+
+    # -----------------------------------------------------------------------
+    # Discovery — semantic tool search (COMPOSIO_SEARCH_TOOLS)
+    # -----------------------------------------------------------------------
+
+    async def search_capabilities(
+        self,
+        *,
+        use_cases: List[str],
+        user_id: str,
+        toolkits: Optional[List[str]] = None,
+    ) -> ComposioSearchResult:
+        """Semantic tool search via the COMPOSIO_SEARCH_TOOLS meta-tool.
+
+        One call returns matched tools + alternatives + inline schemas + plan +
+        pitfalls + per-user connection state. ``user_id`` is the Composio user the
+        connection state is read for; Agenta passes ``str(project_id)`` so the
+        result reflects the calling project's connections.
+
+        ``toolkits`` biases every query towards those integrations. It is a ranking
+        hint, not a filter: measured on 2026-08-27, a search scoped to ``slack`` still
+        answers with ``MSG91_SEND_SMS``, and the neighbouring toolkits vary between two
+        identical calls. The caller must drop what it did not ask for. Sending the hint
+        costs nothing over an unscoped search, so the query text is never enriched to
+        imitate a filter.
+        """
+        query: Dict[str, Any] = {}
+        if toolkits:
+            query["toolkits"] = list(toolkits)
+
+        payload: Dict[str, Any] = {
+            "user_id": user_id,
+            "arguments": {
+                "queries": [{"use_case": use_case, **query} for use_case in use_cases],
+                "session": {"generate_id": True},
+            },
+        }
+
+        try:
+            # `version` here would pin the SEARCH meta-tool itself, not the toolkits it ranks.
+            # Runtime search identities are checked against the run's pinned catalog and its
+            # inline schemas are replaced with schemas from that catalog.
+            result = await self._post(
+                "/tools/execute/COMPOSIO_SEARCH_TOOLS",
+                json=payload,
+            )
+        except httpx.HTTPStatusError as e:
+            raise AdapterError(
+                provider_key="composio",
+                operation="search_capabilities",
+                detail=composio_error_detail(e),
+            ) from e
+        except httpx.HTTPError as e:
+            raise AdapterError(
+                provider_key="composio",
+                operation="search_capabilities",
+                detail=composio_error_detail(e),
+            ) from e
+
+        # A non-object JSON body would make ``.get`` below raise AttributeError and leak
+        # a 500; treat it as a malformed envelope instead.
+        if not isinstance(result, dict):
+            raise AdapterError(
+                provider_key="composio",
+                operation="search_capabilities",
+                detail="tool search returned a malformed envelope",
+            )
+
+        # Composio returns HTTP 200 with successful=false on a tool-level failure, so
+        # the HTTP guards above never catch it. Treat an unsuccessful or malformed
+        # envelope as an adapter error rather than silently reporting no capabilities.
+        if not result.get("successful", False):
+            raise AdapterError(
+                provider_key="composio",
+                operation="search_capabilities",
+                detail=str(result.get("error") or "tool search was unsuccessful"),
+            )
+
+        data = result.get("data")
+        if not isinstance(data, dict):
+            raise AdapterError(
+                provider_key="composio",
+                operation="search_capabilities",
+                detail="tool search returned no data",
+            )
+
+        try:
+            return ComposioSearchResult.model_validate(data)
+        except ValidationError as e:
+            raise AdapterError(
+                provider_key="composio",
+                operation="search_capabilities",
+                detail=f"malformed tool search response: {e}",
+            ) from e

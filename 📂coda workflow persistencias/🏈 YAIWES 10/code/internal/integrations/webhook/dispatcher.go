@@ -1,0 +1,181 @@
+// Package webhook dispatches campaign events to a customer-configured
+// endpoint with HMAC-SHA256 request signing and exponential-backoff retry.
+// A dead-letter queue captures events that exhaust retries.
+package webhook
+
+import (
+	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"net/http"
+	"sync"
+	"time"
+)
+
+// Dispatcher delivers JSON payloads to a webhook endpoint.
+type Dispatcher struct {
+	endpoint string
+	secret   []byte
+	http     *http.Client
+	maxTries int
+	dlq      chan []byte
+	wg       sync.WaitGroup
+}
+
+// Config customises a Dispatcher.
+type Config struct {
+	Endpoint string
+	Secret   string        // HMAC-SHA256 signing key
+	MaxTries int           // default 5
+	Timeout  time.Duration // default 10s
+	DLQSize  int           // buffered channel size; default 100
+}
+
+// New builds a Dispatcher.
+func New(cfg Config) *Dispatcher {
+	if cfg.MaxTries <= 0 {
+		cfg.MaxTries = 5
+	}
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = 10 * time.Second
+	}
+	if cfg.DLQSize <= 0 {
+		cfg.DLQSize = 100
+	}
+	return &Dispatcher{
+		endpoint: cfg.Endpoint,
+		secret:   []byte(cfg.Secret),
+		http:     &http.Client{Timeout: cfg.Timeout},
+		maxTries: cfg.MaxTries,
+		dlq:      make(chan []byte, cfg.DLQSize),
+	}
+}
+
+// Send serialises payload as JSON and delivers it (with retries) in a
+// background goroutine. Returns immediately; use Wait() before exit
+// to drain in-flight sends.
+func (d *Dispatcher) Send(ctx context.Context, payload any) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		d.deliver(ctx, body)
+	}()
+}
+
+// SendSync is the blocking variant — useful in tests.
+func (d *Dispatcher) SendSync(ctx context.Context, payload any) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return d.deliver(ctx, body)
+}
+
+// Wait blocks until all in-flight sends have finished or ctx expires.
+func (d *Dispatcher) Wait(ctx context.Context) {
+	done := make(chan struct{})
+	go func() { d.wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
+}
+
+// DLQ returns the dead-letter channel. Consume and persist for replay.
+func (d *Dispatcher) DLQ() <-chan []byte { return d.dlq }
+
+// --- internals ---
+
+// permanentError wraps an error that retries won't fix (e.g. HTTP 4xx).
+type permanentError struct{ err error }
+
+func (p permanentError) Error() string { return p.err.Error() }
+func (p permanentError) Unwrap() error { return p.err }
+
+func (d *Dispatcher) deliver(ctx context.Context, body []byte) error {
+	var lastErr error
+	for attempt := 0; attempt < d.maxTries; attempt++ {
+		if attempt > 0 {
+			sleep := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+			select {
+			case <-ctx.Done():
+				lastErr = ctx.Err()
+				goto dlq
+			case <-time.After(sleep):
+			}
+		}
+		err := d.attempt(ctx, body)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if _, permanent := err.(permanentError); permanent {
+			break // no point retrying a 4xx
+		}
+	}
+dlq:
+	select {
+	case d.dlq <- body:
+	default:
+		// DLQ full — drop. Operator should drain regularly.
+	}
+	return lastErr
+}
+
+func (d *Dispatcher) attempt(ctx context.Context, body []byte) error {
+	sig := sign(d.secret, body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-PentestSwarm-Signature", "sha256="+sig)
+	req.Header.Set("X-PentestSwarm-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+
+	resp, err := d.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("webhook transport: %w", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+		return fmt.Errorf("retryable status %d", resp.StatusCode)
+	}
+	if resp.StatusCode >= 400 {
+		// 4xx errors are permanent — drop to DLQ.
+		return permanentError{err: fmt.Errorf("non-retryable status %d", resp.StatusCode)}
+	}
+	return nil
+}
+
+// sign returns hex(hmac-sha256(key, body)).
+func sign(secret, body []byte) string {
+	h := hmac.New(sha256.New, secret)
+	h.Write(body)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// Verify is a helper for endpoints receiving webhooks.
+func Verify(secret []byte, body []byte, signatureHeader string) bool {
+	const prefix = "sha256="
+	if len(signatureHeader) <= len(prefix) || signatureHeader[:len(prefix)] != prefix {
+		return false
+	}
+	want, err := hex.DecodeString(signatureHeader[len(prefix):])
+	if err != nil {
+		return false
+	}
+	h := hmac.New(sha256.New, secret)
+	h.Write(body)
+	return hmac.Equal(want, h.Sum(nil))
+}

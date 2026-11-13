@@ -1,0 +1,28 @@
+[package]
+name = "restate-log-server-grpc"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+grpc-client = ["tonic/channel", "tonic/zstd", "tonic/gzip"]
+grpc-server = ["tonic/server"]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-types = { workspace = true }
+
+prost = { workspace = true }
+tonic = { workspace = true, features = ["codegen"] }
+tonic-prost = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }
+
+[lints]
+workspace = true

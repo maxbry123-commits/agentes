@@ -1,0 +1,17 @@
+# C56 — L7. B6 SALIDA4
+id: C56
+layer: L7
+name: workflow_dsl
+implementado: true
+critical: false
+description: "Validación DSL workflow"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C56 aplica en capa L7"
+checks:
+  - workflow_dsl_check
+evidence:
+  type: workflow_dsl_marker
+  required: false

@@ -1,0 +1,9 @@
+# Testing
+pytest
+pytest-cov
+pytest-asyncio
+
+# Package requirements
+python-dateutil
+pydantic
+redbird>=0.5.0

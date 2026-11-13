@@ -1,0 +1,49 @@
+name: YAIWES CODA Persistence Link Tests
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-coda-persistence-tests.yml'
+      - '📂coda workflow persistencias/**/code/coda_persistence/**'
+      - '📂coda workflow persistencias/**/PERSISTENCE-LINK-MANIFEST.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yaiwes-coda-persistence-tests
+  cancel-in-progress: false
+
+jobs:
+  safe-link-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Sparse checkout transformed persistence links
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-coda-persistence-tests.yml
+            /📂coda workflow persistencias/*/code/coda_persistence/
+
+      - name: Discover and test every transformed link
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='📂coda workflow persistencias'
+          count=0
+          while IFS= read -r -d '' test_file; do
+            link_dir="$(dirname "$test_file")"
+            code_dir="$(dirname "$link_dir")"
+            echo "TEST_LINK=$link_dir"
+            PYTHONPATH="$code_dir" python3 -m unittest discover -s "$link_dir" -p 'test_*.py' -v
+            count=$((count + 1))
+          done < <(find "$ROOT" -type f -path '*/code/coda_persistence/test_*.py' -print0 | sort -z)
+          echo "TRANSFORMED_LINK_TEST_FILES=$count"
+          test "$count" -ge 1

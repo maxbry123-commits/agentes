@@ -1,0 +1,399 @@
+/**
+ * Unit tests for the shared /tools/call callback transport (src/tools/callback.ts).
+ *
+ * Covers RUN-TOOLCAP-1: the tool result handed back to the model must be bounded the same
+ * way tool-mcp-http.ts bounds an inbound request body (MAX_BODY_BYTES), and the model must be
+ * able to tell a result was truncated (the same "[... N omitted]" shape transcript.ts already
+ * uses for the replay-transcript cap).
+ *
+ * Run: pnpm exec vitest run tests/unit/callback.test.ts
+ */
+import { afterEach, describe, it } from "vitest";
+import assert from "node:assert/strict";
+
+import {
+  callAgentaTool,
+  capToolResultText,
+  readBoundedResponseText,
+  resolveGatewayResultBytes,
+  DEFAULT_GATEWAY_RESULT_BYTES,
+  MAX_BODY_BYTES,
+  MAX_GATEWAY_RESULT_BYTES,
+  MAX_RAW_RESPONSE_BYTES,
+  GATEWAY_RESULT_STEERING_MESSAGE,
+} from "../../src/tools/callback.ts";
+
+const realFetch = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
+
+function stubFetch(status: number, body: string): void {
+  globalThis.fetch = (async () =>
+    new Response(body, { status })) as typeof fetch;
+}
+
+describe("capToolResultText", () => {
+  it("returns short text unchanged", () => {
+    assert.equal(capToolResultText("hello"), "hello");
+  });
+
+  it("truncates at the byte cap and signals the cut, like transcript.ts", () => {
+    const text = "a".repeat(MAX_BODY_BYTES + 500);
+    const capped = capToolResultText(text);
+    assert.ok(capped.length < text.length);
+    assert.ok(capped.includes("bytes omitted"));
+    assert.ok(capped.startsWith("a".repeat(100)));
+  });
+
+  it("keeps the whole capped result, marker included, within the byte budget", () => {
+    const capped = capToolResultText("a".repeat(500), 80);
+    assert.ok(
+      Buffer.byteLength(capped, "utf-8") <= 80,
+      "the retained prefix plus the omitted-count marker must fit within the cap",
+    );
+    assert.match(capped, /^a+ \[\.\.\. \d+ bytes omitted\]$/);
+  });
+
+  it("appends the steering message and still stays within the byte budget", () => {
+    const capped = capToolResultText("a".repeat(500), 120, "narrow your query");
+    assert.ok(
+      Buffer.byteLength(capped, "utf-8") <= 120,
+      "the prefix, marker, and steering message together must fit within the cap",
+    );
+    assert.ok(capped.includes("bytes omitted"));
+    assert.ok(capped.endsWith("\n\nnarrow your query"));
+  });
+
+  it("omits the steering message entirely when text is not truncated", () => {
+    const capped = capToolResultText("hi", 100, "narrow your query");
+    assert.equal(capped, "hi");
+  });
+
+  it("truncates at a UTF-8 character boundary instead of splitting a multibyte sequence", () => {
+    // "é" is 2 bytes (0xC3 0xA9). A byte-only cut can land mid-character, decode the dangling
+    // lead byte as U+FFFD (3 bytes), and push the result back over the cap. The whole result
+    // must stay within the cap and never contain a replacement character.
+    const capped = capToolResultText("é".repeat(200), 80);
+    assert.ok(!capped.includes("�"), "must not contain a replacement character");
+    assert.ok(
+      Buffer.byteLength(capped, "utf-8") <= 80,
+      "the whole result must fit within the byte cap",
+    );
+    assert.ok(capped.includes("bytes omitted"));
+  });
+
+  it("omitted-byte count is exact and never negative for multibyte content straddling the cap", () => {
+    // A run of 4-byte emoji (matches the max UTF-8 sequence length) straddling several cap
+    // offsets — every offset must produce a non-negative, exact omitted count with no U+FFFD.
+    const text = "😀".repeat(50); // 4 bytes each, 200 bytes total
+    for (const cap of [1, 2, 3, 4, 5, 7, 9, 100, 197, 198, 199]) {
+      const capped = capToolResultText(text, cap);
+      const match = /\[\.\.\. (-?\d+) bytes omitted\]$/.exec(capped);
+      assert.ok(match, `expected an omitted-bytes marker for cap=${cap}`);
+      const omitted = Number(match![1]);
+      assert.ok(omitted >= 0, `omitted count must not be negative (cap=${cap}, got ${omitted})`);
+      const prefix = capped.slice(0, capped.indexOf(" [..."));
+      assert.ok(
+        !prefix.includes("�"),
+        `prefix must not contain a replacement character (cap=${cap})`,
+      );
+      assert.ok(
+        Buffer.byteLength(prefix, "utf-8") <= cap,
+        `prefix must fit within the byte cap (cap=${cap})`,
+      );
+    }
+  });
+});
+
+describe("resolveGatewayResultBytes", () => {
+  it("falls back to the default for absent or invalid env values", () => {
+    for (const raw of [undefined, "Infinity", "-1", "0", "1.5", "notanumber", ""]) {
+      assert.equal(
+        resolveGatewayResultBytes(raw, DEFAULT_GATEWAY_RESULT_BYTES),
+        DEFAULT_GATEWAY_RESULT_BYTES,
+        `expected the default for ${JSON.stringify(raw)}`,
+      );
+    }
+  });
+
+  it("accepts a positive safe integer", () => {
+    assert.equal(resolveGatewayResultBytes("250000", DEFAULT_GATEWAY_RESULT_BYTES), 250_000);
+  });
+});
+
+describe("readBoundedResponseText (RUN-TOOLCAP-2: cap before materializing the whole body)", () => {
+  /** A ReadableStream that yields `chunks` one at a time, recording whether it was cancelled. */
+  function streamOf(chunks: string[]): { stream: ReadableStream<Uint8Array>; cancelled: () => boolean } {
+    let wasCancelled = false;
+    let i = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (i < chunks.length) {
+          controller.enqueue(new TextEncoder().encode(chunks[i++]));
+        } else {
+          controller.close();
+        }
+      },
+      cancel() {
+        wasCancelled = true;
+      },
+    });
+    return { stream, cancelled: () => wasCancelled };
+  }
+
+  it("cancels the reader the moment a streamed response crosses the cap, without draining the rest", async () => {
+    // Several chunks, each under the cap alone, that cross it partway through the run.
+    const chunkSize = 10;
+    const capBytes = 25; // crossed partway through the 3rd chunk
+    const chunks = Array.from({ length: 20 }, () => "x".repeat(chunkSize));
+    const { stream, cancelled } = streamOf(chunks);
+    const response = new Response(stream);
+
+    const { text, truncated } = await readBoundedResponseText(response, capBytes);
+
+    assert.equal(truncated, true);
+    assert.ok(Buffer.byteLength(text, "utf-8") <= capBytes);
+    assert.equal(cancelled(), true);
+    // Must not have pulled all 20 chunks worth of data (200 bytes) — proof it stopped early.
+    assert.ok(Buffer.byteLength(text, "utf-8") < chunkSize * chunks.length);
+  });
+
+  it("does not truncate or cancel when the body is within the cap", async () => {
+    const { stream, cancelled } = streamOf(["hello ", "world"]);
+    const response = new Response(stream);
+
+    const { text, truncated } = await readBoundedResponseText(response, MAX_RAW_RESPONSE_BYTES);
+
+    assert.equal(text, "hello world");
+    assert.equal(truncated, false);
+    assert.equal(cancelled(), false);
+  });
+
+  it("truncates a streamed multibyte sequence at a character boundary, not mid-codepoint", async () => {
+    // Force the cap to land exactly inside a 2-byte UTF-8 sequence ("é" = 0xC3 0xA9).
+    const { stream } = streamOf(["caf", "é more text after"]);
+    const response = new Response(stream);
+
+    const { text, truncated } = await readBoundedResponseText(response, 4);
+
+    assert.equal(truncated, true);
+    assert.ok(!text.includes("�"));
+    assert.equal(text, "caf");
+  });
+});
+
+describe("callAgentaTool result capping (RUN-TOOLCAP-1)", () => {
+  it("caps an oversized string `content` at the gateway budget, well below the raw transport cap", async () => {
+    // A get_pull_request-shaped result: comfortably under the 1 MB raw transport cap, but well
+    // over the much tighter model-facing gateway budget (issue #5341).
+    const huge = "x".repeat(MAX_GATEWAY_RESULT_BYTES + 1000);
+    stubFetch(
+      200,
+      JSON.stringify({ call: { data: { content: huge }, status: "done" } }),
+    );
+    const result = await callAgentaTool(
+      "http://agenta.local/tools/call",
+      "Bearer tok",
+      "ref",
+      "call-1",
+      {},
+    );
+    assert.ok(
+      Buffer.byteLength(result, "utf-8") <= MAX_GATEWAY_RESULT_BYTES,
+      "the model-facing gateway result must not exceed MAX_GATEWAY_RESULT_BYTES",
+    );
+    assert.ok(result.includes("bytes omitted"));
+    assert.ok(
+      result.includes(GATEWAY_RESULT_STEERING_MESSAGE),
+      "an oversized gateway result must carry the steering message telling the model to narrow/paginate",
+    );
+  });
+
+  it("caps an oversized non-string `content` (JSON.stringify'd) before returning it, with the steering message", async () => {
+    const huge = { data: "y".repeat(MAX_GATEWAY_RESULT_BYTES + 1000) };
+    stubFetch(
+      200,
+      JSON.stringify({ call: { data: { content: huge }, status: "done" } }),
+    );
+    const result = await callAgentaTool(
+      "http://agenta.local/tools/call",
+      "Bearer tok",
+      "ref",
+      "call-1",
+      {},
+    );
+    assert.ok(Buffer.byteLength(result, "utf-8") <= MAX_GATEWAY_RESULT_BYTES);
+    assert.ok(result.includes("bytes omitted"));
+    assert.ok(result.includes(GATEWAY_RESULT_STEERING_MESSAGE));
+  });
+
+  it("caps a raw oversized body when the response is not the expected envelope shape", async () => {
+    stubFetch(200, "z".repeat(MAX_GATEWAY_RESULT_BYTES + 1000));
+    const result = await callAgentaTool(
+      "http://agenta.local/tools/call",
+      "Bearer tok",
+      "ref",
+      "call-1",
+      {},
+    );
+    assert.ok(Buffer.byteLength(result, "utf-8") <= MAX_GATEWAY_RESULT_BYTES);
+    assert.ok(result.includes("bytes omitted"));
+    assert.ok(result.includes(GATEWAY_RESULT_STEERING_MESSAGE));
+  });
+
+  it("leaves a small result untouched, without the steering message", async () => {
+    stubFetch(
+      200,
+      JSON.stringify({ call: { data: { content: "ok" }, status: "done" } }),
+    );
+    const result = await callAgentaTool(
+      "http://agenta.local/tools/call",
+      "Bearer tok",
+      "ref",
+      "call-1",
+      {},
+    );
+    assert.equal(result, "ok");
+  });
+});
+
+// RUN-TOOLERR-1: two sibling transports disagreed on what a failed tool call discloses to the
+// model. direct.ts is normative — it logs the upstream body server-side and returns only the
+// status code. callback.ts (every gateway/Composio tool) interpolated the body into the thrown
+// error, landing internal detail / vendor messages / connected-account PII in a context a
+// prompt-injected attacker can exfiltrate via a later tool call.
+//
+// The correctable-error signal does NOT ride that path: the gateway returns a business-level
+// tool failure as HTTP 200 with `status.code = STATUS_CODE_ERROR` and the upstream message in
+// `status.message` (api/oss/src/apis/fastapi/tools/router.py `call_tool`). A non-2xx is an
+// infrastructure/config fault the model cannot fix by rewriting an argument.
+describe("callAgentaTool error disclosure (RUN-TOOLERR-1)", () => {
+  it("does NOT leak a non-2xx upstream body to the model, and logs it server-side", async () => {
+    const secret = "connected-account-email: victim@example.com";
+    stubFetch(502, `upstream exploded: ${secret}`);
+
+    const logged: string[] = [];
+    const realError = console.error;
+    console.error = (...args: unknown[]) => logged.push(args.join(" "));
+
+    try {
+      await assert.rejects(
+        () =>
+          callAgentaTool(
+            "http://agenta.local/tools/call",
+            "Bearer tok",
+            "send-email",
+            "call-1",
+            {},
+          ),
+        (err: Error) => {
+          // The model sees the status code only — never the upstream body.
+          assert.equal(err.message, "tool call send-email failed: HTTP 502");
+          assert.ok(!err.message.includes(secret));
+          assert.ok(!err.message.includes("upstream exploded"));
+          return true;
+        },
+      );
+    } finally {
+      console.error = realError;
+    }
+
+    // The detail is not lost — it is kept server-side for the operator.
+    assert.ok(logged.some((line) => line.includes(secret)));
+    assert.ok(logged.some((line) => line.includes("HTTP 502")));
+  });
+
+  it("THROWS a 200/STATUS_CODE_ERROR so the model reads a failed call as failed", async () => {
+    // CONTRACT CHANGE. This asserted that the failure was RETURNED, and returning is what made
+    // the defect: `startToolRelay` wraps any returned string as `{ok: true, text}`, which the MCP
+    // shim renders as `isError: false`. So the model was told a failed gateway call SUCCEEDED and
+    // handed the failure text as its result. On Codex that is the blank-success shape that makes
+    // a model invent an explanation and tell the user to try again.
+    //
+    // The disclosure half of RUN-TOOLERR-1 is unchanged and still holds: a NON-2xx is redacted to
+    // its status code (the test above). This arm is the gateway's own business-level failure,
+    // which is deliberately disclosed, because it is the thing the model rewrites its argument
+    // from.
+    stubFetch(
+      200,
+      JSON.stringify({
+        call: {
+          data: { content: '{"successful": false}' },
+          status: {
+            code: "STATUS_CODE_ERROR",
+            message: "missing required field `email`",
+          },
+        },
+      }),
+    );
+
+    await assert.rejects(
+      () =>
+        callAgentaTool(
+          "http://agenta.local/tools/call",
+          "Bearer tok",
+          "send-email",
+          "call-1",
+          {},
+        ),
+      (err: Error) => {
+        assert.ok(err.message.includes("missing required field `email`"));
+        // The content rides along too. A model told only the headline cannot always see which
+        // field it got wrong.
+        assert.ok(err.message.includes('{"successful": false}'));
+        return true;
+      },
+    );
+  });
+
+  it("THROWS a STATUS_CODE_ERROR even when status.message is absent", async () => {
+    // The arm the old code missed entirely: it required `status.message` to be a string before it
+    // noticed a failure, so this fell through to the success return. `status.code` alone decides
+    // now, which is also what a handler-mode op needs when its envelope lives in `content`.
+    stubFetch(
+      200,
+      JSON.stringify({
+        call: {
+          data: { content: '{"code":"revision_conflict"}' },
+          status: { code: "STATUS_CODE_ERROR" },
+        },
+      }),
+    );
+
+    await assert.rejects(
+      () =>
+        callAgentaTool(
+          "http://agenta.local/tools/call",
+          "Bearer tok",
+          "commit_revision",
+          "call-1",
+          {},
+        ),
+      (err: Error) => {
+        assert.ok(err.message.includes("revision_conflict"));
+        return true;
+      },
+    );
+  });
+
+  it("leaves a 200 success envelope alone (no error prefix)", async () => {
+    stubFetch(
+      200,
+      JSON.stringify({
+        call: {
+          data: { content: "sent" },
+          status: { code: "STATUS_CODE_OK", message: null },
+        },
+      }),
+    );
+    const result = await callAgentaTool(
+      "http://agenta.local/tools/call",
+      "Bearer tok",
+      "send-email",
+      "call-1",
+      {},
+    );
+    assert.equal(result, "sent");
+  });
+});

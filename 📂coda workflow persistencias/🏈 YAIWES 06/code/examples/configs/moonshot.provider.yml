@@ -1,0 +1,205 @@
+simple:
+  model: kimi-k2.5
+  temperature: 0.6
+  top_p: 0.95
+  n: 1
+  max_tokens: 8192
+  extra_body:
+    temperature: 0.6
+    thinking:
+      type: disabled
+    tool_choice: auto
+  price:
+    input: 0.60
+    output: 3.00
+    cache_read: 0.10
+
+simple_json:
+  model: kimi-k2.5
+  temperature: 0.6
+  top_p: 0.95
+  n: 1
+  max_tokens: 4096
+  json: true
+  extra_body:
+    temperature: 0.6
+    thinking:
+      type: disabled
+    tool_choice: auto
+  price:
+    input: 0.60
+    output: 3.00
+    cache_read: 0.10
+
+primary_agent:
+  model: kimi-k2.5
+  temperature: 1.0
+  top_p: 0.95
+  n: 1
+  max_tokens: 16384
+  extra_body:
+    thinking:
+      type: enabled
+    tool_choice: auto
+  price:
+    input: 0.60
+    output: 3.00
+    cache_read: 0.10
+
+assistant:
+  model: kimi-k2.5
+  temperature: 1.0
+  top_p: 0.95
+  n: 1
+  max_tokens: 16384
+  extra_body:
+    thinking:
+      type: enabled
+    tool_choice: auto
+  price:
+    input: 0.60
+    output: 3.00
+    cache_read: 0.10
+
+generator:
+  model: kimi-k2.6
+  temperature: 1.0
+  top_p: 0.95
+  n: 1
+  max_tokens: 32768
+  extra_body:
+    thinking:
+      type: enabled
+      keep: all
+    tool_choice: auto
+  price:
+    input: 0.95
+    output: 4.00
+    cache_read: 0.16
+
+refiner:
+  model: kimi-k2.6
+  temperature: 1.0
+  top_p: 0.95
+  n: 1
+  max_tokens: 32768
+  extra_body:
+    thinking:
+      type: enabled
+      keep: all
+    tool_choice: auto
+  price:
+    input: 0.95
+    output: 4.00
+    cache_read: 0.16
+
+adviser:
+  model: kimi-k2.6
+  temperature: 1.0
+  top_p: 0.95
+  n: 1
+  max_tokens: 8192
+  extra_body:
+    thinking:
+      type: enabled
+      keep: all
+    tool_choice: auto
+  price:
+    input: 0.95
+    output: 4.00
+    cache_read: 0.16
+
+reflector:
+  model: kimi-k2.5
+  temperature: 0.6
+  top_p: 0.95
+  n: 1
+  max_tokens: 4096
+  extra_body:
+    temperature: 0.6
+    thinking:
+      type: disabled
+    tool_choice: auto
+  price:
+    input: 0.60
+    output: 3.00
+    cache_read: 0.10
+
+searcher:
+  model: kimi-k2.5
+  temperature: 0.6
+  top_p: 0.95
+  n: 1
+  max_tokens: 4096
+  extra_body:
+    temperature: 0.6
+    thinking:
+      type: disabled
+    tool_choice: auto
+  price:
+    input: 0.60
+    output: 3.00
+    cache_read: 0.10
+
+enricher:
+  model: kimi-k2.5
+  temperature: 0.6
+  top_p: 0.95
+  n: 1
+  max_tokens: 4096
+  extra_body:
+    temperature: 0.6
+    thinking:
+      type: disabled
+    tool_choice: auto
+  price:
+    input: 0.60
+    output: 3.00
+    cache_read: 0.10
+
+coder:
+  model: kimi-k2.6
+  temperature: 1.0
+  top_p: 0.95
+  n: 1
+  max_tokens: 20480
+  extra_body:
+    thinking:
+      type: enabled
+      keep: all
+    tool_choice: auto
+  price:
+    input: 0.95
+    output: 4.00
+    cache_read: 0.16
+
+installer:
+  model: kimi-k2.5
+  temperature: 1.0
+  top_p: 0.95
+  n: 1
+  max_tokens: 16384
+  extra_body:
+    thinking:
+      type: enabled
+    tool_choice: auto
+  price:
+    input: 0.60
+    output: 3.00
+    cache_read: 0.10
+
+pentester:
+  model: kimi-k2.6
+  temperature: 1.0
+  top_p: 0.95
+  n: 1
+  max_tokens: 16384
+  extra_body:
+    thinking:
+      type: enabled
+      keep: all
+    tool_choice: auto
+  price:
+    input: 0.95
+    output: 4.00
+    cache_read: 0.16

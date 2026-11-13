@@ -1,0 +1,37 @@
+import { Link } from '@mui/material';
+import type { AnchorHTMLAttributes, ComponentProps } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { useNavigate } from 'react-router';
+
+const LinkRenderer = ({
+    href = '',
+    children,
+}: AnchorHTMLAttributes<HTMLAnchorElement>) => {
+    const navigate = useNavigate();
+
+    if (href.startsWith('/'))
+        return <Link onClick={() => navigate(href)}>{children}</Link>;
+
+    return (
+        <Link href={href} target='_blank' rel='noreferrer'>
+            {children}
+        </Link>
+    );
+};
+
+type MarkdownProps = ComponentProps<typeof ReactMarkdown> & {
+    className?: string;
+};
+
+export const Markdown = ({
+    components,
+    className,
+    ...props
+}: MarkdownProps) => (
+    <div className={className}>
+        <ReactMarkdown
+            components={{ a: LinkRenderer, ...components }}
+            {...props}
+        />
+    </div>
+);

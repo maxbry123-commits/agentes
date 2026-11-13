@@ -1,0 +1,609 @@
+<h1 align="center">LuaN1aoAgent</h1>
+
+<h2 align="center">
+
+**Cognitive-Driven Autonomous Security Agent**
+
+</h2>
+
+<div align="center">
+
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0.html)
+[![GitHub Release](https://img.shields.io/github/v/release/SanMuzZzZz/LuaN1aoAgent?sort=semver)](https://github.com/SanMuzZzZz/LuaN1aoAgent/releases/latest)
+[![Node.js 25+](https://img.shields.io/badge/Node.js-25%2B-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Runtime: Pi SDK](https://img.shields.io/badge/Runtime-Pi%20SDK-111827.svg)](#system-architecture)
+[![Architecture: P-E-O](https://img.shields.io/badge/Architecture-P--E--O-7C3AED.svg)](#core-innovations)
+
+</div>
+
+<div align="center">
+
+<a href="https://zc.tencent.com/competition/competitionHackathon?code=cha004"><img src="docs/assets/tch.png" alt="Top-Ranked Intelligent Pentest Project" width="250" /></a>
+
+---
+
+**🧠 Think in Graphs** • **⚙️ Act Autonomously** • **🔎 Preserve Evidence** • **🧭 Stay Observable**
+
+[🚀 Quick Start](#quick-start) • [✨ Core Innovations](#core-innovations) • [🖥️ Showcase](#showcase) • [🧩 Skills](#recommended-skills) • [🏗️ Architecture](#system-architecture) • [🗓️ Roadmap](#roadmap)
+
+[🌐 中文版](README_CN.md) • [English](README.md)
+
+</div>
+
+---
+
+## 📖 Introduction
+
+**LuaN1aoAgent v2** is a complete rewrite of LuaN1aoAgent, built on TypeScript and the Pi SDK for autonomous, authorized security research.
+
+v2 keeps the original project's cognitive-driven direction while rebuilding its runtime around explicit Agent boundaries, durable events and artifacts, evidence-backed graph memory, and observable tool actions.
+
+LuaN1aoAgent v2 separates responsibility into three roles:
+
+- **Planner** controls goals, scope, dependencies, task budgets, and graph-level scheduling.
+- **Executor** autonomously decides how to complete one bounded task and performs tool loops in an isolated workspace.
+- **Observer** runs as two independent modes: a hot-path **Supervisor** for control decisions and an asynchronous **Projector** for durable graph updates.
+
+The system is designed around one principle: every important conclusion must remain traceable to persisted events, artifacts, and graph evidence.
+
+> [!IMPORTANT]
+> LuaN1aoAgent v2 is not an in-place refactor of the Python v1 runtime. It is a new implementation with different configuration, persistence, Agent lifecycle, and observability contracts.
+
+> [!NOTE]
+> Benchmark results reported by v1 are not automatically attributed to v2. v2 benchmark results will be published only after reproducible reruns on a frozen release.
+
+<p align="center">
+  <a href="https://github.com/SanMuzZzZz/LuaN1aoAgent">
+    <img src="https://img.shields.io/badge/Star-LuaN1aoAgent-yellow?style=for-the-badge&logo=github" alt="Star LuaN1aoAgent" />
+  </a>
+</p>
+
+---
+
+## <a id="showcase"></a>🖥️ Showcase
+
+https://github.com/user-attachments/assets/85febe15-0644-496a-888d-905fbf5f4d5f
+<p align="center"><strong>Demo video</strong></p>
+
+<p align="center">
+  <img src="docs/assets/workbench-live-trace.png" alt="LuaN1aoAgent v2 live Agent trace with reasoning, actions, artifacts, and runtime inspection" width="100%" />
+</p>
+
+<p align="center"><strong>Live Trace</strong> — inspect what each Agent is reasoning about, which action it takes, the associated task, and persisted artifacts.</p>
+
+<p align="center">
+  <img src="docs/assets/workbench-reasoning-graph.png" alt="LuaN1aoAgent v2 causal reasoning graph connecting evidence, hypotheses, vulnerabilities, and exploits" width="100%" />
+</p>
+
+<p align="center"><strong>Causal Reasoning Graph</strong> — trace evidence into hypotheses, confirmed vulnerabilities, and successful exploits.</p>
+
+---
+
+## <a id="core-innovations"></a>🚀 Core Innovations
+
+### 1️⃣ **Planner-Executor-Observer Collaboration** ⭐⭐⭐
+
+v2 replaces the shared-history P-E-R loop with explicit runtime boundaries.
+
+#### Planner
+
+- Reads compact task, reasoning, and operation graph views.
+- Creates or patches goal-level tasks instead of prescribing low-level actions.
+- Controls dependencies, priority, independent-task concurrency, scope, and task budgets.
+- Reconciles ready tasks against available capacity after graph changes and task handoffs, without waiting for an entire parallel wave to finish.
+- Submits decisions through the structured `planner_submit` terminating tool.
+
+#### Executor
+
+- Receives a bounded `TaskEnvelope` and independently chooses its tool strategy.
+- Records public intent, tool input, tool output, usage, errors, and final task results.
+- Preserves large outputs as immutable artifacts instead of inflating Agent context.
+- Reuses the same persisted Pi session lineage and workspace across epochs of one Task; different Tasks remain isolated.
+- Submits results through the structured `task_result_submit` terminating tool.
+
+#### Observer
+
+- **Supervisor mode** inspects recent Executor actions and decides whether to continue, checkpoint, stop, or return control to Planner.
+- **Projector mode** asynchronously converts normalized observations into evidence-backed reasoning and operation graph deltas.
+- Each invocation uses a fresh Pi session without sharing hidden model history.
+- Supervisor and Projector submit through `control_submit` and `graph_delta_submit`.
+
+### 2️⃣ **Causal Graph Reasoning** ⭐⭐⭐
+
+LuaN1ao turns observations into explicit, traceable reasoning chains instead of relying on conclusions hidden in model history:
+
+```mermaid
+flowchart LR
+    Evidence[Evidence] -->|supports / contradicts| Hypothesis[Hypothesis]
+    Hypothesis -->|confirms| Vulnerability[Vulnerability]
+    Vulnerability -->|exploited by| Exploit[Exploit]
+    Evidence -. observed on .-> Endpoint[WebEndpoint / Service]
+```
+
+- **Evidence first**: reasoning nodes and edges preserve references to the events that support them.
+- **Explicit uncertainty**: hypotheses remain distinct from confirmed vulnerabilities and successful exploits.
+- **Enforced provenance**: confirmed `Vulnerability` nodes and successful `Exploit` nodes cannot be written without evidence references.
+- **Asynchronous projection**: Observer Projector converts normalized execution observations into graph deltas without blocking the Executor loop.
+- **Cross-graph context**: the Reasoning Graph links conclusions to concrete entities in the Operation Graph.
+
+### 3️⃣ **Plan-on-Graph Dynamic Task Planning** ⭐⭐⭐
+
+The Planner maintains an evolving Task Graph rather than regenerating a linear checklist:
+
+```mermaid
+flowchart LR
+    Goal --> Recon[Recon Task]
+    Goal --> Auth[Auth Task]
+    Recon --> Milestone[Service Profile]
+    Milestone --> Validate[Validation Task]
+    Auth --> Validate
+    Blocker -. blocks .-> Validate
+```
+
+- **Structured graph operations**: `create_tasks`, `patch_task`, `replace_dependencies`, `set_task_status`, and `set_node_status` form the planning language.
+- **Local adaptation**: new evidence patches the relevant tasks and dependencies instead of discarding the whole plan.
+- **Dependency-aware scheduling**: only ready tasks enter a deterministic admitted wave; independent tasks may run concurrently.
+- **Evidence-backed decisions**: every Planner command carries a reason and can cite the graph nodes or events it is based on.
+- **Task/action separation**: goals, tasks, milestones, blockers, and scope live in the Task Graph; low-level tool actions remain in the append-only ExecutionLog.
+
+| Capability | Linear task list | LuaN1ao PoG |
+|---|---|---|
+| Plan structure | Ordered steps | Dependency graph |
+| Adaptation | Regenerate the plan | Patch affected nodes and edges |
+| Scheduling | Manual ordering | Dependency-aware admitted waves |
+| Traceability | Natural-language history | Structured commands and persisted events |
+
+### 4️⃣ **Evidence and Artifact Fidelity** ⭐⭐⭐
+
+Every Pi event is normalized before it enters the runtime ledger:
+
+- Public Agent intent is preserved separately from tool calls.
+- Tool start and finish events retain their `toolCallId` correlation.
+- Small outputs stay inline for immediate inspection.
+- Large outputs spill to content-addressed artifacts with preview and provenance references.
+- Projector inputs use bounded observation batches and explicit artifact references.
+- Confirmed vulnerability and exploit nodes require evidence references.
+
+---
+
+## 🧰 Core Capabilities
+
+### Structured Agent Control
+
+- Schema-validated Planner, Executor, Supervisor, and Projector terminal submissions.
+- Deterministic task admission with dependency-aware parallel scheduling.
+- Per-task turn budgets and global run-time budgets.
+- Retryable provider failure classification and bounded fresh-session retries.
+- Explicit Planner conflict detection and atomic command batches.
+
+### Tool Runtime
+
+Executors use Pi coding tools inside the configured sandbox boundary:
+
+- `read`, `grep`, `find`, and `ls` for workspace inspection.
+- `bash` for controlled command execution.
+- `web_fetch` for fetching public HTTP(S) references, advisories, and PoC writeups into bounded Markdown previews.
+- `web_search` for public web search through Brave Search when `BRAVE_SEARCH_API_KEY` or `BRAVE_API_KEY` is set, with HTML search fallbacks when no key is available.
+- `vulnerability_search` for CVE/advisory research through NVD and public web references, preserving weak negative semantics when no public hit is found.
+- `browser_render` for post-JavaScript DOM inspection inside the Executor network boundary; Docker mode runs Chromium through the same transparent Gateway as other target traffic.
+- `artifact_read` and `artifact_write` for durable cross-task material; complete workspace files can be imported without passing their contents through the model context.
+- `route_open`, `route_status`, `route_stop`, and `route_reconnect` for Docker-mode Runtime-managed SSH and Chisel reachability. The operator-owned process-wide SOCKS5 proxy is configured before Agent execution and is not exposed through `route_open`.
+- `task_result_submit` for structured task completion or checkpoint handoff.
+
+Public research results are treated as hypotheses or intelligence leads until the Executor validates them against the authorized target with sandboxed tools. Optional `NVD_API_KEY` increases NVD rate limits but is not required.
+
+Planner receives `graph_query` and `graph_trace` for compact task, reasoning, operation, and session views. Executor receives the graph closure and dependency outcomes selected by Runtime as explicit input rather than direct access to the control-plane graph store.
+
+### <a id="recommended-skills"></a>Recommended Agent Skills
+
+LuaN1ao uses the Agent Skills convention through the Pi runtime. These optional community collections provide useful security references and task-specific workflows:
+
+| Collection | Recommended for |
+|---|---|
+| [crazyMarky/pentest-skills](https://github.com/crazyMarky/pentest-skills) | Natural-language pentest workflows: recon (port scan, subdomain enum, directory scan, fingerprint/WAF) and exploitation (SQLi, XSS, LFI, file download), plus reporting skills |
+| [Eyadkelleh/awesome-skills-security](https://github.com/Eyadkelleh/awesome-skills-security) | Curated fuzzing payloads, password and username lists, sensitive-data patterns, web-shell samples, and LLM security testing resources |
+| [ljagiello/ctf-skills](https://github.com/ljagiello/ctf-skills) | CTF and lab workflows covering Web, Pwn, Crypto, Reverse Engineering, Forensics, OSINT, AI/ML, malware analysis, and writeups |
+
+One-click setup from the repository root — installs all three recommended skill collections into the project-local `.agents/skills/`, runs `npm ci` and `npm run build`, and builds both Docker images when a daemon is available. On first run in an interactive terminal it also offers to write a minimal `.env` (mode `0600`); existing `.env` files are never touched and non-interactive installs skip the prompt:
+
+```bash
+./install.sh
+```
+
+Or install individual collections with the skills installer:
+
+```bash
+npx skills add Eyadkelleh/awesome-skills-security \
+  --skill '*' --agent pi --global --yes
+
+npx skills add ljagiello/ctf-skills \
+  --skill '*' --agent pi --global --yes
+```
+
+Skills installed by `./install.sh` live in the project-local `.agents/skills/` (gitignored). The Executor session loads them through the runtime's additional skill paths, and the Executor sandbox whitelists the directory for reads. They remain separate third-party projects with their own licenses and update cycles.
+
+### Sandbox Isolation
+
+- `auto` prefers a per-Task Docker Executor on a private internal network; explicit `docker` fails closed when Docker or a required image is unavailable. The Executor and its Gateway use separate network namespaces, and the Gateway is the task network's only exit.
+- Docker Executors run as UID 1000 with no capabilities, a read-only root filesystem, executable size-limited `/tmp`, and a host-visible persistent `/workspace`.
+- Gateway containers add only `NET_ADMIN`, `SETUID`, and `SETGID` after dropping all capabilities: PID 1 configures TUN/policy routing and launches the protocol-aware Go Gateway as a dedicated UID; that process then clears its capability bounding set. HTTP/HTTPS is detected and transparently captured on any TCP port, while other TCP is relayed unchanged.
+- Without Docker, macOS Seatbelt and Linux Bubblewrap remain available; `workspace` is the explicit development fallback.
+- Executor workspaces and runtime roots are resolved explicitly, and one Task retains its workspace across checkpoint/resume epochs.
+- Host paths outside allowed roots fail closed under forced sandbox modes.
+- Agent runtime state is not exposed to isolated Executor sessions as implicit context.
+
+### Durable Runtime State
+
+Each fresh CLI invocation creates an isolated session under `.agent-runtime/sessions/<session>/`. The TUI prints the selected session path at startup. A session contains:
+
+| Path | Purpose |
+|---|---|
+| `state.sqlite` | Graphs, execution events, projector watermarks, artifacts, and runtime state |
+| `execution.jsonl` | Append-only audit mirror of normalized execution events |
+| `graph-deltas.jsonl` | Replayable graph delta mirror |
+| `artifacts/` | Large outputs and durable task artifacts |
+| `sandboxes/` | Per-Task persistent workspace plus host-only Pi session roots |
+| `executor-sessions/` | Persisted same-Task Pi session lineage across epochs |
+| `traffic/` | Segmented `.mitm` flows, `.net.jsonl` telemetry, public CA, and route/index metadata |
+| `web-auth.sqlite` | Local Web workbench users and sessions |
+
+---
+
+## 📋 System Requirements
+
+| Component | Requirement | Notes |
+|---|---|---|
+| Operating system | macOS or Linux | Windows has not been validated as a v2 release target |
+| Node.js | 25+ | Must support the built-in `node:sqlite` runtime used by v2 |
+| Docker | Recommended | Required by the preferred transparent Gateway backend; on Linux the user must be able to reach the daemon — use rootless Docker or add the user to the `docker` group (`sudo usermod -aG docker $USER`, then re-login), otherwise install falls back to the native host backends |
+| LLM API | OpenAI-compatible | Chat Completions by default; Responses API is optional |
+| Terminal | ANSI-compatible TTY | Required for the interactive Agent timeline |
+| Browser | Current Chromium, Firefox, or Safari | Used by the authenticated Web workbench |
+
+> [!WARNING]
+> Executor tools can run shell commands. Use an isolated host, VM, or container and restrict every run to targets you are explicitly authorized to test.
+
+---
+
+## <a id="quick-start"></a>🚀 Quick Start
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/SanMuzZzZz/LuaN1aoAgent.git
+cd LuaN1aoAgent
+npm ci
+npm run build
+
+# Required for the preferred Docker backend; ./install.sh builds these automatically.
+npm run build:executor-image
+npm run build:network-image
+```
+
+### 2. Configure the LLM runtime
+
+Create a local `.env` file:
+
+```ini
+LLM_API_KEY=your-api-key
+LLM_API_BASE_URL=https://api.openai.com/v1
+LLM_DEFAULT_MODEL=your-model-id
+
+# Optional: openai-completions or openai-responses
+LLM_API_TYPE=openai-completions
+```
+
+v2 reads `.env` locally. The file is ignored by Git and must never be committed.
+
+### 3. Start an Agent run
+
+```bash
+npm start -- \
+  --goal "评估授权目标 10.0.0.10" \
+  --scope "10.0.0.0/24,11.0.0.0/24" \
+  --proxy "socks5://user:password@proxy.example:1080" \
+  --max-cycles 8 \
+  --max-parallel-tasks 2
+```
+
+When stdin and stdout are attached to a TTY, the interactive Agent timeline starts automatically.
+Starting without `--resume` always creates a fresh session and never reads an older task graph.
+
+`--scope` is the network authorization root and accepts comma-separated IPv4 addresses, CIDRs, exact
+domains, or leading-wildcard domains. Bare IP addresses are normalized to `/32`. When `--scope` is
+omitted, the Planner model extracts only IPv4 addresses and CIDRs explicitly present in `--goal`;
+deterministic validation rejects invented or widened ranges. Domain scope must be supplied explicitly.
+If the Goal contains no explicit IPv4 target, startup fails and asks for `--scope`.
+
+`--proxy` is a Docker-mode, run-level transparent SOCKS5 egress. Runtime authenticates and installs
+the proxy Route before Planner or Executor work begins; each task Gateway still enforces the normalized
+CIDR and domain root Scope before traffic reaches that Route. Agents
+continue to use real target addresses and receive no proxy variables or SOCKS endpoint. The password
+is stored as a non-searchable `0600` credential Artifact and is omitted from events and route snapshots.
+Because SOCKS5 carries TCP, scoped TCP tools such as `curl`, `nmap -sT`, and TCP clients use the proxy;
+route-matched UDP and ICMP fail closed.
+
+Resume one specific unfinished session without repeating or replacing its Goal or authorized Scope:
+
+```bash
+npm start -- --resume 20260720-080000Z-a1b2c3d4
+```
+
+`--resume` accepts either the session name under `.agent-runtime/sessions/` or its full runtime path. Do not pass `--goal` or `--scope` when resuming.
+
+### CLI options
+
+```text
+--goal <text>                Agent goal
+--scope <entries>            Authorized IPv4/CIDRs/domains (for example baidu.com,*.baidu.com)
+--proxy <socks5-url>         Transparently route all scoped Agent TCP through SOCKS5
+--runtime-dir <path>         Empty directory for a new runtime
+--resume <session>           Resume one runtime; restores Goal and Scope
+--max-cycles <number>        Maximum consecutive no-progress Planner cycles
+--max-parallel-tasks <n>     Maximum concurrent tasks
+--max-run-time-ms <number>   Global run timeout in milliseconds
+--json                       Disable TUI and print final JSON
+--jsonl                      Stream durable events as JSON Lines
+--no-tui                     Disable the interactive TUI
+--help                       Show CLI help
+```
+
+Domain scope entries are normalized case-insensitively. A bare name such as `baidu.com`
+authorizes that exact DNS name; `*.baidu.com` authorizes subdomains but not the apex name.
+The task Gateway filters DNS queries against those rules and adds returned IPv4 addresses
+to a task-local, expiring kernel set before releasing the DNS response. CIDR entries continue
+to be enforced directly. Domain-derived UDP/ICMP access is limited to addresses learned by
+that task Gateway's controlled DNS path; direct out-of-scope IP access remains rejected.
+
+### Interactive controls
+
+| Key | Action |
+|---|---|
+| `Up` / `Down` | Select the previous or next Agent action |
+| `Enter` | Expand or collapse the selected action |
+| `Tab` / `Shift+Tab` | Cycle through all tasks or one task at a time |
+| `Ctrl+C` | Gracefully interrupt the active run |
+
+### Machine-readable execution
+
+Use JSON Lines when another process needs the complete durable event stream:
+
+```bash
+npm start -- \
+  --goal "Inspect the authorized target 127.0.0.1" \
+  --scope "127.0.0.1/32" \
+  --jsonl
+```
+
+The final JSONL record has `type: "result"`; all preceding records have `type: "event"`.
+
+---
+
+## <a id="agent-workbench"></a>🖥️ Agent Workbench
+
+v2 includes two observation surfaces over the same durable runtime.
+
+### Terminal workbench
+
+The TUI focuses on the live execution loop:
+
+- Planner and runtime transitions.
+- Task-scoped Agent intent.
+- Correlated tool calls and result previews.
+- Expandable inline output and on-demand artifact-backed details, bounded to 64 KiB per artifact in the terminal.
+- Parallel Executor identity and aggregate task status.
+- Graceful interruption feedback.
+
+### Web workbench
+
+Start the authenticated Web service against the selected CLI session directory:
+
+```bash
+npm run web -- --runtime-dir .agent-runtime/sessions/<session> --port 8787
+```
+
+Open <http://127.0.0.1:8787>. The first registered user becomes the administrator; later users are created as analysts.
+
+The Web workbench is primarily an observability surface: it reads persisted graph, event, artifact, and runtime state. It can also start new runs inside the Web process (goal + authorized scope) and gracefully stop runs that it started; runs launched from the CLI remain observable but cannot be stopped from the Web UI.
+
+All `/api/*` traffic and connectivity endpoints require a valid session. Analysts may read runtime metadata, sensitive proxy history, and connection status, but connectivity lifecycle mutations require the administrator-only `connectivity:manage` capability. No delete/export traffic endpoint is exposed. GET requests are CSRF-exempt, while mutations require the same-origin double-submit token. Runtime paths are canonicalized beneath the configured `--runtime-dir` root, including symlink checks, so the API is not an arbitrary filesystem browser.
+
+Each Docker Executor uses a private internal network and a separate per-Task Gateway network namespace. The Executor receives no proxy variables or SOCKS endpoint: ordinary `curl`, language sockets, and TCP clients keep the real destination address. All IPv4 TCP is policy-routed through one Go protocol Gateway. Plain HTTP and TLS that explicitly negotiates HTTP/1.1 or HTTP/2 are captured on any port; unknown TLS and other TCP protocols are relayed unchanged. Direct connections use an authenticated host-side dial broker, which waits for the host kernel's real target result before the Gateway completes the Executor-side handshake; route-matched connections instead use a Runtime-managed SSH, Chisel, or authenticated upstream SOCKS5 Connector and never fall back to direct. UDP and ICMP are attributed from conntrack telemetry, and route-matched UDP/ICMP fails closed.
+
+The normalized root Scope is compiled into each task Gateway. CIDRs are enforced directly; domain rules are enforced by controlled DNS plus task-local expiring address sets. Direct TCP, UDP, and ICMP destinations outside those rules are rejected. A live managed Route may authorize TCP to its own CIDR without widening the root Scope; route-matched UDP and ICMP remain rejected.
+
+Each epoch persists segmented `.mitm` capture files plus `.net.jsonl` connection telemetry under `<runtime>/traffic/flows/<task>/`. HTTP request/response bodies are truncated only in the persisted copy; live forwarding is unchanged. A read-only Index container rebuilds its view from those files after restart, so a dead localhost index process is not a second source of truth. The sidebar's **Web Traffic** view uses opaque `flowRef` identifiers and distinguishes HTTP from raw TCP; bodies are loaded on demand, rendered as escaped text, and expose truncation or eviction states explicitly.
+
+Replay is administrator-only; analysts can inspect exchanges but cannot replay them. The endpoint is `POST /api/traffic/history/:id/replay`, protected by session authorization and the same-origin double-submit CSRF check. `runtimeDir` and all optional method, URL, header, body, route, session, task, and run overrides belong to the allowlisted JSON request body, not the query string. The Web body override is base64 and currently limits `data` to 16 KiB of characters. Confirmation displays only target summary/counts, and `ExecutionLog` records `traffic_replay_requested`, `traffic_replay_succeeded`, or `traffic_replay_failed` with server-derived user/runtime attribution and stable result/error identifiers, never override URL, headers, body, or other request secrets.
+
+A replay is persisted as a separate HTTP flow whose `replay_of` points to the immutable source flow. Active runs reuse their managed network and routes. Historical browsing uses a separate read-only Index; direct Replay lazily starts only a run network and one reusable Replay Gateway, while routed operations additionally restore the Connector and route definitions on demand. Replay keeps the original `routeRef` and `connectionRef`, never falls back to direct when that route is unavailable, and can resume after the administrator reconnects the same route reference.
+
+Replay accepts only complete captured HTTP requests and preserves method, URL, headers, body, route provenance, and the HTTP editor. Raw TCP, UDP, ICMP, incomplete request bodies, and evicted payloads are not replayable. There are no traffic export/delete endpoints.
+
+Connections and routes are persisted independently of graph projection. A Connection is a command channel; a Route is network reachability and may be backed by a Connection. `route_stop` preserves the definition, while `route_reconnect` restores the original reference. The Projector consumes typed connectivity observations to create semantic `ShellSession`, `session_on`, and discovered-host `proxy_route` facts; Runtime containers and Docker aliases never become graph hosts.
+
+The sidebar's **Connections** view lists Connection and Route desired/observed state, backing references, heartbeat, target CIDRs, failures, and operation-graph links. Lifecycle mutations are administrator-only and accept credential references rather than inline secrets. Agent-managed SSH, Chisel, and upstream SOCKS5 routes can be stopped and reconnected; channels created autonomously in Bash remain audited as unmanaged traffic and are not given a fabricated recoverable reference.
+
+---
+
+## <a id="system-architecture"></a>🏗️ System Architecture
+
+```mermaid
+flowchart TB
+    User[User goal and authorized scope] --> Controller
+
+    subgraph Runtime[LuaN1ao Runtime]
+        Controller --> Planner
+        Planner --> TaskGraph[(Task Graph)]
+        TaskGraph --> Scheduler[Capacity-aware reconcile scheduler]
+        Scheduler --> ExecutorA[Executor session A]
+        Scheduler --> ExecutorB[Executor session B]
+        ExecutorA --> ExecutionLog[(ExecutionLog)]
+        ExecutorB --> ExecutionLog
+        ExecutionLog --> Supervisor
+        ExecutionLog --> Projector
+        Supervisor --> Controller
+        Projector --> ReasoningGraph[(Reasoning Graph)]
+        Projector --> OperationGraph[(Operation Graph)]
+        ExecutionLog --> Artifacts[(Artifact Store)]
+    end
+
+    ExecutionLog --> TUI[Terminal workbench]
+    ExecutionLog --> Web[Authenticated Web workbench]
+    TaskGraph --> Web
+    ReasoningGraph --> Web
+    OperationGraph --> Web
+```
+
+### Runtime invariants
+
+- Planner owns task graph decisions; Executor never edits task topology.
+- Executor owns low-level action selection within the `TaskEnvelope` boundary.
+- Supervisor controls continuation but does not project semantic graph facts.
+- Projector writes reasoning and operation graphs but cannot mutate task nodes.
+- Every Agent invocation has an explicit terminating tool contract.
+- Projector desired and committed watermarks are monotonic.
+- Graph mutations and committed projection watermarks are atomic.
+- Persisted events and artifacts remain the source of truth for observability.
+
+### Repository layout
+
+```text
+LuaN1aoAgent/
+├── src/
+│   ├── agents.ts                 # Planner, Executor, and Observer session factories
+│   ├── controller.ts             # Scheduling, lifecycle, supervision, and recovery
+│   ├── pi-runner.ts              # Pi invocation and normalized event logging
+│   ├── projection.ts             # Observation and graph projection contracts
+│   ├── executor-sandbox.ts       # Seatbelt/Bubblewrap/workspace host backends
+│   ├── executor-sandbox-docker.ts # Per-Task Docker Executor backend
+│   ├── projector-coordinator.ts  # Single-owner asynchronous projection scheduler
+│   ├── connectivity/             # ConnectivityRuntime, Gateway, Route, Replay, Index
+│   ├── stores/
+│   │   ├── execution-log.ts      # Durable event ledger
+│   │   ├── graph-store.ts        # Tri-graph persistence and atomic mutation
+│   │   ├── runtime-store.ts      # Execution and projector runtime state
+│   │   └── artifact-store.ts     # Content-addressed artifacts
+│   ├── tools/                    # Pi graph, artifact, and runtime tools
+│   ├── tui/                      # Interactive terminal workbench
+│   ├── cli.ts                    # CLI entry point
+│   └── web-server.ts             # Authenticated workbench server (start/stop runs)
+├── web/                          # React Agent workbench
+├── test/                         # Runtime and transition tests
+├── executor-image/               # Docker Executor image
+├── network-image/                # Gateway/Connector/Index image
+├── traffic-proxy/                # Workspace-compatible explicit HTTP proxy
+├── package.json
+└── README.md
+```
+
+---
+
+## 🔄 v1 to v2
+
+| Area | v1 | v2 |
+|---|---|---|
+| Runtime | Python | TypeScript + Pi SDK |
+| Agent model | Planner / Executor / Reflector | Planner / Executor / Observer |
+| Observer behavior | Shared reflection loop | Independent Supervisor and Projector calls |
+| Memory | Task and causal graph state | Task, reasoning, and operation graphs |
+| Evidence | Mixed runtime and graph records | Normalized events, artifacts, and evidence references |
+| Parallelism | Shared runtime coordination | Deterministic admitted waves and task-scoped sessions |
+| Terminal | Formatted logs | Interactive grouped-action timeline |
+| Web UI | Task management dashboard | Authenticated runtime observability workbench |
+
+The Python v1 implementation remains available on the [`v1` branch](https://github.com/SanMuzZzZz/LuaN1aoAgent/tree/v1) and in the [`v1.0.0` release](https://github.com/SanMuzZzZz/LuaN1aoAgent/releases/tag/v1.0.0).
+
+---
+
+## <a id="roadmap"></a>🗓️ Roadmap
+
+- [x] Pi SDK Planner, Executor, and Observer runtime
+- [x] Tri-graph persistence and evidence projection
+- [x] Parallel task admission and isolated Executor sessions
+- [x] Isolated task sessions and graceful interruption
+- [x] Authenticated Web observability workbench
+- [x] Interactive grouped-action terminal timeline
+- [ ] Stable v2 extension API for additional tools
+- [ ] Human approval gates for high-risk actions
+- [ ] Packaged container runtime and deployment profiles
+- [ ] Reproducible public benchmark suite for v2
+- [ ] Cross-run capability memory with explicit provenance
+
+---
+
+## 🧪 Development
+
+```bash
+# Compile server and Web UI
+npm run build
+
+# Run all server and Web tests
+npm test
+
+# Run Web tests only
+npm run test:web
+
+# Start the Web UI development server
+npm run web:dev
+```
+
+---
+
+## 🔐 Security Disclaimer
+
+**This software is intended for authorized security testing, controlled research, and education only.**
+
+By downloading, installing, or using LuaN1ao, you acknowledge that:
+
+- You must obtain explicit authorization from the owner of every tested system.
+- You are responsible for defining and enforcing the allowed scope.
+- The software can execute shell commands and interact with network services.
+- Sandbox boundaries reduce risk but do not replace host isolation.
+- The software is provided "AS IS" without warranties or guarantees.
+- The maintainers and contributors are not responsible for damage, data loss, or legal consequences caused by misuse.
+
+Run LuaN1ao only in an isolated environment and never target production systems without written authorization.
+
+---
+
+## 👥 Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=SanMuzZzZz/LuaN1aoAgent)](https://github.com/SanMuzZzZz/LuaN1aoAgent/graphs/contributors)
+
+---
+
+## 🤝 Contribution
+
+Contributions are welcome, including bug reports, runtime tests, documentation, tool integrations, and architecture improvements.
+
+1. Open an [Issue](https://github.com/SanMuzZzZz/LuaN1aoAgent/issues) for bugs or design proposals.
+2. Fork the repository and create a focused branch.
+3. Add tests for every changed Agent or runtime boundary.
+4. Submit a Pull Request with the behavioral change and verification evidence.
+
+---
+
+## 📝 License
+
+LuaN1aoAgent v2 is licensed under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`) for personal and educational use.
+
+**Commercial Use**: If you wish to use this project in a commercial or proprietary environment without the AGPL-3.0 open-source obligations, **please [contact the maintainer](#-contact) to obtain a commercial license.**
+
+**Contributions**: By submitting a Pull Request, you agree that your contributions may be used under both the AGPL-3.0 and the project's commercial license.
+
+---
+
+## 📞 Contact
+
+- GitHub Issues: [SanMuzZzZz/LuaN1aoAgent Issues](https://github.com/SanMuzZzZz/LuaN1aoAgent/issues)
+- GitHub Discussions: [SanMuzZzZz/LuaN1aoAgent Discussions](https://github.com/SanMuzZzZz/LuaN1aoAgent/discussions)
+- Email: <1614858685x@gmail.com>
+- WeChat: `SanMuzZzZzZz`
+
+---
+
+## ⭐ Star History
+
+[![Star History Chart](https://star-history.dera.page/image?repos=SanMuzZzZz/LuaN1aoAgent&type=date&legend=top-left)](https://star-history.dera.page/#SanMuzZzZz/LuaN1aoAgent&type=date&legend=top-left)

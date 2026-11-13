@@ -1,0 +1,23 @@
+{
+    "description": "Merging lists (#3233)",
+    "want": [
+        {
+            "message": {
+                "apiVersion": "api.cerbos.dev/v1",
+                "exportConstants": {
+                    "name": "a",
+                    "definitions": {
+                        "b": {
+                            "c": ["d"],
+                            "e": "f"
+                        },
+                        "g": {
+                            "c": ["h"],
+                            "e": "f"
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

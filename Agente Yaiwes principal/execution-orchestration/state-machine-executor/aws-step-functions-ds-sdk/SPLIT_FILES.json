@@ -1,0 +1,23 @@
+[
+  {
+    "repo": "AWS-Step-Functions-DS-SDK",
+    "path": "tests/data/one_p_mnist/mnist.pkl.gz",
+    "chunks_dir": "AWS-Step-Functions-DS-SDK/tests/data/one_p_mnist/mnist.pkl.gz.chunks",
+    "bytes": 16168813,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "AWS-Step-Functions-DS-SDK",
+    "path": "tests/data/sklearn_mnist/train/train.npz",
+    "chunks_dir": "AWS-Step-Functions-DS-SDK/tests/data/sklearn_mnist/train/train.npz.chunks",
+    "bytes": 9851237,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "AWS-Step-Functions-DS-SDK",
+    "path": "tests/data/pytorch_mnist/MNIST/processed/training.pt",
+    "chunks_dir": "AWS-Step-Functions-DS-SDK/tests/data/pytorch_mnist/MNIST/processed/training.pt.chunks",
+    "bytes": 47520470,
+    "chunk_bytes": 8388608
+  }
+]

@@ -1,0 +1,454 @@
+"""FastAPI router for LLM-backend management endpoints.
+
+Exposes GET /api/backends, GET /api/backends/vllm/status and related routes
+used by the Flutter "LLM Backends" settings screen. Separated from the
+main APIChannel app so it can be included or tested independently.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json as _json
+from typing import TYPE_CHECKING, Any, Literal, cast
+
+from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from cognithor.config import CognithorConfig
+    from cognithor.core.vllm_orchestrator import VLLMOrchestrator
+
+
+backends_router = APIRouter(prefix="/api/backends", tags=["backends"])
+
+
+class StartRequest(BaseModel):
+    model: str
+
+
+class SetVlmQualityRequest(BaseModel):
+    """POST body for ``/api/backends/vllm/quality-default``.
+
+    ``quality`` may be ``None`` to clear the override and let the
+    :class:`cognithor.core.vlm_router.VlmRouter` decide per-request.
+    """
+
+    quality: Literal["fast", "balanced", "premium"] | None
+
+
+class SetActiveRequest(BaseModel):
+    backend: Literal[
+        "ollama",
+        "openai",
+        "anthropic",
+        "gemini",
+        "groq",
+        "deepseek",
+        "mistral",
+        "together",
+        "openrouter",
+        "xai",
+        "cerebras",
+        "github",
+        "bedrock",
+        "huggingface",
+        "moonshot",
+        "lmstudio",
+        "vllm",
+        "llama_cpp",
+        "claude-code",
+        "claude-code-supervised",
+    ]
+
+
+# Module-level orchestrator singleton. Reset across app builds by wiring
+# through app.state.config → build_backends_app().
+_orchestrator_cache: dict[int, VLLMOrchestrator] = {}
+
+
+def _get_orchestrator(config: CognithorConfig) -> VLLMOrchestrator:
+    """Lazy-initialized singleton keyed by config id. Same config → same orchestrator."""
+    from cognithor.core.vllm_orchestrator import VLLMOrchestrator
+
+    key = id(config)
+    if key not in _orchestrator_cache:
+        _orchestrator_cache[key] = VLLMOrchestrator(
+            docker_image=config.vllm.docker_image,
+            port=config.vllm.port,
+            hf_token=config.huggingface_api_key,
+            config=config.vllm,
+        )
+    return _orchestrator_cache[key]
+
+
+def _resolve_orchestrator(request: Request) -> VLLMOrchestrator:
+    """Return the VLLMOrchestrator for this request.
+
+    Prefers the Gateway-owned instance registered on ``app.state.vllm_orchestrator``
+    (which has ``media_url`` wired after the MediaUploadServer starts). Falls back
+    to the module-level cache only in standalone API mode, when no Gateway is
+    attached to the app (e.g. test fixtures, future headless-daemon mode).
+
+    Bug C1-r3: without this unification the backends_api endpoints and the
+    Gateway held two separate VLLMOrchestrator instances, so ``start_container``
+    launched vLLM without ``-e COGNITHOR_MEDIA_URL=...`` and the container
+    could not fetch uploaded media.
+    """
+    orch = getattr(request.app.state, "vllm_orchestrator", None)
+    if orch is not None:
+        return cast("VLLMOrchestrator", orch)
+
+    config: CognithorConfig = request.app.state.config
+    return _get_orchestrator(config)
+
+
+@backends_router.get("")
+async def list_backends(request: Request) -> dict[str, Any]:
+    """Return every configured backend with its current readiness."""
+    config: CognithorConfig = request.app.state.config
+    backends = [
+        {
+            "name": "ollama",
+            "enabled": config.llm_backend_type == "ollama",
+            "status": "ready",
+        }
+    ]
+    orch = _resolve_orchestrator(request)
+    st = orch.status()
+    if st.container_running:
+        vllm_status = "ready"
+    elif config.vllm.enabled:
+        vllm_status = "configured"
+    else:
+        vllm_status = "disabled"
+    backends.append(
+        {
+            "name": "vllm",
+            "enabled": config.vllm.enabled,
+            "status": vllm_status,
+        }
+    )
+    return {"active": config.llm_backend_type, "backends": backends}
+
+
+@backends_router.get("/vllm/status")
+async def vllm_status(request: Request) -> dict[str, Any]:
+    """Return the current VLLMState as JSON for the Flutter setup page."""
+    orch = _resolve_orchestrator(request)
+    # /vllm/status is a status endpoint -- it must reflect reality, not a
+    # cached snapshot. Probe GPU *and* Docker live on every poll: caching would
+    # latch onto a stale value when an (e)GPU is hot-plugged, a driver crashes,
+    # or Docker Desktop is started/stopped. The probes run in worker threads so
+    # the nvidia-smi / docker subprocesses never block the event loop, and a
+    # transient failure self-heals on the next 2s poll.
+    try:
+        await asyncio.to_thread(orch.check_hardware)
+    except Exception:
+        # nvidia-smi unavailable right now -- report no GPU, never a stale one.
+        orch.state.hardware_info = None
+        orch.state.hardware_ok = False
+    with contextlib.suppress(Exception):
+        await asyncio.to_thread(orch.check_docker)
+    st = orch.status()
+    hw = None
+    if st.hardware_info:
+        hw = {
+            "gpu_name": st.hardware_info.gpu_name,
+            "vram_gb": st.hardware_info.vram_gb,
+            "compute_capability": st.hardware_info.sm_string,
+        }
+    return {
+        "hardware_ok": st.hardware_ok,
+        "hardware_info": hw,
+        "docker_ok": st.docker_ok,
+        "image_pulled": st.image_pulled,
+        "container_running": st.container_running,
+        "current_model": st.current_model,
+        "last_error": st.last_error,
+    }
+
+
+@backends_router.post("/vllm/check-hardware")
+async def check_hardware_endpoint(request: Request) -> dict[str, Any]:
+    orch = _resolve_orchestrator(request)
+    try:
+        info = orch.check_hardware()
+    except Exception as exc:
+        from cognithor.core.llm_backend import VLLMHardwareError
+
+        if isinstance(exc, VLLMHardwareError):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": str(exc),
+                    "recovery_hint": exc.recovery_hint,
+                },
+            ) from exc
+        raise HTTPException(status_code=500, detail={"message": str(exc)}) from exc
+    return {
+        "gpu_name": info.gpu_name,
+        "vram_gb": info.vram_gb,
+        "compute_capability": info.sm_string,
+    }
+
+
+@backends_router.post("/vllm/start")
+async def vllm_start(request: Request, body: StartRequest) -> dict[str, Any]:
+    orch = _resolve_orchestrator(request)
+    try:
+        # start_container() blocks for up to ~2 min (docker run + polling the
+        # vLLM /health endpoint). Run it in a worker thread so the gateway
+        # event loop stays responsive -- a synchronous call freezes the loop,
+        # then the launcher's health monitor sees the gateway as dead and
+        # kills it ("Backend has stopped").
+        info = await asyncio.to_thread(orch.start_container, body.model)
+    except Exception as exc:
+        from cognithor.core.llm_backend import VLLMNotReadyError
+
+        if isinstance(exc, VLLMNotReadyError):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": str(exc),
+                    "recovery_hint": getattr(exc, "recovery_hint", ""),
+                },
+            ) from exc
+        raise HTTPException(status_code=500, detail={"message": str(exc)}) from exc
+    return {
+        "container_id": info.container_id,
+        "port": info.port,
+        "model": info.model,
+    }
+
+
+@backends_router.post("/vllm/stop")
+async def vllm_stop(request: Request) -> dict[str, Any]:
+    orch = _resolve_orchestrator(request)
+    # docker stop is blocking -- offload so the event loop is not frozen.
+    await asyncio.to_thread(orch.stop_container)
+    return {"status": "stopped"}
+
+
+@backends_router.post("/active")
+async def set_active_backend(request: Request, body: SetActiveRequest) -> dict[str, Any]:
+    """Switch the active LLM backend, re-init UnifiedLLMClient, persist it.
+
+    The new backend is written to config.yaml so it survives a gateway
+    restart -- without this the active backend reverts to the config
+    default on every restart.
+    """
+    gateway = request.app.state.gateway
+    if gateway is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"message": "Gateway not wired — backend switching not available"},
+        )
+    gateway.rebuild_llm_client(body.backend)
+    # Persist to YAML so the choice sticks across restarts (mirrors
+    # vllm_quality_default_set).
+    config = getattr(request.app.state, "config", None)
+    save_fn = getattr(request.app.state, "save_config", None)
+    if config is not None and callable(save_fn):
+        config.llm_backend_type = body.backend
+        try:
+            save_fn(config)
+        except Exception as exc:
+            return {
+                "active": body.backend,
+                "warning": f"In-memory updated; on-disk save failed: {exc}",
+            }
+    return {"active": body.backend}
+
+
+@backends_router.get("/vllm/quality-default")
+async def vllm_quality_default_get(request: Request) -> dict[str, Any]:
+    """Return the configured VLM-router quality override + the available tiers.
+
+    ``current`` is the value of ``config.vllm.quality_default`` (None means
+    "let the router classify each request"). ``profiles`` carries the full
+    ``VlmProfile`` surface — name, description, throughput, quality_pct,
+    memory footprint, model_id — so the Flutter dropdown can render rich
+    rows without a second round-trip.
+    """
+    from cognithor.core.vlm_router import VLM_PROFILES
+
+    config = cast("CognithorConfig", request.app.state.config)
+    current = getattr(config.vllm, "quality_default", None)
+    profiles = [
+        {
+            "name": p.name,
+            "model_id": p.model_id,
+            "description": p.description,
+            "expected_throughput_tok_s": p.expected_throughput_tok_s,
+            "relative_quality_pct": p.relative_quality_pct,
+            "memory_footprint_gib": p.memory_footprint_gib,
+            "quality_tier": p.quality_tier,
+        }
+        for p in VLM_PROFILES.values()
+    ]
+    return {"current": current, "profiles": profiles}
+
+
+@backends_router.post("/vllm/quality-default")
+async def vllm_quality_default_set(request: Request, body: SetVlmQualityRequest) -> dict[str, Any]:
+    """Persist a VLM-router quality override (or clear it with ``null``).
+
+    Writes to ``config.vllm.quality_default`` *and* the on-disk YAML so
+    the override survives a restart. The next ``VlmRouter.select_profile``
+    call picks it up via Layer-2 of the precedence chain.
+    """
+    from cognithor.core.vlm_router import VLM_PROFILES
+
+    config = cast("CognithorConfig", request.app.state.config)
+    if body.quality is not None and body.quality not in VLM_PROFILES:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": f"Unknown VLM quality {body.quality!r}",
+                "valid_options": sorted(VLM_PROFILES),
+            },
+        )
+    config.vllm.quality_default = body.quality
+    # Persist to YAML so the choice sticks across restarts.
+    save_fn = getattr(request.app.state, "save_config", None)
+    if callable(save_fn):
+        try:
+            save_fn(config)
+        except Exception as exc:
+            return {
+                "current": body.quality,
+                "warning": f"In-memory updated; on-disk save failed: {exc}",
+            }
+    return {"current": body.quality}
+
+
+@backends_router.get("/vllm/logs")
+async def vllm_logs(request: Request) -> dict[str, Any]:
+    orch = _resolve_orchestrator(request)
+    return {"lines": orch.get_logs()}
+
+
+@backends_router.get("/vllm/available-models")
+async def vllm_available_models(request: Request) -> dict[str, Any]:
+    """Return the curated vLLM model registry filtered against detected hardware.
+
+    Response shape:
+        {
+          "recommended_id": "<model id or null>",
+          "models": [ {<ModelEntry fields>, "fits": bool}, ... ]
+        }
+    """
+    import json as _json
+    from pathlib import Path
+
+    from cognithor.core.vllm_orchestrator import ModelEntry
+
+    orch = _resolve_orchestrator(request)
+
+    registry_path = Path(__file__).resolve().parents[1] / "cli" / "model_registry.json"
+    registry_data = _json.loads(registry_path.read_text(encoding="utf-8"))
+    entries = [ModelEntry.from_dict(m) for m in registry_data["providers"]["vllm"]["models"]]
+
+    hw = orch.state.hardware_info
+    if hw is None:
+        try:
+            hw = orch.check_hardware()
+        except Exception:
+            hw = None
+
+    recommended_id: str | None = None
+    fits_ids: set[str] = set()
+    if hw is not None:
+        best = orch.recommend_model(hw, entries)
+        recommended_id = best.id if best else None
+        fits_ids = {m.id for m in orch.filter_registry(hw, entries)}
+
+    return {
+        "recommended_id": recommended_id,
+        "models": [
+            {
+                "id": e.id,
+                "display_name": e.display_name,
+                "quantization": e.quantization,
+                "vram_gb_min": e.vram_gb_min,
+                "min_compute_capability": e.min_compute_capability,
+                "priority": e.priority,
+                "tested": e.tested,
+                "notes": e.notes,
+                "fits": e.id in fits_ids,
+            }
+            for e in entries
+        ],
+    }
+
+
+@backends_router.post("/vllm/pull-image")
+async def vllm_pull_image(request: Request) -> StreamingResponse:
+    """Stream docker-pull progress to the client as SSE."""
+    config: CognithorConfig = request.app.state.config
+    orch = _resolve_orchestrator(request)
+
+    queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+
+    def progress_cb(event: dict[str, Any]) -> None:
+        queue.put_nowait(event)
+
+    async def worker() -> None:
+        """Run the blocking pull_image in a thread, enqueue events, sentinel at end."""
+        try:
+            await asyncio.to_thread(
+                orch.pull_image,
+                config.vllm.docker_image,
+                progress_callback=progress_cb,
+            )
+        finally:
+            queue.put_nowait(None)
+
+    async def event_stream() -> Any:
+        task = asyncio.create_task(worker())
+        error: str | None = None
+        completed = False
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    completed = True
+                    break
+                yield f"data: {_json.dumps(event)}\n\n"
+        finally:
+            # Clean finish: the worker already settled (it enqueues the
+            # sentinel from its own finally). Early exit (client disconnect):
+            # cancel so a multi-GB docker pull is not awaited for minutes.
+            # Never re-raise -- a propagating exception aborts the SSE stream
+            # and the client only sees "connection closed" with no reason.
+            if not completed and not task.done():
+                task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                error = str(exc)
+        if error is not None:
+            yield f"data: {_json.dumps({'error': error})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def build_backends_app(
+    *,
+    config: CognithorConfig,
+    gateway: object | None = None,
+) -> FastAPI:
+    """Minimal FastAPI app exposing just the backends router.
+
+    Used by tests. In production the router is included directly in the
+    APIChannel's main app.
+    """
+    app = FastAPI()
+    app.state.config = config
+    app.state.gateway = gateway
+    app.include_router(backends_router)
+    return app

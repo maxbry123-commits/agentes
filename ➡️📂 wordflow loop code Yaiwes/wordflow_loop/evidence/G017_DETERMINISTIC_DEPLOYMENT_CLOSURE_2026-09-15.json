@@ -1,0 +1,69 @@
+{
+  "checks": {
+    "atomic_promotion": true,
+    "content_addressed_hash": true,
+    "forced_failure": true,
+    "post_promote_readback": true,
+    "real_health_check": true,
+    "real_smoke_check": true,
+    "rollback_health_verified": true,
+    "rollback_restored_previous": true
+  },
+  "container_image": "python:3.12-alpine",
+  "container_image_id": "sha256:28eb0cb65acb65b970e85c0dc57d10067868fae8dd00d072413df273132123ac",
+  "date": "2026-09-15",
+  "deployment_test": {
+    "candidate_hash_verified": true,
+    "canonical_gate": "PROMOTE_READY",
+    "forced_bad_candidate": {
+      "candidate_sha256": "cf9d547ac6e4728c72e8d5738b9f314e9d373db7e04ab29e3ed3570795fce570",
+      "current_release": "/tmp/yaiwes-g022-g017-yz09jcuc/deployment/releases/9efce66d2031e770b3bab1769f8122deacba93cba6dabf0636174ba0431e6b11",
+      "evidence": [
+        "hash_verified",
+        "atomic_promote",
+        "post_promote_failure",
+        "rollback_attempted"
+      ],
+      "health_ok": false,
+      "previous_release": "/tmp/yaiwes-g022-g017-yz09jcuc/deployment/releases/9efce66d2031e770b3bab1769f8122deacba93cba6dabf0636174ba0431e6b11",
+      "rollback_health_ok": true,
+      "rollback_performed": true,
+      "smoke_ok": false,
+      "status": "ROLLBACK_VERIFIED"
+    },
+    "id": 4,
+    "name": "deterministic_deploy_health_smoke_rollback",
+    "post_promote_gate": "DEPLOYED_VERIFIED",
+    "promotion": {
+      "candidate_sha256": "9efce66d2031e770b3bab1769f8122deacba93cba6dabf0636174ba0431e6b11",
+      "current_release": "/tmp/yaiwes-g022-g017-yz09jcuc/deployment/releases/9efce66d2031e770b3bab1769f8122deacba93cba6dabf0636174ba0431e6b11",
+      "evidence": [
+        "hash_verified",
+        "atomic_promote",
+        "health_pass",
+        "smoke_pass",
+        "readback_pass"
+      ],
+      "health_ok": true,
+      "previous_release": null,
+      "rollback_health_ok": false,
+      "rollback_performed": false,
+      "smoke_ok": true,
+      "status": "DEPLOYED_VERIFIED"
+    },
+    "result": "PASS"
+  },
+  "docker_server": "28.0.4",
+  "finished_at": 1789449165,
+  "g017_closed": true,
+  "gap_id": "G-017",
+  "github_run_id": "34931798702",
+  "github_sha": "e788c526b8a9101440cb3a9a1e2fe347154dfeb0",
+  "result": "PASS_DETERMINISTIC_DEPLOY_AND_ROLLBACK",
+  "runner": "GitHub Actions 1000004905",
+  "runner_os": "Linux",
+  "schema": "yaiwes.g017.deterministic-deployment-closure/v1",
+  "started_at": 1789449160,
+  "tests_passed": 4,
+  "tests_total": 4
+}

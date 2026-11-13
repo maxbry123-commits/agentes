@@ -1,0 +1,192 @@
+---
+id: metrics-turn-relevancy
+title: Turn Relevancy
+sidebar_label: Turn Relevancy
+languages: [python, typescript]
+---
+<MetricTagsDisplayer
+  multiTurn={true}
+  chatbot={true}
+  referenceless={true}
+  rag={true}
+/>
+
+The turn relevancy metric is a conversational metric that determines whether your LLM chatbot is able to consistently generate relevant responses **throughout a conversation**.
+
+## Required Arguments
+
+To use the `TurnRelevancyMetric`, you'll have to provide the following arguments when creating a [`ConversationalTestCase`](/docs/evaluation-multiturn-test-cases):
+
+- `turns`
+
+You must provide the `role` and `content` for evaluation to happen. Read the [How Is It Calculated](#how-is-it-calculated) section below to learn more.
+
+## Usage
+
+The `TurnRelevancyMetric()` can be used for [end-to-end](/docs/evaluation-end-to-end-llm-evals) multi-turn evaluation:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import Turn, ConversationalTestCase
+from deepeval.metrics import TurnRelevancyMetric
+from deepeval import evaluate
+
+convo_test_case = ConversationalTestCase(
+    turns=[Turn(role="...", content="..."), Turn(role="...", content="...")]
+)
+metric = TurnRelevancyMetric(threshold=0.5)
+
+# To run metric as a standalone
+# metric.measure(convo_test_case)
+# print(metric.score, metric.reason)
+
+evaluate(test_cases=[convo_test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { Turn, ConversationalTestCase } from "deepeval/test-case";
+import { TurnRelevancyMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+const convoTestCase = new ConversationalTestCase({
+  turns: [new Turn({ role: "user", content: "..." }), new Turn({ role: "assistant", content: "..." })],
+});
+const metric = new TurnRelevancyMetric({ threshold: 0.5 });
+
+// To run metric as a standalone
+// await metric.measure(convoTestCase);
+// console.log(metric.score, metric.reason);
+
+await evaluate([convoTestCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+<Switch>
+
+<Case id="python">
+
+There are **EIGHT** optional parameters when creating a `TurnRelevancyMetric`:
+
+</Case>
+
+<Case id="typescript">
+
+There are **SEVEN** optional parameters when creating a `TurnRelevancyMetric`:
+
+</Case>
+
+</Switch>
+
+- [Optional] `threshold`: a number representing the minimum passing threshold. Can also be set to <Term py="None" ts="null"/> to run the metric in [score-only mode](/docs/metrics-introduction#metric-thresholds). Defaulted to `0.5`.
+- [Optional] `model`: a string specifying which of OpenAI's GPT models to use, **OR** [any custom LLM model](/docs/metrics-introduction#using-a-custom-llm) of type `DeepEvalBaseLLM`. Defaulted to <DefaultLLMModel />.
+- [Optional] <Term py="include_reason" ts="includeReason"/>: a boolean which when set to <Term py="True" ts="true"/>, will include a reason for its evaluation score. Defaulted to <Term py="True" ts="true"/>.
+- [Optional] <Term py="strict_mode" ts="strictMode"/>: a boolean which when set to <Term py="True" ts="true"/>, enforces a binary metric score: 1 for perfection, 0 otherwise. It also overrides the current threshold and sets it to 1. Defaulted to <Term py="False" ts="false"/>.
+- <Only id="python">
+    [Optional] `async_mode`: a boolean which when set to `True`, enables [concurrent execution within the `measure()` method.](/docs/metrics-introduction#measuring-metrics-in-async) Defaulted to `True`.
+  </Only>
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] <Term py="window_size" ts="windowSize"/>: an integer which defines the size of the sliding window of turns used during evaluation. Defaulted to `10`.
+- [Optional] `flaky`: a boolean which when set to <Term py="True" ts="true"/>, [marks the metric as flaky](/docs/metrics-introduction#flaky-metrics). Defaulted to <Term py="False" ts="false"/>.
+
+### As a standalone
+
+You can also run the `ContextualRelevancyMetric` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(convo_test_case)
+print(metric.score, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+...
+
+await metric.measure(convoTestCase);
+console.log(metric.score, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+:::caution
+This is great for debugging or if you wish to build your own evaluation pipeline, but you will **NOT** get the benefits (testing reports, Confident AI platform) and all the optimizations (speed, caching, computation) the `evaluate()` function or `deepeval test run` offers.
+:::
+
+## How Is It Calculated?
+
+The `TurnRelevancyMetric` score is calculated according to the following equation:
+
+<Equation formula="\text{Conversation Relevancy} = \frac{\text{Number of Turns with Relevant Assistant Content}}{\text{Total Number of Assistant Turns}}" />
+
+The `TurnRelevancyMetric` first constructs a sliding windows of turns for each turn, before using an LLM to determine whether the last turn in each sliding window has an `"assistant"` content that is relevant to the previous conversational context found in the sliding window.
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question:
+        "When should I use `TurnRelevancyMetric` instead of the single-turn `AnswerRelevancyMetric`?",
+      answer: (
+        <>
+          On a <code>ConversationalTestCase</code> when each assistant reply must
+          stay relevant given prior turns. The single-turn{" "}
+          <a href="/docs/metrics-answer-relevancy">AnswerRelevancyMetric</a>{" "}
+          judges one input/output pair in isolation.
+        </>
+      ),
+    },
+    {
+      question: "Which turns actually get scored?",
+      answer: (
+        <>
+          Only <code>"assistant"</code> turns — relevant assistant turns over
+          total assistant turns. User and tool turns never affect the numerator.
+        </>
+      ),
+    },
+    {
+      question:
+        "Each reply looks fine on its own but my score is low — why?",
+      answer: (
+        <>
+          Relevancy is judged against a sliding window of prior turns, not just
+          the last message. A reply that ignores context established several
+          turns ago counts as irrelevant. Use <Term py="verbose_mode" ts="verboseMode"/> to see
+          which window dragged the score down.
+        </>
+      ),
+    },
+    {
+      question: "What does window size control and when should I change it?",
+      answer: (
+        <>
+          <Term py="window_size" ts="windowSize"/> (default <code>10</code>) sets how many recent
+          turns are bundled per judgment. Lower it when only recent exchanges
+          matter; raise it when older context still counts.
+        </>
+      ),
+    },
+  ]}
+/>
+

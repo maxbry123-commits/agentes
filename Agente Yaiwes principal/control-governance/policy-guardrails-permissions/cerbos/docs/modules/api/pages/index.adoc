@@ -1,0 +1,1123 @@
+include::ROOT:partial$attributes.adoc[]
+
+= The Cerbos API
+
+include::ROOT:partial$version-check.adoc[]
+
+
+The main API endpoint for making policy decisions is the xref:#check-resources[`/api/check/resources` REST endpoint] (`cerbos.svc.v1.CerbosService/CheckResources` RPC in the gRPC API). You can browse a xref:attachment$cerbos-api.html[static version of the Cerbos OpenAPI specification on this site,window=_blank]. To interactively explore the API, launch a Cerbos PDP instance and access the root directory of the HTTP endpoint using a browser.
+
+
+[source,sh,subs="attributes"]
+----
+docker run --rm --name cerbos -p 3592:3592 -p 3593:3593 {app-docker-img}
+----
+
+Navigate to link:http://localhost:3592/[] using your browser to explore the Cerbos API documentation.
+
+Alternatively, you can explore the API using the following methods as well:
+
+* Using an OpenAPI-compatible software like link:https://www.postman.com[Postman] or link:https://insomnia.rest[Insomnia] to explore the Cerbos OpenAPI spec available at http://localhost:3592{cerbos-openapi-schema}.
+* Using link:https://github.com/fullstorydev/grpcurl[grpcurl] or any other tool that supports link:https://github.com/grpc/grpc/blob/master/doc/server-reflection.md[gRPC server reflection] API to explore the gRPC API exposed on port 3593.
+
+== Client SDKs
+
+* image:go.svg[alt="Go",width=40,height=40,link="https://pkg.go.dev/github.com/cerbos/cerbos-sdk-go/cerbos"]link:https://pkg.go.dev/github.com/cerbos/cerbos-sdk-go/cerbos[&ensp;Go]
+* image:java.svg[alt="Java",width=40,height=40,link="https://github.com/cerbos/cerbos-sdk-java"]link:https://github.com/cerbos/cerbos-sdk-java[&ensp;Java]
+* image:javascript.svg[alt="JavaScript",width=40,height=40,link="https://github.com/cerbos/cerbos-sdk-javascript"]link:https://github.com/cerbos/cerbos-sdk-javascript[&ensp;JavaScript]
+* image:dot-net.svg[alt=".NET",width=40,height=40,link="https://github.com/cerbos/cerbos-sdk-net"]link:https://github.com/cerbos/cerbos-sdk-net[&ensp;.NET]
+* image:laravel.svg[alt="Laravel",width=40,height=40,link="https://github.com/cerbos/cerbos-sdk-laravel"]link:https://github.com/cerbos/cerbos-sdk-laravel[&ensp;Laravel]
+* image:php.svg[alt="PHP",width=40,height=40,link="https://github.com/cerbos/cerbos-sdk-php"]link:https://github.com/cerbos/cerbos-sdk-php[&ensp;PHP]
+* image:python.svg[alt="Python",width=40,height=40,link="https://github.com/cerbos/cerbos-sdk-python"]link:https://github.com/cerbos/cerbos-sdk-python[&ensp;Python]
+* image:ruby.svg[alt="Ruby",width=40,height=40,link="https://github.com/cerbos/cerbos-sdk-ruby"]link:https://github.com/cerbos/cerbos-sdk-ruby[&ensp;Ruby]
+* image:rust.svg[alt="Rust",width=40,height=40,link="https://github.com/cerbos/cerbos-sdk-rust"]link:https://github.com/cerbos/cerbos-sdk-rust[&ensp;Rust]
+
+Other languages coming soon
+
+== Demos
+
+NOTE: Demos are constantly being added or updated by the Cerbos team. Visit https://github.com/orgs/cerbos/repositories?language=&q=demo&sort=&type=all for the latest list.
+
+* link:https://github.com/cerbos/demo-python[Application (Python)]
+* link:https://github.com/cerbos/demo-graphql[GraphQL Service (NodeJS)]
+* link:https://github.com/cerbos/demo-rest[REST Service (Go)]
+
+.Get help
+****
+
+* link:http://go.cerbos.io/slack[Join the Cerbos community on Slack]
+* mailto:help@cerbos.dev[Email us at help@cerbos.dev]
+* link:https://www.cerbos.dev/workshop?utm_campaign=brand_cerbos&utm_source=documentation&utm_medium=text&utm_content=api_index[Talk to an engineer about API integration or query plans]
+
+****
+
+== Request and response formats
+
+[#check-resources]
+=== `CheckResources` (`/api/check/resources`)
+
+This is the main API entrypoint for checking permissions for a set of resources.
+
+.Request
+[source,json,linenums]
+----
+{
+  "requestId": "test", <1>
+  "principal": {
+    "id": "alice", <2>
+    "policyVersion": "20210210", <3>
+    "scope": "acme.corp", <4>
+    "roles": [ <5>
+      "employee"
+    ],
+    "attr": { <6>
+      "department": "accounting",
+      "geography": "GB",
+      "team": "design"
+    }
+  },
+  "resources": [ <7>
+    {
+      "resource": {
+        "id": "XX125", <8>
+        "kind": "leave_request", <9>
+        "policyVersion": "20210210", <10>
+        "scope": "acme.corp", <11>
+        "attr": { <12>
+          "department": "accounting",
+          "geography": "GB",
+          "id": "XX125",
+          "owner": "john",
+          "team": "design"
+        }
+      },
+      "actions": [ <13>
+        "view:public",
+        "approve",
+        "create"
+      ]
+    }
+  ],
+  "auxData": { <14>
+    "jwt": { <15>
+        "token": "xxx.yyy.zzz", <16>
+        "keySetId": "ks1" <17>
+    },
+    "jwts": { <18>
+        "app_token": { <19>
+            "token": "xxx.yyy.zzz", <20>
+            "keySetId": "ks1" <21>
+        },
+        "gateway_token": {
+            "token": "aaa.bbb.ccc",
+            "keySetId": "ks2"
+        }
+    }
+  },
+  "includeMeta": true <22>
+}
+----
+<1> Request ID is an optional, application-provided identifier useful for correlating logs.
+<2> ID of the principal whose permissions are being checked. This usually comes from the identity provider (IdP).
+<3> Principal policy version. Optional. The server falls back to the xref:configuration:engine.adoc[configured default version] if this is not specified.
+<4> Principal policy scope. Optional. See xref:policies:scoped_policies.adoc[].
+<5> The roles attached to this principal by the identity provider.
+<6> Free-form context data about this principal. Policy rule conditions are evaluated based on these values.
+<7> List of resources the principal is attempting to access. Up to 50 resources may be provided in a single request by default. This xref:configuration:server.adoc#request-limits[limit can be configured].
+<8> ID of the resource.
+<9> Resource kind. This is used to determine the resource policy that applies to this resource.
+<10> Resource policy version. Optional. The server falls back to the xref:configuration:engine.adoc[configured default version] if this is not specified.
+<11> Resource policy scope. Optional. See xref:policies:scoped_policies.adoc[].
+<12> Free-form context data about this resource. Policy rule conditions are evaluated based on these values.
+<13> List of actions being performed on the resource. Up to 50 actions per resource may be provided by default. This xref:configuration:server.adoc#request-limits[limit can be configured].
+<14> Optional section for providing auxiliary data.
+<15> Single JWT to use as an auxiliary data source. Mutually exclusive with `jwts`.
+<16> Encoded token string.
+<17> ID of the keyset to use to verify the JWT. Optional if only a single xref:configuration:auxdata.adoc[keyset is configured].
+<18> Multiple JWTs to use as auxiliary data. Since Cerbos PDP 0.55.0 only. Mutually exclusive with `jwt`.
+<19> Named JWT.
+<20> Encoded token string.
+<21> ID of the keyset to use to verify the JWT. Optional if only a single xref:configuration:auxdata.adoc[keyset is configured].
+<22> Optional flag to receive metadata about request evaluation.
+
+
+
+.Response
+[source,json,linenums]
+----
+{
+  "requestId": "test", <1>
+  "results": [ <2>
+    {
+      "resource": { <3>
+        "id": "XX125",
+        "kind": "leave_request",
+        "policyVersion": "20210210",
+        "scope": "acme.corp"
+      },
+      "actions": { <4>
+        "view:public": "EFFECT_ALLOW",
+        "approve": "EFFECT_DENY"
+      },
+      "outputs": [ <5>
+        {
+          "src": "resource.leave_request.v20210210/acme#rule-001", <6>
+          "val": "create_allowed:john" <7>
+        },
+        {
+          "src": "resource.leave_request.v20210210#public-view",
+          "val": {
+            "id": "john",
+            "keys": ["foo", "bar", "baz"]
+          }
+        }
+      ],
+      "validationErrors": [ <8>
+        {
+          "path": "/department",
+          "message": "value must be one of \"marketing\", \"engineering\"",
+          "source": "SOURCE_PRINCIPAL"
+        },
+        {
+          "path": "/department",
+          "message": "value must be one of \"marketing\", \"engineering\"",
+          "source": "SOURCE_RESOURCE"
+        }
+      ],
+      "meta": { <9>
+        "actions": {
+          "view:public": {
+            "matchedPolicy": "resource.leave_request.v20210210/acme.corp", <10>
+            "matchedScope": "acme" <11>
+          },
+          "approve": {
+            "matchedPolicy": "resource.leave_request.v20210210/acme.corp"
+          }
+        },
+        "effectiveDerivedRoles": [ <12>
+          "employee_that_owns_the_record",
+          "any_employee"
+        ]
+      }
+    }
+  ],
+  "cerbosCallId": "01HHENANTHFD5DV3HZGDKB87PJ" <13>
+}
+----
+<1> Request ID that was sent with the request.
+<2> List of results. Items are in the same order as they were sent in the request.
+<3> Resource identifiers.
+<4> Access decisions for each of the actions.
+<5> List of outputs from policy evaluation, if there are any. See xref:policies:outputs.adoc[].
+<6> Name of the rule that produced the output.
+<7> Output value produced by the rule.
+<8> Validation errors, if xref:policies:schemas.adoc[schema enforcement] is enabled and the request didn't conform to the schema.
+<9> Metadata (if `includeMeta` was true in the request)
+<10> Name of the policy that produced the decision for this action.
+<11> Name of the scope that was active when the decision was made for the action.
+<12> List of derived roles that were activated.
+<13> The call ID generated by Cerbos and stored in the audit log for this request.
+
+
+[#resources-query-plan]
+=== `PlanResources` (`/api/plan/resources`)
+
+Produces a query plan that can be used to obtain a list of resources that a principal is allowed to perform a particular action on.
+
+.Request
+[source,json,linenums]
+----
+{
+  "requestId":  "test01", <1>
+  "action":  "approve", <2>
+  "actions":  ["approve", "view"], <3>
+  "resource":  {
+    "policyVersion": "dev", <4>
+    "kind":  "leave_request", <5>
+    "scope": "acme.corp", <6>
+    "attr":  { <7>
+      "owner":  "alicia"
+    }
+  },
+  "principal":  {
+    "id":  "alicia", <8>
+    "policyVersion": "dev", <9>
+    "scope": "acme.corp", <10>
+    "roles":  ["user"], <11>
+    "attr": { <12>
+      "geography": "GB"
+    }
+  },
+  "includeMeta": true, <13>
+  "auxData": { <14>
+    "jwt": { <15>
+      "token": "xxx.yyy.zzz", <16>
+      "keySetId": "ks1" <17>
+    },
+    "jwts": { <18>
+        "app_token": { <19>
+            "token": "xxx.yyy.zzz", <20>
+            "keySetId": "ks1" <21>
+        },
+        "gateway_token": {
+            "token": "aaa.bbb.ccc",
+            "keySetId": "ks2"
+        }
+    }
+  }
+}
+----
+<1> Request ID can be anything that uniquely identifies a request.
+<2> Action being performed on the resource instances. Either <2> or <3> is required.
+<3> Actions being performed on the resource instances. The query plan is the logical AND of individual query plans for each action. Either <2> or <3> is required.
+<4> Resource policy version. Optional. The server falls back to the xref:configuration:engine.adoc[configured default version] if this is not specified.
+<5> Resource kind. Required. This value is used to determine the resource policy to evaluate.
+<6> Resource scope. Optional. See xref:policies:scoped_policies.adoc[].
+<7> Free-form context data about the resources under consideration. The object holds all attributes known about the resource at the time the request. Optional. Policy rule conditions will be (partially) evaluated based on these values. If an effective policy rule condition(s) requires a resource attribute not present in this object, then the response will contain the condition(s) abstract syntax tree.
+<8> ID of the principal performing the actions. Required.
+<9> Principal policy version. Optional. The server falls back to the xref:configuration:engine.adoc[configured default version] if this is not specified.
+<10> Principal scope. Optional. See xref:policies:scoped_policies.adoc[].
+<11> Static roles that are assigned to this principal by your identity management system. Required.
+<12> Free-form context data about this principal. Policy rule conditions are evaluated based on these values.
+<13> An optional flag to signal that the response should include metadata about evaluation. Useful for debugging.
+<14> Optional section for providing auxiliary data.
+<15> Single JWT to use as an auxiliary data source. Mutually exclusive with `jwts`.
+<16> Encoded token string.
+<17> ID of the keyset to use to verify the JWT. Optional if only a single xref:configuration:auxdata.adoc[keyset is configured].
+<18> Multiple named JWTs. Since Cerbos 0.55.0 only. Mutually exclusive with `jwt`.
+<19> Named JWT.
+<20> Encoded token string.
+<21> ID of the keyset to use to verify the JWT. Optional if only a single xref:configuration:auxdata.adoc[keyset is configured].
+
+
+.Response
+[source,json,linenums]
+----
+{
+  "requestId": "test01",
+  "action": "approve",
+  "resourceKind": "leave_request",
+  "policyVersion": "dev",
+  "filter": {
+    "kind": "KIND_CONDITIONAL", <1>
+    "condition": { <2>
+        "expression":  {
+          "operator":  "eq",
+          "operands":  [
+            { "variable":  "request.resource.attr.status" },
+            { "value":  "PENDING_APPROVAL" }
+          ]
+        }
+    }
+  },
+  "meta": {
+    "filterDebug": "(request.resource.attr.status == \"PENDING_APPROVAL\")" <3>
+  },
+  "cerbosCallId": "01HHENANTHFD5DV3HZGDKB87PJ" <4>
+}
+----
+<1> Filter kind can be `KIND_ALWAYS_ALLOWED`, `KIND_ALWAYS_DENIED` or `KIND_CONDITIONAL`. See below for description of what these values mean.
+<2> Populated only if `kind` is `KIND_CONDITIONAL`. Contains the abstract syntax tree (AST) of the condition that must be satisfied to allow the action.
+<3> Condition AST represented as a human readable string. Useful for debugging.
+<4> The call ID generated by Cerbos and stored in the audit log for this request.
+
+==== Structure of the `filter` block
+
+The `kind` field defines the filter kind.
+
+`KIND_ALWAYS_ALLOWED`:: The principal is unconditionally allowed to perform the action
+`KIND_ALWAYS_DENIED`:: The principal is unconditionally not permitted to perfrom the action
+`KIND_CONDITIONAL`:: The principal is allowed to perform the action if the condition is satisfied
+
+
+The `condition` field holds the AST of the condition that must be satisfied. It is rooted in an expression that has an `operator` (e.g. equals, greater than) and `operands` (e.g. a constant value, a variable or another expression).
+
+.Common Operators
+[caption=]
+[%header,cols=".^1m,.^4",grid=rows]
+|===
+| Operator | Description
+| add               | Addition (+)
+| and               | Logical AND (&&)
+| div               | Division (/)
+| eq                | Equality (==)
+| ge                | Greater than or equal (>=)
+| gt                | Greater than (>)
+| in                | List membership (in)
+| index             | Array or map index
+| lambda            | Anonymous function
+| le                | Less than or equal (<=)
+| list              | List constructor
+| lt                | Less than (<)
+| mod               | Modulo (%)
+| mult              | Multiplication (*)
+| ne                | Not equal (!=)
+| not               | Logical NOT
+| or                | Logical OR
+| sub               | Subtract (-)
+|===
+
+.Example: `request.resource.attr.status == "PENDING_APPROVAL"`
+[source,json,linenums]
+----
+{
+  "expression": {
+    "operator": "eq",
+    "operands": [
+      {
+        "variable": "request.resource.attr.status"
+      },
+      {
+        "value": "PENDING_APPROVAL"
+      }
+    ]
+  }
+}
+----
+
+.Example: `(request.resource.attr.department == "marketing") && (request.resource.attr.team != "design")`
+[source,json,linenums]
+----
+{
+  "expression": {
+    "operator": "and",
+    "operands": [
+      {
+        "expression": {
+          "operator": "eq",
+          "operands": [
+            {
+              "variable": "request.resource.attr.department"
+            },
+            {
+              "value": "marketing"
+            }
+          ]
+        }
+      },
+      {
+        "expression": {
+          "operator": "ne",
+          "operands": [
+            {
+              "variable": "request.resource.attr.team"
+            },
+            {
+              "value": "design"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+----
+
+.Example: `request.resource.attr.values.filter(t, t > 0)`
+[source,json,linenums]
+----
+{
+  "expression": {
+    "operator": "filter",
+    "operands": [
+      {
+        "variable": "request.resource.attr.values"
+      },
+      {
+        "expression": {
+          "operator": "lambda",
+          "operands": [
+            {
+              "variable": "t"
+            },
+            {
+              "expression": {
+                "operator": "gt",
+                "operands": [
+                  {
+                    "variable": "t"
+                  },
+                  {
+                    "value": 0
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+
+----
+
+==== Query plan adapters
+
+Rather than interpreting the condition AST directly, Cerbos provides reference implementations of query plan adapters that convert the `PlanResources` response into a native filter for your data layer. These adapters serve as a starting point -- use them as-is or adapt them to your application's requirements. Reference implementations are available for Prisma, Drizzle, Mongoose, Convex, LangChain/ChromaDB, and SQLAlchemy.
+
+See xref:recipes:query-plan-adapters/index.adoc[Query plan adapters] for installation, usage, and operator support details.
+
+
+[#server-info]
+=== `ServerInfo` (`/api/server_info`)
+
+Returns Cerbos PDP server version.
+
+.Response
+[source,json,linenums]
+----
+{
+  "version": "0.25.0",
+  "commit": "6b5a051a160398a3c04370f742e6090fab2ed0b8",
+  "buildDate": "2023-02-13T09:31:48Z"
+}
+----
+
+[#authzen]
+== Request and response formats (AuthZEN Authorization API)
+
+Cerbos PDP partially implements the link:https://openid.github.io/authzen/[OpenID AuthZEN Authorization API specification], providing a standardized way to make authorization decisions. The AuthZEN API uses a simplified entity model that maps to Cerbos PDP's native authorization model.
+
+[#authzen-entity-model]
+=== AuthZEN entity model mapping
+
+The AuthZEN specification uses a simplified entity model with three core entities:
+
+* **Subject**: The principal requesting access (maps to Cerbos `principal`)
+* **Resource**: The target of the access request (maps to Cerbos `resource`)
+* **Action**: The operation being performed (maps to Cerbos `actions`)
+
+==== Mapping AuthZEN to Cerbos
+
+AuthZEN entities are mapped to Cerbos PDP CheckResources requests as follows:
+
+**Subject → Principal**
+
+[cols="2,3,3",options="header"]
+|===
+| AuthZEN Field | Cerbos Field | Notes
+
+| `subject.type`
+| -
+| Informational field describing the type of subject
+
+| `subject.id`
+| `principal.id`
+| Unique identifier for the principal
+
+| `subject.properties.cerbos.roles`
+| `principal.roles`
+| Array of role names assigned by the identity provider
+
+| `subject.properties.cerbos.policyVersion`
+| `principal.policyVersion`
+| Policy version to use for the principal
+
+| `subject.properties.cerbos.scope`
+| `principal.scope`
+| Policy scope for the principal
+
+| `subject.properties.*`
+| `principal.attr.*`
+| All other properties become principal attributes
+|===
+
+**Resource → Resource**
+
+[cols="2,3,3",options="header"]
+|===
+| AuthZEN Field | Cerbos Field | Notes
+
+| `resource.type`
+| `resource.kind`
+| Type of resource (determines which policy applies)
+
+| `resource.id`
+| `resource.id`
+| Unique identifier for the resource
+
+| `resource.properties.cerbos.policyVersion`
+| `resource.policyVersion`
+| Policy version to use for the resource
+
+| `resource.properties.cerbos.scope`
+| `resource.scope`
+| Policy scope for the resource
+
+| `resource.properties.*`
+| `resource.attr.*`
+| All other properties become resource attributes
+|===
+
+**Action → Actions**
+
+[cols="2,3,3",options="header"]
+|===
+| AuthZEN Field | Cerbos Field | Notes
+
+| `action.name`
+| `actions[0]`
+| Action name added as the first item in the actions array
+
+| `action.properties`
+| -
+| Reserved for future use
+|===
+
+**Context**
+
+[cols="2,3,3",options="header"]
+|===
+| AuthZEN Field | Cerbos Field | Notes
+
+| `context.cerbos.requestId`
+| `requestId`
+| Application-provided correlation identifier
+
+| `context.cerbos.auxData`
+| `auxData`
+| Auxiliary data such as JWT tokens
+
+| `context.cerbos.includeMeta`
+| -
+| Controls whether full Cerbos response is included in context
+|===
+
+
+[#authzen-metadata]
+=== `Metadata` (`/.well-known/authzen-configuration`)
+
+Returns metadata about the Cerbos PDP, including endpoint URLs for accessing the AuthZEN APIs.
+
+.Request
+
+This endpoint accepts GET requests with no body.
+
+.Response
+[source,json,linenums]
+----
+{
+  "policy_decision_point": "https://localhost:3592", <1>
+  "access_evaluation_endpoint": "https://localhost:3592/access/v1/evaluation", <2>
+  "access_evaluations_endpoint": "https://localhost:3592/access/v1/evaluations" <3>
+}
+----
+<1> Base URL of the Policy Decision Point
+<2> Full URL for single access evaluation request
+<3> Full URL for multiple access evaluation requests
+
+
+[#authzen-access-evaluation]
+=== `Access Evaluation` (`/access/v1/evaluation`)
+
+Evaluates whether a subject can perform a single action on a single resource according to the AuthZEN specification.
+
+.Request
+[source,json,linenums]
+----
+{
+  "subject": { <1>
+    "type": "user", <2>
+    "id": "donald_duck", <3>
+    "properties": { <4>
+      "cerbos.policyVersion": "20210210",
+      "cerbos.roles": ["employee"],
+      "department": "marketing",
+      "geography": "GB",
+      "team": "design"
+    }
+  },
+  "resource": { <5>
+    "type": "leave_request", <6>
+    "id": "XX125", <7>
+    "properties": { <8>
+      "cerbos.policyVersion": "20210210",
+      "department": "marketing",
+      "geography": "GB",
+      "owner": "john",
+      "team": "design"
+    }
+  },
+  "action": { <9>
+    "name": "view:public", <10>
+    "properties": {} <11>
+  },
+  "context": { <12>
+    "cerbos.requestId": "test",
+    "cerbos.auxData": { <13>
+      "jwt": {
+        "token": "xxx.yyy.zzz"
+      }
+    },
+    "cerbos.includeMeta": true <14>
+  }
+}
+----
+<1> Subject requesting access (maps to Cerbos `principal`)
+<2> Type of the subject (informational field)
+<3> Unique identifier for the subject
+<4> Properties about the subject. Special `cerbos.*` properties are mapped to Cerbos-specific fields, others become attributes
+<5> Resource being accessed (maps to Cerbos `resource`)
+<6> Type of the resource (maps to Cerbos `resource.kind`)
+<7> Unique identifier for the resource
+<8> Properties about the resource. Special `cerbos.*` properties are mapped to Cerbos-specific fields, others become attributes
+<9> Action being performed
+<10> Name of the action to check
+<11> Optional properties about the action (currently unused)
+<12> Environmental/contextual data
+<13> Auxiliary data such as JWT tokens. See xref:#check-resources[] for details
+<14> Include metadata about evaluation in the response (Cerbos extension)
+
+.Response
+[source,json,linenums]
+----
+{
+  "decision": true, <1>
+  "context": { <2>
+    "cerbos.response": { <3>
+      "requestId": "test",
+      "results": [
+        {
+          "resource": {
+            "id": "XX125",
+            "kind": "leave_request",
+            "policyVersion": "20210210"
+          },
+          "actions": {
+            "view:public": "EFFECT_ALLOW"
+          },
+          "meta": {
+            "actions": {
+              "view:public": {
+                "matchedPolicy": "resource.leave_request.v20210210"
+              }
+            },
+            "effectiveDerivedRoles": [
+              "employee_that_owns_the_record"
+            ]
+          }
+        }
+      ],
+      "cerbosCallId": "01HHENANTHFD5DV3HZGDKB87PJ"
+    }
+  }
+}
+----
+<1> Boolean decision: `true` for allow, `false` for deny
+<2> Additional context about the evaluation
+<3> Full Cerbos CheckResources response (included when `cerbos.includeMeta` is `true`). See xref:#check-resources[] for response structure details
+
+
+[#authzen-access-evaluation-batch]
+=== `Access Evaluations` (`/access/v1/evaluations`)
+
+Evaluates multiple access requests in a single call. This endpoint supports default values that can be overridden for individual evaluations, and evaluation semantics that control execution behavior.
+
+.Request
+[source,json,linenums]
+----
+{
+  "subject": { <1>
+    "type": "user",
+    "id": "donald_duck",
+    "properties": {
+      "cerbos.policyVersion": "20210210",
+      "cerbos.roles": ["employee"],
+      "department": "marketing",
+      "geography": "GB",
+      "team": "design"
+    }
+  },
+  "resource": { <2>
+    "type": "leave_request",
+    "id": "XX125",
+    "properties": {
+      "cerbos.policyVersion": "20210210",
+      "department": "marketing",
+      "geography": "GB",
+      "owner": "john",
+      "team": "design"
+    }
+  },
+  "context": { <3>
+    "cerbos.requestId": "test",
+    "cerbos.includeMeta": true
+  },
+  "evaluations": [ <4>
+    {
+      "action": { <5>
+        "name": "view:public",
+        "properties": {}
+      }
+    },
+    {
+      "action": {
+        "name": "approve",
+        "properties": {}
+      }
+    },
+    {
+      "resource": { <6>
+        "type": "leave_request",
+        "id": "XX150",
+        "properties": {
+          "cerbos.policyVersion": "20210210",
+          "department": "marketing",
+          "geography": "GB",
+          "owner": "mary",
+          "team": "design"
+        }
+      },
+      "action": {
+        "name": "create",
+        "properties": {}
+      }
+    }
+  ],
+  "options": { <7>
+    "evaluations_semantic": "execute_all" <8>
+  }
+}
+----
+<1> Default subject for all evaluations (can be overridden in individual evaluations)
+<2> Default resource for all evaluations (can be overridden in individual evaluations)
+<3> Default context for all evaluations (can be overridden in individual evaluations)
+<4> Array of evaluations to perform. Each can override the default subject, resource, action, or context
+<5> Evaluation using default subject and resource, specifying only the action
+<6> Evaluation overriding the default resource while using the default subject
+<7> Optional execution controls
+<8> Evaluation semantic: `execute_all` (default), `deny_on_first_deny`, or `permit_on_first_permit`
+
+**Evaluation Semantics:**
+
+`execute_all` (default):: Process all evaluations regardless of individual results
+`deny_on_first_deny`:: Stop processing after the first denial
+`permit_on_first_permit`:: Stop processing after the first permit
+
+.Response
+[source,json,linenums]
+----
+{
+  "evaluations": [ <1>
+    {
+      "decision": true, <2>
+      "context": {
+        "cerbos.response": { <3>
+          "requestId": "test",
+          "results": [
+            {
+              "resource": {
+                "id": "XX125",
+                "kind": "leave_request",
+                "policyVersion": "20210210"
+              },
+              "actions": {
+                "view:public": "EFFECT_ALLOW"
+              },
+              "meta": {
+                "actions": {
+                  "view:public": {
+                    "matchedPolicy": "resource.leave_request.v20210210"
+                  }
+                }
+              }
+            }
+          ],
+          "cerbosCallId": "01HHENANTHFD5DV3HZGDKB87PJ"
+        }
+      }
+    },
+    {
+      "decision": false,
+      "context": {
+        "cerbos.response": {
+          "requestId": "test",
+          "results": [
+            {
+              "resource": {
+                "id": "XX125",
+                "kind": "leave_request",
+                "policyVersion": "20210210"
+              },
+              "actions": {
+                "approve": "EFFECT_DENY"
+              }
+            }
+          ],
+          "cerbosCallId": "01HHENANTHFD5DV3HZGDKB87PJ"
+        }
+      }
+    },
+    {
+      "decision": false,
+      "context": {
+        "cerbos.response": {
+          "requestId": "test",
+          "results": [
+            {
+              "resource": {
+                "id": "XX150",
+                "kind": "leave_request",
+                "policyVersion": "20210210"
+              },
+              "actions": {
+                "create": "EFFECT_DENY"
+              }
+            }
+          ],
+          "cerbosCallId": "01HHENANTHFD5DV3HZGDKB87PJ"
+        }
+      }
+    }
+  ]
+}
+----
+<1> Array of evaluation responses, in the same order as the request
+<2> Boolean decision for this evaluation
+<3> Full Cerbos PDP CheckResources response for this evaluation (included when `cerbos.includeMeta` is `true`)
+
+
+== Accessing the API
+
+=== Using curl to access the REST API
+
+==== Cerbos API Examples
+
+[source,sh,linenums]
+----
+cat <<EOF | curl --silent "localhost:3592/api/check/resources?pretty" -d @-
+{
+  "requestId": "test",
+  "principal": {
+    "id": "alice",
+    "roles": ["employee"],
+    "attr": {
+      "department": "accounting",
+      "geography": "GB",
+      "team": "design"
+    }
+  },
+  "resources": [
+    {
+      "resource": {
+        "id": "XX125",
+        "kind": "leave_request",
+        "attr": {
+          "department": "accounting",
+          "geography": "GB",
+          "id": "XX125",
+          "owner": "john",
+          "team": "design"
+        }
+      },
+      "actions": [
+        "view:public",
+        "approve",
+        "create"
+      ]
+    }
+  ]
+}
+EOF
+----
+
+==== AuthZEN API Examples
+
+**Metadata endpoint:**
+
+[source,sh,linenums]
+----
+curl --silent "localhost:3592/.well-known/authzen-configuration?pretty"
+----
+
+**Access Evaluation (single):**
+
+[source,sh,linenums]
+----
+cat <<EOF | curl --silent "localhost:3592/access/v1/evaluation?pretty" -d @-
+{
+  "subject": {
+    "type": "user",
+    "id": "alice",
+    "properties": {
+      "cerbos.roles": ["employee"],
+      "department": "accounting",
+      "geography": "GB",
+      "team": "design"
+    }
+  },
+  "resource": {
+    "type": "leave_request",
+    "id": "XX125",
+    "properties": {
+      "department": "accounting",
+      "geography": "GB",
+      "owner": "john",
+      "team": "design"
+    }
+  },
+  "action": {
+    "name": "view:public",
+    "properties": {}
+  },
+  "context": {
+    "cerbos.requestId": "test",
+    "cerbos.includeMeta": true
+  }
+}
+EOF
+----
+
+**Access Evaluations (batch):**
+
+[source,sh,linenums]
+----
+cat <<EOF | curl --silent "localhost:3592/access/v1/evaluations?pretty" -d @-
+{
+  "subject": {
+    "type": "user",
+    "id": "alice",
+    "properties": {
+      "cerbos.roles": ["employee"],
+      "department": "accounting",
+      "geography": "GB",
+      "team": "design"
+    }
+  },
+  "resource": {
+    "type": "leave_request",
+    "id": "XX125",
+    "properties": {
+      "department": "accounting",
+      "geography": "GB",
+      "owner": "john",
+      "team": "design"
+    }
+  },
+  "context": {
+    "cerbos.requestId": "test",
+    "cerbos.includeMeta": true
+  },
+  "evaluations": [
+    {
+      "action": {
+        "name": "view:public",
+        "properties": {}
+      }
+    },
+    {
+      "action": {
+        "name": "approve",
+        "properties": {}
+      }
+    },
+    {
+      "action": {
+        "name": "create",
+        "properties": {}
+      }
+    }
+  ]
+}
+EOF
+----
+
+=== Using grpcurl to access the gRPC API
+
+[source,sh,linenums]
+----
+cat <<EOF | grpcurl -plaintext -d @ localhost:3593 cerbos.svc.v1.CerbosService/CheckResources
+{
+  "requestId": "test",
+  "principal": {
+    "id": "alice",
+    "roles": ["employee"],
+    "attr": {
+      "department": "accounting",
+      "geography": "GB",
+      "team": "design"
+    }
+  },
+  "resources": [
+    {
+      "resource": {
+        "id": "XX125",
+        "kind": "leave_request",
+        "attr": {
+          "department": "accounting",
+          "geography": "GB",
+          "id": "XX125",
+          "owner": "john",
+          "team": "design"
+        }
+      },
+      "actions": [
+        "view:public",
+        "approve",
+        "create"
+      ]
+    }
+  ]
+}
+EOF
+----
+
+
+== Generating API clients
+
+The Cerbos OpenAPI specification can be obtained from a running Cerbos PDP instance by accessing link:http://localhost:3592{cerbos-openapi-schema}[]. Cerbos gRPC API definitions are published to the link:https://buf.build/cerbos/cerbos-api[Buf schema registry (BSR)] and can be easily added to your project if you use the link:https://docs.buf.build[Buf build system for protobufs].
+
+=== REST
+
+There are many tools available to generate clients from an OpenAPI specification. https://openapi.tools/#sdk is a good resource for finding a tool suitable for your preferred language.
+
+
+==== Example: Generating a Java client using OpenAPI Generator
+
+NOTE: link:https://openapi-generator.tech[OpenAPI Generator] has link:https://openapi-generator.tech/docs/generators#client-generators[support for many popular programming languages and frameworks]. Please consult the documentation to find the client generation instructions for your favourite language.
+
+
+This is an example of using the popular link:https://openapi-generator.tech[OpenAPI Generator] service to generate a Java client API.
+
+* Download the Cerbos OpenAPI specification
++
+[source,sh,subs="attributes"]
+----
+curl -Lo swagger.json http://localhost:3592{cerbos-openapi-schema}
+----
++
+* Run the OpenAPI Generator
++
+[source,sh,subs="attributes"]
+----
+docker run --rm -v $(pwd):/oas openapitools/openapi-generator-cli generate -i /oas/swagger.json -g java -o /oas/java
+----
+
+=== gRPC
+
+**Any language**
+
+You can access the Cerbos protobuf definitions from the link:https://github.com/cerbos/cerbos/tree/main/api[Cerbos source tree]. However, the easiest way to generate client code for your preferred language is to use the link:https://docs.buf.build[Buf build tool] to obtain the published API definitions from the link:https://buf.build/cerbos/cerbos-api[Buf schema registry (BSR)].
+
+* Run `buf export buf.build/cerbos/cerbos-api -o proto` to download the API definitions with dependencies to the `proto` directory.
+
+* You can now use link:https://docs.buf.build/generate-usage[`buf generate`] or `protoc` to generate code using the protobufs available in the `proto` directory.
+
+NOTE: link:https://buf.build/cerbos/cerbos-api/sdks[BSR generated SDKs] feature can be used to download pre-packaged, generated code for supported languages.
+
+
+**Go**
+
+The link:https://pkg.go.dev/github.com/cerbos/cerbos/client[Cerbos Go SDK] uses the gRPC API to communicate with Cerbos. The generated gRPC and protobuf code is available under the `github.com/cerbos/cerbos/api/genpb` package.
+
+[source,sh]
+----
+go get github.com/cerbos/cerbos/api/genpb
+----
+You can also make use link:https://buf.build/cerbos/cerbos-api[Buf generated SDKs] to pull down the Cerbos gRPC API as a Go module:
+
+[source,sh]
+----
+go get buf.build/gen/go/cerbos/cerbos-api/grpc/go@latest
+----

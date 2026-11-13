@@ -1,0 +1,35 @@
+import type { TypedResponse } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
+import type { WorkerApiRunAttemptStartResponseBody } from "@trigger.dev/core/v3/workers";
+import { WorkerApiRunAttemptStartRequestBody } from "@trigger.dev/core/v3/workers";
+import { z } from "zod";
+import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+
+export const action = createActionWorkerApiRoute(
+  {
+    body: WorkerApiRunAttemptStartRequestBody,
+    params: z.object({
+      runFriendlyId: z.string(),
+      snapshotFriendlyId: z.string(),
+    }),
+  },
+  async ({
+    authenticatedWorker,
+    body,
+    params,
+    runnerId,
+    environmentId,
+  }): Promise<TypedResponse<WorkerApiRunAttemptStartResponseBody>> => {
+    const { runFriendlyId, snapshotFriendlyId } = params;
+
+    const runExecutionData = await authenticatedWorker.startRunAttempt({
+      runFriendlyId,
+      snapshotFriendlyId,
+      isWarmStart: body.isWarmStart,
+      runnerId,
+      environmentId,
+    });
+
+    return json(runExecutionData);
+  }
+);

@@ -1,0 +1,20 @@
+---
+name: cerbos
+title: Cerbos PDP
+version: "0.56.0"
+prerelease: -prerelease
+nav:
+  - modules/ROOT/nav.adoc
+  - modules/api/nav.adoc
+  - modules/policies/nav.adoc
+  - modules/configuration/nav.adoc
+  - modules/deployment/nav.adoc
+  - modules/telemetry/nav.adoc
+  - modules/cli/nav.adoc
+  - modules/recipes/nav.adoc
+  - modules/releases/nav.adoc
+  - modules/glossary/nav.adoc
+  - modules/engineering/nav.adoc
+asciidoc:
+  attributes:
+    app-name: "cerbos"

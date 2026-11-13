@@ -1,0 +1,85 @@
+{
+  "operations": {
+    "GET /users/{userId}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "userId",
+          "resource": "User",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "User",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /orders": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Order",
+          "status_code": "201"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/user",
+          "resource": "User",
+          "status_code": "201"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Order": {
+      "fields": [
+        "another",
+        "id",
+        "total",
+        "user"
+      ],
+      "types": {
+        "another": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "id": [
+          "string"
+        ],
+        "total": [
+          "number"
+        ],
+        "user": [
+          "object"
+        ]
+      }
+    },
+    "User": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    }
+  }
+}

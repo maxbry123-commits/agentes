@@ -1,0 +1,60 @@
+operators:
+- id: load_preexisting
+  config:
+    type: load_preexisting
+    framework_name: a1_code_code_golf
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns:
+        - conversations
+  input_ids:
+    - load_preexisting
+- id: merge_together
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.merge_duplicate_rows
+    function_config:
+      diff_columns: 
+        - final_reasoning_trace
+        - reasoning
+        - deepseek_solution
+  input_ids:
+    - drop_columns
+- id: majority_gpt_verification
+  config:
+    type: completions
+    map: code_same
+    require_all_responses: False
+    map_config:
+      code_column: deepseek_solution
+      question_column: instruction_seed
+      output_column: correct_majority_indices
+      num_responses: 4
+    model: gpt-4o-mini
+    temperature: 1.0
+  input_ids:
+  - merge_together
+- id: majority_gpt_verification_extraction
+  config:
+    type: function
+    function: data_strategies.MultipleSamples.utils.code_same_verification
+    function_config:
+      verification_column: correct_majority_indices
+      output_column: verified_final_reasoning_trace
+      code_answers_column: final_reasoning_trace
+  input_ids:
+  - majority_gpt_verification
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      output_column: verified_final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - majority_gpt_verification_extraction
+

@@ -1,0 +1,17 @@
+working_dir: .
+env:
+  - RUNTIME_ONLY=${env.RUNTIME_ONLY}
+dotenv:
+  - .env
+steps:
+  - id: previous
+    run: |
+      printf 'VALUE=runtime\n' >> "$DAGU_OUTPUT_FILE"
+    outputs:
+      - name: VALUE
+  - name: write
+    depends: previous
+    env:
+      - FROM_PREVIOUS=${steps.previous.outputs.VALUE}
+    run: |
+      printf '%s\n' '${env.RUNTIME_ONLY}' '${env.PROCESS_ONLY}' '${env.DOTENV_ONLY}' > validate-missing-runtime.txt

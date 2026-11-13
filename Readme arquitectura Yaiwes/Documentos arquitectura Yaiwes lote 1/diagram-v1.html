@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>NCT AI Architecture v1 — Approved Patch</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    margin: 0;
+    padding: 24px;
+    line-height: 1.5;
+  }
+  .header {
+    max-width: 1400px;
+    margin: 0 auto 24px;
+    padding: 20px 28px;
+    background: linear-gradient(135deg, #161b22 0%, #1c2128 100%);
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    border-left: 4px solid #3fb950;
+  }
+  .header.v1 { border-left-color: #3fb950; }
+  h1 { margin: 0 0 6px; color: #f0f6fc; font-size: 22px; }
+  .subtitle { color: #8b949e; font-size: 13px; }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .badge.appr { background: #0e4429; color: #7ee787; border: 1px solid #3fb950; }
+  .badge.pending { background: #5a3a0e; color: #e3b341; border: 1px solid #d29922; }
+  .badge.verified { background: #1f3a5f; color: #79c0ff; border: 1px solid #58a6ff; }
+
+  .recovery-panel {
+    max-width: 1400px;
+    margin: 0 auto 24px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    border-left: 4px solid #58a6ff;
+    overflow: hidden;
+  }
+  .recovery-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    background: #1c2128;
+    border-bottom: 1px solid #30363d;
+  }
+  .recovery-header h2 {
+    margin: 0;
+    color: #f0f6fc;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .recovery-header h2::before {
+    content: "🩹";
+    font-size: 16px;
+  }
+  .copy-btn {
+    background: #21262d;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .copy-btn:hover { background: #30363d; border-color: #58a6ff; color: #79c0ff; }
+  .copy-btn.copied { background: #0e4429; border-color: #3fb950; color: #7ee787; }
+  .recovery-body {
+    padding: 0;
+  }
+  .recovery-body details {
+    border-bottom: 1px solid #21262d;
+  }
+  .recovery-body details:last-child { border-bottom: none; }
+  .recovery-body summary {
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #c9d1d9;
+    font-weight: 600;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .recovery-body summary::-webkit-details-marker { display: none; }
+  .recovery-body summary::before {
+    content: "▸";
+    color: #8b949e;
+    transition: transform 0.15s;
+    font-size: 11px;
+  }
+  .recovery-body details[open] summary::before {
+    transform: rotate(90deg);
+  }
+  .recovery-body summary:hover { background: #21262d; }
+  .recovery-body .summary-tag {
+    margin-left: auto;
+    font-size: 11px;
+    color: #8b949e;
+    font-weight: normal;
+  }
+  .recovery-content {
+    padding: 12px 20px 18px;
+    font-size: 12px;
+  }
+  pre.json {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 14px;
+    margin: 0;
+    overflow-x: auto;
+    color: #c9d1d9;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .json .k { color: #79c0ff; }
+  .json .s { color: #a5d6ff; }
+  .json .n { color: #ffa657; }
+  .json .b { color: #7ee787; }
+  .json .null { color: #8b949e; font-style: italic; }
+  .json .comment { color: #6e7681; font-style: italic; }
+
+  .grid {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .panel {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .panel h2 {
+    margin: 0 0 4px;
+    color: #f0f6fc;
+    font-size: 17px;
+  }
+  .panel .desc {
+    color: #8b949e;
+    font-size: 12px;
+    margin-bottom: 14px;
+  }
+  .mermaid {
+    background: #0d1117;
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+  }
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 12px 0 0;
+    font-size: 12px;
+    color: #8b949e;
+  }
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    display: inline-block;
+  }
+  .dot.appr { background: #3fb950; }
+  .dot.disc { background: #d29922; }
+  .dot.todo { background: #6e7681; }
+  .dot.verified { background: #58a6ff; }
+
+  .decisions {
+    max-width: 1400px;
+    margin: 24px auto 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .dec-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .dec-card h3 { margin: 0 0 12px; font-size: 15px; color: #f0f6fc; }
+  ul { padding-left: 20px; margin: 0; }
+  li { margin: 6px 0; font-size: 13px; }
+  li.approved { color: #7ee787; }
+  li.pending { color: #e3b341; }
+  li.open-q { color: #8b949e; font-style: italic; }
+  li.verified-tag::after {
+    content: " ✓ verificado";
+    color: #58a6ff;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .patch-note {
+    background: #1c2128;
+    border-left: 3px solid #3fb950;
+    padding: 10px 14px;
+    margin: 0 0 14px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #c9d1d9;
+  }
+  .patch-note strong { color: #7ee787; }
+
+  .footer {
+    max-width: 1400px;
+    margin: 24px auto 0;
+    text-align: center;
+    color: #6e7681;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     RECOVERY HEADER JSON — punto de restauración del documento
+     Si el documento se rompe, este bloque permite recuperar:
+       · versión, fecha, sesión
+       · estado verificado del modelo
+       · decisiones aprobadas / pendientes / abiertas
+       · changelog v0 → v1
+       · instrucciones para revertir a v0 si hace falta
+     ============================================================ -->
+<script type="application/json" id="recovery-header">
+{
+  "schema_version": "1.0",
+  "document": {
+    "id": "nct-ai-architecture",
+    "version": "v1",
+    "previous_version": "v0",
+    "title": "NCT AI Architecture — Approved Patch v1",
+    "last_updated": "2026-06-21T15:24:38-04:00",
+    "session_id": "411717310456025",
+    "owner": "Mavis (root session)"
+  },
+  "model_verification": {
+    "primary_recommendation": "Gemma 4 E2B Q4_K_M",
+    "role": "embedded filter (V1) y obligatorio en V2",
+    "verified": true,
+    "verification_date": "2026-06-21",
+    "verification_sources": [
+      "https://huggingface.co/collections/google/gemma-4",
+      "https://blog.google/innovation-and-ai/technology/developers-tools/gemma-4/",
+      "https://deepmind.google/models/gemma/gemma-4/",
+      "https://ai.google.dev/gemma/docs/releases",
+      "https://en.wikipedia.org/wiki/Gemma_(language_model)"
+    ],
+    "release_date": "2026-04-02",
+    "key_specs": {
+      "active_params_b": 2.3,
+      "total_params_b": 5.1,
+      "architecture": "Dense + PLE (per-layer embedding)",
+      "context_window": "128K",
+      "modalities": ["text", "image", "audio", "video"],
+      "license": "Apache-2.0",
+      "quantization_target": "Q4_K_M",
+      "approx_size_q4_gb": 2.5,
+      "native_capabilities": [
+        "function_calling",
+        "structured_json",
+        "system_instructions",
+        "thinking_mode",
+        "agentic_workflows"
+      ],
+      "mobile_runnable": true,
+      "140_plus_languages": true
+    },
+    "tiers": {
+      "primary_embedded": "Gemma 4 E2B Q4_K_M",
+      "secondary_embedded": "Gemma 4 E4B (4.5B activos / 8B totales) — si E2B queda corto",
+      "optional_heavy": "Mistral 7B Instruct v0.3 Q4_K_M — solo en PC, NO como filtro embebido",
+      "new_since_v0": "Gemma 4 12B Unified (2026-06-03) — encoder-free multimodal, audio/video nativos"
+    }
+  },
+  "approved_decisions": [
+    "Arquitectura en capas: SHERIFF → ROUTER → DSL → DAG → CRITIC → SENTINEL",
+    "Memory Controller activo con 6 capas (working/episodic/semantic/procedural/graph/summary)",
+    "DSL con estructura determinista (no prompt-based)",
+    "SENTINEL con rollback si detecta alucinación o inconsistencia",
+    "CRITIC LOOP con condición de parada (iteraciones a definir)",
+    "Embedded LLM: Gemma 4 E2B Q4_K_M (2.3B params, agentic-first, mobile-runnable, verificado)",
+    "Memoria persistente multi-backend: local + Drive + DB configurable por usuario",
+    "Sin límites en app mobile/desktop (todo local)",
+    "Selector de funciones por módulo (apaga lo que no aplica)",
+    "Pequeño LLM embebido como filtro obligatorio para cualquier LLM externo (≥10B)",
+    "MHYTOS funciona como capa externa de orquestación (NO nueva LLM, NO modelo fundacional)",
+    "Core estable (plantilla fija) + Adaptadores intercambiables por caso de uso"
+  ],
+  "patch_v0_to_v1": [
+    "Confirmación verificada del modelo Gemma 4 E2B con fuentes externas (HF + Google Blog + Wikipedia)",
+    "Añadido Gemma 4 12B Unified como tier informativo (release 2026-06-03, posterior al v0)",
+    "Añadida distinción PENSAMIENTO (MYTHOS) vs CONTROL (FSM/Router/PydanticAI) — ambos coexisten",
+    "Añadido bloque de Recovery Header JSON al inicio del documento (este bloque)",
+    "Reorganización de pendientes: se separan decisiones técnicas vs preguntas abiertas"
+  ],
+  "pending_decisions": [
+    "Tecnología de Graph Memory (Neo4j / Memgraph / SQLite custom)",
+    "Formato del DSL (YAML / JSON / Python DSL / custom)",
+    "Contrato exacto de interfaz del adaptador (MCP, OpenAI-compatible, custom)",
+    "Backends por defecto en V2 (Mistral local, Kimi API, o ambos)",
+    "Memory Scheduler: trigger event-driven vs heurístico (3-5 turns)",
+    "Capa de Tools/Actions: protocolo (MCP-style propio, OpenAI function calling, JSON-RPC)",
+    "Observabilidad / tracing entre nodos del DAG",
+    "Manejo de fallos (timeout, retriever vacío, rollback agotado)",
+    "Concurrencia / race conditions en Memory Writer",
+    "Presupuesto de latencia y costo por request",
+    "Orden óptimo de los 7 validadores (Verifier/Critic/Judge/Sentinel/Sheriff/Policy/PydanticAI)"
+  ],
+  "open_questions": [
+    "¿MHYTOS es prompt estructurado, módulo Python, o servicio independiente?",
+    "¿Cuál es el contrato input→output concreto de MHYTOS?",
+    "¿Multi-tenant o un solo usuario por app?",
+    "¿La memoria vive en el dispositivo o se sincroniza con backend opcional?",
+    "¿Cuántas iteraciones máximo del CRITIC LOOP? (2, 3, 5?)"
+  ],
+  "recovery": {
+    "checkpoint_id": "nct-v1-20260621-1524",
+    "rollback_target": "v0",
+    "rollback_instructions": "Restaurar /workspace/attachments/aca7ca72__aca58c3d-f2c7-4b50-8a9f-639f9b9f9d21.html (diagram-v0)",
+    "integrity_hash": "sha256-to-be-computed-on-deploy",
+    "next_action": "Esperar input del usuario sobre los 5 frentes pendientes (Graph Memory, DSL, Backends V2, Iteraciones CRITIC, Contrato MHYTOS)"
+  }
+}
+</script>
+
+<div class="header v1">
+  <h1>NCT AI Architecture — v1 <span class="badge appr">APROBADO + PARCHE APLICADO</span></h1>
+  <div class="subtitle">Sistema de razonamiento MHYTOS + DSL + Memory Controller + Adaptador de modelos · NCT Neuronas Code Turbo</div>
+</div>
+
+<!-- ===================== PANEL DE RECUPERACIÓN ===================== -->
+<div class="recovery-panel">
+  <div class="recovery-header">
+    <h2>Recovery Header JSON · checkpoint nct-v1-20260621-1524</h2>
+    <button class="copy-btn" id="copy-recovery-btn" type="button">📋 Copiar JSON</button>
+  </div>
+  <div class="recovery-body">
+    <details open>
+      <summary>1 · Encabezado del documento <span class="summary-tag">id · versión · sesión</span></summary>
+      <div class="recovery-content">
+<pre class="json" id="json-view-1"></pre>
+      </div>
+    </details>
+    <details>
+      <summary>2 · Verificación del modelo <span class="summary-tag">Gemma 4 E2B · ✓ verificado HF/Google/Wikipedia</span></summary>
+      <div class="recovery-content">
+<pre class="json" id="json-view-2"></pre>
+      </div>
+    </details>
+    <details>
+      <summary>3 · Decisiones aprobadas (12 ítems)</summary>
+      <div class="recovery-content">
+<pre class="json" id="json-view-3"></pre>
+      </div>
+    </details>
+    <details>
+      <summary>4 · Parche v0 → v1 <span class="summary-tag">qué cambió</span></summary>
+      <div class="recovery-content">
+<pre class="json" id="json-view-4"></pre>
+      </div>
+    </details>
+    <details>
+      <summary>5 · Decisiones pendientes (11 ítems)</summary>
+      <div class="recovery-content">
+<pre class="json" id="json-view-5"></pre>
+      </div>
+    </details>
+    <details>
+      <summary>6 · Preguntas abiertas (5)</summary>
+      <div class="recovery-content">
+<pre class="json" id="json-view-6"></pre>
+      </div>
+    </details>
+    <details>
+      <summary>7 · Bloque de recuperación <span class="summary-tag">rollback · checkpoint · next action</span></summary>
+      <div class="recovery-content">
+<pre class="json" id="json-view-7"></pre>
+      </div>
+    </details>
+  </div>
+</div>
+
+<div class="grid">
+  <!-- VERSION 1 -->
+  <div class="panel">
+    <h2>Versión 1 — Chat AI NCT (producto embebido)</h2>
+    <div class="desc">Sistema completo con MHYTOS como módulo interno. Vive en la app desktop/mobile del usuario.</div>
+    <div class="mermaid">
+flowchart TD
+    U([👤 User]):::user
+    M[MHYTOS Core<br/>capa de razonamiento]:::approved
+    SH[SHERIFF<br/>validación input]:::approved
+    MC[Memory Controller]:::approved
+    MS[Memory Scheduler]:::approved
+    R[ROUTER<br/>decide pipeline DSL]:::approved
+    DP[DSL Planner<br/>descomposición]:::approved
+    DAG[DAG Executor]:::approved
+    CR[CRITIC LOOP<br/>draft→critique→refine]:::approved
+    SE[SENTINEL<br/>rollback final]:::approved
+    T[Tools / Actions<br/>MCP-style]:::approved
+    O([Output]):::user
+
+    WM[(Working Memory<br/>8-32k)]:::approved
+    EM[(Episodic Memory<br/>logs+timestamp)]:::approved
+    SM[(Semantic Memory<br/>embeddings)]:::approved
+    PM[(Procedural Memory<br/>recetas DSL)]:::approved
+    GM[(Graph Memory<br/>NCT→DSL→Router→Mem]:::approved
+    WS[(Working Summary<br/>compresión viva)]:::approved
+
+    LM{{Embedded LLM<br/>Gemma 4 E2B Q4_K_M<br/><i>verificado HF 2026-04-02</i>}}:::verified
+
+    U --> M
+    M --> SH
+    SH --> MC
+    SH --> R
+    MC <--> WM
+    MC <--> EM
+    MC <--> SM
+    MC <--> PM
+    MC <--> GM
+    MC <--> WS
+    MS -.controla.-> MC
+    R --> DP
+    DP --> DAG
+    DAG --> LM
+    LM --> CR
+    CR --> SE
+    SE --> T
+    T --> O
+    DAG -.memory_call.-> MC
+    SE -.rollback.-> DAG
+    CR -.iterate.-> LM
+
+    classDef user fill:#1f6feb,stroke:#58a6ff,color:#fff
+    classDef approved fill:#0e4429,stroke:#3fb950,color:#7ee787
+    classDef pending fill:#5a3a0e,stroke:#d29922,color:#e3b341
+    classDef verified fill:#0d2f4f,stroke:#58a6ff,color:#79c0ff
+    </div>
+  </div>
+
+  <!-- VERSION 2 -->
+  <div class="panel">
+    <h2>Versión 2 — Adaptador de modelos (MHYTOS externo)</h2>
+    <div class="desc">MHYTOS como capa desacoplada que gobierna varios backends. Misma MHYTOS, distintos modelos detrás.</div>
+    <div class="mermaid">
+flowchart TD
+    APP[NCT App / Cliente]:::approved
+    MA[Adaptador MHYTOS]:::approved
+    MH[MHYTOS<br/>external reasoning layer<br/><i>capa externa · NO nueva LLM</i>]:::approved
+    IF[Interface Contract<br/>tool-use + DSL]:::pending
+    B1{{Backend 1<br/>Mistral 7B Q4<br/><i>tier pesado PC</i>}}:::pending
+    B2{{Backend 2<br/>Kimi K2 API}}:::pending
+    B3{{Backend 3<br/>Claude / GPT API}}:::pending
+    B4{{Backend 4<br/>Local GGUF}}:::pending
+    MEM[(Memoria<br/>Local + Drive + DB)]:::pending
+    SEL[Selector de funciones<br/>por módulo]:::approved
+    FLT{{Filtro obligatorio<br/>Gemma 4 E2B<br/><i>toda llamada pasa</i>}}:::verified
+    O([Output]):::user
+
+    APP --> MA
+    MA --> MH
+    MH --> IF
+    IF --> FLT
+    FLT --> B1
+    FLT --> B2
+    FLT --> B3
+    FLT --> B4
+    MA <--> MEM
+    MA --> SEL
+    SEL -.limita funciones.-> B1
+    SEL -.limita funciones.-> B2
+    SEL -.limita funciones.-> B3
+    SEL -.limita funciones.-> B4
+    B1 --> O
+    B2 --> O
+    B3 --> O
+    B4 --> O
+
+    classDef user fill:#1f6feb,stroke:#58a6ff,color:#fff
+    classDef approved fill:#0e4429,stroke:#3fb950,color:#7ee787
+    classDef pending fill:#5a3a0e,stroke:#d29922,color:#e3b341
+    classDef verified fill:#0d2f4f,stroke:#58a6ff,color:#79c0ff
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="dot appr"></span> Aprobado / en diseño</span>
+  <span><span class="dot verified"></span> Verificado con fuente externa</span>
+  <span><span class="dot disc"></span> En discusión / pendiente</span>
+  <span><span class="dot todo"></span> Por diseñar</span>
+</div>
+
+<div class="decisions">
+  <div class="dec-card">
+    <h3>✅ Decisiones aprobadas</h3>
+    <div class="patch-note">
+      <strong>Parche v1:</strong> añadido Gemma 4 12B Unified (release 2026-06-03) como tier informativo y separación explícita PENSAMIENTO (MYTHOS) vs CONTROL (FSM/Router/PydanticAI).
+    </div>
+    <ul>
+      <li class="approved">Arquitectura en capas: SHERIFF → ROUTER → DSL → DAG → CRITIC → SENTINEL</li>
+      <li class="approved">Memory Controller activo con 6 capas (working/episodic/semantic/procedural/graph/summary)</li>
+      <li class="approved">DSL con estructura determinista (no prompt-based)</li>
+      <li class="approved">SENTINEL con rollback si detecta alucinación / inconsistencia</li>
+      <li class="approved">CRITIC LOOP con condición de parada (a definir número de iteraciones)</li>
+      <li class="approved verified-tag">Embedded LLM: Gemma 4 E2B Q4_K_M (2.3B params, agentic-first, mobile-runnable)</li>
+      <li class="approved">Memoria persistente multi-backend: local + Drive + DB configurable por usuario</li>
+      <li class="approved">Sin límites en app mobile/desktop (todo local)</li>
+      <li class="approved">Selector de funciones por módulo (apaga lo que no aplica)</li>
+      <li class="approved">Pequeño LLM embebido como filtro obligatorio para cualquier LLM externo (≥10B)</li>
+      <li class="approved">MHYTOS = capa externa de orquestación (no es LLM, no es modelo fundacional)</li>
+      <li class="approved">Core estable (plantilla fija) + Adaptadores intercambiables</li>
+    </ul>
+  </div>
+
+  <div class="dec-card">
+    <h3>⏳ Pendientes de aprobación</h3>
+    <ul>
+      <li class="pending">Tecnología de Graph Memory (Neo4j / Memgraph / SQLite custom)</li>
+      <li class="pending">Formato del DSL (YAML / JSON / Python DSL / custom)</li>
+      <li class="pending">Contrato exacto de interfaz del adaptador (MCP, OpenAI-compatible, custom)</li>
+      <li class="pending">Backends por defecto en V2 (¿Mistral local, Kimi API, o ambos?)</li>
+      <li class="pending">Memory Scheduler: trigger event-driven vs heurístico (3-5 turns)</li>
+      <li class="pending">Capa de Tools/Actions: protocolo (MCP-style propio, OpenAI function calling, JSON-RPC)</li>
+      <li class="pending">Observabilidad / tracing entre nodos del DAG</li>
+      <li class="pending">Manejo de fallos (timeout, retriever vacío, rollback agotado)</li>
+      <li class="pending">Concurrencia / race conditions en Memory Writer</li>
+      <li class="pending">Presupuesto de latencia y costo por request</li>
+      <li class="pending">Orden óptimo de los 7 validadores (Verifier/Critic/Judge/Sentinel/Sheriff/Policy/PydanticAI)</li>
+    </ul>
+
+    <h3 style="margin-top:18px">❓ Preguntas abiertas</h3>
+    <ul>
+      <li class="open-q">¿MHYTOS es prompt estructurado, módulo Python, o servicio independiente?</li>
+      <li class="open-q">¿Cuál es el contrato input→output concreto de MHYTOS?</li>
+      <li class="open-q">¿Multi-tenant o un solo usuario por app?</li>
+      <li class="open-q">¿La memoria vive en el dispositivo o se sincroniza con backend opcional?</li>
+      <li class="open-q">¿Cuántas iteraciones máximo del CRITIC LOOP? (2, 3, 5?)</li>
+    </ul>
+  </div>
+</div>
+
+<div class="footer">
+  v1 — parche aplicado 2026-06-21 15:24:38 · checkpoint nct-v1-20260621-1524 · rollback a v0 disponible vía header JSON
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background: '#0d1117',
+      primaryColor: '#161b22',
+      primaryTextColor: '#c9d1d9',
+      primaryBorderColor: '#30363d',
+      lineColor: '#8b949e',
+      fontSize: '13px'
+    },
+    flowchart: { curve: 'basis', padding: 12 }
+  });
+
+  // ============== JSON renderer con syntax highlighting ligero ==============
+  const recoveryData = JSON.parse(document.getElementById('recovery-header').textContent);
+
+  function syntaxHighlight(json) {
+    const escaped = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return escaped.replace(
+      /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+      function (match) {
+        let cls = 'n';
+        if (/^"/.test(match)) {
+          cls = /:$/.test(match) ? 'k' : 's';
+        } else if (/true|false/.test(match)) {
+          cls = 'b';
+        } else if (/null/.test(match)) {
+          cls = 'null';
+        }
+        return '<span class="' + cls + '">' + match + '</span>';
+      }
+    );
+  }
+
+  function renderSection(elId, data) {
+    const el = document.getElementById(elId);
+    if (el) el.innerHTML = syntaxHighlight(JSON.stringify(data, null, 2));
+  }
+
+  renderSection('json-view-1', recoveryData.document);
+  renderSection('json-view-2', recoveryData.model_verification);
+  renderSection('json-view-3', recoveryData.approved_decisions);
+  renderSection('json-view-4', recoveryData.patch_v0_to_v1);
+  renderSection('json-view-5', recoveryData.pending_decisions);
+  renderSection('json-view-6', recoveryData.open_questions);
+  renderSection('json-view-7', recoveryData.recovery);
+
+  // ============== Copiar JSON completo al portapapeles ==============
+  const copyBtn = document.getElementById('copy-recovery-btn');
+  copyBtn.addEventListener('click', async () => {
+    try {
+      const raw = document.getElementById('recovery-header').textContent;
+      await navigator.clipboard.writeText(raw);
+      copyBtn.textContent = '✓ Copiado';
+      copyBtn.classList.add('copied');
+      setTimeout(() => {
+        copyBtn.textContent = '📋 Copiar JSON';
+        copyBtn.classList.remove('copied');
+      }, 2000);
+    } catch (e) {
+      // Fallback para entornos sin clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = document.getElementById('recovery-header').textContent;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (_) {}
+      document.body.removeChild(ta);
+      copyBtn.textContent = '✓ Copiado (fallback)';
+      copyBtn.classList.add('copied');
+      setTimeout(() => {
+        copyBtn.textContent = '📋 Copiar JSON';
+        copyBtn.classList.remove('copied');
+      }, 2000);
+    }
+  });
+</script>
+</body>
+</html>

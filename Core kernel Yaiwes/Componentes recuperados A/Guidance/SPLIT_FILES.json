@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "Guidance",
+    "path": "notebooks/tutorials/intro_to_guidance.ipynb",
+    "chunks_dir": "Guidance/notebooks/tutorials/intro_to_guidance.ipynb.chunks",
+    "bytes": 10644851,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Guidance",
+    "path": "notebooks/art_of_prompt_design/use_clear_syntax.ipynb",
+    "chunks_dir": "Guidance/notebooks/art_of_prompt_design/use_clear_syntax.ipynb.chunks",
+    "bytes": 9254852,
+    "chunk_bytes": 8388608
+  }
+]

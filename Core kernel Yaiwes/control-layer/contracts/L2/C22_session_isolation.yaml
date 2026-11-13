@@ -1,0 +1,18 @@
+# C22 — L2. B1 SALIDA4
+id: C22
+layer: L2
+name: session_isolation
+implementado: true
+critical: false
+description: "Aislamiento de sesión/proyecto"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C22 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - session_isolation_check
+evidence:
+  type: session_isolation_marker
+  required: false

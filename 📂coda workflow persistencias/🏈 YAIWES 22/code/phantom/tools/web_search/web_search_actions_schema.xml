@@ -1,0 +1,21 @@
+<tools>
+  <tool name="web_search">
+    <description>Search the web using Perplexity AI (preferred) or DuckDuckGo (fallback, free, no API key needed). Automatically falls back to DuckDuckGo if Perplexity unavailable. Use use_smart_router=true for CVE/exploit/fix detection.</description>
+    <parameters>
+      <parameter name="query" type="string" required="true">
+        <description>Search query or question. Be specific with technical terms and version numbers.</description>
+      </parameter>
+      <parameter name="use_smart_router" type="boolean" required="false" default="false">
+        <description>Auto-detect CVE, exploit, and fix queries.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>Response containing success status, original query, AI-generated content, and status message.</description>
+    </returns>
+    <examples>
+      <function=web_search>
+        <parameter=query>Apache 2.4.49 known exploits and CVEs</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

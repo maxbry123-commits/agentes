@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 SentinelOps Platform Contributors
+
+name: Platform Performance Smoke Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "tests/perf/**"
+      - "docker-compose.yml"
+      - ".github/workflows/platform-perf-smoke.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "tests/perf/**"
+      - "docker-compose.yml"
+      - ".github/workflows/platform-perf-smoke.yml"
+  workflow_dispatch:
+
+env:
+  # Pin: do not query api.github.com/releases/latest (unauthenticated 403 flakiness).
+  K6_VERSION: "0.47.0"
+
+jobs:
+  performance-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          curl -fsSL "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-amd64.tar.gz" -o /tmp/k6.tgz
+          sudo tar -xzf /tmp/k6.tgz -C /usr/local/bin --strip-components=1 "k6-v${K6_VERSION}-linux-amd64/k6"
+          k6 version
+
+      - name: Start mock PF API
+        run: |
+          python3 tests/perf/mock_pf_server.py &
+          echo $! > /tmp/mock-http.pid
+          sleep 2
+          curl -sf -X POST http://127.0.0.1:8080/validate -H 'Content-Type: application/json' -d '{}' >/dev/null
+
+      - name: Run performance smoke test
+        env:
+          BASE_URL: http://127.0.0.1:8080
+        run: |
+          k6 run tests/perf/latency_k6.js \
+            --env BASE_URL="$BASE_URL" \
+            --stage 10s:5 \
+            --stage 20s:10 \
+            --stage 10s:0 \
+            --summary-export k6-results.json
+
+      - name: Validate performance report
+        run: python tools/perf/generate_report.py k6-results.json
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-results
+          path: |
+            k6-results.json
+            performance-report.json
+
+      - name: Stop mock HTTP server
+        if: always()
+        run: |
+          if [ -f /tmp/mock-http.pid ]; then
+            # ci-honesty: justified wave7-remediation
+            kill "$(cat /tmp/mock-http.pid)" || true
+          fi

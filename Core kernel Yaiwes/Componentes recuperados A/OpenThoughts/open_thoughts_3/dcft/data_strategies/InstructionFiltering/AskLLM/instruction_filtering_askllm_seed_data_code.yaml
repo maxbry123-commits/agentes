@@ -1,0 +1,90 @@
+operators:
+- id: seed_code_load_in
+  config:
+    type: load_preexisting
+    framework_name: seed_code_load_in
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 100_000
+  input_ids:
+  - seed_code_load_in
+- id: annotate_filter
+  config:
+    type: completions
+    map: scorer
+    map_config:
+      user_message: |
+        I want you to judge whether the following question is like the positive examples provided or like the negative examples. Here are a few positive examples of questions:
+
+        Positive Questions
+        1. A plane contains $40$ lines, no $2$ of which are parallel. Suppose that there are $3$ points where exactly $3$ lines intersect, $4$ points where exactly $4$ lines intersect, $5$ points where exactly $5$ lines intersect, $6$ points where exactly $6$ lines intersect, and no points where more than $6$ lines intersect. Find the number of points where exactly $2$ lines intersect.
+        2. A spin-half particle is in a linear superposition0.8|\uparrow\rangle+0.6|\downarrow\rangle of its spin-up and spin-down states. If |\uparrow\rangle and |\downarrow\rangle are the eigenstates of \sigma_{z} , then what is the expectation value up to one decimal place, of the operator 10\sigma_{z}+5\sigma_{x} ? Here, symbols have their usual meanings.
+        3. An established group of scientists are working on finding solution to NP hard problems. They claim Subset Sum as an NP-hard problem. The problem is to determine whether there exists a subset of a given set S whose sum is a given number K. You are a computer engineer and you claim to solve this problem given that all numbers in the set are non-negative. Given a set S of size N of non-negative integers, find whether there exists a subset whose sum is K. Input First line of input contains T, the number of test cases. T test cases follow. Each test case contains 2 lines. First line contains two integers N and K. Next line contains N space separated non-negative integers (each less than 100000). 0 < T < 1000 0 < N < 1000 0 < K < 1000 Output Output T lines, one for each test case. Every line should be either 0 or 1 depending on whether such a subset exists or not. Example Input: 2 5 10 3 4 6 1 9 3 2 1 3 4 Output: 1 0
+        4. Let $S$ be the set of positive integer divisors of $20^9.$ Three numbers are chosen independently and at random with replacement from the set $S$ and labeled $a_1,a_2,$ and $a_3$ in the order they are chosen. The probability that both $a_1$ divides $a_2$ and $a_2$ divides $a_3$ is $\tfrac{m}{n},$ where $m$ and $n$ are relatively prime positive integers. Find $m.$
+        5. What is the concentration of calcium ions in a solution containing 0.02 M stochiometric Ca-EDTA complex (we assume that the pH is ideal, T = 25 °C). KCa-EDTA = 5x10^10.
+
+        Negative Questions:
+        1. Solve 0 = 19*z - 17*z for z.
+        2. Simplify ((-2*(-2*sqrt(1210) - sqrt(1210) - sqrt(20)/sqrt(2)*-6))/((sqrt(1800)*2 + sqrt(1800) + sqrt(1800) + sqrt(1800))*-1)*3)**2.\n
+        3. Given a list of objects that have an `is_organized` method that returns a boolean value, write a Python function that takes the list and returns a new list of those objects for which `is_organized` returns True.
+        4. Can you provide a Python code snippet that demonstrates how to use a decorator to log the execution time of a function?
+        5. Is sodium hydroxide (NaOH) an acid or base?
+
+        Here is your question:
+        {{instruction_seed}}
+
+        Return a score between 1 and 100, where 100 means exactly like the positive questions whereas 1 is exactly like the negative questions. 
+      output_column: to_be_used
+    model: "gpt-4o-mini"
+    batch: False
+    temperature: 1.0
+  input_ids:
+    - sample_dataset
+- id: select_to_be_used
+  config:
+    type: function
+    function: data_strategies.InstructionFiltering.AskLLM.utils.filter_rank
+    function_config:
+      top_percentage: 0.10
+      rating_column: to_be_used
+  input_ids:
+    - annotate_filter
+- id: sample_dataset_final
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_500
+  input_ids:
+  - select_to_be_used
+- id: annotate
+  config:
+    type: completions
+    map: chat
+    map_config:
+      user_message_column: instruction_seed
+      output_column: r1_distill_70b_response
+    model: "together_ai/deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+    batch: False
+    temperature: 1.0
+    backend_params:
+      max_requests_per_minute: 250
+      max_tokens_per_minute: 500_000
+      invalid_finish_reasons: ['content_filter']
+    generation_params:
+      max_tokens: 32_000
+  input_ids:
+    - sample_dataset_final
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: r1_distill_70b_response
+      output_sharegpt_column: conversations
+  input_ids:
+    - annotate

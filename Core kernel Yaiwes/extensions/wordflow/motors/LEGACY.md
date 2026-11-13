@@ -1,0 +1,1 @@
+S4 source preserved. Destination: agente-yaiwes/code-programming-engine/external-motor-bridge. kernel_ext remains as bridge subcomponent. See Paso 3.

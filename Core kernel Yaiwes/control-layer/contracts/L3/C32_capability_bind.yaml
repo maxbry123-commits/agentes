@@ -1,0 +1,18 @@
+# C32 — L3. B2 SALIDA4
+id: C32
+layer: L3
+name: capability_bind
+implementado: true
+critical: false
+description: "Binding de capabilities a contratos"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C32 aplica en capa L3"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - capability_bind_check
+evidence:
+  type: capability_bind_marker
+  required: false

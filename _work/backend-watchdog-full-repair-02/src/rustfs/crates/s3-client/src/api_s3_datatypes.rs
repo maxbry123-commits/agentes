@@ -1,0 +1,425 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_must_use)]
+#![allow(clippy::all)]
+
+use s3s::dto::Owner;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use time::OffsetDateTime;
+
+use crate::checksum::ChecksumMode;
+use crate::transition_api::ObjectMultipartInfo;
+use crate::utils::base64_decode;
+
+use super::transition_api;
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "PascalCase")]
+pub struct CommonPrefix {
+    pub prefix: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "PascalCase")]
+pub struct ListBucketV2Result {
+    pub common_prefixes: Vec<CommonPrefix>,
+    pub contents: Vec<transition_api::ObjectInfo>,
+    pub delimiter: String,
+    pub encoding_type: String,
+    pub is_truncated: bool,
+    pub max_keys: i64,
+    pub name: String,
+    pub next_continuation_token: String,
+    pub continuation_token: String,
+    pub prefix: String,
+    pub fetch_owner: String,
+    pub start_after: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "PascalCase")]
+pub struct Version {
+    #[serde(rename = "ETag")]
+    pub etag: String,
+    pub is_latest: bool,
+    pub key: String,
+    pub size: i64,
+    pub storage_class: String,
+    pub version_id: String,
+    pub user_metadata: HashMap<String, String>,
+    pub user_tags: HashMap<String, String>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "PascalCase")]
+pub struct ListVersionsResult {
+    #[serde(rename = "Version")]
+    pub versions: Vec<Version>,
+    #[serde(rename = "DeleteMarker")]
+    pub delete_markers: Vec<Version>,
+    pub common_prefixes: Vec<CommonPrefix>,
+    pub name: String,
+    pub prefix: String,
+    pub delimiter: String,
+    pub max_keys: i64,
+    pub encoding_type: String,
+    pub is_truncated: bool,
+    pub key_marker: String,
+    pub version_id_marker: String,
+    pub next_key_marker: String,
+    pub next_version_id_marker: String,
+}
+
+#[allow(
+    dead_code,
+    reason = "fields of a MinIO-parity list result that this port builds but never reads back (backlog#1823)"
+)]
+pub struct ListBucketResult {
+    common_prefixes: Vec<CommonPrefix>,
+    contents: Vec<transition_api::ObjectInfo>,
+    delimiter: String,
+    encoding_type: String,
+    is_truncated: bool,
+    marker: String,
+    max_keys: i64,
+    name: String,
+    next_marker: String,
+    prefix: String,
+}
+
+#[allow(
+    dead_code,
+    reason = "fields of a MinIO-parity list result that this port builds but never reads back (backlog#1823)"
+)]
+pub struct ListMultipartUploadsResult {
+    bucket: String,
+    key_marker: String,
+    upload_id_marker: String,
+    next_key_marker: String,
+    next_upload_id_marker: String,
+    encoding_type: String,
+    max_uploads: i64,
+    is_truncated: bool,
+    uploads: Vec<ObjectMultipartInfo>,
+    prefix: String,
+    delimiter: String,
+    common_prefixes: Vec<CommonPrefix>,
+}
+
+#[allow(
+    dead_code,
+    reason = "fields of a MinIO-parity list result that this port builds but never reads back (backlog#1823)"
+)]
+pub struct Initiator {
+    id: String,
+    display_name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ObjectPart {
+    pub etag: String,
+    pub part_num: i64,
+    pub last_modified: OffsetDateTime,
+    pub size: i64,
+    pub checksum_crc32: String,
+    pub checksum_crc32c: String,
+    pub checksum_sha1: String,
+    pub checksum_sha256: String,
+    pub checksum_crc64nvme: String,
+}
+
+impl Default for ObjectPart {
+    fn default() -> Self {
+        ObjectPart {
+            etag: Default::default(),
+            part_num: 0,
+            last_modified: OffsetDateTime::now_utc(),
+            size: 0,
+            checksum_crc32: Default::default(),
+            checksum_crc32c: Default::default(),
+            checksum_sha1: Default::default(),
+            checksum_sha256: Default::default(),
+            checksum_crc64nvme: Default::default(),
+        }
+    }
+}
+
+impl ObjectPart {
+    fn checksum(&self, t: &ChecksumMode) -> String {
+        match t {
+            ChecksumMode::ChecksumCRC32C => {
+                return self.checksum_crc32c.clone();
+            }
+            ChecksumMode::ChecksumCRC32 => {
+                return self.checksum_crc32.clone();
+            }
+            ChecksumMode::ChecksumSHA1 => {
+                return self.checksum_sha1.clone();
+            }
+            ChecksumMode::ChecksumSHA256 => {
+                return self.checksum_sha256.clone();
+            }
+            ChecksumMode::ChecksumCRC64NVME => {
+                return self.checksum_crc64nvme.clone();
+            }
+            _ => {
+                return "".to_string();
+            }
+        }
+    }
+
+    pub fn checksum_raw(&self, t: &ChecksumMode) -> Result<Vec<u8>, std::io::Error> {
+        let b = self.checksum(t);
+        if b == "" {
+            return Err(std::io::Error::other("no checksum set"));
+        }
+        let decoded = match base64_decode(b.as_bytes()) {
+            Ok(b) => b,
+            Err(e) => return Err(std::io::Error::other(e)),
+        };
+        if decoded.len() != t.raw_byte_len() as usize {
+            return Err(std::io::Error::other("checksum length mismatch"));
+        }
+        Ok(decoded)
+    }
+}
+
+pub struct ListObjectPartsResult {
+    pub bucket: String,
+    pub key: String,
+    pub upload_id: String,
+    pub initiator: Initiator,
+    pub owner: Owner,
+    pub storage_class: String,
+    pub part_number_marker: i32,
+    pub next_part_number_marker: i32,
+    pub max_parts: i32,
+    pub checksum_algorithm: String,
+    pub checksum_type: String,
+    pub is_truncated: bool,
+    pub object_parts: Vec<ObjectPart>,
+    pub encoding_type: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "PascalCase")]
+pub struct InitiateMultipartUploadResult {
+    pub bucket: String,
+    pub key: String,
+    pub upload_id: String,
+}
+
+#[derive(Debug, Default)]
+pub struct CompleteMultipartUploadResult {
+    pub location: String,
+    pub bucket: String,
+    pub key: String,
+    pub etag: String,
+    pub checksum_crc32: String,
+    pub checksum_crc32c: String,
+    pub checksum_sha1: String,
+    pub checksum_sha256: String,
+    pub checksum_crc64nvme: String,
+}
+
+// Field renames drive the CompleteMultipartUpload XML body sent to the remote.
+// Without them quick-xml emits the Rust field names (<part_num>/<etag>), so the
+// remote parses zero <Part> elements and completes a 0-byte object while still
+// returning 200 — the multipart transition silently produces an empty object
+// (rustfs/rustfs#4811). Empty checksum fields are skipped so an MD5-only
+// transition does not emit blank <ChecksumCRC32/> elements.
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+pub struct CompletePart {
+    //api has
+    #[serde(rename = "PartNumber")]
+    pub part_num: i64,
+    #[serde(rename = "ETag")]
+    pub etag: String,
+    #[serde(rename = "ChecksumCRC32", skip_serializing_if = "String::is_empty")]
+    pub checksum_crc32: String,
+    #[serde(rename = "ChecksumCRC32C", skip_serializing_if = "String::is_empty")]
+    pub checksum_crc32c: String,
+    #[serde(rename = "ChecksumSHA1", skip_serializing_if = "String::is_empty")]
+    pub checksum_sha1: String,
+    #[serde(rename = "ChecksumSHA256", skip_serializing_if = "String::is_empty")]
+    pub checksum_sha256: String,
+    #[serde(rename = "ChecksumCRC64NVME", skip_serializing_if = "String::is_empty")]
+    pub checksum_crc64nvme: String,
+}
+
+#[derive(Debug, Default, serde::Serialize)]
+#[serde(rename = "CompleteMultipartUpload")]
+pub struct CompleteMultipartUpload {
+    #[serde(rename = "Part")]
+    pub parts: Vec<CompletePart>,
+}
+
+impl CompleteMultipartUpload {
+    pub fn marshal_msg(&self) -> Result<String, std::io::Error> {
+        //let buf = serde_json::to_string(self)?;
+        let buf = match quick_xml::se::to_string(self) {
+            Ok(buf) => buf,
+            Err(e) => {
+                return Err(std::io::Error::other(e));
+            }
+        };
+
+        Ok(buf)
+    }
+
+    pub fn unmarshal(buf: &[u8]) -> Result<Self, std::io::Error> {
+        #[derive(Debug, Deserialize)]
+        struct WirePart {
+            #[serde(rename = "ETag")]
+            etag: String,
+            #[serde(rename = "PartNumber")]
+            part_num: i64,
+            #[serde(rename = "ChecksumCRC32")]
+            checksum_crc32: String,
+            #[serde(rename = "ChecksumCRC32C")]
+            checksum_crc32c: String,
+            #[serde(rename = "ChecksumSHA1")]
+            checksum_sha1: String,
+            #[serde(rename = "ChecksumSHA256")]
+            checksum_sha256: String,
+            #[serde(rename = "ChecksumCRC64NVME")]
+            checksum_crc64nvme: String,
+        }
+
+        #[derive(Debug, Deserialize)]
+        #[serde(rename = "CompleteMultipartUpload")]
+        struct WireCompleteMultipartUpload {
+            #[serde(rename = "Part", default)]
+            parts: Vec<WirePart>,
+        }
+
+        let body = String::from_utf8_lossy(buf);
+        let wire: WireCompleteMultipartUpload = quick_xml::de::from_str(&body)
+            .map_err(|err| std::io::Error::other(format!("failed to parse CompleteMultipartUpload XML: {err}; body: {body}")))?;
+
+        Ok(Self {
+            parts: wire
+                .parts
+                .into_iter()
+                .map(|p| CompletePart {
+                    etag: p.etag,
+                    part_num: p.part_num,
+                    checksum_crc32: p.checksum_crc32,
+                    checksum_crc32c: p.checksum_crc32c,
+                    checksum_sha1: p.checksum_sha1,
+                    checksum_sha256: p.checksum_sha256,
+                    checksum_crc64nvme: p.checksum_crc64nvme,
+                })
+                .collect(),
+        })
+    }
+}
+
+#[allow(
+    dead_code,
+    reason = "live via quick_xml::de::from_str in bucket_cache.rs; serde deserialization is not a construction (backlog#1823)"
+)]
+#[derive(serde::Serialize)]
+pub struct DeleteObject {
+    //api has
+    pub key: String,
+    pub version_id: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct DeleteMultiObjects {
+    pub quiet: bool,
+    pub objects: Vec<DeleteObject>,
+}
+
+impl DeleteMultiObjects {
+    pub fn marshal_msg(&self) -> Result<String, std::io::Error> {
+        //let buf = serde_json::to_string(self)?;
+        let buf = match quick_xml::se::to_string(self) {
+            Ok(buf) => buf,
+            Err(e) => {
+                return Err(std::io::Error::other(e));
+            }
+        };
+
+        Ok(buf)
+    }
+
+    #[allow(dead_code, reason = "MinIO-parity XML helper with no caller in this port (backlog#1823)")]
+    pub fn unmarshal(buf: &[u8]) -> Result<Self, std::io::Error> {
+        #[derive(Debug, Deserialize)]
+        struct WireDeleteObject {
+            #[serde(rename = "Key")]
+            key: String,
+            #[serde(rename = "VersionId")]
+            version_id: String,
+        }
+
+        #[derive(Debug, Deserialize)]
+        #[serde(rename = "Delete")]
+        struct WireDeleteMultiObjects {
+            #[serde(rename = "Quiet", default)]
+            quiet: bool,
+            #[serde(rename = "Object", default)]
+            objects: Vec<WireDeleteObject>,
+        }
+
+        let body = String::from_utf8_lossy(buf);
+        let wire: WireDeleteMultiObjects = quick_xml::de::from_str(&body).map_err(|err| std::io::Error::other(err))?;
+
+        Ok(Self {
+            quiet: wire.quiet,
+            objects: wire
+                .objects
+                .into_iter()
+                .map(|o| DeleteObject {
+                    key: o.key,
+                    version_id: o.version_id,
+                })
+                .collect(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ListBucketV2Result;
+
+    #[test]
+    fn list_bucket_v2_common_prefix_accepts_s3_pascal_case_xml() {
+        let xml = r#"
+            <ListBucketResult>
+                <Name>tier-bucket</Name>
+                <Prefix></Prefix>
+                <KeyCount>1</KeyCount>
+                <MaxKeys>1000</MaxKeys>
+                <Delimiter>/</Delimiter>
+                <IsTruncated>false</IsTruncated>
+                <CommonPrefixes>
+                    <Prefix>tenant-a/</Prefix>
+                </CommonPrefixes>
+            </ListBucketResult>
+        "#;
+
+        let result = quick_xml::de::from_str::<ListBucketV2Result>(xml).expect("S3 list response should decode");
+
+        assert_eq!(result.common_prefixes.len(), 1);
+        assert_eq!(result.common_prefixes[0].prefix, "tenant-a/");
+    }
+}

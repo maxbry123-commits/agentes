@@ -1,0 +1,75 @@
+operators:
+  - id: load_stackexchange_codegolf
+    config:
+      type: load_preexisting
+      framework_name: stackexchange_code_golf_reorg_cache
+  # NOTE(Ryan): Here we have to guess the number of instructions to generate based on the yeild over time of filtering out samples downstream. 
+  - id: create_alpaca_prompts
+    config:
+      type: function
+      function: data_strategies.Alpaca.utils_no_input.create_alpaca_prompts
+      function_config:
+        num_instructions_to_generate: 1_000_000
+        num_prompt_instructions: 3
+        output_column: alpaca_prompt
+    input_ids:
+      - load_stackexchange_codegolf
+
+  - id: generate_instruction_input_output_tuples
+    config:
+      type: completions
+      map: alpaca
+      map_config:
+        alpaca_prompt_column: alpaca_prompt
+        num_seed_instructions: 3 # NOTE(Ryan) used for Alpaca's parsing code, needs to match the number in the previous step
+        output_instruction_column: instruction
+        output_input_column: input
+        output_output_column: output
+      model: gpt-4o-mini
+      batch: False
+    input_ids:
+      - create_alpaca_prompts
+
+  - id: filter_instructions_by_heuristics
+    config:
+      type: function
+      function: data_strategies.Alpaca.utils.instructions_heuristics
+      function_config:
+        input_instruction_column: instruction
+        output_filtered_reason_column: filtered_reason
+        output_filtered_decision_column: filtered_decision
+    input_ids:
+      - generate_instruction_input_output_tuples
+
+  - id: remove_filtered_instructions
+    config:
+      type: function
+      function: data_strategies.commons.filter_out_truey_values
+      function_config:
+        filter_column: filtered_decision
+    input_ids:
+      - filter_instructions_by_heuristics
+
+  # NOTE(Ryan): This is a departure from the original Alpaca recipe which uses ROUGE and 0.7 threshold, we do this to compute similarity scores faster.
+  # NOTE(Ryan): We also do not include the seed instructions here, we only check the similarity of the generated instructions against each other.
+  - id: filter_instructions_cosine_similarity
+    config:
+      type: function
+      function: data_strategies.Alpaca.utils.filter_instructions_cosine_similarity
+      function_config:
+        similarity_threshold: 0.9
+        input_instruction_column: instruction
+    input_ids:
+      - remove_filtered_instructions
+
+  - id: convert_alpaca_to_sharegpt
+    config:
+      type: function
+      function: data_strategies.commons.convert_alpaca_to_sharegpt
+      function_config:
+        input_instruction_column: instruction
+        input_input_column: input
+        input_output_column: output
+        output_sharegpt_column: conversations
+    input_ids:
+      - filter_instructions_cosine_similarity

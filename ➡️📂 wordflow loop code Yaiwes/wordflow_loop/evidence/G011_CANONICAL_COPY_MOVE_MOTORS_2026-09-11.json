@@ -1,0 +1,84 @@
+{
+  "schema": "yaiwes.g011-evidence/v1",
+  "contract": "tel.workflow/v4",
+  "gap": "G-011",
+  "owner": "SOL_1",
+  "status": "VERIFIED_CLOSED",
+  "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "research": {
+    "motor_code_lock": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/MOTOR-CODE-LOCK.json",
+    "motor_code_lock_blob": "18196ecdd1379a17d763b3e2d0857534f5fdef14",
+    "copy_motor": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py",
+    "copy_motor_blob": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
+    "move_motor": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py",
+    "move_motor_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
+    "canonical_blobs_preserved": true,
+    "motor_source_rewritten": false,
+    "github_readback": "PASS",
+    "adversarial_gap": "build_motor_env allowed destination/state outside an authorized root and mkdir occurred before explicit mutation authorization"
+  },
+  "wire": {
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/canonical_motor_gate.py",
+    "module_blob_before": "24c659c03454b7ef4361aa69bf721cb12b2331c4",
+    "module_blob_after": "def0ccc402d4e9797ff7ac30a92c1993aec47914",
+    "patch_commit": "1332c78428094e7fb74916a37935758179a39e49",
+    "contract": "yaiwes.canonical_motor_gate/v1",
+    "properties": [
+      "verifies canonical motor Git blob SHA before motor use",
+      "requires authorized_root",
+      "resolves destination and state path before mutation",
+      "rejects destination outside authorized_root",
+      "rejects state file outside authorized_root",
+      "rejects symlink traversal that resolves outside authorized_root",
+      "requires explicit mutation_authorized=true",
+      "performs no destination mkdir before all gates pass",
+      "preserves canonical motor source blobs"
+    ]
+  },
+  "test": {
+    "path": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_canonical_motor_gate.py",
+    "blob_before": "9eee8d33532157967e88cf80fb6a4a0a37a30d7b",
+    "blob_after": "55a6e4fda73010cad2359f5e0ad9307bd44fc815",
+    "test_commit": "6054cbf88feb39ce4bf4869935ed799fdc2cdbf8",
+    "covers": [
+      "copy motor canonical blob and SHA-256 read-back",
+      "move motor canonical blob and SHA-256 read-back",
+      "unsupported operation fail-closed",
+      "source/destination collision fail-closed",
+      "authorized root required",
+      "explicit mutation authorization required with no pre-mutation mkdir",
+      "destination root escape rejected without mutation",
+      "state-file root escape rejected without mutation",
+      "destination symlink escape rejected without mutation",
+      "state-file symlink escape rejected without mutation"
+    ],
+    "exact_topology_local_pytest": {
+      "copy_computed_blob": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
+      "move_computed_blob": "9a21facfe11327cf60a2afca8f415ad52f0ecbe5",
+      "command": "PYTHONPATH=. python -m pytest -q runtime/tests/test_canonical_motor_gate.py",
+      "working_directory_shape": "<repo>/➡️📂 Wordflow LOOP Yaiwes",
+      "result": "6 passed in 3.03s",
+      "verdict": "PASS_6_OF_6",
+      "scope": "LOCAL_TOOL_RUN_EXACT_MAIN_CONTENT_AND_LOCKED_MOTOR_BLOBS"
+    },
+    "harness_correction": {
+      "first_attempt": "4 passed, 2 failed because reconstructed runtime was one directory too high and repo_root() pointed at /tmp",
+      "classification": "TEST_HARNESS_PATH_GAP_NOT_REPO_CODE_FAILURE",
+      "strategy_delta": "reconstructed exact repository topology and reran unchanged tests",
+      "second_attempt": "PASS_6_OF_6"
+    }
+  },
+  "task_node": {
+    "claim_commit": "ff291c2ef43fa7ef44e2bfe9e83fc2dfa4271830",
+    "close_commit": "7a28a968c6fc311058e5794a5651639fe23985e6",
+    "readback": "G-011 PASS claimed_by=SOL_1 steps=PASS/PASS/PASS gaps=[] version=3",
+    "task_nodes_path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TASK-NODES.json"
+  },
+  "closure": {
+    "closed": true,
+    "remaining": [],
+    "path_scope_gate_gap": "CLOSED_VERIFIED",
+    "execution_authorized": false,
+    "deployment_authorized": false
+  }
+}

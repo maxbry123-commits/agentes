@@ -1,0 +1,74 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::cache::{ObjectDataCacheFillResult, ObjectDataCacheGetPlan, ObjectDataCacheInvalidationResult, ObjectDataCacheLookup};
+
+/// Lightweight no-op backend for the initial skeleton.
+#[derive(Debug, Default)]
+pub struct NoopBackend;
+
+impl NoopBackend {
+    /// Returns a disabled lookup result.
+    pub async fn lookup_body(&self, _plan: &ObjectDataCacheGetPlan) -> ObjectDataCacheLookup {
+        ObjectDataCacheLookup::SkipDisabled
+    }
+
+    /// Returns a skipped fill result.
+    pub async fn fill_body(&self, _plan: &ObjectDataCacheGetPlan) -> ObjectDataCacheFillResult {
+        ObjectDataCacheFillResult::SkippedDisabled
+    }
+
+    /// Returns a no-op invalidation result: a disabled cache holds nothing, so
+    /// nothing is ever removed.
+    pub async fn invalidate_object(&self) -> ObjectDataCacheInvalidationResult {
+        ObjectDataCacheInvalidationResult::NoOp
+    }
+
+    /// Prefix invalidation on a disabled cache removes nothing.
+    pub async fn invalidate_prefix(&self) -> ObjectDataCacheInvalidationResult {
+        ObjectDataCacheInvalidationResult::NoOp
+    }
+
+    /// Bucket invalidation on a disabled cache removes nothing.
+    pub async fn invalidate_bucket(&self) -> ObjectDataCacheInvalidationResult {
+        ObjectDataCacheInvalidationResult::NoOp
+    }
+
+    /// Clearing a disabled cache removes nothing.
+    pub async fn clear(&self) -> ObjectDataCacheInvalidationResult {
+        ObjectDataCacheInvalidationResult::NoOp
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NoopBackend;
+    use crate::cache::{
+        ObjectDataCacheFillResult, ObjectDataCacheGetPlan, ObjectDataCacheInvalidationResult, ObjectDataCacheLookup,
+    };
+
+    #[tokio::test]
+    async fn noop_backend_returns_disabled_results() {
+        let backend = NoopBackend;
+        let plan = ObjectDataCacheGetPlan::Disabled;
+
+        let lookup = backend.lookup_body(&plan).await;
+        let fill = backend.fill_body(&plan).await;
+        let invalidation = backend.invalidate_object().await;
+
+        assert!(matches!(lookup, ObjectDataCacheLookup::SkipDisabled));
+        assert!(matches!(fill, ObjectDataCacheFillResult::SkippedDisabled));
+        assert!(matches!(invalidation, ObjectDataCacheInvalidationResult::NoOp));
+    }
+}

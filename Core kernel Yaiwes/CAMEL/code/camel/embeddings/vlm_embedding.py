@@ -1,0 +1,197 @@
+# ========= Copyright 2023-2026 @ CAMEL-AI.org. All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2023-2026 @ CAMEL-AI.org. All Rights Reserved. =========
+
+# Enables postponed evaluation of annotations (for string-based type hints)
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, List, Mapping, Optional, Union
+
+from PIL import Image
+
+if TYPE_CHECKING:
+    import torch
+
+from camel.embeddings import BaseEmbedding
+from camel.logger import get_logger
+from camel.utils import dependencies_required
+
+logger = get_logger(__name__)
+
+
+def _feature_output_to_tensor(outputs: Any) -> torch.Tensor:
+    r"""Return the embedding tensor from CLIP-like `get_*_features` results.
+
+    Transformers v5 returns :class:`~transformers.modeling_outputs.
+    BaseModelOutputWithPooling` with projected features in ``pooler_output``;
+    older versions returned a raw tensor.
+    """
+    import torch
+
+    pooled = getattr(outputs, "pooler_output", None)
+    if pooled is not None:
+        return pooled
+    if isinstance(outputs, torch.Tensor):
+        return outputs
+    if isinstance(outputs, (list, tuple)) and outputs:
+        if len(outputs) > 1 and isinstance(outputs[1], torch.Tensor):
+            return outputs[1]
+        first_output = outputs[0]
+        if isinstance(first_output, torch.Tensor):
+            return first_output
+    raise TypeError(
+        "Expected tensor or object with pooler_output from get_*_features; "
+        f"got {type(outputs)!r}"
+    )
+
+
+class VisionLanguageEmbedding(BaseEmbedding[Union[str, Image.Image]]):
+    r"""Provides image embedding functionalities using multimodal model.
+
+    Args:
+        model_name : The model type to be used for generating embeddings.
+            And the default value is: obj:`openai/clip-vit-base-patch32`.
+
+    Raises:
+        RuntimeError: If an unsupported model type is specified.
+    """
+
+    @dependencies_required('transformers', 'PIL')
+    def __init__(
+        self, model_name: str = "openai/clip-vit-base-patch32"
+    ) -> None:
+        r"""Initializes the: obj: `VisionLanguageEmbedding` class with a
+        specified model and return the dimension of embeddings.
+
+        Args:
+            model_name (str, optional): The version name of the model to use.
+                (default: :obj:`openai/clip-vit-base-patch32`)
+        """
+        from transformers import AutoModel, AutoProcessor
+
+        try:
+            self.model = AutoModel.from_pretrained(model_name)
+            self.processor = AutoProcessor.from_pretrained(model_name)
+        except Exception as e:
+            raise RuntimeError(f"Failed to load model '{model_name}': {e}")
+
+        self.valid_processor_kwargs = []
+        self.valid_model_kwargs = []
+
+        try:
+            self.valid_processor_kwargs = (
+                self.processor.image_processor._valid_processor_keys
+            )
+            self.valid_model_kwargs = [
+                "pixel_values",
+                "return_dict",
+                "interpolate_pos_encoding",
+            ]
+        except Exception:
+            logger.warning("not typically processor and model structure")
+            pass
+        self.dim: Optional[int] = None
+
+    def embed_list(
+        self, objs: List[Union[Image.Image, str]], **kwargs: Any
+    ) -> List[List[float]]:
+        r"""Generates embeddings for the given images or texts.
+
+        Args:
+            objs (List[Image.Image|str]): The list of images or texts for
+                which to generate the embeddings.
+            image_processor_kwargs: Extra kwargs passed to the image processor.
+            tokenizer_kwargs: Extra kwargs passed to the text tokenizer
+                (processor).
+            model_kwargs: Extra kwargs passed to the main model.
+
+        Returns:
+            List[List[float]]: A list that represents the generated embedding
+                as a list of floating-point numbers.
+
+        Raises:
+            ValueError: If the input type is not `Image.Image` or `str`.
+        """
+        if not objs:
+            raise ValueError("Input objs list is empty.")
+
+        image_processor_kwargs: Mapping[str, Any] = (
+            kwargs.get('image_processor_kwargs', {}) or {}
+        )
+        tokenizer_kwargs: Mapping[str, Any] = (
+            kwargs.get('tokenizer_kwargs', {}) or {}
+        )
+        model_kwargs: Mapping[str, Any] = kwargs.get('model_kwargs', {}) or {}
+
+        result_list = []
+        for obj in objs:
+            if (
+                obj.__class__.__module__ == "PIL.Image"
+                and obj.__class__.__name__ == "Image"
+            ):
+                image_input = self.processor(
+                    images=obj,
+                    return_tensors="pt",
+                    padding=True,
+                    **(image_processor_kwargs or {}),
+                )
+                image_feature = (
+                    _feature_output_to_tensor(
+                        self.model.get_image_features(
+                            **image_input, **model_kwargs
+                        )
+                    )
+                    .squeeze(dim=0)
+                    .tolist()
+                )
+                result_list.append(image_feature)
+            elif isinstance(obj, str):
+                text_input = self.processor(
+                    text=obj,
+                    return_tensors="pt",
+                    padding=True,
+                    **(tokenizer_kwargs or {}),
+                )
+                text_feature = (
+                    _feature_output_to_tensor(
+                        self.model.get_text_features(
+                            **text_input, **model_kwargs
+                        )
+                    )
+                    .squeeze(dim=0)
+                    .tolist()
+                )
+                result_list.append(text_feature)
+            else:
+                raise ValueError("Input type is not image nor text.")
+
+        self.dim = len(result_list[0])
+
+        if any(len(result) != self.dim for result in result_list):
+            raise ValueError("Dimensionality is not consistent.")
+
+        return result_list
+
+    def get_output_dim(self) -> int:
+        r"""Returns the output dimension of the embeddings.
+
+        Returns:
+            int: The dimensionality of the embedding for the current model.
+        """
+        if self.dim is None:
+            text = 'dimension'
+            inputs = self.processor(text=[text], return_tensors="pt")
+            self.dim = _feature_output_to_tensor(
+                self.model.get_text_features(**inputs)
+            ).shape[1]
+        return self.dim

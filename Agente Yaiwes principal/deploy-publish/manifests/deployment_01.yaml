@@ -1,0 +1,16 @@
+schema_version: "1.0"
+deployment_id: deployment_01_opcion_a_instance_pool
+target_commit_sha: "pending_after_push"
+workflow_ref: ".github/workflows/test-wordflow-code-path.yml"
+manifest_path: despliegue/manifests/deployment_01.yaml
+checksums_ref: despliegue/auditoria/checksums.yaml
+validation_result: PENDING
+instructions_ref: despliegue/INSTRUCCIONES_GROK_OPCION_A.md
+created_at: "2026-08-26T03:15:00Z"
+notes: |
+  Despliegue 1: materializa code-programming-engine (pool + registro),
+  añade entradas de catalogo, NO reemplaza code_path_runner en extensions/.
+artifacts:
+  - code-programming-engine/
+  - extensions/wordflow/component_catalog.json
+  - extensions/wordflow/connect_catalog.json

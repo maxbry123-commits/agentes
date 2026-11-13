@@ -1,0 +1,14 @@
+[package]
+name = "expression_repl"
+version = "2.0.1"
+edition = "2021"
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+colored = "3"
+rustyline = "15"
+serde_json = { workspace = true }
+zen-expression = { path = "../expression", version = "2.0.1" }
+

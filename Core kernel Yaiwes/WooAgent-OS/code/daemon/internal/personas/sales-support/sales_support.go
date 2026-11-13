@@ -1,0 +1,541 @@
+// Package salessupport is the Sales Support agent implementation.
+//
+// One-shot Phase 2 behavior: pick the most recent order in a state where a
+// proactive customer note is welcome (processing / completed), pull its
+// details + customer info, and draft a warm, on-brand customer-facing
+// note. Lands as a customer_reply_draft proposal that the operator
+// approves; approval ships the note via wooagent-orders/add-note with
+// is_customer_note=true.
+//
+// LLM: Claude Haiku 4.5 by default. Customer-facing copy is the highest
+// stakes prose the daemon writes — wrong tone is more visible than wrong
+// product description. The cost-posture note in progress.md explicitly
+// flagged "review/approval testing in Phase 2-4" as the time to flip to
+// Claude; this persona qualifies.
+//
+// Skipped outcomes:
+//   - MCP not configured
+//   - ANTHROPIC_API_KEY not set
+//   - No recent orders in a notable state (every order is fresh / cancelled)
+package salessupport
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/wooagent-os/wooagent-os/daemon/internal/llm"
+	"github.com/wooagent-os/wooagent-os/daemon/internal/llm/anthropic"
+	"github.com/wooagent-os/wooagent-os/daemon/internal/mcp"
+	"github.com/wooagent-os/wooagent-os/daemon/internal/personas"
+	"github.com/wooagent-os/wooagent-os/daemon/internal/telemetry"
+)
+
+const (
+	defaultAnthropicModel = "claude-haiku-4-5-20251001"
+	// callTimeout bounds one draft. Short — this is a plain text-in /
+	// JSON-out call with no tool use.
+	callTimeout = 60 * time.Second
+)
+
+// anthropicAPIURL is a var (not a const) so the rule-lock test can
+// swap it for a httptest server. See sales_support_redaction_test.go.
+var anthropicAPIURL = "https://api.anthropic.com/v1/messages"
+
+func init() {
+	personas.Register(&SalesSupport{})
+}
+
+type SalesSupport struct{}
+
+func (SalesSupport) Slug() string        { return "sales-support" }
+func (SalesSupport) DisplayName() string { return "Sales Support agent" }
+func (SalesSupport) Addable() bool       { return false }
+
+// Cooldown: order-centric (proposal_target.order_id), with longer windows
+// than the product personas. A customer-facing message carries higher
+// risk than a copy or price change — once we've messaged an order, we
+// hold off for 30d; once the operator dismisses, 90d. Tunable later if
+// real follow-up needs surface a shorter window.
+func (SalesSupport) Cooldown() personas.CooldownPolicy {
+	return personas.CooldownPolicy{
+		TargetKey: "order_id",
+		Approved:  30 * 24 * time.Hour,
+		Dismissed: 90 * 24 * time.Hour,
+		Skipped:   30 * 24 * time.Hour,
+	}
+}
+
+const systemPrompt = `You are the customer-facing sales-support voice for a small-batch home-goods store.
+
+Voice: warm, personal, plainspoken. The customer is a person, not a ticket. Acknowledge what they ordered specifically. Don't oversell, don't upsell, don't promise timelines you can't keep. Avoid corporate phrases ("we appreciate your business", "thank you for your patience"). Sign off with a real first name (use "Elizabeth" as the default; the operator can swap before sending).
+
+Length: 3 to 6 short sentences. Plain text, no markdown, no signature block beyond the closing line.
+
+When the order status is "processing": acknowledge the order, name one specific item, set a calm next-step expectation (handcrafted, will ship soon — no exact date promises), invite questions.
+
+When the order status is "completed": follow up briefly. Mention something specific from what they bought. Offer help with care or use, not another purchase.
+
+When the order is in any other state (on-hold, pending, etc.): no_proposal=true with a one-sentence reason naming the status.
+
+Output ONLY a JSON object that matches this exact shape (no preamble, no markdown fences, no commentary):
+
+{
+  "no_proposal": false,
+  "note_type": "customer",
+  "subject_hint": "short label for the operator (1-4 words, e.g. 'Order processing follow-up')",
+  "message": "Hi Maria,\n\n…the multi-line plain-text message…\n\n— Elizabeth"
+}
+
+Or, when declining:
+
+{
+  "no_proposal": true,
+  "reason_no_proposal": "Order is on-hold pending payment; a customer-facing note from us would be premature."
+}`
+
+// maxDraftAttempts caps how many orders one Sales Support run will try.
+// Each attempt is ~10-20s of LLM work. See personas.Persona docstring
+// for the canonical pattern.
+const maxDraftAttempts = 3
+
+func (SalesSupport) Draft(ctx context.Context, deps personas.Deps) (personas.Drafted, error) {
+	if deps.MCP == nil {
+		return personas.Drafted{
+			Skipped:    true,
+			SkipReason: "MCP client not configured (set WOOAGENT_MCP_URL/USER/APP_PASSWORD on the daemon)",
+		}, nil
+	}
+	if strings.TrimSpace(deps.Env.AnthropicAPIKey) == "" {
+		return personas.Drafted{
+			Skipped:    true,
+			SkipReason: "ANTHROPIC_API_KEY not set; sales support uses Claude for customer-facing tone",
+		}, nil
+	}
+
+	if _, err := deps.MCP.Initialize(ctx); err != nil {
+		return personas.Drafted{}, fmt.Errorf("mcp initialize: %w", err)
+	}
+
+	model := deps.Env.AnthropicModel
+	if model == "" {
+		model = defaultAnthropicModel
+	}
+
+	// Persistent cooldown set (touched ∪ recently-skipped; see SalesSupport.Cooldown).
+	ss := SalesSupport{}
+	policy := ss.Cooldown()
+	skip, err := personas.CooldownSkipSet(ctx, deps.Store, ss.Slug(), policy)
+	if err != nil {
+		return personas.Drafted{
+			Skipped:    true,
+			SkipReason: fmt.Sprintf("look up recently-touched orders: %v", err),
+		}, nil
+	}
+	rec := personas.SkipRecorder(ctx, deps.Store, ss.Slug(), policy)
+
+	// Within-run iteration: if the LLM yields no_proposal / empty message
+	// for an order, add it to the run-local skip set and try the next
+	// eligible one. Up to maxDraftAttempts.
+	//
+	// pickOrder returns (id, status, err) but IterateDraft's PickerFunc
+	// is (id, err); we capture the status via a closure-local var so
+	// draftForOrder can read it without re-querying.
+	var pickedStatus string
+	return personas.IterateDraft(
+		maxDraftAttempts,
+		"order",
+		skip,
+		func(s map[int]struct{}) (int, error) {
+			id, status, err := pickOrder(ctx, deps.MCP, s)
+			pickedStatus = status
+			return id, err
+		},
+		func(id int) (personas.Drafted, error) {
+			return draftForOrder(ctx, deps, id, pickedStatus, model)
+		},
+		rec,
+	)
+}
+
+// draftForOrder does the per-order work. Returns Drafted{Skipped:true}
+// for any LLM-level skip (no_proposal, empty message) — the outer Draft
+// loop treats that as "try the next order" rather than ending the run.
+func draftForOrder(
+	ctx context.Context,
+	deps personas.Deps,
+	orderID int,
+	status string,
+	model string,
+) (personas.Drafted, error) {
+	o, err := getOrder(ctx, deps.MCP, orderID)
+	if err != nil {
+		return personas.Drafted{}, fmt.Errorf("get order %d: %w", orderID, err)
+	}
+	// pickOrder told us the status; trust the get response if it differs.
+	if strings.TrimSpace(o.Status) != "" {
+		status = o.Status
+	}
+
+	pc := redactOrderForPrompt(o)
+	out, raw, err := draftMessage(ctx, deps.Env.AnthropicAPIKey, model, pc)
+	if err != nil {
+		return personas.Drafted{}, fmt.Errorf("draft message: %w (raw=%s)", err, truncate(raw, 400))
+	}
+	if out.NoProposal {
+		reason := strings.TrimSpace(out.ReasonNoProposal)
+		if reason == "" {
+			reason = "model returned no_proposal=true with no reason"
+		}
+		return personas.Drafted{
+			Skipped:    true,
+			SkipReason: "no_proposal: " + reason,
+		}, nil
+	}
+	if strings.TrimSpace(out.Message) == "" {
+		return personas.Drafted{
+			Skipped:    true,
+			SkipReason: "model returned empty message",
+		}, nil
+	}
+
+	noteType := strings.ToLower(strings.TrimSpace(out.NoteType))
+	if noteType != "internal" {
+		// Default to customer-facing — that's what this persona is for.
+		noteType = "customer"
+	}
+
+	customerName := firstNonEmpty(o.BillingName, o.ShippingName, "the customer")
+	titleSubject := strings.TrimSpace(out.SubjectHint)
+	if titleSubject == "" {
+		titleSubject = humanStatus(status) + " follow-up"
+	}
+	title := fmt.Sprintf("Customer note · order #%s · %s",
+		firstNonEmpty(o.Number, fmt.Sprintf("%d", o.ID)),
+		titleSubject,
+	)
+
+	return personas.Drafted{
+		Title: title,
+		Description: fmt.Sprintf(
+			"Drafted by Sales Support agent for order #%s (%s · %s %s).",
+			firstNonEmpty(o.Number, fmt.Sprintf("%d", o.ID)),
+			status, o.Total, o.Currency,
+		),
+		Priority:        "medium",
+		ProposalType:    "customer_reply_draft",
+		ProposalContent: out.Message,
+		// Belt over the existing order_id Cooldown.
+		DedupKey: fmt.Sprintf("order:%d", o.ID),
+		// Target carries real PII intentionally. The operator preview and the
+		// wooagent-orders/add-note dispatch (approval flow) both read from here.
+		// The redaction in redactOrderForPrompt applies at the LLM-prompt
+		// boundary only.
+		Target: map[string]any{
+			"order_id":       o.ID,
+			"order_number":   o.Number,
+			"order_status":   status,
+			"order_total":    o.Total,
+			"order_currency": o.Currency,
+			"order_date":     o.DateCreated,
+			"customer_id":    o.CustomerID,
+			"customer_email": o.CustomerEmail,
+			"customer_name":  customerName,
+			"line_items":     summarizeLineItems(o.LineItems),
+			"note_type":      noteType,
+			"subject_hint":   titleSubject,
+		},
+	}, nil
+}
+
+// ---------------------------------------------------------------- MCP read
+
+type abilityEnvelope struct {
+	Success bool            `json:"success"`
+	Data    json.RawMessage `json:"data"`
+	Error   string          `json:"error,omitempty"`
+}
+
+func callAbility(ctx context.Context, c *mcp.Client, ability string, params map[string]any, out any) error {
+	start := time.Now()
+	err := callAbilityInner(ctx, c, ability, params, out)
+	telemetry.RecordSkillCallFromError(ctx, ability, time.Since(start), err)
+	return err
+}
+
+func callAbilityInner(ctx context.Context, c *mcp.Client, ability string, params map[string]any, out any) error {
+	res, err := c.CallTool(ctx, "mcp-adapter-execute-ability", map[string]any{
+		"ability_name": ability,
+		"parameters":   params,
+	})
+	if err != nil {
+		return fmt.Errorf("mcp call %s: %w", ability, err)
+	}
+	if len(res.Content) == 0 {
+		return fmt.Errorf("mcp %s: empty content", ability)
+	}
+	var env abilityEnvelope
+	if err := json.Unmarshal([]byte(res.Content[0].Text), &env); err != nil {
+		return fmt.Errorf("decode envelope (%s): %w body=%s", ability, err, res.Content[0].Text)
+	}
+	if !env.Success {
+		return fmt.Errorf("ability %s failed: %s", ability, env.Error)
+	}
+	if out != nil {
+		if err := json.Unmarshal(env.Data, out); err != nil {
+			return fmt.Errorf("decode data (%s): %w body=%s", ability, err, string(env.Data))
+		}
+	}
+	return nil
+}
+
+type orderSummary struct {
+	ID          int    `json:"id"`
+	Number      string `json:"number"`
+	Status      string `json:"status"`
+	Total       string `json:"total"`
+	Currency    string `json:"currency"`
+	CustomerID  int    `json:"customer_id"`
+	DateCreated string `json:"date_created"`
+}
+
+// pickOrder returns the most recent order in a state where a customer
+// note is welcome. Skips on-hold / pending / cancelled / refunded — those
+// either need different copy or shouldn't get a proactive note from us.
+// pickOrder returns the first processing/completed order whose order_id
+// is not in skip. Pulls a wider page (100) than the original 25 so a
+// handful of orders in cooldown don't starve the picker.
+func pickOrder(ctx context.Context, c *mcp.Client, skip map[int]struct{}) (int, string, error) {
+	var listOut struct {
+		Orders []orderSummary `json:"orders"`
+		Total  int            `json:"total"`
+	}
+	if err := callAbility(ctx, c, "wooagent-orders/list",
+		map[string]any{"per_page": 100}, &listOut); err != nil {
+		return 0, "", err
+	}
+	if len(listOut.Orders) == 0 {
+		return 0, "", fmt.Errorf("no orders in store")
+	}
+	skippedStatus, skippedCooldown := 0, 0
+	for _, o := range listOut.Orders {
+		switch strings.ToLower(strings.TrimSpace(o.Status)) {
+		case "processing", "completed":
+			if _, inCooldown := skip[o.ID]; inCooldown {
+				skippedCooldown++
+				continue
+			}
+			return o.ID, o.Status, nil
+		default:
+			skippedStatus++
+		}
+	}
+	return 0, "", fmt.Errorf(
+		"no eligible orders in first %d (skipped %d not-processing/completed, %d in cooldown); "+
+			"approved messages cool down for 30d, dismissed for 90d",
+		len(listOut.Orders), skippedStatus, skippedCooldown,
+	)
+}
+
+type lineItem struct {
+	ProductID int    `json:"product_id"`
+	Name      string `json:"name"`
+	Quantity  int    `json:"quantity"`
+	Total     string `json:"total"`
+	SKU       string `json:"sku"`
+}
+
+type order struct {
+	ID            int        `json:"id"`
+	Number        string     `json:"number"`
+	Status        string     `json:"status"`
+	Total         string     `json:"total"`
+	Currency      string     `json:"currency"`
+	CustomerID    int        `json:"customer_id"`
+	CustomerEmail string     `json:"customer_email"`
+	BillingName   string     `json:"billing_name"`
+	ShippingName  string     `json:"shipping_name"`
+	PaymentMethod string     `json:"payment_method"`
+	LineItems     []lineItem `json:"line_items"`
+	DateCreated   string     `json:"date_created"`
+	DateModified  string     `json:"date_modified"`
+}
+
+func getOrder(ctx context.Context, c *mcp.Client, id int) (order, error) {
+	var o order
+	if err := callAbility(ctx, c, "wooagent-orders/get",
+		map[string]any{"id": id}, &o); err != nil {
+		return o, err
+	}
+	if o.ID == 0 {
+		o.ID = id
+	}
+	return o, nil
+}
+
+func summarizeLineItems(items []lineItem) []map[string]any {
+	out := make([]map[string]any, 0, len(items))
+	for _, li := range items {
+		out = append(out, map[string]any{
+			"product_id": li.ProductID,
+			"name":       li.Name,
+			"quantity":   li.Quantity,
+			"total":      li.Total,
+			"sku":        li.SKU,
+		})
+	}
+	return out
+}
+
+// ---------------------------------------------------------------- Anthropic
+
+type messageOut struct {
+	NoProposal       bool   `json:"no_proposal"`
+	ReasonNoProposal string `json:"reason_no_proposal,omitempty"`
+	NoteType         string `json:"note_type,omitempty"`
+	SubjectHint      string `json:"subject_hint,omitempty"`
+	Message          string `json:"message,omitempty"`
+}
+
+func draftMessage(ctx context.Context, apiKey, model string, pc promptContext) (messageOut, string, error) {
+	itemsText := formatLineItemsForPrompt(pc.LineItems)
+	user := fmt.Sprintf(
+		`Order to write a note for:
+
+- order_number: %s
+- status: %s
+- total: %s %s
+- date_created: %s
+- customer_first_name: %s
+- line_items:
+%s
+
+Write a customer-facing note matching the tone in the system prompt. Output the JSON object only.`,
+		firstNonEmpty(pc.OrderNumber, fmt.Sprintf("%d", pc.OrderID)),
+		pc.Status, pc.Total, pc.Currency, pc.DateCreated,
+		pc.FirstName, itemsText,
+	)
+
+	resp, err := anthropic.New(apiKey, model).
+		WithAPIURL(anthropicAPIURL).
+		WithTimeout(callTimeout).
+		Call(ctx, anthropic.Request{
+			MaxTokens: 1024,
+			System:    systemPrompt,
+			Messages:  []anthropic.Message{anthropic.UserMessage(user)},
+		})
+	if err != nil {
+		// llm.ErrorBody surfaces the provider's raw response for the run
+		// log; the error itself carries the typed failure class.
+		return messageOut{}, llm.ErrorBody(err), err
+	}
+
+	if t := telemetry.TrackerFromContext(ctx); t != nil {
+		if err := t.RecordModelCall(telemetry.ModelCall{
+			Provider:     anthropic.Provider,
+			Model:        model,
+			InputTokens:  resp.Usage.InputTokens,
+			OutputTokens: resp.Usage.OutputTokens,
+			CostUSD:      llm.CostUSD(anthropic.Provider, model, resp.Usage.InputTokens, resp.Usage.OutputTokens),
+		}); err != nil {
+			return messageOut{}, "", err
+		}
+	}
+
+	var sb strings.Builder
+	for _, b := range resp.Content {
+		if b.Type == "text" {
+			sb.WriteString(b.Text)
+		}
+	}
+	jsonBlob := extractJSONObject(strings.TrimSpace(sb.String()))
+	if jsonBlob == "" {
+		return messageOut{}, sb.String(), fmt.Errorf("no JSON object found in model output")
+	}
+	var out messageOut
+	if err := json.Unmarshal([]byte(jsonBlob), &out); err != nil {
+		return messageOut{}, jsonBlob, fmt.Errorf("decode message JSON: %w", err)
+	}
+	return out, jsonBlob, nil
+}
+
+func formatLineItemsForPrompt(items []lineItem) string {
+	if len(items) == 0 {
+		return "  (no line items)"
+	}
+	var sb strings.Builder
+	for _, li := range items {
+		sb.WriteString(fmt.Sprintf("  - %s × %d (sku %s)\n", li.Name, li.Quantity, firstNonEmpty(li.SKU, "—")))
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func humanStatus(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "processing":
+		return "Order processing"
+	case "completed":
+		return "Order completed"
+	case "on-hold":
+		return "Order on hold"
+	case "pending":
+		return "Pending payment"
+	}
+	return s
+}
+
+func extractJSONObject(s string) string {
+	start := strings.Index(s, "{")
+	if start == -1 {
+		return ""
+	}
+	depth, inStr, esc := 0, false, false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if inStr {
+			if esc {
+				esc = false
+				continue
+			}
+			if c == '\\' {
+				esc = true
+				continue
+			}
+			if c == '"' {
+				inStr = false
+			}
+			continue
+		}
+		if c == '"' {
+			inStr = true
+			continue
+		}
+		if c == '{' {
+			depth++
+		} else if c == '}' {
+			depth--
+			if depth == 0 {
+				return s[start : i+1]
+			}
+		}
+	}
+	return ""
+}
+
+func firstNonEmpty(args ...string) string {
+	for _, a := range args {
+		if strings.TrimSpace(a) != "" {
+			return a
+		}
+	}
+	return ""
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}

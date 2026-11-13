@@ -1,0 +1,1 @@
+laion/qwen3-30b-a3b-thinking-opencode-sft-densemixer

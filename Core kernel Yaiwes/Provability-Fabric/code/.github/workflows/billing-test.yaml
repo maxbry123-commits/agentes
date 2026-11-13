@@ -1,0 +1,177 @@
+name: Billing Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "runtime/ledger/**"
+      - "tools/billing/**"
+      - ".github/workflows/billing-test.yaml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "runtime/ledger/**"
+      - "tools/billing/**"
+      - ".github/workflows/billing-test.yaml"
+  schedule:
+    # Run billing tests daily at 2 AM UTC
+    - cron: "0 2 * * *"
+
+jobs:
+  billing-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: provability_fabric
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: runtime/ledger/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.21"
+          cache: true
+
+      - name: Install dependencies
+        working-directory: runtime/ledger
+        run: |
+          npm ci
+          npx prisma generate
+
+      - name: Ledger typing gate (F27)
+        run: python scripts/count_ledger_any.py --max 20
+
+      - name: Ledger strict typecheck
+        working-directory: runtime/ledger
+        run: npm run typecheck:server
+
+      - name: Build ledger service
+        working-directory: runtime/ledger
+        run: npm run build
+
+      - name: Build billing tool
+        working-directory: tools/billing
+        run: |
+          go mod tidy
+          go build -o pf-billing
+
+      - name: Run database migrations
+        working-directory: runtime/ledger
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/provability_fabric
+        run: |
+          npx prisma migrate deploy
+
+      - name: Start ledger service
+        working-directory: runtime/ledger
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/provability_fabric
+          PORT: 3000
+          PROFILE: dev
+        run: |
+          npm start &
+          timeout 60 bash -c 'until curl -sf http://localhost:3000/health; do sleep 2; done'
+
+      - name: Run billing CLI tests
+        working-directory: tools/billing
+        run: ./pf-billing test
+
+      - name: Test future timestamp rejection
+        run: |
+          set -euo pipefail
+          cat > future-event.json << EOF
+          {
+            "tenantId": "dev-tenant",
+            "cpuMs": 1000,
+            "netBytes": 1024,
+            "ts": "$(date -u -d '+1 day' +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          http_code=$(curl -s -o /tmp/future-resp.json -w "%{http_code}" \
+            -X POST http://localhost:3000/usage \
+            -H "Content-Type: application/json" \
+            -d @future-event.json)
+          if [ "$http_code" = "201" ]; then
+            echo "ERROR: ledger accepted a future-dated usage event"
+            cat /tmp/future-resp.json
+            exit 1
+          fi
+          echo "✓ Future timestamp rejected (HTTP $http_code)"
+
+      - name: Test cost calculation via usage + CSV invoice
+        run: |
+          set -euo pipefail
+          period=$(date -u +%Y-%m)
+          cat > usage-event.json << EOF
+          {
+            "tenantId": "dev-tenant",
+            "cpuMs": 1000000,
+            "netBytes": 104857600,
+            "ts": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          curl -sf -X POST http://localhost:3000/usage \
+            -H "Content-Type: application/json" \
+            -d @usage-event.json
+
+          # Default rate card floors at $10.00 minimum monthly.
+          curl -sf "http://localhost:3000/tenant/dev-tenant/invoice/csv?period=${period}" -o invoice.csv
+          grep -q "dev-tenant\|Dev Tenant\|10.00\|10," invoice.csv || {
+            echo "Unexpected invoice CSV:"
+            cat invoice.csv
+            exit 1
+          }
+          echo "✓ Cost/invoice CSV looks valid:"
+          cat invoice.csv
+
+      - name: Test invoice generation via pf-billing
+        working-directory: tools/billing
+        run: |
+          set -euo pipefail
+          period=$(date -u +%Y-%m)
+          ./pf-billing download --ledger-url http://localhost:3000 --tenant dev-tenant --period "$period" --format csv --output "../../invoice-cli.csv"
+          ./pf-billing download --ledger-url http://localhost:3000 --tenant dev-tenant --period "$period" --format pdf --output "../../invoice-cli.pdf"
+          test -s ../../invoice-cli.csv
+          test -s ../../invoice-cli.pdf
+          echo "✓ CSV and PDF invoice downloads succeeded"
+
+      - name: Test billing job CLI
+        working-directory: tools/billing
+        run: ./pf-billing run-job --period "$(date -u +%Y-%m)"
+
+      - name: Run ledger unit tests
+        working-directory: runtime/ledger
+        run: npm test -- --watchAll=false
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: billing-test-results
+          path: |
+            *.json
+            *.csv
+            *.pdf
+            invoice-cli.csv
+            invoice-cli.pdf
+          retention-days: 7

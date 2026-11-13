@@ -1,0 +1,16 @@
+models:
+  - type: main
+    engine: openai
+    model: gpt-3.5-turbo-instruct
+
+  - type: patronus_lynx
+    engine: openai
+    model: PatronusAI/Patronus-Lynx-70B-Instruct
+    parameters:
+      base_url: "http://localhost:5000/v1"
+      api_key: EMPTY
+
+rails:
+  output:
+    flows:
+      - patronus lynx check output hallucination

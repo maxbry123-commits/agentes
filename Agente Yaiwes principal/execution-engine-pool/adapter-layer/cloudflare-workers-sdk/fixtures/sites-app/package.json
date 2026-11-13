@@ -1,0 +1,12 @@
+{
+	"name": "@fixture/sites-basic",
+	"private": true,
+	"description": "",
+	"keywords": [],
+	"license": "ISC",
+	"author": "",
+	"main": "index.js",
+	"devDependencies": {
+		"@cloudflare/kv-asset-handler": "workspace:*"
+	}
+}

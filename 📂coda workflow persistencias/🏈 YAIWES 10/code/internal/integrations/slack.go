@@ -1,0 +1,97 @@
+package integrations
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/pipeline"
+)
+
+// SlackClient sends notifications and supports interactive bot features.
+type SlackClient struct {
+	webhookURL string
+	botToken   string
+	channel    string
+	client     *http.Client
+}
+
+// NewSlackClient creates a Slack integration client.
+func NewSlackClient(webhookURL, botToken, channel string) *SlackClient {
+	return &SlackClient{
+		webhookURL: webhookURL,
+		botToken:   botToken,
+		channel:    channel,
+		client:     &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+// NotifyCampaignStart sends a notification when a campaign begins.
+func (s *SlackClient) NotifyCampaignStart(campaign pipeline.Campaign) error {
+	return s.sendMessage(fmt.Sprintf(
+		":rocket: *Campaign started*\nTarget: `%s`\nObjective: %s\nMode: %s",
+		campaign.Target, campaign.Objective, campaign.Mode,
+	))
+}
+
+// NotifyCriticalFinding sends an immediate alert for critical/high findings.
+func (s *SlackClient) NotifyCriticalFinding(finding pipeline.ClassifiedFinding) error {
+	emoji := severityEmoji(finding.Severity)
+	return s.sendMessage(fmt.Sprintf(
+		"%s *%s finding discovered*\n*%s* (CVSS: %.1f)\nTarget: `%s`\n%s",
+		emoji, finding.Severity, finding.Title, finding.CVSSScore, finding.Target, finding.Description,
+	))
+}
+
+// NotifyCampaignComplete sends a summary when a campaign finishes.
+func (s *SlackClient) NotifyCampaignComplete(campaign pipeline.Campaign, findingCount int) error {
+	return s.sendMessage(fmt.Sprintf(
+		":white_check_mark: *Campaign complete*\nTarget: `%s`\nFindings: %d\nDuration: %s",
+		campaign.Target, findingCount,
+		campaign.CompletedAt.Sub(*campaign.StartedAt).Round(time.Second),
+	))
+}
+
+func (s *SlackClient) sendMessage(text string) error {
+	body, _ := json.Marshal(map[string]string{
+		"text":    text,
+		"channel": s.channel,
+	})
+
+	url := s.webhookURL
+	if url == "" && s.botToken != "" {
+		url = "https://slack.com/api/chat.postMessage"
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.botToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.botToken)
+	}
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("sending Slack message: %w", err)
+	}
+	defer resp.Body.Close()
+
+	return nil
+}
+
+func severityEmoji(s pipeline.Severity) string {
+	switch s {
+	case pipeline.SeverityCritical:
+		return ":red_circle:"
+	case pipeline.SeverityHigh:
+		return ":large_orange_circle:"
+	case pipeline.SeverityMedium:
+		return ":large_yellow_circle:"
+	default:
+		return ":white_circle:"
+	}
+}

@@ -1,0 +1,163 @@
+{
+  "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
+  "index": 5,
+  "name": "Temporal",
+  "slug": "temporal",
+  "source_url": "https://github.com/temporalio/temporal",
+  "source_commit": "990081baf768f664f98f734e3599f4c718895151",
+  "mode": "DOWNLOAD",
+  "delivery": "EXTRACTED_TREE_AFTER_PREFLIGHT",
+  "file_count": 3896,
+  "total_bytes": 40475482,
+  "max_blob": {
+    "path": "tests/activity_standalone_test.go",
+    "bytes": 615507
+  },
+  "top_level_inventory": {
+    ".claude": {
+      "files": 1,
+      "bytes": 235
+    },
+    ".cursor": {
+      "files": 1,
+      "bytes": 190
+    },
+    ".dockerignore": {
+      "files": 1,
+      "bytes": 220
+    },
+    ".gitattributes": {
+      "files": 1,
+      "bytes": 84
+    },
+    ".github": {
+      "files": 41,
+      "bytes": 145634
+    },
+    ".gitignore": {
+      "files": 1,
+      "bytes": 533
+    },
+    ".gitmodules": {
+      "files": 1,
+      "bytes": 202
+    },
+    ".goreleaser.yml": {
+      "files": 1,
+      "bytes": 1664
+    },
+    ".vscode": {
+      "files": 1,
+      "bytes": 1909
+    },
+    "AGENTS.md": {
+      "files": 1,
+      "bytes": 8528
+    },
+    "CONTRIBUTING.md": {
+      "files": 1,
+      "bytes": 9454
+    },
+    "LICENSE": {
+      "files": 1,
+      "bytes": 1152
+    },
+    "Makefile": {
+      "files": 1,
+      "bytes": 36573
+    },
+    "README.md": {
+      "files": 1,
+      "bytes": 3888
+    },
+    "api": {
+      "files": 120,
+      "bytes": 4023553
+    },
+    "chasm": {
+      "files": 266,
+      "bytes": 2924695
+    },
+    "client": {
+      "files": 52,
+      "bytes": 623284
+    },
+    "cmd": {
+      "files": 31,
+      "bytes": 123666
+    },
+    "common": {
+      "files": 1247,
+      "bytes": 8811910
+    },
+    "config": {
+      "files": 26,
+      "bytes": 74422
+    },
+    "develop": {
+      "files": 21,
+      "bytes": 26488
+    },
+    "docker": {
+      "files": 5,
+      "bytes": 23439
+    },
+    "docs": {
+      "files": 65,
+      "bytes": 745289
+    },
+    "go.mod": {
+      "files": 1,
+      "bytes": 11344
+    },
+    "go.sum": {
+      "files": 1,
+      "bytes": 67231
+    },
+    "nexusworkflowref": {
+      "files": 2,
+      "bytes": 11062
+    },
+    "proto": {
+      "files": 60,
+      "bytes": 352546
+    },
+    "schema": {
+      "files": 266,
+      "bytes": 325284
+    },
+    "service": {
+      "files": 1324,
+      "bytes": 15446729
+    },
+    "temporal": {
+      "files": 12,
+      "bytes": 103549
+    },
+    "temporaltest": {
+      "files": 7,
+      "bytes": 34414
+    },
+    "tests": {
+      "files": 192,
+      "bytes": 5797760
+    },
+    "tools": {
+      "files": 144,
+      "bytes": 738551
+    }
+  },
+  "licenses": [
+    {
+      "path": "LICENSE",
+      "sha256": "6aab9afd99ceb1dcaf6a0d91386b46baef9bce17ae4006044e0f231e31430b69",
+      "bytes": 1152
+    }
+  ],
+  "lfs_pointer_count": 0,
+  "lfs_pointers": [],
+  "oversized_blob_count": 0,
+  "oversized_blobs": [],
+  "deterministic_tree_sha256": "4345cda77f68cea46f3a039b7acf6d00f2b1f16d27528439593c98ea7a62ede6",
+  "status": "PREFLIGHT_PASS"
+}

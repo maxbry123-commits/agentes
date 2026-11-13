@@ -1,0 +1,194 @@
+package executor
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"sort"
+	"time"
+
+	"github.com/cespare/xxhash/v2"
+	"github.com/inngest/inngest/pkg/consts"
+	"github.com/inngest/inngest/pkg/enums"
+	"github.com/inngest/inngest/pkg/event"
+	"github.com/inngest/inngest/pkg/execution"
+	"github.com/inngest/inngest/pkg/execution/state"
+	"github.com/inngest/inngest/pkg/logger"
+	"github.com/oklog/ulid/v2"
+)
+
+// computeParallelCoalesceKey returns a stable hex string derived from the runID and
+// the sorted set of step IDs in a parallel batch.  Sorting ensures the key is
+// identical regardless of the order the SDK returns the opcodes.
+func computeParallelCoalesceKey(runID string, stepIDs []string) string {
+	sorted := make([]string, len(stepIDs))
+	copy(sorted, stepIDs)
+	sort.Strings(sorted)
+
+	h := xxhash.New()
+	_, _ = h.Write([]byte(runID))
+	for _, id := range sorted {
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(id))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// OpcodeGroup is a group of opcodes that can be processed in parallel.
+type OpcodeGroup struct {
+	// Opcodes is the list of opcodes in the group.
+	Opcodes []*state.GeneratorOpcode
+	// ShouldStartHistoryGroup indicates whether each item in the group should
+	// start a new history group. This is true if the overall list of opcodes
+	// received from an SDK Call Request contains more than one opcode.
+	ShouldStartHistoryGroup bool
+	// HandledAt is when the executor began handling the SDK response this
+	// group came from. Async-opcode handlers stamp it as their step span's
+	// queuedAt: it is the moment the executor creates the op's event, pause,
+	// or queue item — the earliest instant the step exists to wait on
+	// anything — so the span's queued segment measures real wait (handling →
+	// execution/resume start). The reporting request's enqueue time would be
+	// wrong here: it can predate sibling steps executed within that request
+	// (stale inherited queuedAt). A single timestamp shared across the group keeps the trace
+	// order of concurrently-handled parallel opcodes deterministic. Zero when
+	// an opcode is handled outside a response group (e.g. the checkpoint
+	// API); handlers fall back to their own clock.
+	HandledAt time.Time
+	// ParallelCoalesceKey is a stable key shared by all items in this parallel
+	// batch.  When non-empty, handlers use it to derive a deterministic
+	// discovery JobID so concurrent fan-in completions deduplicate to one step.
+	ParallelCoalesceKey string
+}
+
+// OpcodeGroups groups opcodes by processing priority. The priority group runs
+// first so waitForEvent triggers are saved immediately (capturing expression
+// errors early) and lazy ops like DeferAdd/DeferAbort — which the SDK
+// piggybacks onto other ops — drain before RunComplete can finalize and delete
+// state.
+type OpcodeGroups struct {
+	// PriorityGroup is a group of opcodes that should be processed first.
+	PriorityGroup OpcodeGroup
+
+	// OtherGroup is a group of opcodes that should be processed after the
+	// priority group.
+	OtherGroup OpcodeGroup
+}
+
+// nonLazyOpCount returns the count used to gate parallel-step behavior — see
+// enums.OpcodeIsLazy. Nil entries are skipped to mirror handleGeneratorGroup.
+func nonLazyOpCount(opcodes []*state.GeneratorOpcode) int {
+	n := 0
+	for _, op := range opcodes {
+		if op == nil {
+			continue
+		}
+		if !enums.OpcodeIsLazy(op.Op) {
+			n++
+		}
+	}
+	return n
+}
+
+// opGroups groups opcodes by their type.
+func opGroups(opcodes []*state.GeneratorOpcode) OpcodeGroups {
+	shouldStartHistoryGroup := nonLazyOpCount(opcodes) > 1
+
+	groups := OpcodeGroups{
+		PriorityGroup: OpcodeGroup{
+			Opcodes:                 []*state.GeneratorOpcode{},
+			ShouldStartHistoryGroup: shouldStartHistoryGroup,
+		},
+		OtherGroup: OpcodeGroup{
+			Opcodes:                 []*state.GeneratorOpcode{},
+			ShouldStartHistoryGroup: shouldStartHistoryGroup,
+		},
+	}
+
+	for _, op := range opcodes {
+		if op == nil {
+			continue
+		}
+		if enums.OpcodeIsPriority(op.Op) {
+			groups.PriorityGroup.Opcodes = append(groups.PriorityGroup.Opcodes, op)
+		} else {
+			groups.OtherGroup.Opcodes = append(groups.OtherGroup.Opcodes, op)
+		}
+	}
+
+	return groups
+}
+
+// All returns a list of all groups in the order they should be processed.
+func (g OpcodeGroups) All() []OpcodeGroup {
+	return []OpcodeGroup{g.PriorityGroup, g.OtherGroup}
+}
+
+// NonLazyIDs returns the step IDs of "non-lazy" op. Distinguishing between lazy
+// and non-lazy ops is important because lazy ops do not have their own queue
+// items. This lack of queue items is critical for things like tracking pending
+// steps
+func (g OpcodeGroups) NonLazyIDs() []string {
+	ids := []string{}
+	for _, group := range g.All() {
+		for _, op := range group.Opcodes {
+			if enums.OpcodeIsLazy(op.Op) {
+				continue
+			}
+			ids = append(ids, op.ID)
+		}
+	}
+	return ids
+}
+
+func CreateInvokeFailedEvent(ctx context.Context, opts execution.InvokeFailHandlerOpts) event.Event {
+	now := time.Now()
+	data := map[string]interface{}{
+		"function_id": opts.FunctionID,
+		"run_id":      opts.RunID,
+	}
+
+	origEvt := opts.OriginalEvent.GetEvent().Map()
+	if dataMap, ok := origEvt["data"].(map[string]interface{}); ok {
+		if inngestObj, ok := dataMap[consts.InngestEventDataPrefix].(map[string]interface{}); ok {
+			if dataValue, ok := inngestObj[consts.InvokeCorrelationId].(string); ok {
+				data[consts.InvokeCorrelationId] = dataValue
+			}
+		}
+	}
+
+	if opts.Err != nil {
+		data["error"] = opts.Err
+	} else {
+		data["result"] = opts.Result
+	}
+
+	evt := event.Event{
+		ID:        ulid.MustNew(uint64(now.UnixMilli()), rand.Reader).String(),
+		Name:      event.FnFinishedName,
+		Timestamp: now.UnixMilli(),
+		Data:      data,
+	}
+
+	logger.StdlibLogger(ctx).Debug("function finished event", "event", evt)
+
+	return evt
+}
+
+func IsStepRetryable(gen *state.GeneratorOpcode, runCtx execution.RunContext) bool {
+	if gen.Op == enums.OpcodeStepFailed {
+		// This is a step that is already marked as failed.
+		return false
+	}
+
+	if gen.Error.NoRetry {
+		// This is a NonRetryableError thrown in a step.
+		return false
+	}
+	if !runCtx.ShouldRetry() {
+		// This is the last attempt as per the attempt in the queue, which
+		// means we've failed N times, and so it is not retryable.
+		return false
+	}
+
+	return true
+}

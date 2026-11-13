@@ -1,0 +1,124 @@
+use crate::common::{input_under_test, zizmor};
+
+/// Note: per #1302, we intentionally don't produce findings here.
+#[test]
+fn test_cancel_false() -> anyhow::Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test(
+                "concurrency-limits/cancel-false.yml"
+            ))
+            .args(["--persona=pedantic"])
+            .run()?,
+        @"No findings to report. Good job!"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_missing() -> anyhow::Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test(
+                "concurrency-limits/missing.yml"
+            ))
+            .args(["--persona=pedantic"])
+            .run()?,
+        @"
+    help[concurrency-limits]: insufficient job-level concurrency limits
+     --> @@INPUT@@:2:1
+      |
+    2 | on: push
+      | ^^^^^^^^ workflow is missing concurrency setting
+    ...
+    7 |     name: some-job
+      |     -------------- job affected by missing workflow concurrency
+      |
+      = note: audit confidence → High
+
+    1 finding: 0 informational, 1 low, 0 medium, 0 high
+    "
+    );
+    Ok(())
+}
+
+#[test]
+fn test_no_cancel() -> anyhow::Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test(
+                "concurrency-limits/no-cancel.yml"
+            ))
+            .args(["--persona=pedantic"])
+            .run()?,
+        @"
+    help[concurrency-limits]: insufficient job-level concurrency limits
+     --> @@INPUT@@:5:1
+      |
+    5 | concurrency: group
+      | ^^^^^^^^^^^^^^^^^^ workflow concurrency is missing cancel-in-progress
+      |
+      = note: audit confidence → High
+
+    1 finding: 0 informational, 1 low, 0 medium, 0 high
+    "
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_jobs_missing_no_cancel() -> anyhow::Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test(
+                "concurrency-limits/jobs-missing-no-cancel.yml"
+            ))
+            .args(["--persona=pedantic"])
+            .run()?,
+        @"
+    help[concurrency-limits]: insufficient job-level concurrency limits
+     --> @@INPUT@@:2:1
+      |
+    2 | on: push
+      | ^^^^^^^^ workflow is missing concurrency setting
+    ...
+    9 |     concurrency: group
+      |     ------------------ job concurrency is missing cancel-in-progress
+      |
+      = note: audit confidence → High
+
+    help[concurrency-limits]: insufficient job-level concurrency limits
+      --> @@INPUT@@:2:1
+       |
+     2 | on: push
+       | ^^^^^^^^ workflow is missing concurrency setting
+    ...
+    14 |     name: job-2
+       |     ----------- job affected by missing workflow concurrency
+       |
+       = note: audit confidence → High
+
+    2 findings: 0 informational, 2 low, 0 medium, 0 high
+    "
+    );
+
+    Ok(())
+}
+
+/// Bug #1511: reusable-only workflows were being incorrectly flagged as needing concurrency limits.
+#[test]
+fn test_issue_1511() -> anyhow::Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test(
+                "concurrency-limits/issue-1511-repro.yml"
+            ))
+            .args(["--persona=pedantic"])
+            .run()?,
+        @"No findings to report. Good job!"
+    );
+
+    Ok(())
+}

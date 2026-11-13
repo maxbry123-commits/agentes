@@ -1,0 +1,150 @@
+{
+  "updated": "2026-05-18",
+  "providers": {
+    "ollama": {
+      "discovery_url": "http://localhost:11434/api/tags",
+      "models": [
+        "qwen3.6:35b",
+        "qwen3.6:35b-a3b-q4",
+        "qwen3.6:35b-a3b-q8",
+        "qwen3:32b",
+        "qwen3:8b",
+        "qwen3:1.7b",
+        "llama3.3:70b",
+        "llama3.2:8b",
+        "mistral:7b",
+        "gemma2:9b",
+        "phi-4:14b",
+        "nomic-embed-text",
+        "deepseek-r1:32b"
+      ]
+    },
+    "community_gguf": {
+      "discovery_url": null,
+      "description": "Community GGUF quants from HuggingFace, imported into local Ollama via the model installer.",
+      "models": [
+        "unsloth/Qwen3.6-27B-GGUF"
+      ],
+      "entries": {
+        "unsloth/Qwen3.6-27B-GGUF": {
+          "import_as": "qwen3.6:27b",
+          "file_hint": "Qwen3.6-27B-Q4_K_M.gguf",
+          "license": "apache-2.0",
+          "kind": "vision",
+          "notes": "Vision-Language model. Use as vision_model_detail. Video input not supported through Ollama's chat API."
+        }
+      }
+    },
+    "openai": {
+      "discovery_url": "https://api.openai.com/v1/models",
+      "api_key_env": "COGNITHOR_OPENAI_API_KEY",
+      "models": [
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4.1-nano",
+        "gpt-4o",
+        "gpt-4o-mini",
+        "o3",
+        "o3-mini",
+        "o4-mini"
+      ]
+    },
+    "anthropic": {
+      "discovery_url": null,
+      "models": [
+        "claude-sonnet-4-20250514",
+        "claude-haiku-4-20250414",
+        "claude-opus-4-20250514"
+      ]
+    },
+    "gemini": {
+      "discovery_url": "https://generativelanguage.googleapis.com/v1/models",
+      "api_key_env": "COGNITHOR_GEMINI_API_KEY",
+      "models": [
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash"
+      ]
+    },
+    "lmstudio": {
+      "discovery_url": "http://localhost:1234/v1/models",
+      "models": []
+    },
+    "claude-code": {
+      "discovery_url": null,
+      "models": [
+        "claude-sonnet-4"
+      ]
+    },
+    "vllm": {
+      "description": "Vision-language models tested against vLLM. Entries include quantization format, min CUDA compute capability, and min vLLM version required.",
+      "models": [
+        {
+          "id": "mmangkad/Qwen3.6-27B-NVFP4",
+          "display_name": "Qwen3.6-27B · NVFP4 (Blackwell-native)",
+          "base_model": "Qwen/Qwen3.6-27B",
+          "quantization": "NVFP4",
+          "vram_gb_min": 14,
+          "min_compute_capability": "12.0",
+          "min_vllm_version": "pending",
+          "capability": "vision",
+          "priority": "premium",
+          "tested": false,
+          "notes": "Fastest option on RTX 50xx / Blackwell. Uses native FP4 tensor cores (~2x FP8 throughput). Built with NVIDIA ModelOpt toolkit. Recommended default for RTX 5090."
+        },
+        {
+          "id": "Qwen/Qwen3.6-27B-FP8",
+          "display_name": "Qwen3.6-27B · FP8 (official)",
+          "base_model": "Qwen/Qwen3.6-27B",
+          "quantization": "FP8",
+          "vram_gb_min": 32,
+          "min_compute_capability": "8.9",
+          "min_vllm_version": "pending",
+          "capability": "vision",
+          "priority": "premium",
+          "tested": false,
+          "notes": "Official Qwen FP8 block-128 quantization. Near-identical quality to bf16. Needs RTX 4090 (24 GB) with tight KV budget, RTX 5090 (32 GB), or workstation GPU."
+        },
+        {
+          "id": "cyankiwi/Qwen3.6-27B-AWQ-INT4",
+          "display_name": "Qwen3.6-27B · AWQ-INT4 (community)",
+          "base_model": "Qwen/Qwen3.6-27B",
+          "quantization": "AWQ-INT4",
+          "vram_gb_min": 16,
+          "min_compute_capability": "8.0",
+          "min_vllm_version": "0.19.2",
+          "capability": "vision",
+          "priority": "standard",
+          "tested": true,
+          "notes": "Community 4-bit AWQ (compressed-tensors; ships the MTP head). Tested 2026-05-18 on RTX 5090: ~68 tok/s single-stream, ~100 tok/s with MTP speculative decoding. Runs on 16 GB cards (RTX 3090, 4080). Quality trade ~3-5% vs. bf16."
+        },
+        {
+          "id": "Qwen/Qwen3.6-35B-A3B-FP8",
+          "display_name": "Qwen3.6-35B-A3B · FP8 (MoE, official)",
+          "base_model": "Qwen/Qwen3.6-35B-A3B",
+          "quantization": "FP8",
+          "vram_gb_min": 40,
+          "min_compute_capability": "8.9",
+          "min_vllm_version": "pending",
+          "capability": "vision",
+          "priority": "standard",
+          "tested": false,
+          "notes": "MoE with 3B active params — very fast inference. Needs workstation GPU (A6000, RTX 6000 Ada)."
+        },
+        {
+          "id": "Qwen/Qwen2.5-VL-7B-Instruct",
+          "display_name": "Qwen2.5-VL-7B · BF16 (fallback)",
+          "base_model": "Qwen/Qwen2.5-VL-7B-Instruct",
+          "quantization": "bf16",
+          "vram_gb_min": 16,
+          "min_compute_capability": "7.5",
+          "min_vllm_version": "0.7.0",
+          "capability": "vision",
+          "priority": "fallback",
+          "tested": true,
+          "notes": "Current default until vLLM ships Qwen3.6 architecture support. Well-tested, runs on any 16 GB NVIDIA GPU including RTX 3090 / 4060 Ti 16 GB."
+        }
+      ]
+    }
+  }
+}

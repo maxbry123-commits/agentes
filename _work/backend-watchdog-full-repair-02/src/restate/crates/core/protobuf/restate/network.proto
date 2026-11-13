@@ -1,0 +1,287 @@
+// Copyright (c) 2024 - Restate Software, Inc., Restate GmbH
+//
+// This file is part of the Restate service protocol, which is
+// released under the MIT license.
+//
+// You can find a copy of the license in file LICENSE in the root
+// directory of this repository or package, or at
+// https://github.com/restatedev/proto/blob/main/LICENSE
+
+syntax = "proto3";
+
+package restate.network;
+
+import "restate/common.proto";
+
+// Describes the intent of use for the connection
+enum Swimlane {
+  // The default, if swimlane is not set or unknown.
+  //
+  // This is used for general communication and messaging between nodes.
+  GENERAL = 0;
+  // Dedicated swimlane for gossip and failure detection messages
+  GOSSIP = 1;
+  // Fat pipe for streaming bifrost records
+  BIFROST_DATA = 2;
+  // Fat pipe for ingress data communication with workers (data ingestion)
+  INGRESS_DATA = 3;
+  /// Fat pipe for sending read requests and responses between bifrost nodes and log-servers
+  BIFROST_READS = 4;
+  /// Data pipe for performing remote datafusion scans
+  DATAFUSION = 5;
+}
+
+//
+// # Wire Protocol Of Streaming Connections
+// -------------------------------------
+//
+message Header {
+  reserved 1, 2, 7;
+  // -- Removed in v1.5.0
+  // uint64 msg_id = 1;
+  // uint64 in_response_to = 2;
+  // -- Removed in v1.5.1
+  // optional SpanContext span_context = 7;
+
+  uint32 my_nodes_config_version = 3;
+  uint32 my_logs_version = 4;
+  uint32 my_schema_version = 5;
+  uint32 my_partition_table_version = 6;
+}
+
+// direction is defined from the lens of the connection initiator
+enum ConnectionDirection {
+  // By default, it's assumed this is a bidirectional connection to maintain
+  // compatibility with v1.2
+  ConnectionDirection_UNKNOWN = 0;
+  // Connection is declared by initiator as bidirectional. Bidirectional
+  // connections are used to send and receive rpc and unary messages by both ends
+  // of the connection.
+  BIDIRECTIONAL = 1;
+  // Connection is declared by initiator that it's used by initiator to send rpc
+  // requests and unary messages to the peer (acceptor). The acceptor side should *not*
+  // use this connection to send requests back to us. Only servicing requests. This is
+  // a typical case for a server who wants to run a side dedicated connection to a peer
+  // or for a client session connecting to a server.
+  FORWARD = 2;
+  // Connection is declared as a reverse connection by the initiator. A reverse connection
+  // is used to receive requests from peers. The acceptor can use this connection to send
+  // rpc requests to us.
+  //
+  // This can be used to initiate connections to a remote node that doesn't have
+  // network access to initiate connections back to us.
+  REVERSE = 3;
+}
+
+// First message sent to an ingress after starting the connection. The message
+// must be sent before any other message.
+message Hello {
+  restate.common.ProtocolVersion min_protocol_version = 1;
+  restate.common.ProtocolVersion max_protocol_version = 2;
+  string cluster_name = 3;
+  // generational node id of sender (who am I)
+  // this is optional for future-proofing with anonymous clients using this
+  // protocol
+  optional restate.common.GenerationalNodeId my_node_id = 4;
+  ConnectionDirection direction = 5;
+  // the purpose of this connection. Default is GENERAL.
+  Swimlane swimlane = 6;
+
+  // a unique fingerprint for this cluster. It will be respected by the receiver 
+  // if it was a non-zero value.
+  uint64 cluster_fingerprint = 7;
+}
+
+message Welcome {
+  reserved 1;
+  restate.common.ProtocolVersion protocol_version = 2;
+  // generational node id of sender
+  restate.common.GenerationalNodeId my_node_id = 3;
+  // confirmation that this connection respects the direction state in the Hello message.
+  // if this is unset (UNKNOWN) then it's equivalent to if the Hello message had `BIDIRECTIONAL`
+  // for backward compatibility.
+  ConnectionDirection direction_ack = 4;
+}
+
+// Bidirectional Communication
+message Message {
+  enum Signal {
+    Signal_UNKNOWN = 0;
+    // Node is shutting down
+    SHUTDOWN = 1;
+    // Connection will be dropped
+    DRAIN_CONNECTION = 2;
+    CODEC_ERROR = 3;
+    // no more requests will be sent over this stream
+    REQUEST_STREAM_DRAINED = 4;
+    // no more responses will be sent over this stream
+    RESPONSE_STREAM_DRAINED = 5;
+  }
+  message ConnectionControl {
+    Signal signal = 1;
+    string message = 2;
+  }
+
+  message BinaryMessage {
+    restate.common.ServiceTag target = 1;
+    bytes payload = 2;
+  }
+
+  Header header = 1;
+
+  reserved 1000;
+  oneof body {
+    ConnectionControl connection_control = 2;
+    // Sent as first message
+    Hello hello = 3;
+    // Sent as first response
+    Welcome welcome = 4;
+    // Available from protocol V2
+    Datagram datagram = 5;
+
+    //-- Removed in v1.5.0
+    // BinaryMessage encoded = 1000;
+  }
+}
+
+message Datagram {
+  oneof datagram {
+    RpcCall rpc_call = 1;
+    RpcReply rpc_reply = 2;
+    Watch watch = 3;
+    WatchUpdate watch_update = 4;
+    Ping ping = 5;
+    Pong pong = 6;
+
+    // one way message
+    Unary unary = 100;
+  }
+}
+
+message Watch {
+  // request identifier to map the reply back
+  uint64 id = 1;
+  // the service identifier, must be set. Message is silently ignored if 0.
+  restate.common.ServiceTag service = 2;
+  // the type-name of the rpc message (variant in the service)
+  string msg_type = 3;
+  // routing code of the target inbox if applicable, otherwise, defaults to 0.
+  optional uint64 sort_code = 4;
+  bytes payload = 100;
+}
+
+message WatchUpdate {
+  enum Start {
+    // Receiver will not respond to this request for unknown reason
+    // This is often returned when the receiver sent us a status that we don't recognize
+    // in this protocol version.
+    // The request *might* have been processed
+    Start_UNKNOWN = 0;
+    // Service identifier was not registered on this node
+    // Request has not been processed
+    SERVICE_NOT_FOUND = 1;
+    // Service has stopped processing requests
+    // Request has not been processed
+    SERVICE_STOPPED = 2;
+    // Service is known but it has not started yet
+    // Request has not been processed
+    SERVICE_NOT_READY = 3;
+    // Service is known but it didn't recognize the sort code
+    // Request has not been processed
+    SORT_CODE_NOT_FOUND = 4;
+    // The received dropped the response handle
+    // The request *might* have been processed
+    DROPPED = 5;
+    // Service did not process the request due to backpressure
+    // Request has not been processed
+    LOAD_SHEDDING = 6;
+    // Message type was unrecognized by the receiver
+    // Request has not been processed
+    MESSAGE_UNRECOGNIZED = 7;
+  }
+
+  enum End {
+    // Receiver will not respond to this request for unknown reason
+    // This is often returned when the receiver sent us a status that we don't recognize
+    // in this protocol version.
+    // The request *might* have been processed
+    End_UNKNOWN = 0;
+    // Watch was cleanly stopped
+    OK = 1;
+  }
+  uint64 id = 1;
+  oneof body {
+    Start start = 2;
+    End end = 3;
+    bytes update = 100;
+  }
+}
+
+message RpcCall {
+  // request identifier to map the reply back
+  uint64 id = 1;
+  // the service identifier, must be set. Message is silently ignored if 0.
+  restate.common.ServiceTag service = 2;
+  // the type-name of the rpc message (variant in the service)
+  string msg_type = 3;
+  // routing code of the target inbox if applicable, otherwise, defaults to 0.
+  optional uint64 sort_code = 4;
+  bytes payload = 100;
+}
+
+message RpcReply {
+  enum Status {
+    // Receiver will not respond to this request for unknown reason
+    // This is often returned when the receiver sent us a status that we don't recognize
+    // in this protocol version.
+    // The request *might* have been processed
+    Status_UNKNOWN = 0;
+    // Service identifier was not registered on this node
+    // Request has not been processed
+    SERVICE_NOT_FOUND = 1;
+    // Service has stopped processing requests
+    // Request has not been processed
+    SERVICE_STOPPED = 2;
+    // Service is known but it has not started yet
+    // Request has not been processed
+    SERVICE_NOT_READY = 3;
+    // Service is known but it didn't recognize the sort code
+    // Request has not been processed
+    SORT_CODE_NOT_FOUND = 4;
+    // The received dropped the response handle
+    // The request *might* have been processed
+    DROPPED = 5;
+    // Service did not process the request due to backpressure
+    // Request has not been processed
+    LOAD_SHEDDING = 6;
+    // Message type was unrecognized by the receiver
+    // Request has not been processed
+    MESSAGE_UNRECOGNIZED = 7;
+  }
+
+  // correlates the reply to the original request
+  uint64 id = 1;
+  oneof body {
+    // encoded message payload
+    Status status = 98;
+    bytes payload = 99;
+  }
+}
+
+// Replaces BinaryMessage
+message Unary {
+  restate.common.ServiceTag service = 1;
+  // routing code of the target inbox if applicable, otherwise, defaults to 0.
+  optional uint64 sort_code = 2;
+  // the type-name of the unary message (variant in the service)
+  string msg_type = 3;
+  bytes payload = 100;
+}
+
+message Ping {
+  uint64 timestamp = 1;
+}
+
+message Pong {
+  uint64 timestamp = 1;
+}

@@ -1,0 +1,155 @@
+name: YAIWES SOL3 Anthropic-Skills STEP1 STEP2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-sol3-anthropic-skills-step1-step2.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-sol3-anthropic-skills-step1-step2
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      WALL: '📂 Bitácora stated JSON Craxy wall.json'
+      INVENTORY: 'Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json'
+      SRC: 'Core kernel Yaiwes/Componentes recuperados B/Anthropic-Skills'
+      DST: 'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/anthropic-skills'
+      MOTOR: '➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py'
+    steps:
+      - name: Checkout integration surfaces
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 8
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-sol3-anthropic-skills-step1-step2.yml
+            /📂 Bitácora stated JSON Craxy wall.json
+            /Core kernel Yaiwes/CORE-KERNEL-COMPONENT-INVENTORY.json
+            /Core kernel Yaiwes/Componentes recuperados B/Anthropic-Skills/
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/
+            /➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de moves archivos/motor_4_move_batches.py
+
+      - name: STEP1 PASS and claim STEP2
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main; git reset --hard origin/main
+            python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          with open(os.environ['WALL'],encoding='utf-8') as f:data=json.load(f)
+          nodes=data.setdefault('nodes',[])
+          node=next((n for n in nodes if n.get('component')=='Anthropic-Skills'),None)
+          if node is None:
+              node={'id':max([int(n.get('id',0)) for n in nodes] or [0])+1,'component':'Anthropic-Skills','source':'Core kernel Yaiwes/Componentes recuperados B/Anthropic-Skills/','current_step':1,'status':'PENDING','abc':None,'target':None,'owner':None,'lock':'FREE','checkpoint':{'before':None,'after':None},'evidence':[],'history':[],'next_action':'STEP_1_ANALYZE_ABC_DESTINATION'}
+              nodes.append(node)
+          if node.get('current_step')==1:
+              if node.get('lock') not in ('FREE',None) or node.get('owner') not in (None,'SOL'):
+                  raise SystemExit(f"LOCKED:{node.get('owner')}:{node.get('lock')}")
+              node['owner']='SOL'; node['lock']='CLAIMED'
+              node['checkpoint']['before']=f"{now} SOL integración 3 fresh main: Anthropic-Skills README blob eb54ee8b92f2d40b4b26569be0772be3c1e23156; existing capability-registry verified; execute STEP1 only"
+              node['history'].append({'at':now,'actor':'SOL','label':'SOL integración 3','event':'CLAIM_STEP1'})
+              node['abc']='C'; node['target']='Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/anthropic-skills/'; node['status']='PASS_STEP1'; node['current_step']=2
+              node['checkpoint']['after']='STEP1 PASS: Anthropic-Skills provides dynamically loadable SKILL.md instruction/script/resource packages plus Agent Skills spec/template; classified C modular capability; target existing capability-registry/anthropic-skills.'
+              for item in ['worker:SOL integración 3','step1:readme_blob:eb54ee8b92f2d40b4b26569be0772be3c1e23156','step1:classification:C','step1:target:Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/anthropic-skills/','step1:reason:dynamic reusable skill packages + spec/template capability']:
+                  if item not in node['evidence']:node['evidence'].append(item)
+              node['history'].append({'at':now,'actor':'SOL','label':'SOL integración 3','event':'STEP1_PASS_RELEASE'}); node['owner']=None; node['lock']='FREE'; node['next_action']='STEP_2_MOVE_WITH_CANONICAL_MOTOR'
+          if node.get('current_step')!=2: raise SystemExit(f"UNEXPECTED_STEP:{node.get('current_step')}:{node.get('status')}")
+          if node.get('lock') not in ('FREE',None) or node.get('owner') not in (None,'SOL'): raise SystemExit(f"STEP2_LOCKED:{node.get('owner')}:{node.get('lock')}")
+          node['owner']='SOL';node['lock']='CLAIMED';node['status']='PENDING_STEP2';node['checkpoint']['before']=f"{now} SOL integración 3 STEP2 claim: immutable Motor4 9a21facfe11327cf60a2afca8f415ad52f0ecbe5; Anthropic-Skills -> capability-registry/anthropic-skills";node['history'].append({'at':now,'actor':'SOL','label':'SOL integración 3','event':'CLAIM_STEP2'});data['updated_at']=now
+          with open(os.environ['INVENTORY'],encoding='utf-8') as f:inv=json.load(f)
+          comp=next(c for c in inv['components'] if c.get('name')=='Anthropic-Skills');comp['wall_node_id']=node['id'];comp['wall_status']=node['status'];comp['wall_current_step']=2;comp['wall_target']=node['target']
+          with open(os.environ['WALL'],'w',encoding='utf-8') as f:json.dump(data,f,ensure_ascii=False,indent=2);f.write('\n')
+          with open(os.environ['INVENTORY'],'w',encoding='utf-8') as f:json.dump(inv,f,ensure_ascii=False,indent=2);f.write('\n')
+          PY
+            git add -- "$WALL" "$INVENTORY"; git commit -m 'crazy-wall: SOL integración 3 Anthropic-Skills STEP1 PASS claim STEP2' || true
+            if git push origin HEAD:main; then ok=1; break; fi
+            sleep $((attempt*2))
+          done
+          test "$ok" -eq 1
+
+      - name: Verify Motor4
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main;git reset --hard origin/main
+          test "$(git hash-object "$MOTOR")" = '9a21facfe11327cf60a2afca8f415ad52f0ecbe5'
+
+      - name: Execute Motor4 MOVE
+        id: motor
+        shell: bash
+        run: |
+          set -u
+          if [ ! -d "$SRC" ] && [ -d "$DST" ]; then echo 'rc=0' >> "$GITHUB_OUTPUT";echo 'tail=MOVE_ALREADY_CANONICAL' >> "$GITHUB_OUTPUT";exit 0;fi
+          test -d "$SRC" || { echo 'rc=2' >> "$GITHUB_OUTPUT";echo 'tail=SOURCE_DIR_NOT_FOUND' >> "$GITHUB_OUTPUT";exit 0; }
+          mkdir -p "$DST";export SOURCE_DIR="$SRC" DEST_DIR="$DST" STATE_FILE='/tmp/sol3-anthropic-skills-motor4.json' BATCH_SIZE=100 COLLISION_POLICY=fail
+          set +e;python3 "$MOTOR" > /tmp/motor.log 2>&1;rc=$?;set -e;cat /tmp/motor.log;tail_line="$(tail -n 2 /tmp/motor.log|tr '\n\r' ' '|sed 's/=/ /g'|cut -c1-900)";echo "rc=$rc" >> "$GITHUB_OUTPUT";echo "tail=$tail_line" >> "$GITHUB_OUTPUT"
+
+      - name: Publish MOVE
+        id: publish
+        if: steps.motor.outputs.rc == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- "$SRC" "$DST"; if ! git diff --cached --quiet;then git commit -m 'move(yaiwes): Motor4 MOVE Anthropic-Skills to capability-registry';fi;git reset --hard HEAD
+          ok=0;for attempt in 1 2 3 4 5;do git fetch origin main;if git rebase origin/main && git push origin HEAD:main;then ok=1;break;fi;git rebase --abort||true;git reset --hard HEAD;sleep $((attempt*3));done;test "$ok" -eq 1;echo "move_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Read-back MOVE
+        if: steps.motor.outputs.rc == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main;test -z "$(git ls-tree -r --name-only origin/main -- "$SRC")";test -n "$(git ls-tree -r --name-only origin/main -- "$DST")";git show "origin/main:$DST/README.md" >/dev/null;git ls-tree -r --name-only origin/main -- "$DST/skills" | grep -Fq '/SKILL.md';echo ANTHROPIC_SKILLS_READBACK_OK
+
+      - name: Checkpoint STEP2 PASS or GAP
+        shell: bash
+        env:
+          MOTOR_RC: ${{ steps.motor.outputs.rc }}
+          MOTOR_TAIL: ${{ steps.motor.outputs.tail }}
+          MOVE_COMMIT: ${{ steps.publish.outputs.move_commit }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';ok=0
+          for attempt in 1 2 3 4 5;do git fetch origin main;git reset --hard origin/main
+            python3 - <<'PY'
+          import json,os
+          from datetime import datetime,timezone
+          now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z');rc=int(os.environ.get('MOTOR_RC') or 99);detail=(os.environ.get('MOTOR_TAIL') or '')[:900]
+          with open(os.environ['WALL'],encoding='utf-8') as f:data=json.load(f)
+          node=next(n for n in data['nodes'] if n.get('component')=='Anthropic-Skills')
+          if node.get('owner')!='SOL' or node.get('lock')!='CLAIMED' or node.get('current_step')!=2:raise SystemExit(f"LOCK_OR_STEP_CHANGED:{node.get('owner')}:{node.get('lock')}:{node.get('current_step')}")
+          if rc==0:
+              node['status']='PASS_STEP2';node['current_step']=3;node['checkpoint']['after']=f"STEP2 PASS: canonical Motor4 MOVE; source absent target populated incl SKILL.md; run={os.environ['GITHUB_RUN_ID']}; move_commit={os.environ.get('MOVE_COMMIT')}"
+              for item in ['step2:motor4_blob:9a21facfe11327cf60a2afca8f415ad52f0ecbe5',f"step2:run:{os.environ['GITHUB_RUN_ID']}",f"step2:move_commit:{os.environ.get('MOVE_COMMIT')}",'step2:readback:source absent target populated skills/SKILL.md present']:
+                  if item not in node['evidence']:node['evidence'].append(item)
+              node['history'].append({'at':now,'actor':'SOL','label':'SOL integración 3','event':'STEP2_PASS_RELEASE','run':int(os.environ['GITHUB_RUN_ID']),'commit':os.environ.get('MOVE_COMMIT')});node['next_action']='STEP_3_WIRE_PRUNE_IF_NEEDED_MICROTEST'
+          else:
+              node['status']='GAP_STEP2';node['checkpoint']['after']=f"STEP2 GAP Motor4 rc={rc}: {detail}";node['evidence'].append(f"step2:gap:run:{os.environ['GITHUB_RUN_ID']}:rc={rc}:{detail}");node['history'].append({'at':now,'actor':'SOL','label':'SOL integración 3','event':'STEP2_GAP_RELEASE','run':int(os.environ['GITHUB_RUN_ID'])});node['next_action']='REPAIR_EXACT_STEP2_GAP_AND_RETRY'
+          node['owner']=None;node['lock']='FREE';data['updated_at']=now
+          with open(os.environ['INVENTORY'],encoding='utf-8') as f:inv=json.load(f)
+          comp=next(c for c in inv['components'] if c.get('name')=='Anthropic-Skills');comp['wall_node_id']=node['id'];comp['wall_status']=node['status'];comp['wall_current_step']=node['current_step'];comp['wall_target']=node['target']
+          with open(os.environ['WALL'],'w',encoding='utf-8') as f:json.dump(data,f,ensure_ascii=False,indent=2);f.write('\n')
+          with open(os.environ['INVENTORY'],'w',encoding='utf-8') as f:json.dump(inv,f,ensure_ascii=False,indent=2);f.write('\n')
+          PY
+            git add -- "$WALL" "$INVENTORY";git commit -m "crazy-wall: SOL integración 3 Anthropic-Skills STEP2 checkpoint run $GITHUB_RUN_ID"||true;if git push origin HEAD:main;then ok=1;break;fi;sleep $((attempt*2));done;test "$ok" -eq 1
+
+      - name: Fail closed if GAP
+        if: steps.motor.outputs.rc != '0'
+        run: exit 1

@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 118978,
+  "bundle_sha256": "d3dddd94cfa15ae8f6d38d5189dd895c66d923e62f209af6a34b6996bd820cee",
+  "extracted_tree": {
+    "bytes": 589911,
+    "files": 35,
+    "sha256": "69ee0b0a72694db410512e6bf1eb2114d781e8d20f5a080b3005bb1c1870135d"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 118978,
+      "name": "ERC-8004-Contracts.bundle.zip.part-0001",
+      "sha256": "d3dddd94cfa15ae8f6d38d5189dd895c66d923e62f209af6a34b6996bd820cee"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "ERC-8004-Contracts",
+  "source_bytes": 589911,
+  "source_commit": "b9e466c250744a7e06b13dff9d3c2844ed64f825",
+  "source_files": 35,
+  "source_ref": "HEAD",
+  "source_repo": "erc-8004/erc-8004-contracts",
+  "source_tree": {
+    "bytes": 589911,
+    "files": 35,
+    "sha256": "69ee0b0a72694db410512e6bf1eb2114d781e8d20f5a080b3005bb1c1870135d"
+  }
+}

@@ -1,0 +1,27 @@
+# rules/risk_matrix.yaml — SALIDA 4 §16
+# score = suma ejes; 0-3 normal · 4-7 sheriff · 8-10 quarantine
+
+data:
+  public: 0
+  internal: 2
+  secret: 5
+
+operation:
+  read: 1
+  write: 3
+  delete: 5
+  install: 3
+  mount: 3
+  exec: 4
+  network: 2
+  unknown: 2
+
+external:
+  none: 0
+  api: 3
+  unknown: 5
+
+bands:
+  normal: [0, 3]
+  sheriff_check: [4, 7]
+  quarantine: [8, 10]

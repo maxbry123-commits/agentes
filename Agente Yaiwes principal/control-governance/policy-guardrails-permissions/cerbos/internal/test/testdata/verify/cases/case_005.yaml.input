@@ -1,0 +1,10 @@
+-- invalid_test.yaml --
+---
+name: TestSuite
+description: Tests for verifying something
+principals:
+  john:
+    id: john
+    policyVersion: '20210210'
+    roles:
+      - employee

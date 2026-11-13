@@ -1,0 +1,708 @@
+import socket
+import time
+from unittest.mock import patch
+from urllib.parse import urlparse
+
+import anyio
+import httpx2
+import pytest
+from key_value.aio.stores.memory import MemoryStore
+from mcp import MCPError
+from mcp.shared.auth import OAuthClientInformationFull
+from mcp_types import TextResourceContents
+from pydantic import AnyUrl
+
+import fastmcp.client.auth.oauth as oauth_module
+import fastmcp.utilities.http as http_module
+from fastmcp.client import Client
+from fastmcp.client.auth import OAuth
+from fastmcp.client.auth.oauth import TokenStorageAdapter
+from fastmcp.client.transports import StreamableHttpTransport
+from fastmcp.server.auth.auth import ClientRegistrationOptions
+from fastmcp.server.auth.providers.in_memory import InMemoryOAuthProvider
+from fastmcp.server.server import FastMCP
+from fastmcp.utilities.http import find_available_port
+from fastmcp.utilities.tests import HeadlessOAuth, run_server_async
+
+
+def fastmcp_server(issuer_url: str):
+    """Create a FastMCP server with OAuth authentication."""
+    server = FastMCP(
+        "TestServer",
+        auth=InMemoryOAuthProvider(
+            base_url=issuer_url,
+            client_registration_options=ClientRegistrationOptions(
+                enabled=True, valid_scopes=["read", "write"]
+            ),
+        ),
+    )
+
+    @server.tool
+    def add(a: int, b: int) -> int:
+        """Add two numbers together."""
+        return a + b
+
+    @server.resource("resource://test")
+    def get_test_resource() -> str:
+        """Get a test resource."""
+        return "Hello from authenticated resource!"
+
+    return server
+
+
+class ExpiredFirstRegistrationProvider(InMemoryOAuthProvider):
+    def __init__(self, base_url: str):
+        super().__init__(
+            base_url=base_url,
+            client_registration_options=ClientRegistrationOptions(enabled=True),
+        )
+        self.registration_count = 0
+
+    async def register_client(self, client_info: OAuthClientInformationFull) -> None:
+        self.registration_count += 1
+        if self.registration_count == 1:
+            client_info.client_secret = "expired-secret"
+            client_info.client_secret_expires_at = int(time.time()) - 1
+            client_info.token_endpoint_auth_method = "client_secret_post"
+        await super().register_client(client_info)
+
+
+@pytest.fixture
+async def streamable_http_server():
+    """Start OAuth-enabled server."""
+    port = find_available_port()
+    server = fastmcp_server(f"http://127.0.0.1:{port}")
+    async with run_server_async(server, port=port, transport="http") as url:
+        yield url
+
+
+@pytest.fixture
+def client_unauthorized(streamable_http_server: str) -> Client:
+    return Client(transport=StreamableHttpTransport(streamable_http_server))
+
+
+@pytest.fixture
+def client_with_headless_oauth(streamable_http_server: str) -> Client:
+    """Client with headless OAuth that bypasses browser interaction."""
+    return Client(
+        transport=StreamableHttpTransport(streamable_http_server),
+        auth=HeadlessOAuth(mcp_url=streamable_http_server, scopes=["read", "write"]),
+    )
+
+
+async def test_unauthorized(client_unauthorized: Client):
+    """Test that unauthenticated requests are rejected.
+
+    SDK v2 surfaces the server's 401 as an MCPError ("Server returned an error
+    response") rather than re-raising the raw httpx2.HTTPStatusError.
+    """
+    with pytest.raises(MCPError, match="error response") as exc_info:
+        async with client_unauthorized:
+            pass
+
+    assert exc_info.value.__cause__ is not exc_info.value
+
+
+async def test_ping(streamable_http_server: str):
+    """Test that we can ping the server.
+
+    Pinned to legacy: `ping` is a handshake-era request removed from the modern
+    (2026-07-28) protocol.
+    """
+    client = Client(
+        transport=StreamableHttpTransport(streamable_http_server),
+        auth=HeadlessOAuth(mcp_url=streamable_http_server, scopes=["read", "write"]),
+        mode="legacy",
+    )
+    async with client:
+        assert await client.ping()
+
+
+async def test_list_tools(client_with_headless_oauth: Client):
+    """Test that we can list tools."""
+    async with client_with_headless_oauth:
+        tools = await client_with_headless_oauth.list_tools()
+        tool_names = [tool.name for tool in tools]
+        assert "add" in tool_names
+
+
+async def test_call_tool(client_with_headless_oauth: Client):
+    """Test that we can call a tool."""
+    async with client_with_headless_oauth:
+        result = await client_with_headless_oauth.call_tool("add", {"a": 5, "b": 3})
+        # The add tool returns int which gets wrapped as structured output
+        # Client unwraps it and puts the actual int in the data field
+        assert result.data == 8
+
+
+async def test_list_resources(client_with_headless_oauth: Client):
+    """Test that we can list resources."""
+    async with client_with_headless_oauth:
+        resources = await client_with_headless_oauth.list_resources()
+        resource_uris = [str(resource.uri) for resource in resources]
+        assert "resource://test" in resource_uris
+
+
+async def test_read_resource(client_with_headless_oauth: Client):
+    """Test that we can read a resource."""
+    async with client_with_headless_oauth:
+        resource = await client_with_headless_oauth.read_resource("resource://test")
+        assert isinstance(resource[0], TextResourceContents)
+        assert resource[0].text == "Hello from authenticated resource!"
+
+
+async def test_oauth_server_metadata_discovery(streamable_http_server: str):
+    """Test that we can discover OAuth metadata from the running server."""
+    parsed_url = urlparse(streamable_http_server)
+    server_base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+
+    async with httpx2.AsyncClient() as client:
+        # Test OAuth discovery endpoint
+        metadata_url = f"{server_base_url}/.well-known/oauth-authorization-server"
+        response = await client.get(metadata_url)
+        assert response.status_code == 200
+
+        metadata = response.json()
+        assert "authorization_endpoint" in metadata
+        assert "token_endpoint" in metadata
+        assert "registration_endpoint" in metadata
+
+        # The endpoints should be properly formed URLs
+        assert metadata["authorization_endpoint"].startswith(server_base_url)
+        assert metadata["token_endpoint"].startswith(server_base_url)
+
+
+async def test_expired_dynamic_registration_is_retried():
+    port = find_available_port()
+    base_url = f"http://127.0.0.1:{port}"
+    provider = ExpiredFirstRegistrationProvider(base_url)
+    server = FastMCP("TestServer", auth=provider)
+
+    async with run_server_async(server, port=port, transport="http") as url:
+        # Pinned to legacy: `ping` is a handshake-era request removed from the
+        # modern (2026-07-28) protocol; the retry is exercised via the handshake.
+        client = Client(
+            transport=StreamableHttpTransport(url),
+            auth=HeadlessOAuth(mcp_url=url),
+            mode="legacy",
+        )
+        async with client:
+            assert await client.ping()
+
+    assert provider.registration_count == 2
+
+
+async def test_oauth_callback_handler_propagates_iss_to_authorization_code_result():
+    """RFC 9207: `OAuth.callback_handler()` (the production, non-headless path)
+    must carry `iss` from the callback query string all the way into the
+    `AuthorizationCodeResult` handed back to the MCP SDK.
+
+    The MCP SDK's `validate_authorization_response_iss` raises when the
+    authorization server metadata advertises
+    `authorization_response_iss_parameter_supported` and the result it
+    receives has no `iss` -- so if this hop drops it, every production OAuth
+    login against an RFC 9207-compliant server (like OAuthProxy) fails, even
+    though the server sent `iss` correctly. `HeadlessOAuth` already carries
+    `iss` through for tests -- this test exercises the real `OAuth` class
+    that production clients actually use.
+    """
+    oauth = OAuth(mcp_url="http://127.0.0.1:9999")
+
+    async def send_callback():
+        await anyio.sleep(0.1)
+        async with httpx2.AsyncClient() as client:
+            response = await client.get(
+                f"http://{oauth._callback_host}:{oauth.redirect_port}/callback",
+                params={
+                    "code": "auth-code-123",
+                    "state": "state-xyz",
+                    "iss": "https://issuer.example.com",
+                },
+            )
+            assert response.status_code == 200
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(send_callback)
+        result = await oauth.callback_handler()
+
+        assert result.code == "auth-code-123"
+        assert result.state == "state-xyz"
+        assert result.iss == "https://issuer.example.com"
+
+
+class TestOAuthClientUrlHandling:
+    """Tests for OAuth client URL handling (issue #2573)."""
+
+    def test_oauth_preserves_full_url_with_path(self):
+        """OAuth client should preserve the full MCP URL including path components.
+
+        This is critical for servers hosted under path-based endpoints like
+        mcp.example.com/server1/v1.0/mcp where OAuth metadata discovery needs
+        the full path to find the correct .well-known endpoints.
+        """
+        mcp_url = "https://mcp.example.com/server1/v1.0/mcp"
+        oauth = OAuth(mcp_url=mcp_url)
+
+        # The full URL should be preserved for OAuth discovery
+        assert oauth.context.server_url == mcp_url
+
+        # The stored mcp_url should match
+        assert oauth.mcp_url == mcp_url
+
+    def test_oauth_preserves_root_url(self):
+        """OAuth client should work correctly with root-level URLs."""
+        mcp_url = "https://mcp.example.com"
+        oauth = OAuth(mcp_url=mcp_url)
+
+        assert oauth.context.server_url == mcp_url
+        assert oauth.mcp_url == mcp_url
+
+    def test_oauth_normalizes_trailing_slash(self):
+        """OAuth client should normalize trailing slashes for consistency."""
+        mcp_url_with_slash = "https://mcp.example.com/api/mcp/"
+        oauth = OAuth(mcp_url=mcp_url_with_slash)
+
+        # Trailing slash should be stripped
+        expected = "https://mcp.example.com/api/mcp"
+        assert oauth.context.server_url == expected
+        assert oauth.mcp_url == expected
+
+    def test_oauth_token_storage_uses_full_url(self):
+        """Token storage should use the full URL to separate tokens per endpoint."""
+        mcp_url = "https://mcp.example.com/server1/v1.0/mcp"
+        oauth = OAuth(mcp_url=mcp_url)
+
+        # Token storage should key by the full URL, not just the host
+        assert oauth.token_storage_adapter._server_url == mcp_url
+
+    def test_oauth_uses_configured_callback_host_port_and_timeout(self):
+        oauth = OAuth(
+            mcp_url="https://example.com/mcp",
+            callback_port=8765,
+            callback_host="127.0.0.1",
+            callback_timeout=12.5,
+        )
+
+        assert oauth.context.client_metadata.redirect_uris is not None
+        assert str(oauth.context.client_metadata.redirect_uris[0]) == (
+            "http://127.0.0.1:8765/callback"
+        )
+        assert oauth._callback_timeout == 12.5
+
+    @pytest.mark.parametrize("callback_host", ["::1", "[::1]"])
+    def test_oauth_brackets_ipv6_callback_host_in_redirect_uri(
+        self, callback_host: str
+    ):
+        oauth = OAuth(
+            mcp_url="https://example.com/mcp",
+            callback_port=8765,
+            callback_host=callback_host,
+        )
+
+        assert oauth.context.client_metadata.redirect_uris is not None
+        assert str(oauth.context.client_metadata.redirect_uris[0]) == (
+            "http://[::1]:8765/callback"
+        )
+        assert oauth._callback_host == "::1"
+
+    def test_oauth_finds_available_port_on_callback_host(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        seen_hosts: list[str] = []
+
+        def find_available_port(host: str = "127.0.0.1") -> int:
+            seen_hosts.append(host)
+            return 8765
+
+        monkeypatch.setattr(oauth_module, "find_available_port", find_available_port)
+
+        oauth = OAuth(
+            mcp_url="https://example.com/mcp",
+            callback_host="[::1]",
+        )
+
+        assert seen_hosts == ["::1"]
+        assert oauth.redirect_port == 8765
+        assert oauth.context.client_metadata.redirect_uris is not None
+        assert str(oauth.context.client_metadata.redirect_uris[0]) == (
+            "http://[::1]:8765/callback"
+        )
+
+    @pytest.mark.parametrize(
+        ("host", "expected_family"),
+        [
+            ("localhost", socket.AF_INET),
+            ("127.0.0.1", socket.AF_INET),
+            ("::1", socket.AF_INET6),
+        ],
+    )
+    def test_available_port_uses_uvicorn_host_family(
+        self,
+        host: str,
+        expected_family: socket.AddressFamily,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        seen: list[tuple[socket.AddressFamily, tuple[str, int]]] = []
+
+        class FakeSocket:
+            def __init__(
+                self,
+                family: socket.AddressFamily,
+                socket_type: socket.SocketKind,
+            ):
+                self.family = family
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def bind(self, address: tuple[str, int]) -> None:
+                seen.append((self.family, address))
+
+            def getsockname(self) -> tuple[str, int]:
+                return host, 8765
+
+        monkeypatch.setattr(http_module.socket, "socket", FakeSocket)
+
+        assert http_module.find_available_port(host=host) == 8765
+        assert seen == [(expected_family, (host, 0))]
+
+
+class TestOAuthGeneratorCleanup:
+    """Tests for OAuth async generator cleanup (issue #2643).
+
+    The MCP SDK's OAuthClientProvider.async_auth_flow() holds a lock via
+    `async with self.context.lock`. If the generator is not explicitly closed,
+    GC may clean it up from a different task, causing:
+    RuntimeError: The current task is not holding this lock
+    """
+
+    async def test_generator_closed_on_successful_flow(self):
+        """Verify aclose() is called on the parent generator after successful flow."""
+        oauth = OAuth(mcp_url="https://example.com")
+
+        # Track generator lifecycle using a wrapper class
+        class TrackedGenerator:
+            def __init__(self):
+                self.aclose_called = False
+                self._exhausted = False
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self._exhausted:
+                    raise StopAsyncIteration
+                self._exhausted = True
+                return httpx2.Request("GET", "https://example.com")
+
+            async def asend(self, value):
+                if self._exhausted:
+                    raise StopAsyncIteration
+                self._exhausted = True
+                return httpx2.Request("GET", "https://example.com")
+
+            async def athrow(self, exc_type, exc_val=None, exc_tb=None):
+                raise StopAsyncIteration
+
+            async def aclose(self):
+                self.aclose_called = True
+
+        tracked_gen = TrackedGenerator()
+
+        # Patch the parent class to return our tracked generator
+        with patch.object(
+            OAuth.__bases__[0], "async_auth_flow", return_value=tracked_gen
+        ):
+            # Drive the OAuth flow
+            flow = oauth.async_auth_flow(httpx2.Request("GET", "https://example.com"))
+            try:
+                # First asend(None) starts the generator per async generator protocol
+                await flow.asend(None)  # ty: ignore[invalid-argument-type]
+                try:
+                    await flow.asend(httpx2.Response(200))
+                except StopAsyncIteration:
+                    pass
+            except StopAsyncIteration:
+                pass
+
+        assert tracked_gen.aclose_called, (
+            "Generator aclose() was not called after flow completion"
+        )
+
+    async def test_generator_closed_on_exception(self):
+        """Verify aclose() is called even when an exception occurs mid-flow."""
+        oauth = OAuth(mcp_url="https://example.com")
+
+        class FailingGenerator:
+            def __init__(self):
+                self.aclose_called = False
+                self._first_call = True
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                return await self.asend(None)
+
+            async def asend(self, value):
+                if self._first_call:
+                    self._first_call = False
+                    return httpx2.Request("GET", "https://example.com")
+                raise ValueError("Simulated failure")
+
+            async def athrow(self, exc_type, exc_val=None, exc_tb=None):
+                raise StopAsyncIteration
+
+            async def aclose(self):
+                self.aclose_called = True
+
+        tracked_gen = FailingGenerator()
+
+        with patch.object(
+            OAuth.__bases__[0], "async_auth_flow", return_value=tracked_gen
+        ):
+            flow = oauth.async_auth_flow(httpx2.Request("GET", "https://example.com"))
+            with pytest.raises(ValueError, match="Simulated failure"):
+                await flow.asend(None)  # ty: ignore[invalid-argument-type]
+                await flow.asend(httpx2.Response(200))
+
+        assert tracked_gen.aclose_called, (
+            "Generator aclose() was not called after exception"
+        )
+
+
+class TestTokenStorageTTL:
+    """Tests for client token storage TTL behavior (issue #2670).
+
+    The token storage TTL should NOT be based on access token expiry, because
+    the refresh token may be valid much longer. Using access token expiry would
+    cause both tokens to be deleted when the access token expires, preventing
+    refresh.
+    """
+
+    async def test_token_storage_uses_long_ttl(self):
+        """Token storage should use a long TTL, not access token expiry.
+
+        This is the ianw case: IdP returns expires_in=300 (5 min access token)
+        but the refresh token is valid for much longer. The entire token entry
+        should NOT be deleted after 5 minutes.
+        """
+        from key_value.aio.stores.memory import MemoryStore
+        from mcp.shared.auth import OAuthToken
+
+        from fastmcp.client.auth.oauth import TokenStorageAdapter
+
+        # Create storage adapter
+        storage = MemoryStore()
+        adapter = TokenStorageAdapter(
+            async_key_value=storage, server_url="https://test"
+        )
+
+        # Create a token with short access expiry (5 minutes)
+        token = OAuthToken(
+            access_token="test-access-token",
+            token_type="Bearer",
+            expires_in=300,  # 5 minutes - but we should NOT use this as storage TTL!
+            refresh_token="test-refresh-token",
+            scope="read write",
+        )
+
+        # Store the token
+        await adapter.set_tokens(token)
+
+        # Verify token is stored
+        stored = await adapter.get_tokens()
+        assert stored is not None
+        assert stored.access_token == "test-access-token"
+        assert stored.refresh_token == "test-refresh-token"
+
+        # The key assertion: the TTL should be 1 year (365 days), not 300 seconds
+        # We verify this by checking the raw storage entry
+        raw = await storage.get(collection="mcp-oauth-token", key="https://test/tokens")
+        assert raw is not None
+
+    async def test_token_storage_preserves_refresh_token(self):
+        """Refresh token should not be lost when access token would expire."""
+        from key_value.aio.stores.memory import MemoryStore
+        from mcp.shared.auth import OAuthToken
+
+        from fastmcp.client.auth.oauth import TokenStorageAdapter
+
+        storage = MemoryStore()
+        adapter = TokenStorageAdapter(
+            async_key_value=storage, server_url="https://test"
+        )
+
+        # Store token with short access expiry
+        token = OAuthToken(
+            access_token="access",
+            token_type="Bearer",
+            expires_in=300,
+            refresh_token="refresh-token-should-survive",
+            scope="read",
+        )
+        await adapter.set_tokens(token)
+
+        # Retrieve and verify refresh token is present
+        stored = await adapter.get_tokens()
+        assert stored is not None
+        assert stored.refresh_token == "refresh-token-should-survive"
+
+    async def test_set_tokens_stores_absolute_expiry(self):
+        """set_tokens should persist an absolute expires_at timestamp."""
+        from key_value.aio.stores.memory import MemoryStore
+        from mcp.shared.auth import OAuthToken
+
+        from fastmcp.client.auth.oauth import TokenStorageAdapter
+
+        storage = MemoryStore()
+        adapter = TokenStorageAdapter(
+            async_key_value=storage, server_url="https://test"
+        )
+
+        before = time.time()
+        token = OAuthToken(
+            access_token="a",
+            token_type="Bearer",
+            expires_in=300,
+            refresh_token="r",
+        )
+        await adapter.set_tokens(token)
+        after = time.time()
+
+        expiry = await adapter.get_token_expiry()
+        assert expiry is not None
+        assert before + 300 <= expiry <= after + 300
+
+    async def test_reload_uses_stored_expiry_not_stale_expires_in(self):
+        """On reload, _initialize should use the stored absolute expiry rather
+        than recomputing from the stale relative expires_in.
+
+        This is the core bug from #2862: a token issued with expires_in=300
+        that's reloaded an hour later should NOT appear valid for another 5
+        minutes.
+        """
+        from key_value.aio.stores.memory import MemoryStore
+        from mcp.shared.auth import OAuthToken
+
+        from fastmcp.client.auth.oauth import TokenStorageAdapter
+
+        storage = MemoryStore()
+        adapter = TokenStorageAdapter(
+            async_key_value=storage, server_url="https://test"
+        )
+
+        token = OAuthToken(
+            access_token="a",
+            token_type="Bearer",
+            expires_in=300,
+            refresh_token="r",
+        )
+        await adapter.set_tokens(token)
+
+        # Simulate time passing by overwriting the stored expiry to a past time
+        past_expiry = time.time() - 600
+        await storage.put(
+            key="https://test/token_expiry",
+            value={"expires_at": past_expiry},
+            collection="mcp-oauth-token-expiry",
+        )
+
+        reloaded = await adapter.get_token_expiry()
+        assert reloaded is not None
+        assert reloaded == pytest.approx(past_expiry)
+
+    async def test_get_token_expiry_returns_none_when_not_stored(self):
+        """get_token_expiry returns None for tokens stored before the fix."""
+        from key_value.aio.stores.memory import MemoryStore
+
+        from fastmcp.client.auth.oauth import TokenStorageAdapter
+
+        storage = MemoryStore()
+        adapter = TokenStorageAdapter(
+            async_key_value=storage, server_url="https://test"
+        )
+        assert await adapter.get_token_expiry() is None
+
+    async def test_clear_removes_token_expiry(self):
+        """clear() should also remove the stored token expiry."""
+        from key_value.aio.stores.memory import MemoryStore
+        from mcp.shared.auth import OAuthToken
+
+        from fastmcp.client.auth.oauth import TokenStorageAdapter
+
+        storage = MemoryStore()
+        adapter = TokenStorageAdapter(
+            async_key_value=storage, server_url="https://test"
+        )
+
+        token = OAuthToken(
+            access_token="a",
+            token_type="Bearer",
+            expires_in=300,
+            refresh_token="r",
+        )
+        await adapter.set_tokens(token)
+        assert await adapter.get_token_expiry() is not None
+
+        await adapter.clear()
+        assert await adapter.get_token_expiry() is None
+
+
+class TestClientInfoStorageTTL:
+    async def test_expired_client_info_removes_stale_registration(self):
+        storage = MemoryStore()
+        adapter = TokenStorageAdapter(
+            async_key_value=storage, server_url="https://test"
+        )
+        current = OAuthClientInformationFull(
+            client_id="current-client",
+            client_secret="current-secret",
+            client_secret_expires_at=0,
+            redirect_uris=[AnyUrl("http://localhost/callback")],
+        )
+        await adapter.set_client_info(current)
+        assert await adapter.get_client_info() == current
+
+        expired = current.model_copy(
+            update={
+                "client_id": "expired-client",
+                "client_secret_expires_at": int(time.time()) - 1,
+            }
+        )
+        await adapter.set_client_info(expired)
+
+        assert await adapter.get_client_info() is None
+
+    async def test_never_expiring_client_info_is_stored(self):
+        adapter = TokenStorageAdapter(
+            async_key_value=MemoryStore(), server_url="https://test"
+        )
+        client_info = OAuthClientInformationFull(
+            client_id="never-expiring-client",
+            client_secret="secret",
+            client_secret_expires_at=0,
+            redirect_uris=[AnyUrl("http://localhost/callback")],
+        )
+
+        await adapter.set_client_info(client_info)
+
+        assert await adapter.get_client_info() == client_info
+
+    async def test_future_expiring_client_info_is_stored(self):
+        adapter = TokenStorageAdapter(
+            async_key_value=MemoryStore(), server_url="https://test"
+        )
+        client_info = OAuthClientInformationFull(
+            client_id="future-expiring-client",
+            client_secret="secret",
+            client_secret_expires_at=int(time.time()) + 60,
+            redirect_uris=[AnyUrl("http://localhost/callback")],
+        )
+
+        await adapter.set_client_info(client_info)
+
+        assert await adapter.get_client_info() == client_info

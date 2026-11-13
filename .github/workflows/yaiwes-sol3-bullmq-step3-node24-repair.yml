@@ -1,0 +1,53 @@
+name: YAIWES SOL3 BullMQ STEP3 Node24 surgical repair
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-sol3-bullmq-step3-node24-repair.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-sol3-bullmq-step3-node24-repair
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 8
+          lfs: false
+          sparse-checkout: |
+            .github/workflows/yaiwes-sol3-bullmq-step3.yml
+            .github/workflows/yaiwes-sol3-bullmq-step3-node24-repair.yml
+          sparse-checkout-cone-mode: false
+      - name: Apply exact Node engine repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          F='.github/workflows/yaiwes-sol3-bullmq-step3.yml'
+          grep -Fq "node-version: '20'" "$F"
+          sed -i "s/node-version: '20'/node-version: '24'/" "$F"
+          grep -Fq "node-version: '24'" "$F"
+          git diff --check -- "$F"
+      - name: Commit surgical repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- '.github/workflows/yaiwes-sol3-bullmq-step3.yml'
+          git commit -m 'fix(yaiwes): BullMQ STEP3 Node 24 engine compatibility'
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then ok=1; break; fi
+            git rebase --abort || true; sleep $((attempt*2))
+          done
+          test "$ok" -eq 1

@@ -1,0 +1,91 @@
+{#-
+  Relaxed Mistral/Mixtral [INST] chat template for AGENTIC multi-turn RL.
+
+  Mixtral-8x7B-Instruct-v0.1's STOCK template enforces strict user/assistant
+  alternation via `raise_exception(...)` and supports ONLY user/assistant roles.
+  That breaks the SkyRL agentic pipeline in two ways:
+
+    1. `encode_messages_subset` re-encodes ONE message at a time appended to a
+       fixed base `[system, user]`. A `user` turn then yields `[user, user]`
+       after the system strip -> the stock template's alternation assert raises
+       (`conversation roles must alternate user/assistant/...`).
+    2. Any consecutive same-role turn or a `tool`/observation message in a
+       trajectory would hit the same assert / the role `raise_exception`.
+
+  This template keeps Mixtral's NATIVE `[INST] ... [/INST]` + ` content</s>`
+  format (so the model's instruction-tuned prior is preserved for cold-start)
+  but:
+    * DROPS the strict-alternation assertion entirely.
+    * MERGES consecutive same-role turns into a single rendered block (so
+      `[user, user]` from the fixed-base per-message encode renders as one
+      `[INST] ... [/INST]`, and N consecutive assistant turns concatenate).
+    * Serializes a `tool` (observation) message as a user-side `[INST]` block
+      (folded into the surrounding user turn) so tool output is plain text the
+      v1 tokenizer can represent (no v3 [TOOL_CALLS] special tokens — Mixtral's
+      v1 vocab lacks them).
+
+  LOSS-MASK CONTRACT (must match SkyRL get_response_ids_and_loss_mask_from_messages):
+    * No `add_generation_prompt` suffix is emitted (Mixtral has none), so
+      `get_generation_prompt_ids` returns [] and `prefix_len == 0` -> the entire
+      ` content</s>` of an assistant turn is masked as generated (mask=1), with
+      the EOS included. This mirrors the stock template's assistant rendering
+      ` ` + content + eos_token EXACTLY, so the per-assistant-turn token slice
+      (and therefore the TIS token-id alignment) is byte-identical to stock.
+    * A user/tool turn renders WITHOUT eos -> masked 0, identical to stock.
+
+  Roles handled: system (initial only, folded into first user [INST]),
+  user, assistant, tool (folded as user-side observation text).
+-#}
+{%- if messages[0]['role'] == 'system' %}
+    {%- set system_message = messages[0]['content'] %}
+    {%- set loop_messages = messages[1:] %}
+{%- else %}
+    {%- set loop_messages = messages %}
+{%- endif %}
+{{- bos_token }}
+{%- set ns = namespace(prev_role='none', system_emitted=false) %}
+{%- for message in loop_messages %}
+    {#- Normalize a `tool`/observation message to the user side. -#}
+    {%- if message['role'] == 'assistant' %}
+        {%- set cur_role = 'assistant' %}
+    {%- else %}
+        {%- set cur_role = 'user' %}
+    {%- endif %}
+    {%- if message['content'] is string %}
+        {%- set content = message['content'] %}
+    {%- else %}
+        {%- set content = '' %}
+    {%- endif %}
+    {%- if cur_role == 'user' %}
+        {#- Open a new [INST] block only when the previous rendered role was NOT
+            user (merge consecutive user/tool turns into one block). -#}
+        {%- if ns.prev_role != 'user' %}
+            {%- if not ns.system_emitted and system_message is defined %}
+                {{- ' [INST] ' + system_message + '\n\n' + content }}
+                {%- set ns.system_emitted = true %}
+            {%- else %}
+                {{- ' [INST] ' + content }}
+            {%- endif %}
+        {%- else %}
+            {#- Consecutive user/tool turn: append to the open [INST] block. -#}
+            {{- '\n\n' + content }}
+        {%- endif %}
+    {%- else %}
+        {#- assistant. Close any open [INST] block, then emit ` content</s>`.
+            Consecutive assistant turns: the prior turn already wrote its eos,
+            so just concatenate ` content</s>` again (mask logic re-masks each
+            assistant turn independently via its own EOS). -#}
+        {%- if ns.prev_role == 'user' %}
+            {{- ' [/INST]' }}
+        {%- endif %}
+        {{- ' ' + content + eos_token }}
+    {%- endif %}
+    {%- set ns.prev_role = cur_role %}
+{%- endfor %}
+{%- if add_generation_prompt %}
+    {#- Close a dangling user block so the model is prompted to answer. Stock
+        Mixtral emits no extra generation tokens; we only need the [/INST]. -#}
+    {%- if ns.prev_role == 'user' %}
+        {{- ' [/INST]' }}
+    {%- endif %}
+{%- endif %}

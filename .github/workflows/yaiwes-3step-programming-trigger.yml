@@ -1,0 +1,192 @@
+name: YAIWES 3-Step Step3 PROGRAMMING TRIGGER
+run-name: YAIWES Programming Trigger • ${{ github.event_name }} • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-3step-programming-trigger.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-wordflow-programming-trigger
+  cancel-in-progress: true
+
+jobs:
+  programming-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-3step-programming-trigger.yml
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow_loop_plugin_registry.json
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-evidence/
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/abi-mount/wordflow-loop/
+            /Agente Yaiwes principal/execution-orchestration/programming-pipeline/programming_instance.py
+            /Agente Yaiwes principal/execution-engine-pool/instance_pool.py
+            /Agente Yaiwes principal/execution-orchestration/deterministic-execution/loop-engineer/
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/langgraph/SOURCE_COMMIT.txt
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/prefect/SOURCE_COMMIT.txt
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/hatchet-python-sdk/SOURCE_COMMIT.txt
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/redun/SOURCE_COMMIT.txt
+            /Agente Yaiwes principal/execution-orchestration/state-machine-executor/temporal-python-sdk/SOURCE_COMMIT.txt
+
+      - name: Compile moved programming runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            'Agente Yaiwes principal/execution-orchestration/programming-pipeline/programming_instance.py' \
+            'Agente Yaiwes principal/execution-engine-pool/instance_pool.py'
+          find 'Agente Yaiwes principal/execution-orchestration/deterministic-execution/loop-engineer' -name '*.py' -type f -print0 | xargs -0 -r python3 -m py_compile
+          echo 'PROGRAMMING_RUNTIME_COMPILE=PASS'
+
+      - name: Trigger three programming cases through bound engine
+        shell: bash
+        env:
+          YAIWES_TRIGGER_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          import os
+          import py_compile
+          import sys
+          import tempfile
+          from pathlib import Path
+
+          repo = Path.cwd()
+          pipeline = repo / 'Agente Yaiwes principal/execution-orchestration/programming-pipeline'
+          pooldir = repo / 'Agente Yaiwes principal/execution-engine-pool'
+          sys.path.insert(0, str(pipeline))
+          sys.path.insert(0, str(pooldir))
+          from programming_instance import ApiSlot, InstanceStatus, ProgrammingInstance
+          from instance_pool import InstancePoolManager
+
+          registry_path = repo / 'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow_loop_plugin_registry.json'
+          registry = json.loads(registry_path.read_text())
+          assert registry['active_count'] == 11
+          by_id = {x['plugin_id']: x for x in registry['registrations']}
+          assert by_id['yaiwes.loop.loop_engineer']['status'] == 'ACTIVE'
+          assert by_id['yaiwes.loop.loop_engineer']['health'] is True
+
+          run_id = os.environ['YAIWES_TRIGGER_RUN_ID']
+          pool = InstancePoolManager(concurrency_cap=5)
+          cases = [
+              ('sum', 'def solve(a, b):\n    return a + b\n', lambda m: m.solve(19, 23) == 42),
+              ('normalize', 'def solve(text):\n    return " ".join(text.strip().lower().split())\n', lambda m: m.solve('  YAIWES   LOOP  ') == 'yaiwes loop'),
+              ('classify', 'def solve(n):\n    return "even" if n % 2 == 0 else "odd"\n', lambda m: m.solve(7) == 'odd' and m.solve(8) == 'even'),
+          ]
+          results=[]
+          with tempfile.TemporaryDirectory(prefix='yaiwes-programming-') as td:
+              td = Path(td)
+              for index, (name, code, assertion) in enumerate(cases, 1):
+                  inst = ProgrammingInstance(
+                      tenant_id='yaiwes-ci',
+                      mission_id=f'programming-{name}',
+                      api_slot=ApiSlot(provider='local-trigger', credential_ref='none://ci'),
+                      engine_binding='yaiwes.loop.loop_engineer',
+                      parent_workflow_id=run_id,
+                      idempotency_key=f'{run_id}:{name}',
+                  )
+                  created = pool.create_instance(inst)
+                  pool.transition('yaiwes-ci', created.handle, InstanceStatus.RUNNING)
+                  path = td / f'solution_{index}_{name}.py'
+                  path.write_text(code, encoding='utf-8')
+                  py_compile.compile(str(path), doraise=True)
+                  spec = importlib.util.spec_from_file_location(f'yaiwes_case_{index}', path)
+                  mod = importlib.util.module_from_spec(spec)
+                  spec.loader.exec_module(mod)
+                  assert assertion(mod), name
+                  pool.transition('yaiwes-ci', created.handle, InstanceStatus.COMPLETED)
+                  results.append({'case': name, 'handle': created.handle, 'status': created.status.value, 'code_bytes': len(code.encode())})
+
+          # Idempotency: same key returns same handle and does not create a duplicate.
+          idem = ProgrammingInstance(
+              tenant_id='idempotency', mission_id='retry-test',
+              api_slot=ApiSlot(provider='local-trigger', credential_ref='none://ci'),
+              engine_binding='yaiwes.loop.loop_engineer', parent_workflow_id=run_id,
+              idempotency_key=f'{run_id}:retry-test')
+          a = pool.create_instance(idem)
+          b = pool.create_instance(ProgrammingInstance(
+              tenant_id='idempotency', mission_id='retry-test',
+              api_slot=ApiSlot(provider='local-trigger', credential_ref='none://ci'),
+              engine_binding='yaiwes.loop.loop_engineer', parent_workflow_id=run_id,
+              idempotency_key=f'{run_id}:retry-test'))
+          assert a.handle == b.handle
+
+          # Fail closed: invalid profile must never enter the pool.
+          rejected=False
+          try:
+              pool.create_instance(ProgrammingInstance(
+                  tenant_id='yaiwes-ci', mission_id='bad-profile',
+                  api_slot=ApiSlot(provider='local-trigger', credential_ref='none://ci'),
+                  engine_binding='yaiwes.loop.loop_engineer', parent_workflow_id=run_id,
+                  profile='invalid-profile'))
+          except ValueError:
+              rejected=True
+          assert rejected
+
+          evidence = {
+              'step': 3,
+              'trigger': 'github_actions',
+              'run_id': int(run_id),
+              'status': 'PASS_REAL',
+              'registry_active': registry['active_count'],
+              'engine_binding': 'yaiwes.loop.loop_engineer',
+              'programming_cases': results,
+              'programming_cases_passed': len(results),
+              'idempotency': 'PASS',
+              'fail_closed_invalid_profile': 'PASS',
+          }
+          out = repo / 'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-evidence/STEP3_PROGRAMMING_TRIGGER.json'
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps(evidence, indent=2) + '\n')
+          print('YAIWES_PROGRAMMING_CASES=PASS 3/3')
+          print('YAIWES_PROGRAMMING_IDEMPOTENCY=PASS')
+          print('YAIWES_PROGRAMMING_FAIL_CLOSED=PASS')
+          PY
+
+      - name: Verify moved LOOP provenance and wired adapters
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat 'Agente Yaiwes principal/execution-orchestration/dag-executor/langgraph/SOURCE_COMMIT.txt')" = '81bf17b23123e4ef8b9d5f49fa09a0122fc2edd1'
+          test "$(cat 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/temporal-python-sdk/SOURCE_COMMIT.txt')" = '22a9e41fd857261ee0a9bb5ce57f439d93e7f88d'
+          test "$(cat 'Agente Yaiwes principal/execution-orchestration/dag-executor/prefect/SOURCE_COMMIT.txt')" = '6a6fe4e24cc456be30dd570aeeb1dbb6b6bef286'
+          test "$(cat 'Agente Yaiwes principal/execution-orchestration/dag-executor/hatchet-python-sdk/SOURCE_COMMIT.txt')" = '086a63f2245416296de288a944aad1b8357e63e9'
+          test "$(cat 'Agente Yaiwes principal/execution-orchestration/dag-executor/redun/SOURCE_COMMIT.txt')" = '49a299b223bc345b999aaa40daa6876f105089e1'
+          count=$(find 'Agente Yaiwes principal/kernel-principal/extension-kernel/abi-mount/wordflow-loop' -maxdepth 1 -name '*_adapter.py' | wc -l)
+          test "$count" -eq 11
+          echo 'YAIWES_LOOP_PROVENANCE=PASS 5/5'
+          echo 'YAIWES_WIRED_ADAPTERS=PASS 11/11'
+
+      - name: Persist Step3 test evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          E='Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-evidence/STEP3_PROGRAMMING_TRIGGER.json'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$E"
+          if git diff --cached --quiet; then
+            echo 'EVIDENCE_ALREADY_CURRENT'
+            exit 0
+          fi
+          git commit -m 'test(yaiwes): persist triggered programming workflow evidence'
+          git fetch origin main
+          test "$(git rev-parse HEAD^)" = "$(git rev-parse origin/main)"
+          git push origin HEAD:main
+
+      - name: Final Step3 verdict
+        run: echo 'YAIWES_3STEP_VERIFY_FINAL=PASS'

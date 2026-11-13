@@ -1,0 +1,523 @@
+import React, { useRef, useEffect, useMemo, useCallback, forwardRef, useImperativeHandle, useState } from 'react';
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
+import { Skeleton } from '@/app/components/feedback/Loading';
+import { useElementSelection } from '@/app/components/editor/ElementSelectionContext';
+import { useIframeElementSelector } from './useIframeElementSelector';
+import { getAuthToken, ensureAuthToken } from '@/shared/config';
+import { useClaudeTokens } from '@/shared/styles/ThemeContext';
+import { registerViewWebview, unregisterViewWebview, type ViewWebview } from '@/shared/viewWebviewRegistry';
+import { registerViewFrame, unregisterViewFrame } from '@/shared/viewFrameRegistry';
+import RunInDesktopMessage from '@/app/components/RunInDesktopMessage';
+import { registerWebview, unregisterWebview, setActiveTab, type BrowserWebview } from '@/shared/browserRegistry';
+
+// In Electron use <webview> to escape iframe restrictions (popups, mic/camera, WebAuthn, cookied fetch); a srcdoc app still uses an iframe (data:text/html breaks webview same-origin); outside Electron we show a launch-correctly message.
+const isElectron = navigator.userAgent.includes('Electron');
+
+// Card previews render small; downscale + JPEG so thumbnails don't bloat the output JSON or every list fetch.
+const THUMB_WIDTH = 600;
+const THUMB_QUALITY = 0.7;
+
+// NativeImage -> small JPEG data URL. We resize on the native image (cheap) then re-encode via canvas because NativeImage.toJPEG hands back a Node Buffer that the sandboxed renderer can't base64 on its own.
+async function nativeImageToJpegDataUrl(img: any, width: number, quality: number): Promise<string | null> {
+  const sized = typeof img.resize === 'function' ? img.resize({ width }) : img;
+  const pngUrl: string = sized.toDataURL();
+  if (!pngUrl) return null;
+  const el = new Image();
+  await new Promise<void>((resolve, reject) => {
+    el.onload = () => resolve();
+    el.onerror = () => reject(new Error('thumbnail decode failed'));
+    el.src = pngUrl;
+  });
+  if (!el.width || !el.height) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = el.width;
+  canvas.height = el.height;
+  const cctx = canvas.getContext('2d');
+  if (!cctx) return null;
+  cctx.drawImage(el, 0, 0);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+export interface ViewPreviewHandle {
+  reload: () => void;
+  /** Native snapshot of the live preview as a small JPEG data URL, or null if not capturable (iframe/dev, hidden, or webview not ready). */
+  capture: () => Promise<string | null>;
+}
+
+interface Props {
+  /** URL-based serving (multi-file support). Takes priority over frontendCode. */
+  serveUrl?: string;
+  /** Legacy: raw HTML string rendered via srcdoc. */
+  frontendCode?: string;
+  inputData: Record<string, any>;
+  backendResult?: Record<string, any> | null;
+  style?: React.CSSProperties;
+  /** Forwarded per console.* call in the running app (webview path only; iframes have no equivalent channel). */
+  onConsoleMessage?: (level: string, text: string) => void;
+  /** Fires once the embedded app has actually painted, so cold-start placeholders don't unmount during the vite-ready to first-paint gap. */
+  onContentLoad?: () => void;
+  /** True when the user has clicked into the app; preload stops forwarding canvas gestures and lets the app handle all events. */
+  interactive?: boolean;
+  /** Fired when the preload reports a mousedown inside the guest, so the host can flip the card into interactive mode. */
+  onAppClicked?: () => void;
+  /** Dashboard card's output id. When set, the live webview registers under it so the delete path can quiesce its GPU surface before unmount. Omitted in the App Builder (no card teardown). */
+  registryId?: string;
+  /** When set (webview mode only), registers this preview's webview in browserRegistry under this id so an app agent can drive it via the browser command pipeline. */
+  agentBrowserId?: string;
+}
+
+// Single tab per app preview; the browser command pipeline keys on browserId:tabId.
+const APP_TAB_ID = 'main';
+
+function buildSrcdoc(
+  frontendCode: string,
+  inputData: Record<string, any>,
+  backendResult: Record<string, any> | null,
+): string {
+  const inputJson = JSON.stringify(inputData);
+  const resultJson = JSON.stringify(backendResult);
+
+  const injection = `<script>
+window.OUTPUT_INPUT = ${inputJson};
+window.OUTPUT_BACKEND_RESULT = ${resultJson};
+</script>`;
+
+  if (frontendCode.includes('</head>')) {
+    return frontendCode.replace('</head>', `${injection}\n</head>`);
+  }
+  if (frontendCode.includes('<body')) {
+    return frontendCode.replace('<body', `${injection}\n<body`);
+  }
+  return `${injection}\n${frontendCode}`;
+}
+
+function encodeDataParam(inputData: Record<string, any>, backendResult: Record<string, any> | null): string {
+  const payload = JSON.stringify({ i: inputData, r: backendResult });
+  return btoa(unescape(encodeURIComponent(payload)));
+}
+
+const ViewPreview = forwardRef<ViewPreviewHandle, Props>(({
+  serveUrl,
+  frontendCode,
+  inputData,
+  backendResult = null,
+  style,
+  onConsoleMessage,
+  onContentLoad,
+  interactive = false,
+  onAppClicked,
+  registryId,
+  agentBrowserId,
+}, ref) => {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const webviewRef = useRef<any>(null);
+  const ctx = useElementSelection();
+  // Bg matches host theme so the 60-90s vite-boot gap doesn't flash white on dark hosts.
+  const _hostTokens = useClaudeTokens();
+  const _hostBg = _hostTokens.bg.page;
+  const [reloadKey, setReloadKey] = useState(0);
+  // Track in state so the iframe URL rebuilds the moment the token IPC roundtrip resolves (else first render 401s with a JSON body).
+  const [authToken, setAuthToken] = useState(() => getAuthToken());
+  useEffect(() => {
+    if (authToken) return;
+    let cancelled = false;
+    ensureAuthToken().then((tok) => {
+      if (!cancelled && tok) setAuthToken(tok);
+    });
+    return () => { cancelled = true; };
+  }, [authToken]);
+
+  const iframeSrc = useMemo(() => {
+    if (!serveUrl) return undefined;
+    // Wait for the token; tokenless URL 401s and the iframe would render the JSON error body.
+    if (!authToken) return undefined;
+    const dataParam = encodeDataParam(inputData, backendResult);
+    const sep = serveUrl.includes('?') ? '&' : '?';
+    return `${serveUrl}${sep}_d=${encodeURIComponent(dataParam)}&_v=${reloadKey}&token=${encodeURIComponent(authToken)}`;
+  }, [serveUrl, inputData, backendResult, reloadKey, authToken]);
+
+  // When the window is hidden, swap URL-mode iframes to about:blank to kill HMR + rAF CPU; srcdoc apps stay put so user in-memory state isn't wiped.
+  const [windowHidden, setWindowHidden] = useState(
+    () => typeof document !== 'undefined' && document.visibilityState === 'hidden',
+  );
+  useEffect(() => {
+    const onVis = () => setWindowHidden(document.visibilityState === 'hidden');
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
+  const effectiveSrc = useMemo(() => {
+    if (!iframeSrc) return iframeSrc;
+    return windowHidden ? 'about:blank' : iframeSrc;
+  }, [iframeSrc, windowHidden]);
+
+  // "Restoring preview..." overlay covers the window-restore to iframe-reload gap; cleared by load or 5s safety.
+  const [restoring, setRestoring] = useState(false);
+  const wasHiddenRef = useRef(windowHidden);
+  useEffect(() => {
+    if (wasHiddenRef.current && !windowHidden && iframeSrc) {
+      setRestoring(true);
+      const t = window.setTimeout(() => setRestoring(false), 5000);
+      wasHiddenRef.current = windowHidden;
+      return () => window.clearTimeout(t);
+    }
+    wasHiddenRef.current = windowHidden;
+    return undefined;
+  }, [windowHidden, iframeSrc]);
+
+  const handleNavigationLoad = useCallback(() => {
+    // load fires for both about:blank pause and real URL; only the latter counts.
+    if (!windowHidden) setRestoring(false);
+    if (!windowHidden && onContentLoad) {
+      onContentLoad();
+    }
+  }, [windowHidden, onContentLoad]);
+
+  // srcdoc iframes swallow wheel events just like webviews, but they're same-origin so the host can forward cmd/ctrl+wheel to the canvas zoom itself (the webview path does this via the preload). Cross-origin URL iframes throw on contentWindow access; the catch leaves them as-is. Listeners die with the document on reload, so this reattaches from onLoad each time.
+  const attachIframeWheelForwarder = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    try {
+      const win = iframe.contentWindow;
+      if (!win || !win.document) return;
+      const onWheel = (e: WheelEvent) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = iframe.getBoundingClientRect();
+        const iw = win.innerWidth || 1;
+        const ih = win.innerHeight || 1;
+        window.dispatchEvent(new CustomEvent('openswarm:canvas-wheel-zoom', {
+          detail: {
+            deltaY: e.deltaY,
+            deltaMode: e.deltaMode,
+            clientX: rect.left + Math.max(0, Math.min(1, e.clientX / iw)) * rect.width,
+            clientY: rect.top + Math.max(0, Math.min(1, e.clientY / ih)) * rect.height,
+          },
+        }));
+      };
+      win.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    } catch (_e) { /* cross-origin URL iframe; wheel stays with the page */ }
+  }, []);
+
+  const srcdoc = useMemo(() => {
+    if (serveUrl || !frontendCode) return undefined;
+    return buildSrcdoc(frontendCode, inputData, backendResult);
+  }, [serveUrl, frontendCode, inputData, backendResult]);
+
+  // Webview only when we have a real serveUrl; data:text/html for srcdoc breaks same-origin in the Electron sandbox.
+  const useWebview = isElectron && !!iframeSrc;
+
+  // Webview's contentDocument is null from the host (separate renderer process); element selection skips it (known regression).
+  useEffect(() => {
+    if (useWebview) return;
+    if (ctx && iframeRef.current) {
+      ctx.iframeRef.current = iframeRef.current;
+    }
+  }, [ctx, frontendCode, serveUrl, useWebview]);
+
+  // Selector hook no-ops in webview mode because iframeRef stays null.
+  useIframeElementSelector(iframeRef);
+
+  useImperativeHandle(ref, () => ({
+    reload: () => {
+      if (useWebview) {
+        // Bumping reloadKey re-navigates via src change; also call reload() as belt-and-suspenders.
+        setReloadKey(k => k + 1);
+        webviewRef.current?.reload?.();
+      } else if (serveUrl) {
+        setReloadKey(k => k + 1);
+      } else if (iframeRef.current && srcdoc) {
+        iframeRef.current.srcdoc = '';
+        requestAnimationFrame(() => {
+          if (iframeRef.current) iframeRef.current.srcdoc = srcdoc;
+        });
+      }
+    },
+    capture: async () => {
+      const wv = webviewRef.current;
+      // Only the webview path is reliably snapshottable; iframe/dev or a hidden window (about:blank) returns null.
+      if (!useWebview || !wv || windowHidden || typeof wv.capturePage !== 'function') return null;
+      // Never snapshot a guest that's detaching, crashed, or mid-navigation: capturePage on a WebContents being torn down can segfault the main process (the whole-app quit on fast app-switching).
+      try {
+        if (wv.isConnected === false) return null;
+        if (typeof wv.isCrashed === 'function' && wv.isCrashed()) return null;
+        if (typeof wv.isLoading === 'function' && wv.isLoading()) return null;
+      } catch { return null; }
+      try {
+        const img = await wv.capturePage();
+        if (!img) return null;
+        return await nativeImageToJpegDataUrl(img, THUMB_WIDTH, THUMB_QUALITY);
+      } catch {
+        return null;
+      }
+    },
+  }), [useWebview, serveUrl, srcdoc, windowHidden]);
+
+  useEffect(() => {
+    if (useWebview) return;
+    if (iframeRef.current && srcdoc != null) {
+      iframeRef.current.srcdoc = srcdoc;
+    }
+  }, [srcdoc, useWebview]);
+
+  // Listen for preload IPC: console forwarding, canvas wheel forwarding (matches BrowserCard so apps share the same dashboard pan/zoom defaults), and the app-clicked notification that flips the card into interact mode.
+  useEffect(() => {
+    if (!useWebview) return;
+    const wv = webviewRef.current;
+    if (!wv) return;
+    const handler = (e: any) => {
+      if (e?.channel === 'webview-console') {
+        if (!onConsoleMessage) return;
+        const arg = Array.isArray(e.args) ? e.args[0] : undefined;
+        if (!arg) return;
+        onConsoleMessage(arg.level || 'log', arg.text || '');
+        return;
+      }
+      if (e?.channel === 'canvas-wheel-zoom') {
+        const payload = e.args?.[0] || {};
+        const wvRect = wv.getBoundingClientRect();
+        const fx = typeof payload.fracX === 'number' ? payload.fracX : 0.5;
+        const fy = typeof payload.fracY === 'number' ? payload.fracY : 0.5;
+        window.dispatchEvent(
+          new CustomEvent('openswarm:canvas-wheel-zoom', {
+            detail: {
+              deltaY: payload.deltaY ?? 0,
+              deltaMode: payload.deltaMode ?? 0,
+              clientX: wvRect.left + fx * wvRect.width,
+              clientY: wvRect.top + fy * wvRect.height,
+            },
+          }),
+        );
+        return;
+      }
+      if (e?.channel === 'canvas-wheel-pan') {
+        const payload = e.args?.[0] || {};
+        window.dispatchEvent(
+          new CustomEvent('openswarm:canvas-wheel-pan', {
+            detail: {
+              deltaX: payload.deltaX ?? 0,
+              deltaY: payload.deltaY ?? 0,
+              deltaMode: payload.deltaMode ?? 0,
+            },
+          }),
+        );
+        return;
+      }
+      if (e?.channel === 'app-clicked') {
+        onAppClicked?.();
+        return;
+      }
+    };
+    wv.addEventListener?.('ipc-message', handler);
+    return () => {
+      try { wv.removeEventListener?.('ipc-message', handler); } catch (_e) {}
+    };
+  }, [useWebview, onConsoleMessage, onAppClicked, iframeSrc]);
+
+  // Register the live webview so the dashboard delete path can quiesce its GPU surface before unmount; unregister on teardown so a stale handle never gets navigated.
+  useEffect(() => {
+    if (!useWebview || !registryId) return;
+    const wv = webviewRef.current;
+    if (!wv) return;
+    registerViewWebview(registryId, wv as ViewWebview);
+    return () => unregisterViewWebview(registryId);
+  }, [useWebview, registryId, iframeSrc]);
+
+  // Same registration for the srcdoc path, so the dashboard's arrow keys can reach a non-webview app card's content. Re-runs on reloadKey because a reload swaps the element.
+  useEffect(() => {
+    if (useWebview || !registryId) return;
+    const frame = iframeRef.current;
+    if (!frame) return;
+    registerViewFrame(registryId, frame);
+    return () => unregisterViewFrame(registryId);
+  }, [useWebview, registryId, iframeSrc, reloadKey]);
+
+  // Mirror `interactive` into a ref so the once-per-load did-finish-load listener can read the latest value when it pushes initial state.
+  const interactiveRef = useRef(interactive);
+  interactiveRef.current = interactive;
+  useEffect(() => {
+    if (!useWebview) return;
+    const wv = webviewRef.current;
+    if (!wv) return;
+    try { wv.send?.('openswarm:set-interactive', { interactive }); } catch (_e) {}
+  }, [useWebview, interactive]);
+
+  // Webviews use did-finish-load instead of onLoad; did-fail-load retries with 500ms to 5s backoff (Vite may not have bound yet when frontend_url arrives).
+  useEffect(() => {
+    if (!useWebview) return;
+    const wv = webviewRef.current;
+    if (!wv) return;
+
+    let retryTimer: number | null = null;
+    let retryDelay = 500;
+    const MAX_DELAY = 5000;
+    const cancelRetry = () => {
+      if (retryTimer != null) {
+        window.clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+    };
+
+    const onFinish = () => {
+      retryDelay = 500;
+      cancelRetry();
+      handleNavigationLoad();
+      try { wv.send?.('openswarm:set-interactive', { interactive: interactiveRef.current }); } catch (_) {}
+    };
+    const onFail = (e: any) => {
+      // Guard on isMainFrame (subresource 404s fire too) and ERR_ABORTED (user-cancel).
+      if (e && e.isMainFrame === false) return;
+      if (e && e.errorCode === -3) return;
+      if (retryTimer != null) return;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        try { wv.reload?.(); } catch (_) {}
+        retryDelay = Math.min(retryDelay * 2, MAX_DELAY);
+      }, retryDelay);
+    };
+
+    wv.addEventListener?.('did-finish-load', onFinish);
+    wv.addEventListener?.('did-fail-load', onFail);
+    return () => {
+      cancelRetry();
+      try {
+        wv.removeEventListener?.('did-finish-load', onFinish);
+        wv.removeEventListener?.('did-fail-load', onFail);
+      } catch (_e) {}
+    };
+  }, [useWebview, handleNavigationLoad]);
+
+  // Register the live webview so an app agent can drive it through the same
+  // browser command pipeline that drives browser cards. Webview-only: the iframe
+  // fallback has no executeJavaScript channel from the host.
+  useEffect(() => {
+    if (!useWebview || !agentBrowserId) return;
+    const wv = webviewRef.current as BrowserWebview | null;
+    if (!wv) return;
+    registerWebview(agentBrowserId, APP_TAB_ID, wv);
+    setActiveTab(agentBrowserId, APP_TAB_ID);
+    return () => {
+      try { unregisterWebview(agentBrowserId, APP_TAB_ID); } catch (_e) {}
+    };
+    // Keyed on useWebview (flips true when the webview mounts), not iframeSrc:
+    // the webview element has a stable key and survives src/data changes, so
+    // re-registering on every data update would just thrash the registry.
+  }, [useWebview, agentBrowserId]);
+
+  const hasContent = !!(serveUrl || frontendCode?.trim());
+
+  if (!hasContent) {
+    return (
+      <Box
+        sx={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#888',
+          fontSize: '0.875rem',
+          fontStyle: 'italic',
+          ...style,
+        }}
+      >
+        No preview available
+      </Box>
+    );
+  }
+
+  const selectActive = ctx?.selectMode ?? false;
+
+  return (
+    <Box
+      sx={{
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        ...(selectActive && {
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            inset: 0,
+            border: '2px solid #3b82f6',
+            borderRadius: '2px',
+            pointerEvents: 'none',
+            animation: 'selectModePulse 2s ease-in-out infinite',
+            zIndex: 1,
+          },
+          '@keyframes selectModePulse': {
+            '0%, 100%': { borderColor: 'rgba(59, 130, 246, 0.6)' },
+            '50%': { borderColor: 'rgba(59, 130, 246, 0.2)' },
+          },
+        }),
+      }}
+    >
+      {useWebview ? (
+        <webview
+          ref={(el: any) => { webviewRef.current = el; }}
+          // Stable key so src swaps in place (keeps prior pixels through reload).
+          key="url-mode-webview"
+          src={effectiveSrc}
+          // Autoplay matches BrowserCard default; plugins/nodeintegration stay off.
+          webpreferences="autoplayPolicy=no-user-gesture-required"
+          style={{
+            width: '100%',
+            height: '100%',
+            border: 'none',
+            // Best-effort: newer Chromium clips a <webview>'s own radius even though it ignores a parent's. Square in older builds, harmless either way.
+            borderRadius: '12px',
+            overflow: 'hidden',
+            background: _hostBg,
+            ...style,
+          }}
+        />
+      ) : isElectron ? (
+        // In Electron but not useWebview = a srcdoc app (no serveUrl); the iframe is REQUIRED here (data:text/html breaks webview same-origin), not a fallback. Non-Electron falls through to the launch-correctly message.
+        <iframe
+          ref={iframeRef}
+          // Key only changes on mode switch (URL vs srcdoc); reloadKey updates the src attribute in place to avoid blank-flash on reload.
+          key={iframeSrc ? 'url-mode' : 'srcdoc'}
+          src={effectiveSrc}
+          onLoad={() => { handleNavigationLoad(); attachIframeWheelForwarder(); }}
+          sandbox="allow-scripts allow-same-origin"
+          style={{
+            width: '100%',
+            height: '100%',
+            border: 'none',
+            borderRadius: '12px',
+            background: _hostBg,
+            ...style,
+          }}
+          title="App Preview"
+        />
+      ) : (
+        <RunInDesktopMessage kind="app" />
+      )}
+      {restoring && (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1.5,
+            bgcolor: _hostBg,
+            zIndex: 2,
+            pointerEvents: 'none',
+          }}
+        >
+          <Skeleton variant="card" width={140} height={14} delayMs={0} />
+          <Typography sx={{ fontSize: '0.75rem', color: '#888', letterSpacing: '0.01em' }}>
+            Restoring preview...
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+});
+
+export default ViewPreview;
