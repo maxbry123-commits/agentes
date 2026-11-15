@@ -1,0 +1,638 @@
+package devserver
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	apiv2 "github.com/inngest/inngest/pkg/api/v2"
+	"github.com/inngest/inngest/pkg/consts"
+	"github.com/inngest/inngest/pkg/cqrs"
+	"github.com/inngest/inngest/pkg/enums"
+	"github.com/inngest/inngest/pkg/tracing/meta"
+	"github.com/oklog/ulid/v2"
+	"github.com/stretchr/testify/require"
+)
+
+func TestNewFunctionProvider(t *testing.T) {
+	ctx := context.Background()
+	fnID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	appID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	store := &fakeFunctionStore{
+		fns: []*cqrs.Function{
+			{
+				ID:     fnID,
+				AppID:  appID,
+				Slug:   "app-test-fn",
+				Config: []byte(`{"name":"Test function","slug":"test-fn"}`),
+			},
+		},
+		app: &cqrs.App{
+			ID:   appID,
+			Name: "app",
+		},
+	}
+
+	provider := NewFunctionProvider(store)
+
+	fn, err := provider.GetFunction(ctx, fnID.String())
+
+	require.NoError(t, err)
+	require.Equal(t, fnID, fn.ID)
+	require.Equal(t, "app-test-fn", fn.Slug)
+	require.Equal(t, appID, fn.AppID)
+	require.Equal(t, "app", fn.AppName)
+	require.Equal(t, consts.DevServerAccountID, fn.AccountID)
+	require.Equal(t, consts.DevServerEnvID, fn.EnvironmentID)
+	require.Equal(t, "Test function", fn.Function.Name)
+	require.Equal(t, "test-fn", fn.Function.Slug)
+}
+
+func TestNewFunctionProviderFindsFunctionByApp(t *testing.T) {
+	ctx := context.Background()
+	fnID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	appID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	store := &fakeFunctionStore{
+		fns: []*cqrs.Function{
+			{
+				ID:     fnID,
+				AppID:  appID,
+				Slug:   "app-test-fn",
+				Config: []byte(`{"name":"Test function","slug":"test-fn"}`),
+			},
+		},
+		app: &cqrs.App{
+			ID:   appID,
+			Name: "app",
+		},
+	}
+
+	fn, err := NewFunctionProvider(store).GetFunctionByApp(ctx, "app", "test-fn")
+
+	require.NoError(t, err)
+	require.Equal(t, fnID, fn.ID)
+	require.Equal(t, "app-test-fn", fn.Slug)
+	require.Equal(t, "app", fn.AppName)
+	require.Equal(t, "Test function", fn.Function.Name)
+	require.Equal(t, "test-fn", fn.Function.Slug)
+}
+
+func TestNewFunctionProviderFindsFunctionWhenFunctionIDStartsWithAppID(t *testing.T) {
+	ctx := context.Background()
+	fnID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	appID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	store := &fakeFunctionStore{
+		fns: []*cqrs.Function{
+			{
+				ID:     fnID,
+				AppID:  appID,
+				Slug:   "app-app-test-fn",
+				Config: []byte(`{"name":"Test function","slug":"app-test-fn"}`),
+			},
+		},
+		app: &cqrs.App{
+			ID:   appID,
+			Name: "app",
+		},
+	}
+
+	fn, err := NewFunctionProvider(store).GetFunctionByApp(ctx, "app", "app-test-fn")
+
+	require.NoError(t, err)
+	require.Equal(t, fnID, fn.ID)
+	require.Equal(t, "app-app-test-fn", fn.Slug)
+	require.Equal(t, "app", fn.AppName)
+	require.Equal(t, "Test function", fn.Function.Name)
+	require.Equal(t, "app-test-fn", fn.Function.Slug)
+}
+
+func TestNewFunctionProviderPrefersExactPublicFunctionID(t *testing.T) {
+	ctx := context.Background()
+	legacyCompatibleFnID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	exactFnID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	appID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	store := &fakeFunctionStore{
+		fns: []*cqrs.Function{
+			{
+				ID:     legacyCompatibleFnID,
+				AppID:  appID,
+				Slug:   "app-test-fn",
+				Config: []byte(`{"name":"Test function","slug":"test-fn"}`),
+			},
+			{
+				ID:     exactFnID,
+				AppID:  appID,
+				Slug:   "app-app-test-fn",
+				Config: []byte(`{"name":"App test function","slug":"app-test-fn"}`),
+			},
+		},
+		app: &cqrs.App{
+			ID:   appID,
+			Name: "app",
+		},
+	}
+
+	fn, err := NewFunctionProvider(store).GetFunctionByApp(ctx, "app", "app-test-fn")
+
+	require.NoError(t, err)
+	require.Equal(t, exactFnID, fn.ID)
+	require.Equal(t, "app-app-test-fn", fn.Slug)
+	require.Equal(t, "App test function", fn.Function.Name)
+	require.Equal(t, "app-test-fn", fn.Function.Slug)
+}
+
+func TestNewFunctionProviderFindsArchivedFunctionByID(t *testing.T) {
+	ctx := context.Background()
+	fnID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	appID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	store := &fakeFunctionStore{
+		fnByID: map[uuid.UUID]*cqrs.Function{
+			fnID: {
+				ID:         fnID,
+				AppID:      appID,
+				Slug:       "app-cron-fn",
+				Config:     []byte(`{"name":"Cron function","slug":"cron-fn"}`),
+				ArchivedAt: time.Now().Add(-time.Minute),
+			},
+		},
+		app: &cqrs.App{
+			ID:   appID,
+			Name: "app",
+		},
+	}
+
+	fn, err := NewFunctionProvider(store).GetFunction(ctx, fnID.String())
+
+	require.NoError(t, err)
+	require.Equal(t, fnID, fn.ID)
+	require.Equal(t, "app-cron-fn", fn.Slug)
+	require.Equal(t, "app", fn.AppName)
+	require.Equal(t, "Cron function", fn.Function.Name)
+	require.Equal(t, "cron-fn", fn.Function.Slug)
+}
+
+func TestNewFunctionProviderErrors(t *testing.T) {
+	t.Run("reader error", func(t *testing.T) {
+		provider := NewFunctionProvider(&fakeFunctionStore{err: errors.New("read failed")})
+
+		fn, err := provider.GetFunction(context.Background(), "missing")
+
+		require.ErrorContains(t, err, "read failed")
+		require.Empty(t, fn.ID)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		provider := NewFunctionProvider(&fakeFunctionStore{})
+
+		fn, err := provider.GetFunction(context.Background(), "missing")
+
+		require.ErrorContains(t, err, "function not found")
+		require.Empty(t, fn.ID)
+	})
+
+	t.Run("invalid function config", func(t *testing.T) {
+		provider := NewFunctionProvider(&fakeFunctionStore{
+			fns: []*cqrs.Function{
+				{
+					ID:     uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+					Slug:   "bad-fn",
+					Config: []byte(`not-json`),
+				},
+			},
+		})
+
+		fn, err := provider.GetFunction(context.Background(), "bad-fn")
+
+		require.Error(t, err)
+		require.Empty(t, fn.ID)
+	})
+}
+
+func TestNewFunctionProviderPagesFunctionsInReader(t *testing.T) {
+	ctx := context.Background()
+	appID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	firstID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	secondID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	thirdID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	store := &fakeFunctionStore{
+		fns: []*cqrs.Function{
+			{
+				ID:     firstID,
+				AppID:  appID,
+				Slug:   "app-first-fn",
+				Config: []byte(`{"name":"First function","slug":"first-fn"}`),
+			},
+			{
+				ID:     secondID,
+				AppID:  appID,
+				Slug:   "app-second-fn",
+				Config: []byte(`{"name":"Second function","slug":"second-fn"}`),
+			},
+			{
+				ID:     thirdID,
+				AppID:  appID,
+				Slug:   "app-third-fn",
+				Config: []byte(`{"name":"Third function","slug":"third-fn"}`),
+			},
+		},
+		app: &cqrs.App{
+			ID:   appID,
+			Name: "app",
+		},
+	}
+
+	result, err := NewFunctionProvider(store).GetFunctions(ctx, "app", apiv2.GetFunctionsOpts{
+		Cursor: firstID,
+		Limit:  1,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, store.functionOpts)
+	require.Equal(t, consts.DevServerEnvID, store.functionOpts.WorkspaceID)
+	require.Equal(t, "app", store.functionOpts.AppName)
+	require.Equal(t, firstID, store.functionOpts.Cursor)
+	require.Equal(t, 2, store.functionOpts.Limit)
+	require.Len(t, result.Functions, 1)
+	require.Equal(t, secondID, result.Functions[0].ID)
+	require.True(t, result.HasMore)
+}
+
+func TestNewAppProvider(t *testing.T) {
+	ctx := context.Background()
+	appID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	createdAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	store := &fakeFunctionStore{
+		fns: []*cqrs.Function{
+			{
+				ID:     uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+				AppID:  appID,
+				Slug:   "app-test-fn",
+				Config: []byte(`{"name":"Test function","slug":"test-fn"}`),
+			},
+		},
+		app: &cqrs.App{
+			ID:          appID,
+			Name:        "app",
+			SdkLanguage: "typescript",
+			SdkVersion:  "3.22.0",
+			Framework:   sql.NullString{String: "nextjs", Valid: true},
+			Url:         "http://localhost:3000/api/inngest",
+			Method:      "serve",
+			AppVersion:  "1.2.3",
+			CreatedAt:   createdAt,
+		},
+	}
+
+	t.Run("finds app by external id", func(t *testing.T) {
+		app, err := NewAppProvider(store).GetApp(ctx, "app")
+
+		require.NoError(t, err)
+		require.Equal(t, "app", app.ID)
+		require.Equal(t, appID, app.InternalID)
+		require.Equal(t, "app", app.Name)
+		require.Equal(t, enums.AppMethodServe, app.Method)
+		require.Equal(t, "1.2.3", app.AppVersion)
+		require.Equal(t, createdAt, app.CreatedAt)
+		require.True(t, app.ArchivedAt.IsZero())
+		require.Equal(t, 1, app.FunctionCount)
+		require.NotNil(t, app.LatestSync)
+		require.Equal(t, "typescript", app.LatestSync.SdkLanguage)
+		require.Equal(t, "3.22.0", app.LatestSync.SdkVersion)
+		require.Equal(t, "nextjs", app.LatestSync.Framework)
+		require.Equal(t, "http://localhost:3000/api/inngest", app.LatestSync.URL)
+		require.Equal(t, "1.2.3", app.LatestSync.AppVersion)
+		require.Empty(t, app.LatestSync.Error)
+	})
+
+	t.Run("finds app by internal uuid", func(t *testing.T) {
+		app, err := NewAppProvider(store).GetApp(ctx, appID.String())
+
+		require.NoError(t, err)
+		require.Equal(t, "app", app.ID)
+		require.Equal(t, appID, app.InternalID)
+	})
+
+	t.Run("lists apps with database pagination options", func(t *testing.T) {
+		result, err := NewAppProvider(store).GetApps(ctx, apiv2.GetAppsOpts{
+			Cursor:   appID,
+			Limit:    1,
+			Archived: true,
+		})
+
+		require.NoError(t, err)
+		require.Len(t, result.Apps, 1)
+		require.Equal(t, 1, result.Apps[0].FunctionCount)
+		require.NotNil(t, store.appFilter)
+		require.Equal(t, appID, store.appFilter.Cursor)
+		require.Equal(t, 2, store.appFilter.Limit)
+		require.True(t, store.appFilter.Archived)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		_, err := NewAppProvider(store).GetApp(ctx, "missing")
+
+		require.ErrorIs(t, err, apiv2.ErrAppNotFound)
+	})
+
+	t.Run("reader error", func(t *testing.T) {
+		_, err := NewAppProvider(&fakeFunctionStore{err: errors.New("read failed")}).GetApp(ctx, "app")
+
+		require.ErrorContains(t, err, "read failed")
+	})
+}
+
+func TestFunctionRunFromSpan(t *testing.T) {
+	runID := ulid.MustParse("01hp1zx8m3ng9vp6qn0xk7j4cy")
+	eventID := ulid.MustParse("01hp1zx8m3ng9vp6qn0xk7j4cz")
+	functionID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	startedAt := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	endedAt := startedAt.Add(500 * time.Millisecond)
+	status := enums.StepStatusCompleted
+	eventIDs := []string{eventID.String()}
+	root := &cqrs.OtelSpan{
+		RawOtelSpan: cqrs.RawOtelSpan{
+			Name:      meta.SpanNameRun,
+			StartTime: startedAt.Add(-100 * time.Millisecond),
+		},
+		RunID:      runID,
+		FunctionID: functionID,
+		Status:     status,
+		Attributes: &meta.ExtractedValues{
+			DynamicStatus: &status,
+			EventIDs:      &eventIDs,
+			StartedAt:     &startedAt,
+			EndedAt:       &endedAt,
+		},
+	}
+	reader := &fakeTraceReader{root: root}
+
+	result, err := functionRunFromSpan(context.Background(), reader, runID)
+
+	require.NoError(t, err)
+	require.Equal(t, runID, result.RunID)
+	require.Equal(t, functionID, result.FunctionID)
+	require.Equal(t, eventID, result.EventID)
+	require.Equal(t, enums.RunStatusCompleted, result.Status)
+	require.Equal(t, startedAt, result.RunStartedAt)
+	require.Equal(t, &endedAt, result.EndedAt)
+	require.Equal(t, runID, reader.runID)
+}
+
+func TestFunctionTraceReader(t *testing.T) {
+	runID := ulid.MustParse("01hp1zx8m3ng9vp6qn0xk7j4cy")
+	spanID := cqrs.SpanIdentifier{SpanID: "span"}
+	root := &cqrs.OtelSpan{RunID: runID}
+	output := &cqrs.SpanOutput{Data: []byte(`{"ok":true}`)}
+	reader := &fakeTraceReader{root: root, output: output}
+	traceReader := NewFunctionTraceReader(reader)
+
+	result, err := traceReader.GetSpansByRunID(context.Background(), runID)
+	require.NoError(t, err)
+	require.Equal(t, root, result)
+	require.Equal(t, runID, reader.runID)
+
+	spanOutput, err := traceReader.GetSpanOutput(context.Background(), spanID)
+	require.NoError(t, err)
+	require.Equal(t, output, spanOutput)
+	require.Equal(t, spanID, reader.spanID)
+}
+
+type fakeFunctionStore struct {
+	fns          []*cqrs.Function
+	fnByID       map[uuid.UUID]*cqrs.Function
+	app          *cqrs.App
+	err          error
+	functionOpts *cqrs.GetFunctionsByAppOpts
+	appFilter    *cqrs.FilterAppParam
+}
+
+func (f *fakeFunctionStore) GetFunctions(ctx context.Context) ([]*cqrs.Function, error) {
+	return f.fns, f.err
+}
+
+func (f *fakeFunctionStore) GetFunctionsByAppExternalID(ctx context.Context, workspaceID uuid.UUID, app string) ([]*cqrs.Function, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.app == nil || f.app.Name != app {
+		return nil, nil
+	}
+
+	fns := []*cqrs.Function{}
+	for _, fn := range f.fns {
+		if fn.AppID == f.app.ID {
+			fns = append(fns, fn)
+		}
+	}
+	for _, fn := range f.fnByID {
+		if fn.AppID == f.app.ID {
+			fns = append(fns, fn)
+		}
+	}
+	return fns, nil
+}
+
+func (f *fakeFunctionStore) GetFunctionsByApp(ctx context.Context, opts cqrs.GetFunctionsByAppOpts) ([]*cqrs.Function, error) {
+	f.functionOpts = &opts
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.app == nil {
+		return nil, nil
+	}
+	if opts.AppID != uuid.Nil && f.app.ID != opts.AppID {
+		return nil, nil
+	}
+	if opts.AppName != "" && f.app.Name != opts.AppName {
+		return nil, nil
+	}
+
+	fns := []*cqrs.Function{}
+	for _, fn := range f.fns {
+		if fn.AppID != f.app.ID || fn.ID.String() <= opts.Cursor.String() {
+			continue
+		}
+		fns = append(fns, fn)
+		if len(fns) == opts.Limit {
+			break
+		}
+	}
+	return fns, nil
+}
+
+func (f *fakeFunctionStore) GetFunctionsByAppInternalID(ctx context.Context, appID uuid.UUID) ([]*cqrs.Function, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	fns := []*cqrs.Function{}
+	for _, fn := range f.fns {
+		if fn.AppID == appID {
+			fns = append(fns, fn)
+		}
+	}
+	for _, fn := range f.fnByID {
+		if fn.AppID == appID {
+			fns = append(fns, fn)
+		}
+	}
+	return fns, nil
+}
+
+func (f *fakeFunctionStore) GetFunctionByExternalID(ctx context.Context, wsID uuid.UUID, appID string, functionID string) (*cqrs.Function, error) {
+	return nil, nil
+}
+
+func (f *fakeFunctionStore) GetFunctionByInternalUUID(ctx context.Context, fnID uuid.UUID) (*cqrs.Function, error) {
+	if fn, ok := f.fnByID[fnID]; ok {
+		return fn, nil
+	}
+	for _, fn := range f.fns {
+		if fn.ID == fnID {
+			return fn, nil
+		}
+	}
+	return nil, errors.New("function not found")
+}
+
+func (f *fakeFunctionStore) GetActiveFunctionByAppAndSlug(ctx context.Context, appName string, slug string) (*cqrs.Function, error) {
+	return nil, nil
+}
+
+func (f *fakeFunctionStore) GetApps(ctx context.Context, envID uuid.UUID, filter *cqrs.FilterAppParam) ([]*cqrs.App, error) {
+	f.appFilter = filter
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.app == nil {
+		return nil, nil
+	}
+	return []*cqrs.App{f.app}, nil
+}
+
+func (f *fakeFunctionStore) GetAppFunctionCounts(ctx context.Context, appIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return map[uuid.UUID]int{f.app.ID: len(f.fns)}, nil
+}
+
+func (f *fakeFunctionStore) GetAppByChecksum(ctx context.Context, envID uuid.UUID, checksum string) (*cqrs.App, error) {
+	return nil, nil
+}
+
+func (f *fakeFunctionStore) GetAppByURL(ctx context.Context, envID uuid.UUID, url string) (*cqrs.App, error) {
+	return nil, nil
+}
+
+func (f *fakeFunctionStore) GetAppByName(ctx context.Context, envID uuid.UUID, name string) (*cqrs.App, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.app == nil || f.app.Name != name {
+		return nil, sql.ErrNoRows
+	}
+	return f.app, nil
+}
+
+func (f *fakeFunctionStore) GetAllApps(ctx context.Context, envID uuid.UUID) ([]*cqrs.App, error) {
+	return nil, nil
+}
+
+func (f *fakeFunctionStore) GetAppByID(ctx context.Context, id uuid.UUID) (*cqrs.App, error) {
+	if f.app == nil || f.app.ID != id {
+		return nil, errors.New("app not found")
+	}
+	return f.app, nil
+}
+
+type fakeTraceReader struct {
+	root   *cqrs.OtelSpan
+	output *cqrs.SpanOutput
+	runID  ulid.ULID
+	spanID cqrs.SpanIdentifier
+}
+
+func (f *fakeTraceReader) GetTraceRuns(ctx context.Context, opt cqrs.GetTraceRunOpt) ([]*cqrs.TraceRun, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetTraceRunsCount(ctx context.Context, opt cqrs.GetTraceRunOpt) (int, error) {
+	return 0, nil
+}
+
+func (f *fakeTraceReader) GetTraceRun(ctx context.Context, id cqrs.TraceRunIdentifier) (*cqrs.TraceRun, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetTraceSpansByRun(ctx context.Context, id cqrs.TraceRunIdentifier) ([]*cqrs.Span, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) LegacyGetSpanOutput(ctx context.Context, id cqrs.SpanIdentifier) (*cqrs.SpanOutput, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetSpanStack(ctx context.Context, id cqrs.SpanIdentifier) ([]string, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetSpansByRunID(ctx context.Context, runID ulid.ULID) (*cqrs.OtelSpan, error) {
+	f.runID = runID
+	return f.root, nil
+}
+
+func (f *fakeTraceReader) GetSpansByDebugRunID(ctx context.Context, debugRunID ulid.ULID) ([]*cqrs.OtelSpan, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetSpansByDebugSessionID(ctx context.Context, debugSessionID ulid.ULID) ([][]*cqrs.OtelSpan, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetSpanOutput(ctx context.Context, id cqrs.SpanIdentifier) (*cqrs.SpanOutput, error) {
+	f.spanID = id
+	return f.output, nil
+}
+
+func (f *fakeTraceReader) GetRunSpanByRunID(ctx context.Context, runID ulid.ULID, accountID uuid.UUID, workspaceID uuid.UUID) (*cqrs.OtelSpan, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetStepSpanByStepID(ctx context.Context, runID ulid.ULID, stepID string, accountID uuid.UUID, workspaceID uuid.UUID) (*cqrs.OtelSpan, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetExecutionSpanByStepIDAndAttempt(ctx context.Context, runID ulid.ULID, stepID string, attempt int, accountID uuid.UUID, workspaceID uuid.UUID) (*cqrs.OtelSpan, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetLatestExecutionSpanByStepID(ctx context.Context, runID ulid.ULID, stepID string, accountID uuid.UUID, workspaceID uuid.UUID) (*cqrs.OtelSpan, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetSpanBySpanID(ctx context.Context, runID ulid.ULID, spanID string, accountID uuid.UUID, workspaceID uuid.UUID) (*cqrs.OtelSpan, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) OtelTracesEnabled(ctx context.Context, accountID uuid.UUID) (bool, error) {
+	return true, nil
+}
+
+func (f *fakeTraceReader) GetEventRuns(ctx context.Context, eventID ulid.ULID, accountID uuid.UUID, workspaceID uuid.UUID) ([]*cqrs.FunctionRun, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetRun(ctx context.Context, runID ulid.ULID, accountID uuid.UUID, workspaceID uuid.UUID) (*cqrs.FunctionRun, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetEvent(ctx context.Context, id ulid.ULID, accountID uuid.UUID, workspaceID uuid.UUID) (*cqrs.Event, error) {
+	return nil, nil
+}
+
+func (f *fakeTraceReader) GetEvents(ctx context.Context, accountID uuid.UUID, workspaceID uuid.UUID, opts *cqrs.WorkspaceEventsOpts) ([]*cqrs.Event, error) {
+	return nil, nil
+}

@@ -1,0 +1,42 @@
+name: Update CLI Docs
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tests/main/**'
+      - 'tests/test_main_kr.py'
+      - 'src/datamodel_code_generator/arguments.py'
+      - 'src/datamodel_code_generator/cli_options.py'
+      - 'scripts/build_cli_docs.py'
+      - 'scripts/build_prompt_data.py'
+      - 'docs/cli-reference/**'
+      - 'src/datamodel_code_generator/prompt_data.py'
+
+permissions:
+  contents: read
+
+jobs:
+  update-cli-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          persist-credentials: false
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install tox
+        run: uv tool install --python-preference only-managed --python 3.13 tox --with tox-uv
+      - name: Setup environment
+        run: tox run -vv --notest --skip-missing-interpreters false -e cli-docs
+        env:
+          UV_PYTHON_PREFERENCE: "only-managed"
+      - name: Collect CLI doc metadata
+        run: .tox/cli-docs/bin/pytest tests --collect-cli-docs -p no:xdist -q
+      - name: Build CLI docs
+        run: .tox/cli-docs/bin/python scripts/build_cli_docs.py
+      - name: Build prompt data
+        run: .tox/cli-docs/bin/python scripts/build_prompt_data.py

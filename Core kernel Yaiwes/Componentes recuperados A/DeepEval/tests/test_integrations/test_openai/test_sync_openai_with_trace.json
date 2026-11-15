@@ -1,0 +1,49 @@
+{
+  "uuid": "59810b66-fe8e-407e-a368-bf60002d9dee",
+  "baseSpans": [],
+  "agentSpans": [],
+  "llmSpans": [
+    {
+      "uuid": "c04e242d-9bbe-4599-be93-2d88308efc49",
+      "name": "llm_generation",
+      "status": "SUCCESS",
+      "type": "llm",
+      "startTime": "2026-02-15T05:57:13.379Z",
+      "endTime": "2026-02-15T05:57:14.245Z",
+      "input": [
+        {
+          "role": "user",
+          "content": "Hello, how are you?"
+        }
+      ],
+      "output": "Hello! I'm just a computer program, so I don't have feelings, but I'm here to help you. How can I assist you today?",
+      "model": "gpt-4o",
+      "inputTokenCount": 13.0,
+      "outputTokenCount": 28.0,
+      "metricCollection": "test_collection_1",
+      "promptAlias": "asd",
+      "promptVersion": "00.00.01",
+      "promptLabel": "test-label",
+      "promptCommitHash": "bab04ec",
+      "integration": "OpenAI",
+      "provider": "OpenAI"
+    }
+  ],
+  "retrieverSpans": [],
+  "toolSpans": [],
+  "startTime": "2026-02-15T05:57:13.379Z",
+  "endTime": "2026-02-15T05:57:14.246Z",
+  "name": "test_name_1",
+  "metadata": {
+    "test_metadata_1": "test_value_1"
+  },
+  "tags": [
+    "test_tag_1"
+  ],
+  "environment": "development",
+  "threadId": "test_thread_id_1",
+  "userId": "test_user_id_1",
+  "input": "Hello, how are you?",
+  "output": "Hello! I'm just a computer program, so I don't have feelings, but I'm here to help you. How can I assist you today?",
+  "status": "SUCCESS"
+}

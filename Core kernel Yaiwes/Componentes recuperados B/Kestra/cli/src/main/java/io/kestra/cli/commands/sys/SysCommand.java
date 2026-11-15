@@ -1,0 +1,26 @@
+package io.kestra.cli.commands.sys;
+
+import io.kestra.cli.AbstractCommand;
+import io.kestra.cli.Kestra;
+
+import lombok.extern.slf4j.Slf4j;
+import picocli.CommandLine;
+
+@CommandLine.Command(
+    name = "sys",
+    description = "Manage system maintenance mode",
+    mixinStandardHelpOptions = true,
+    subcommands = {
+        ReindexCommand.class,
+        SubmitQueuedCommand.class,
+    }
+)
+@Slf4j
+public class SysCommand extends AbstractCommand {
+    @Override
+    public Integer call() throws Exception {
+        super.call();
+
+        return Kestra.runCli(new String[] { "sys", "--help" });
+    }
+}

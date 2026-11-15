@@ -1,0 +1,48 @@
+# Stage 3 is about truncating the dataset to get to the
+# target count and completing datasets with none responses
+operators:
+- id: load_airoboros_general
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_3_general_none_response_gpt-4o-inst_gpt_4o-mini_resp
+- id: load_airoboros_cot
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_3_cot_none_response_gpt-4o-inst_gpt_4o-mini_resp
+- id: load_airoboros_plan
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_3_plan_none_response_gpt-4o-inst_gpt_4o-mini_resp
+- id: load_airoboros_song
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_3_song_none_response_gpt-4o-inst_gpt_4o-mini_resp
+- id: load_airoboros_roleplay
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_3_roleplay_none_response_gpt-4o-inst_gpt_4o-mini_resp
+- id: load_airoboros_coding
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_3_coding_none_response_gpt-4o-inst_gpt_4o-mini_resp
+- id: load_airoboros_wordgame
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_3_wordgame_none_response_gpt-4o-inst_gpt_4o-mini_resp
+- id: load_airoboros_writing
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_3_writing_none_response_gpt-4o-inst_gpt_4o-mini_resp
+- id: mix_subsets
+  config:
+    type: mix
+    add_shard_id_column: True
+  input_ids:
+    - load_airoboros_general
+    - load_airoboros_cot
+    - load_airoboros_plan
+    - load_airoboros_song
+    - load_airoboros_roleplay
+    - load_airoboros_coding
+    - load_airoboros_wordgame
+    - load_airoboros_writing

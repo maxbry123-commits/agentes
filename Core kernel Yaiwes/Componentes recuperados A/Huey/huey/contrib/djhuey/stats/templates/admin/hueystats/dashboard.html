@@ -1,0 +1,36 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}{{ block.super }}
+{% include "admin/hueystats/_styles.html" %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label='hueystats' %}">Huey</a>
+  &rsaquo; Dashboard
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <div id="hs-content" data-url="{% url 'admin:hueystats_dashboard_fragment' %}">
+    {% include "admin/hueystats/_content.html" %}
+  </div>
+</div>
+<script>
+(function () {
+  var box = document.getElementById('hs-content');
+  if (!box) return;
+  var url = box.getAttribute('data-url');
+  var last = '';
+  function refresh() {
+    fetch(url, {headers: {'X-Requested-With': 'fetch'}})
+      .then(function (r) { return r.text(); })
+      .then(function (html) { if (html !== last) { last = html; box.innerHTML = html; } })
+      .catch(function () {});
+  }
+  setInterval(refresh, 5000);
+})();
+</script>
+{% endblock %}

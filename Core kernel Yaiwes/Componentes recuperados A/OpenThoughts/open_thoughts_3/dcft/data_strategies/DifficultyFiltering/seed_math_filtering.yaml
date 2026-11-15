@@ -1,0 +1,168 @@
+operators:
+  - id: load_tiger_math
+    config:
+      type: load_preexisting
+      framework_name: seed_math_tiger_math
+  - id: sample_tiger_math
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 20_000
+    input_ids:
+      - load_tiger_math
+  - id: keep_only_tiger_math
+    config:
+      type: function
+      function: data_strategies.commons.keep_only_columns
+      function_config:
+        columns_to_keep:
+          - conversations
+    input_ids:
+      - sample_tiger_math
+  - id: add_id_tiger_math
+    config:
+      type: function
+      function: data_strategies.commons.add_constant_columns
+      function_config:
+        source: tiger_math
+    input_ids:
+      - keep_only_tiger_math
+  - id: load_tiger_lab_math
+    config:
+      type: load_preexisting
+      framework_name: seed_math_tiger_lab_math
+  - id: sample_tiger_lab_math
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 20_000
+    input_ids:
+      - load_tiger_lab_math
+  - id: keep_only_tiger_lab_math
+    config:
+      type: function
+      function: data_strategies.commons.keep_only_columns
+      function_config:
+        columns_to_keep:
+          - conversations
+    input_ids:
+      - sample_tiger_lab_math
+  - id: add_id_tiger_lab_math
+    config:
+      type: function
+      function: data_strategies.commons.add_constant_columns
+      function_config:
+        source: tiger_lab_math
+    input_ids:
+      - keep_only_tiger_lab_math
+  
+  - id: load_automathtext
+    config:
+      type: load_preexisting
+      framework_name: seed_math_automathtext
+  - id: sample_automathtext
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 20_000
+    input_ids:
+      - load_automathtext
+  - id: keep_only_automathtext
+    config:
+      type: function
+      function: data_strategies.commons.keep_only_columns
+      function_config:
+        columns_to_keep:
+          - conversations
+    input_ids:
+      - sample_automathtext
+  - id: add_id_automathtext
+    config:
+      type: function
+      function: data_strategies.commons.add_constant_columns
+      function_config:
+        source: automathtext
+    input_ids:
+      - keep_only_automathtext
+
+  - id: load_nvidia_math
+    config:
+      type: load_preexisting
+      framework_name: seed_math_nvidia_math
+  - id: sample_nvidia_math
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 20_000
+    input_ids:
+      - load_nvidia_math
+  - id: keep_only_nvidia_math
+    config:
+      type: function
+      function: data_strategies.commons.keep_only_columns
+      function_config:
+        columns_to_keep:
+          - conversations
+    input_ids:
+      - sample_nvidia_math
+  - id: add_id_nvidia_math
+    config:
+      type: function
+      function: data_strategies.commons.add_constant_columns
+      function_config:
+        source: nvidia_math
+    input_ids:
+      - keep_only_nvidia_math
+
+  - id: load_open2math
+    config:
+      type: load_preexisting
+      framework_name: seed_math_open2math
+  - id: sample_open2math
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 20_000
+    input_ids:
+      - load_open2math
+  - id: keep_only_open2math
+    config:
+      type: function
+      function: data_strategies.commons.keep_only_columns
+      function_config:
+        columns_to_keep:
+          - conversations
+    input_ids:
+      - sample_open2math
+  - id: add_id_open2math
+    config:
+      type: function
+      function: data_strategies.commons.add_constant_columns
+      function_config:
+        source: open2math
+    input_ids:
+      - keep_only_open2math
+  - id: load_all
+    config:
+      type: mix
+    input_ids: 
+      - add_id_open2math
+      - add_id_tiger_lab_math
+      - add_id_tiger_math
+      - add_id_automathtext
+      - add_id_nvidia_math
+  - id: convert_to_instruction_response
+    config:
+      type: function
+      function: data_strategies.commons.convert_sharegpt_to_instruction_response
+      function_config:
+        input_sharegpt_column: conversations
+        output_instruction_column: instruction
+        output_response_column: response
+    input_ids:
+      - load_all

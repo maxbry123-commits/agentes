@@ -1,0 +1,27 @@
+operators:
+  - id: load_hf_source
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/stratos_unverified_mix
+      split: train
+  - id: sample_dataset
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 2_500
+    input_ids:
+      - load_hf_source
+  - id: relabel
+    config:
+      type: function
+      function: data_strategies.commons.change_tags
+      function_config:
+        conversation_column: conversations
+        tags_to_change:
+          user: human
+          assistant: gpt
+    input_ids:
+      - sample_dataset
+  
+  

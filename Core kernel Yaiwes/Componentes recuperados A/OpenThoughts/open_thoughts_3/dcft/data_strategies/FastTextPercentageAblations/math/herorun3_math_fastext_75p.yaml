@@ -1,0 +1,289 @@
+operators:
+- id: seed_math_automath_1000000
+  config:
+    type: load_preexisting
+    framework_name: seed_math_automath_1000000
+- id: drop_columns_automath_1000000
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_automath_1000000
+- id: add_source_automath
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "automath"
+  input_ids:
+  - drop_columns_automath_1000000
+- id: fuzzy_dedup_automath
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+    function_config:
+      column: instruction_seed
+      similarity_threshold: 90.0
+  input_ids:
+    - add_source_automath
+- id: classify_automath
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_math_best_s1
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 75
+  input_ids:
+   - fuzzy_dedup_automath
+- id: sample_dataset_automath
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - fuzzy_dedup_automath
+
+
+
+- id: seed_math_nvidia_math_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_math_nvidia_math_exploit_large
+- id: drop_columns_nvidia_math_exploit
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_nvidia_math_exploit
+- id: add_source_nvidia_math
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "nvidia_math"
+  input_ids:
+  - drop_columns_nvidia_math_exploit
+- id: fuzzy_dedup_nvidia_math
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+    function_config:
+      column: instruction_seed
+      similarity_threshold: 90.0
+  input_ids:
+    - add_source_nvidia_math
+- id: classify_nvidia_math
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_math_best_s1
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 75
+  input_ids:
+   - fuzzy_dedup_nvidia_math
+- id: sample_dataset_nvidia_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_nvidia_math
+
+
+- id: seed_math_tiger_lab_math_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_math_tiger_lab_math_exploit_large
+- id: drop_columns_tiger_lab_math_exploit
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_tiger_lab_math_exploit
+- id: add_source_tiger_lab_math
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "tiger_lab_math"
+  input_ids:
+  - drop_columns_tiger_lab_math_exploit
+- id: fuzzy_dedup_tiger_lab_math
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+    function_config:
+      column: instruction_seed
+      similarity_threshold: 90.0
+  input_ids:
+    - add_source_tiger_lab_math
+- id: classify_tiger_lab_math
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_math_best_s1
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 75
+  input_ids:
+   - fuzzy_dedup_tiger_lab_math
+- id: sample_dataset_tiger_lab_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_tiger_lab_math
+
+
+- id: seed_math_tiger_math_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_math_tiger_math_exploit_large
+- id: drop_columns_tiger_math_exploit
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_tiger_math_exploit
+- id: add_source_tiger_math
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "tiger_math"
+  input_ids:
+  - drop_columns_tiger_math_exploit
+- id: fuzzy_dedup_tiger_math
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+    function_config:
+      column: instruction_seed
+      similarity_threshold: 90.0
+  input_ids:
+    - add_source_tiger_math
+- id: classify_tiger_math
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_math_best_s1
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 75
+  input_ids:
+   - fuzzy_dedup_tiger_math
+- id: sample_dataset_tiger_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_tiger_math
+
+- id: mix_datasets
+  config:
+    type: mix
+  input_ids:
+  - sample_dataset_automath
+  - sample_dataset_nvidia_math
+  - sample_dataset_tiger_lab_math
+  - sample_dataset_tiger_math
+
+- id: decontaminate
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function:  data_strategies.DeepSeekR1.utils.decontaminate_table
+    function_config:
+      column: instruction_seed
+      eval_datasets:
+        - HuggingFaceH4/MATH-500
+        - Maxwell-Jia/AIME_2024
+        - AI-MO/aimo-validation-amc
+        - livecodebench/code_generation_lite
+        - mlfoundations-dev/hero_run_2_fix_conversations
+      eval_columns:
+        - problem
+        - Problem
+        - problem
+        - question_content
+        - question
+      eval_splits:
+        - test
+        - train
+        - train
+        - test
+        - train
+      similarity_threshold: 95.0
+  input_ids:
+    - mix_datasets
+- id: add_row_ids
+  config:
+    type: function
+    function: data_strategies.commons.add_row_ids
+    function_config:
+      column_name: id
+  input_ids:
+    - decontaminate
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: instruction_seed
+    model: deepseek-reasoner
+    batch: False
+    temperature: 1.0
+    require_all_responses: false
+    backend: openai
+    backend_params:
+      max_requests_per_minute: 1_000
+      max_tokens_per_minute: 1_000_000_000
+      api_key: API_KEY
+      base_url: "https://api.deepseek.com/"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - add_row_ids
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1_distill_70b
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - convert_reasoning_trace_to_final

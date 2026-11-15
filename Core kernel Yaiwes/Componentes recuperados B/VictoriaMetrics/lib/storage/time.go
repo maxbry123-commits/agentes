@@ -1,0 +1,148 @@
+package storage
+
+import (
+	"fmt"
+	"time"
+)
+
+// dateToString returns human readable representation of the date.
+func dateToString(date uint64) string {
+	if date == 0 {
+		return "[entire retention period]"
+	}
+	t := time.Unix(int64(date*24*3600), 0).UTC()
+	return t.Format("2006-01-02")
+}
+
+// timestampToTime returns time representation of the given timestamp.
+//
+// The returned time is in UTC timezone.
+func timestampToTime(timestamp int64) time.Time {
+	return time.Unix(timestamp/1e3, (timestamp%1e3)*1e6).UTC()
+}
+
+// timestampFromTime returns timestamp value for the given time.
+func timestampFromTime(t time.Time) int64 {
+	// There is no need in converting t to UTC, since UnixNano must
+	// return the same value for any timezone.
+	return t.UnixNano() / 1e6
+}
+
+// Returns true if the timestamp (must be in seconds) is within the first hour
+// of the day.
+func isFirstHourOfDay(timestamp uint64) bool {
+	return (timestamp/3600)%24 == 0
+}
+
+// TimeRange is time range.
+type TimeRange struct {
+	MinTimestamp int64
+	MaxTimestamp int64
+}
+
+// DateRange returns the date range for the given time range.
+func (tr *TimeRange) DateRange() (uint64, uint64) {
+	minDate := uint64(tr.MinTimestamp) / msecPerDay
+
+	// Sample at Max timestamp should be included because `End` is inclusive.
+	// According to https://prometheus.io/docs/prometheus/latest/querying/api/#range-queries
+	// However, if both timestamps are the same and point to the beginning of
+	// the day, then maxDate will be smaller that the minDate. In this case
+	// maxDate is set to minDate.
+	maxDate := max(uint64(tr.MaxTimestamp)/msecPerDay, minDate)
+
+	return minDate, maxDate
+}
+
+func (tr *TimeRange) String() string {
+	if *tr == globalIndexTimeRange {
+		return "[entire retention period]"
+	}
+	start := TimestampToHumanReadableFormat(tr.MinTimestamp)
+	end := TimestampToHumanReadableFormat(tr.MaxTimestamp)
+	return fmt.Sprintf("[%s..%s]", start, end)
+}
+
+// TimestampToHumanReadableFormat converts the given timestamp to human-readable format.
+func TimestampToHumanReadableFormat(timestamp int64) string {
+	t := timestampToTime(timestamp).UTC()
+	return t.Format("2006-01-02T15:04:05.999Z")
+}
+
+// timestampToPartitionName returns partition name for the given timestamp.
+func timestampToPartitionName(timestamp int64) string {
+	t := timestampToTime(timestamp)
+	return t.Format("2006_01")
+}
+
+// fromPartitionName initializes tr from the given partition name.
+func (tr *TimeRange) fromPartitionName(name string) error {
+	t, err := time.Parse("2006_01", name)
+	if err != nil {
+		return fmt.Errorf("cannot parse partition name %q: %w", name, err)
+	}
+	tr.fromPartitionTime(t)
+	return nil
+}
+
+// fromPartitionTimestamp initializes tr from the given partition timestamp.
+func (tr *TimeRange) fromPartitionTimestamp(timestamp int64) {
+	t := timestampToTime(timestamp)
+	tr.fromPartitionTime(t)
+}
+
+// fromPartitionTime initializes tr from the given partition time t.
+func (tr *TimeRange) fromPartitionTime(t time.Time) {
+	y, m, _ := t.UTC().Date()
+	minTime := time.Date(y, m, 1, 0, 0, 0, 0, time.UTC)
+	maxTime := time.Date(y, m+1, 1, 0, 0, 0, 0, time.UTC)
+	tr.MinTimestamp = minTime.Unix() * 1e3
+	tr.MaxTimestamp = maxTime.Unix()*1e3 - 1
+}
+
+// overlapsWith returns true if the time range overlaps with the given time
+// range.
+func (tr *TimeRange) overlapsWith(v TimeRange) bool {
+	return tr.MinTimestamp <= v.MaxTimestamp && tr.MaxTimestamp >= v.MinTimestamp
+}
+
+// contains returns true if the time range contains the given timestamp.
+func (tr *TimeRange) contains(timestamp int64) bool {
+	return tr.MinTimestamp <= timestamp && timestamp <= tr.MaxTimestamp
+}
+
+// Zero time range and zero date are used to force global index search.
+var (
+	globalIndexDate      = uint64(0)
+	globalIndexTimeRange = TimeRange{}
+)
+
+const (
+	msecPerDay  = 24 * 3600 * 1000
+	msecPerHour = 3600 * 1000
+
+	// minUnixMilli is the min millisecond that is allowed to be used as the
+	// sample timestamp.
+	//
+	// It corresponds to the first millisecond of the second day of the Unix
+	// Epoch, i.e. 1970-01-02T00:00:00.000Z.
+	//
+	// The first day of the Unix Epoch is reserved: zero date and zero time
+	// range are used for indicating that the the global index search is
+	// required. See globalIndexDate and globalIndexTimeRange above.
+	//
+	// Negative timestamps aren't supported.
+	minUnixMilli = msecPerDay
+
+	// maxUnixMilli is the max millisecond that is allowed to be used as the
+	// sample timestamp.
+	//
+	// Go's Duration is an int64 and is in nanoseconds. In order for time.Time
+	// math operations and conversion to millis/micros/nanos to work correctly,
+	// the max datetime must be limited to math.MaxInt64 nanoseconds, Which is
+	// time.UnixMicro(math.MaxInt64/1000) == 2262-04-11 23:47:16.854775 UTC.
+	//
+	// Round it to the last millisecond of the last complete partition:
+	// 2262-03-31T23:59:59.999Z.
+	maxUnixMilli = 9222422399999
+)

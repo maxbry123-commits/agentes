@@ -1,0 +1,52 @@
+operators:
+  - id: load_subset_dclmbaseline
+    config:
+      type: json_source
+      directory: /data/horse/ws/rehe951g-p_finetuning/DCLM-baseline-highest-scoring_subset
+      #directory: /data/horse/ws/rehe951g-p_finetuning/DCLM-baseline-subset
+      #num_truncate: 150
+      num_truncate: 37500
+
+  - id: filter_endoftext
+    input_ids:
+      - load_subset_dclmbaseline
+    config:
+      type: function
+      function: data_strategies.WebInstructAblation.utils.filter_endoftext
+      function_config:
+        text_column: text
+
+  - id: classify_with_llm
+    input_ids:
+      - filter_endoftext
+    config:
+      type: completions
+      map: chat
+      map_config:
+        user_message: |
+          Check whether the following text contains self-contained instruction-following data about science, technology, engineering, and mathematics, 
+          such as an instruction and completion of the instruction, a question and answer pair, a question required reasoning, or an educational question.
+
+          The text must contain a question with an answer or an instruction with an response.
+
+          The text must be about math, science, engineering, or humanities.
+
+          Sufficient context for the question or instruction must be provided in the text. 
+          The text must not refer to a figure, table, or any other exhibit. 
+          
+          Justify and then conclude your answer with Yes or No. Choose No if the text is an advertisement. 
+          Here is the text: {{text}}
+        output_column: response
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+  
+  - id: filter_yes_responses
+    input_ids:
+      - classify_with_llm
+    config:
+      type: function
+      function: data_strategies.WebInstructAblation.utils.filter_yes_responses
+      function_config:
+        response_column: response
+    

@@ -1,0 +1,6 @@
+operators:
+- id: scrape_nhs
+  config:
+    type: function
+    function: data_strategies.MedicalTasks.scrape.scrape_nhs_conditions_descriptions
+# Just running this once and then all future pipelines can read from https://huggingface.co/datasets/mlfoundations-dev/open_gpt_scrape

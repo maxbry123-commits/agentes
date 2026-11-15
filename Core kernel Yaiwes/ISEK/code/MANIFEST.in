@@ -1,0 +1,27 @@
+include README.md
+include README_CN.md
+include LICENSE
+include LEGAL.md
+include CONTRIBUTING.md
+include pyproject.toml
+
+# Include JavaScript files for P2P functionality
+include isek/protocol/p2p/*.js
+include isek/protocol/p2p/package.json
+
+# Include examples
+recursive-include examples *.py
+recursive-exclude examples __pycache__
+
+# Include documentation
+recursive-include docs *.rst
+recursive-include docs *.py
+recursive-include docs Makefile*
+
+# Include tests
+recursive-include tests *.py
+recursive-exclude tests __pycache__
+
+# Include scripts
+recursive-include scripts *.py
+recursive-exclude scripts __pycache__ 

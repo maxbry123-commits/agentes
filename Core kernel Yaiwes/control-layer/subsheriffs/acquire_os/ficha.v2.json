@@ -1,0 +1,25 @@
+{
+  "artifact_id": "wordflow.subsheriff.acquire_os",
+  "abi_version": "2.0",
+  "extension_type": "sub_sheriff",
+  "kernel_min": "1.0",
+  "mount_mode": "extension",
+  "load_priority": 40,
+  "llm_control": "DENY",
+  "entry_point": "core.py",
+  "provides": ["acquire.recipe", "acquire.verify", "acquire.build", "acquire.promote"],
+  "security": {
+    "sandbox": "container",
+    "token_in_journal": false,
+    "fail_closed": true
+  },
+  "config": {
+    "ACQUIRE_OS_ENABLED": false,
+    "note": "Default OFF; enable only when Director sets flag"
+  },
+  "contrato": {
+    "expone": {
+      "schema_uri": "universal_acquisition_manifest"
+    }
+  }
+}

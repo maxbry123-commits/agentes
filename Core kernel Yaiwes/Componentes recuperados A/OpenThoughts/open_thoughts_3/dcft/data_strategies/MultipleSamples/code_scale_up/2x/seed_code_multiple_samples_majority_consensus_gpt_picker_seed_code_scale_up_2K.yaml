@@ -1,0 +1,61 @@
+operators:
+- id: load_preexisting
+  config:
+    type: load_preexisting
+    framework_name: seed_code_multiple_samples_scale_up_base_16K
+- id: merge_together
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.merge_duplicate_rows
+    function_config:
+      diff_columns: 
+        - r1_distill_70b_response
+        - r1_distill_70b_extracted_answer
+  input_ids:
+    - load_preexisting
+- id: sample_dataset
+  config:
+    type: function
+    function:
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - merge_together
+- id: majority_gpt_verification
+  config:
+    type: completions
+    map: code_same
+    require_all_responses: False
+    map_config:
+      response_column: r1_distill_70b_response
+      code_column: r1_distill_70b_response
+      question_column: problem
+      output_column: correct_majority_indices
+      num_responses: 3
+    model: gpt-4o-mini
+    temperature: 1.0
+  input_ids:
+  - sample_dataset
+- id: majority_gpt_verification_extraction
+  config:
+    type: function
+    function: data_strategies.MultipleSamples.utils.code_same_verification
+    function_config:
+      verification_column: correct_majority_indices
+      output_column: verified_r1_distill_70b_response
+      code_answers_column: r1_distill_70b_response
+  input_ids:
+  - majority_gpt_verification
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: problem
+      input_response_column: verified_r1_distill_70b_response
+      output_sharegpt_column: conversations
+  input_ids:
+    - majority_gpt_verification_extraction
+
+  

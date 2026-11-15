@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# Copyright (c) 2024 IBM Corp.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+set -o nounset
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly script_dir
+packaging_root_dir="$(cd "${script_dir}/../" && pwd)"
+readonly packaging_root_dir
+kata_root_dir="$(cd "${packaging_root_dir}/../../" && pwd)"
+readonly kata_root_dir
+
+# shellcheck source=/dev/null
+source "${kata_root_dir}/tests/common.bash"
+
+# Build a IBM zSystem secure execution (SE) image
+#
+# Parameters:
+#	$1	- kernel_parameters
+#	$2	- a source directory where kernel and initrd are located
+#	$3	- a destination directory where a SE image is built
+#
+# Return:
+# 	0 if the image is successfully built
+#	1 otherwise
+build_secure_image() {
+	kernel_params="${1:-}"
+	install_src_dir="${2:-}"
+	install_dest_dir="${3:-}"
+
+	if [[ "${SE_COMPOSABLE:-no}" == "yes" ]]; then
+		se_image_name="kata-containers-se-runtime-rs.img"
+	else
+		se_image_name="kata-containers-se.img"
+	fi
+
+	if [[ "${FAKE_SE_IMAGE:-}" == "true" ]]; then
+		echo "FAKE_SE_IMAGE mode enabled: Creating dummy ${se_image_name} via touch command"
+		echo "FAKE_SE_IMAGE mode: Skipping kernel, initrd, parmfile, and host key document checks"
+		mkdir -p "${install_dest_dir}"
+		touch "${install_dest_dir}/${se_image_name}"
+		return 0
+	fi
+
+	key_verify_option="--no-verify" # no verification for CI testing purposes
+
+	if [[ -n "${SIGNING_KEY_CERT_PATH:-}" ]] && [[ -n "${INTERMEDIATE_CA_CERT_PATH:-}" ]] && [[ -n "${HOST_KEY_CRL_PATH:-}" ]]; then
+		if [[ -e "${SIGNING_KEY_CERT_PATH}" ]] && [[ -e "${INTERMEDIATE_CA_CERT_PATH}" ]] && [[ -e "${HOST_KEY_CRL_PATH}" ]]; then
+			key_verify_option="--cert=${SIGNING_KEY_CERT_PATH} --cert=${INTERMEDIATE_CA_CERT_PATH} --crl=${HOST_KEY_CRL_PATH}"
+		else
+			die "Specified certificate(s) not found"
+		fi
+	elif [[ -n "${SIGNING_KEY_CERT_PATH:-}" ]] || [[ -n "${INTERMEDIATE_CA_CERT_PATH:-}" ]] || [[ -n "${HOST_KEY_CRL_PATH:-}" ]]; then
+		die "All of SIGNING_KEY_CERT_PATH, INTERMEDIATE_CA_CERT_PATH, and HOST_KEY_CRL_PATH must be specified"
+	else
+		echo "No certificate specified. Using --no-verify option"
+	fi
+
+	if [[ "${SE_COMPOSABLE:-no}" == "yes" ]]; then
+		initrd_name="kata-containers-initrd.img"
+	else
+		initrd_name="kata-containers-initrd-confidential.img"
+	fi
+
+	if [[ ! -f "${install_src_dir}/vmlinuz.container" ]] ||
+		[[ ! -f "${install_src_dir}/${initrd_name}" ]]; then
+		cat << EOF >&2
+Either kernel or initrd does not exist or is mistakenly named
+A file name for kernel must be vmlinuz.container (raw binary)
+A file name for initrd must be ${initrd_name}
+EOF
+		return 1
+	fi
+
+	cmdline="${kernel_params} panic=1 scsi_mod.scan=none swiotlb=262144 agent.debug_console agent.debug_console_vport=1026"
+	if [[ "${SE_COMPOSABLE:-no}" == "yes" ]]; then
+		[[ -n "${COCO_VERITY_PARAMS:-}" ]] || die "COCO_VERITY_PARAMS must be set for composable SE image builds"
+		cmdline+=" kata.extension.coco.verity_params=${COCO_VERITY_PARAMS}"
+	fi
+	parmfile="$(mktemp --suffix=-cmdline)"
+	echo "${cmdline}" > "${parmfile}"
+	chmod 600 "${parmfile}"
+
+	[[ -n "${HKD_PATH:-}" ]] || (echo >&2 "No host key document specified." && return 1)
+	# shellcheck disable=SC2207
+	cert_list=($(find "${HKD_PATH}" -name 'HKD-*.crt' -exec basename {} \;))
+	declare hkd_options
+	eval "for cert in ${cert_list[*]}; do
+		hkd_options+=\"--host-key-document=\\\"\$HKD_PATH/\$cert\\\" \"
+	done"
+
+	command -v genprotimg > /dev/null 2>&1 || die "A package s390-tools is not installed."
+	extra_arguments=""
+	genprotimg_version=$(genprotimg --version | grep -Po '(?<=version )[^-]+')
+	if ! version_greater_than_equal "${genprotimg_version}" "2.17.0"; then
+		extra_arguments="--x-pcf '0xe0'"
+	fi
+
+	eval genprotimg \
+		"${extra_arguments}" \
+		"${hkd_options}" \
+		--output="${install_dest_dir}/${se_image_name}" \
+		--image="${install_src_dir}/vmlinuz.container" \
+		--ramdisk="${install_src_dir}/${initrd_name}" \
+		--parmfile="${parmfile}" \
+		"${key_verify_option}"
+
+	build_result=$?
+	rm -f "${parmfile}"
+	if [[ "${build_result}" -eq 0 ]]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+function repack_secure_image() {
+	kernel_params_value="${1:-}"
+	build_dir="${2:-}"
+	for_kbs="${3:-false}"
+	if [[ -z "${build_dir}" ]]; then
+		>&2 echo "ERROR: build_dir for secure image is not specified"
+		return 1
+	fi
+	if [[ "${SE_COMPOSABLE:-no}" == "yes" ]]; then
+		config_file_path="/opt/kata/share/defaults/kata-containers/runtime-rs/configuration-qemu-se-runtime-rs.toml"
+	else
+		config_file_path="/opt/kata/share/defaults/kata-containers/configuration-qemu-se.toml"
+	fi
+	if [[ ! -f "${config_file_path}" ]]; then
+		>&2 echo "ERROR: config file not found: ${config_file_path}"
+		return 1
+	fi
+	kernel_base_dir=$(dirname "$(kata-runtime --config "${config_file_path}" env --json | jq -r '.Kernel.Path')")
+	# Make sure ${build_dir}/hdr exists
+	mkdir -p "${build_dir}/hdr"
+	# Prepare required files for building the secure image
+	cp "${kernel_base_dir}/vmlinuz.container" "${build_dir}/hdr/"
+	if [[ "${SE_COMPOSABLE:-no}" == "yes" ]]; then
+		cp "${kernel_base_dir}/kata-containers-initrd.img" "${build_dir}/hdr/"
+	else
+		cp "${kernel_base_dir}/kata-containers-initrd-confidential.img" "${build_dir}/hdr/"
+	fi
+	# Build the secure image
+	build_secure_image "${kernel_params_value}" "${build_dir}/hdr" "${build_dir}/hdr"
+	# Get the secure image updated back to the kernel base directory
+	local se_img_name
+	if [[ "${SE_COMPOSABLE:-no}" == "yes" ]]; then
+		se_img_name="kata-containers-se-runtime-rs.img"
+	else
+		se_img_name="kata-containers-se.img"
+	fi
+	if [[ ! -f "${build_dir}/hdr/${se_img_name}" ]]; then
+		>&2 echo "ERROR: secure image not found: ${build_dir}/hdr/${se_img_name}"
+		return 1
+	fi
+	sudo cp "${build_dir}/hdr/${se_img_name}" "${kernel_base_dir}/"
+	if [[ "${for_kbs}" == "true" ]]; then
+		# Rename the SE image to hdr.bin and clean up kernel and initrd
+		mv "${build_dir}/hdr/${se_img_name}" "${build_dir}/hdr/hdr.bin"
+		# The Attestation Service reads hdr.bin as a non-root user via a group
+		# (fsGroup) mount, so make sure it is group/other readable.
+		chmod +r "${build_dir}/hdr/hdr.bin"
+		if [[ "${SE_COMPOSABLE:-no}" == "yes" ]]; then
+			rm -f "${build_dir}"/hdr/{vmlinuz.container,kata-containers-initrd.img}
+		else
+			rm -f "${build_dir}"/hdr/{vmlinuz.container,kata-containers-initrd-confidential.img}
+		fi
+	else
+		# Clean up the build directory completely
+		rm -rf "${build_dir}"
+	fi
+}

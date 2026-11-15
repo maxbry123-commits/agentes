@@ -1,0 +1,407 @@
+import {FeatureFlag} from '@shared/FeatureFlags';
+import {pathHorizontalDiagonal, pathVerticalDiagonal} from '@visx/shape';
+import memoize from 'lodash/memoize';
+
+import {featureEnabled} from '../app/Flags';
+import {AssetNodeKeyFragment} from './types/AssetNode.types';
+import {COMMON_COLLATOR} from '../app/commonCollator';
+import {
+  AssetCheckLiveFragment,
+  AssetLatestInfoFragment,
+  AssetLatestInfoRunFragment,
+  AssetNodeLiveFragment,
+  AssetNodeLiveFreshnessInfoFragment,
+  AssetNodeLiveMaterializationFragment,
+  AssetNodeLiveObservationFragment,
+} from '../asset-data/types/AssetBaseDataProvider.types';
+import {AssetStaleDataFragment} from '../asset-data/types/AssetStaleStatusDataProvider.types';
+import type {WorkspaceAssetNode} from '../assets/WorkspaceAssetNode';
+import {ILayoutOp} from '../graph/layout';
+import {RunStatus} from '../graphql/types';
+
+export enum AssetGraphViewType {
+  GLOBAL = 'global',
+  JOB = 'job',
+  GROUP = 'group',
+  CATALOG = 'catalog',
+}
+
+/**
+ * IMPORTANT: This file is used by the WebWorker so make sure we don't indirectly import React or anything that relies on window/document
+ */
+
+/**
+ * IMPORTANT: This file is used by the WebWorker so make sure we don't indirectly import React or anything that relies on window/document
+ */
+
+type AssetNode = WorkspaceAssetNode;
+type AssetKey = AssetNodeKeyFragment;
+type AssetLiveNode = AssetNodeLiveFragment & {
+  freshnessInfo: AssetNodeLiveFreshnessInfoFragment | null | undefined;
+};
+type AssetLatestInfo = AssetLatestInfoFragment;
+
+export const __ASSET_JOB_PREFIX = '__ASSET_JOB';
+export const __ANONYMOUS_ASSET_JOB_PREFIX = '__anonymous_asset_job';
+
+export function isHiddenAssetGroupJob(jobName: string) {
+  return jobName.startsWith(__ASSET_JOB_PREFIX) || jobName.startsWith(__ANONYMOUS_ASSET_JOB_PREFIX);
+}
+
+export const HIDDEN_ASSET_GROUP_JOB_LABEL = 'Jobless asset materializations';
+export const HIDDEN_ASSET_GROUP_JOB_TOOLTIP =
+  'This includes declarative automation, sensors, backfills, and manually triggered materializations.';
+
+// IMPORTANT: We use this, rather than AssetNode.id throughout this file because
+// the GraphQL interface exposes dependencyKeys, not dependencyIds. We also need
+// ways to "build" GraphId's locally, they can't always be server-provided.
+//
+// This value is NOT the same as AssetNode.id values provided by the server,
+// because JSON.stringify's whitespace behavior is different than Python's.
+//
+export type GraphId = string;
+export const toGraphId = (key: {path: string[]}): GraphId => JSON.stringify(key.path);
+export const fromGraphId = (graphId: GraphId): AssetNodeKeyFragment => ({
+  path: JSON.parse(graphId),
+  __typename: 'AssetKey',
+});
+
+export interface GraphNode {
+  id: GraphId;
+  assetKey: AssetKey;
+  definition: AssetNode;
+}
+
+export interface GraphData {
+  nodes: {[assetId: GraphId]: GraphNode};
+  downstream: {[assetId: GraphId]: {[childAssetId: GraphId]: boolean}};
+  upstream: {[assetId: GraphId]: {[parentAssetId: GraphId]: boolean}};
+  expandedGroups?: string[];
+}
+
+export const buildGraphData = (assetNodes: AssetNode[]) => {
+  const data: GraphData = {
+    nodes: {},
+    downstream: {},
+    upstream: {},
+  };
+
+  const addEdge = (upstreamGraphId: string, downstreamGraphId: string) => {
+    if (upstreamGraphId === downstreamGraphId) {
+      // Skip add edges for self-dependencies (eg: assets relying on older partitions of themselves)
+      return;
+    }
+    if (!data.downstream[upstreamGraphId]) {
+      data.downstream[upstreamGraphId] = {};
+    }
+    if (!data.upstream[downstreamGraphId]) {
+      data.upstream[downstreamGraphId] = {};
+    }
+    data.downstream[upstreamGraphId][downstreamGraphId] = true;
+    data.upstream[downstreamGraphId][upstreamGraphId] = true;
+  };
+
+  assetNodes.forEach((definition: AssetNode) => {
+    const id = toGraphId(definition.assetKey);
+    definition.dependencyKeys.forEach((key) => {
+      addEdge(toGraphId(key), id);
+    });
+    definition.dependedByKeys.forEach((key) => {
+      addEdge(id, toGraphId(key));
+    });
+
+    data.nodes[id] = {
+      id,
+      assetKey: definition.assetKey,
+      definition,
+    };
+  });
+
+  return data;
+};
+
+export const buildGraphDataFromOps = (
+  ops: ILayoutOp[],
+): {
+  nodes: {[opName: string]: {id: string}};
+  downstream: {[opName: string]: {[childOpName: string]: boolean}};
+} => {
+  const nodes: {[opName: string]: {id: string}} = {};
+  const downstream: {[opName: string]: {[childOpName: string]: boolean}} = {};
+
+  // First pass: register all nodes
+  for (const op of ops) {
+    nodes[op.name] = {id: op.name};
+  }
+
+  // Second pass: build downstream edges by inverting input dependencies
+  // If op A has an input that dependsOn solid B, then B → A (A is downstream of B)
+  for (const op of ops) {
+    for (const input of op.inputs) {
+      for (const dep of input.dependsOn) {
+        const upstreamName = dep.solid.name;
+        if (nodes[upstreamName]) {
+          if (!downstream[upstreamName]) {
+            downstream[upstreamName] = {};
+          }
+          downstream[upstreamName][op.name] = true;
+        }
+      }
+    }
+  }
+
+  return {nodes, downstream};
+};
+
+export const nodeDependsOnSelf = (node: GraphNode) => {
+  const id = toGraphId(node.assetKey);
+  return node.definition.dependedByKeys.some((d) => toGraphId(d) === id);
+};
+
+export const buildSVGPathHorizontal = pathHorizontalDiagonal({
+  source: (s: any) => s.source,
+  target: (s: any) => s.target,
+  x: (s: any) => s.x,
+  y: (s: any) => s.y,
+});
+export const buildSVGPathVertical = pathVerticalDiagonal({
+  source: (s: any) => s.source,
+  target: (s: any) => s.target,
+  x: (s: any) => s.x,
+  y: (s: any) => s.y,
+});
+
+export interface LiveDataForNode {
+  stepKey: string;
+  unstartedRunIds: string[]; // run in progress and step not started
+  inProgressRunIds: string[]; // run in progress and step in progress
+  runWhichFailedToMaterialize: AssetLatestInfoRunFragment | null;
+  lastMaterialization: AssetNodeLiveMaterializationFragment | null;
+  lastMaterializationRunStatus: RunStatus | null; // only available if runWhichFailedToMaterialize is null
+  freshnessInfo: AssetNodeLiveFreshnessInfoFragment | null | undefined;
+  lastObservation: AssetNodeLiveObservationFragment | null;
+  assetChecks: AssetCheckLiveFragment[];
+  partitionStats: {
+    numMaterialized: number;
+    numMaterializing: number;
+    numPartitions: number;
+    numFailed: number;
+  } | null;
+  opNames: string[];
+}
+
+export type LiveDataForNodeWithStaleData = LiveDataForNode & {
+  staleStatus: AssetStaleDataFragment['staleStatus'];
+  staleCauses: AssetStaleDataFragment['staleCauses'];
+};
+
+export const MISSING_LIVE_DATA: LiveDataForNodeWithStaleData = {
+  unstartedRunIds: [],
+  inProgressRunIds: [],
+  runWhichFailedToMaterialize: null,
+  freshnessInfo: null,
+  lastMaterialization: null,
+  lastMaterializationRunStatus: null,
+  lastObservation: null,
+  partitionStats: null,
+  staleStatus: null,
+  staleCauses: [],
+  assetChecks: [],
+  opNames: [],
+  stepKey: '',
+};
+
+export interface LiveData {
+  [assetId: GraphId]: LiveDataForNode;
+}
+
+export const buildLiveDataForNode = (
+  assetNode: AssetLiveNode,
+  assetLatestInfo?: AssetLatestInfo,
+): LiveDataForNode => {
+  const lastMaterialization = assetNode.assetMaterializations[0] || null;
+  const lastObservation = assetNode.assetObservations[0] || null;
+  const latestRun = assetLatestInfo?.latestRun ? assetLatestInfo.latestRun : null;
+
+  return {
+    lastMaterialization,
+    lastMaterializationRunStatus:
+      latestRun && lastMaterialization?.runId === latestRun.id ? latestRun.status : null,
+    lastObservation,
+    assetChecks:
+      assetNode.assetChecksOrError.__typename === 'AssetChecks'
+        ? assetNode.assetChecksOrError.checks
+        : [],
+    stepKey: stepKeyForAsset(assetNode),
+    freshnessInfo: assetNode.freshnessInfo,
+    inProgressRunIds: assetLatestInfo?.inProgressRunIds || [],
+    unstartedRunIds: assetLatestInfo?.unstartedRunIds || [],
+    partitionStats: assetNode.partitionStats || null,
+    runWhichFailedToMaterialize:
+      latestRun && shouldDisplayRunFailure(latestRun, lastMaterialization) ? latestRun : null,
+    opNames: assetNode.opNames,
+  };
+};
+
+export function shouldDisplayRunFailure(
+  latestRun: AssetLatestInfoRunFragment,
+  lastMaterialization: AssetNodeLiveMaterializationFragment | null,
+) {
+  if (latestRun.status !== 'FAILURE') {
+    return false; // The run did not fail
+  }
+  if (lastMaterialization) {
+    if (lastMaterialization && lastMaterialization.runId === latestRun.id) {
+      // The run failed, but it successfully emitted the latest materialization event. This
+      // is caused by the run failing in a later step.
+      return false;
+    }
+    if (Number(lastMaterialization.timestamp) > Number(latestRun.endTime) * 1000) {
+      // The latest materialization is NEWER than the latest run. This is caused by the user
+      // reporting a materialization manually.
+      return false;
+    }
+  }
+  return true;
+}
+
+// Mirrors Python's AssetKey.to_escaped_user_string / from_escaped_user_string
+// (dagster/_core/definitions/asset_key.py) so that AssetKey(["foo/bar"]) and
+// AssetKey(["foo", "bar"]) produce distinct tokens. Within a component, "/" is
+// escaped as "\/"; standalone backslashes are preserved.
+export function tokenForAssetKey(key: {path: string[]}) {
+  return key.path.map((part) => part.replace(/\//g, '\\/')).join('/');
+}
+
+export function tokenToAssetKey(token: string) {
+  const parts: string[] = [];
+  let current = '';
+  let escapeNext = false;
+  for (const char of token) {
+    if (escapeNext) {
+      current += '\\' + char;
+      escapeNext = false;
+    } else if (char === '\\') {
+      escapeNext = true;
+    } else if (char === '/') {
+      parts.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (escapeNext) {
+    current += '\\';
+  }
+  parts.push(current);
+  return {path: parts.map((part) => part.replace(/\\\//g, '/'))};
+}
+
+export function displayNameForAssetKey(key: {path: string[]}) {
+  return key.path.join(' / ');
+}
+
+export function sortAssetKeys(a: {path: string[]}, b: {path: string[]}) {
+  return COMMON_COLLATOR.compare(displayNameForAssetKey(a), displayNameForAssetKey(b));
+}
+
+export function stepKeyForAsset(definition: {opNames: string[]}) {
+  // Used for linking to the run with this step highlighted. We only support highlighting
+  // a single step, so just use the first one.
+  const firstOp = definition.opNames.length ? definition.opNames[0] : null;
+  return firstOp || '';
+}
+
+export const itemWithAssetKey = (key: {path: string[]}) => {
+  const token = tokenForAssetKey(key);
+  return (asset: {assetKey: {path: string[]}}) => tokenForAssetKey(asset.assetKey) === token;
+};
+
+export const isGroupId = (str: string) => /^[^@:]+@[^@:]+:.+$/.test(str);
+
+export const groupIdForNode = (node: GraphNode) =>
+  featureEnabled(FeatureFlag.flagAssetGraphGroupsPerCodeLocation)
+    ? [
+        node.definition.repository.name,
+        '@',
+        node.definition.repository.location.name,
+        ':',
+        node.definition.groupName,
+      ].join('')
+    : `global@global:${node.definition.groupName}`;
+
+// Group names support hierarchy via `/` separators. parseGroupId splits a
+// fully-qualified group id (`repo@location:a/b/c`) into its location prefix
+// (`repo@location:`) and the segmented group path (`['a','b','c']`). Memoized
+// because the same group ids are parsed many times per layout/render pass.
+export const parseGroupId = memoize(
+  (groupId: string): {locationPrefix: string; segments: string[]} | null => {
+    const colonIdx = groupId.indexOf(':');
+    if (colonIdx < 0) {
+      return null;
+    }
+    const locationPrefix = groupId.slice(0, colonIdx + 1);
+    const groupName = groupId.slice(colonIdx + 1);
+    const segments = groupName.split('/').filter(Boolean);
+    if (!segments.length) {
+      return null;
+    }
+    return {locationPrefix, segments};
+  },
+);
+
+// Returns the ancestor group ids for `groupId`, in order from outermost
+// (shortest) to immediate parent. Excludes `groupId` itself.
+export const ancestorGroupIds = memoize((groupId: string): string[] => {
+  const parsed = parseGroupId(groupId);
+  if (!parsed || parsed.segments.length <= 1) {
+    return [];
+  }
+  const result: string[] = [];
+  let acc = parsed.locationPrefix;
+  for (let i = 0; i < parsed.segments.length - 1; i++) {
+    acc += i === 0 ? parsed.segments[i] : `/${parsed.segments[i]}`;
+    result.push(acc);
+  }
+  return result;
+});
+
+// Just the trailing segment of the group id's path, used for display.
+export const groupIdLeafName = (groupId: string): string => {
+  const parsed = parseGroupId(groupId);
+  if (!parsed) {
+    return groupId;
+  }
+  return parsed.segments[parsed.segments.length - 1] ?? groupId;
+};
+
+// Rolls each asset up into its leaf group AND every synthetic ancestor, so a
+// collapsed "marketing" tile shows counts/statuses for all of marketing/*.
+export const groupedAssetsWithAncestors = (nodes: GraphNode[]): Record<string, GraphNode[]> => {
+  const grouped: Record<string, GraphNode[]> = {};
+  for (const node of nodes) {
+    const leafId = groupIdForNode(node);
+    for (const id of [leafId, ...ancestorGroupIds(leafId)]) {
+      (grouped[id] ??= []).push(node);
+    }
+  }
+  return grouped;
+};
+
+// Inclusive
+export const getUpstreamNodes = memoize(
+  (assetKey: AssetNodeKeyFragment, graphData: GraphData): AssetNodeKeyFragment[] => {
+    const upstream = Object.keys(graphData.upstream[toGraphId(assetKey)] || {});
+    const currentUpstream = upstream.map((graphId) => fromGraphId(graphId));
+    return [
+      assetKey,
+      ...currentUpstream,
+      ...currentUpstream.map((graphId) => getUpstreamNodes(graphId, graphData)).flat(),
+    ].filter(
+      (key, index, arr) =>
+        // Filter out non uniques
+        arr.findIndex((key2) => JSON.stringify(key2) === JSON.stringify(key)) === index,
+    );
+  },
+  (key, data) => JSON.stringify({key, data}),
+);

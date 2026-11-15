@@ -1,0 +1,780 @@
+from dataclasses import asdict, dataclass
+from enum import Enum
+from typing import Any, Literal, cast
+
+import pytest
+from pydantic import BaseModel
+from typing_extensions import TypedDict
+
+from fastmcp import Context, FastMCP
+from fastmcp.client.client import Client
+from fastmcp.client.elicitation import ElicitResult
+from fastmcp.exceptions import ToolError
+from fastmcp.server.elicitation import (
+    AcceptedElicitation,
+    CancelledElicitation,
+    DeclinedElicitation,
+    validate_elicitation_json_schema,
+)
+from fastmcp.utilities.types import TypeAdapter
+
+
+@pytest.fixture
+def fastmcp_server():
+    mcp = FastMCP("TestServer")
+
+    @dataclass
+    class Person:
+        name: str
+
+    @mcp.tool
+    async def ask_for_name(context: Context) -> str:
+        result = await context.elicit(
+            message="What is your name?",
+            response_type=Person,
+        )
+        if result.action == "accept":
+            assert isinstance(result, AcceptedElicitation)
+            assert isinstance(result.data, Person)
+            return f"Hello, {result.data.name}!"
+        else:
+            return "No name provided."
+
+    @mcp.tool
+    def simple_test() -> str:
+        return "Hello!"
+
+    return mcp
+
+
+async def test_elicitation_with_no_handler(fastmcp_server):
+    """Test that elicitation works without a handler."""
+
+    async with Client(fastmcp_server, mode="legacy") as client:
+        with pytest.raises(ToolError, match="Elicitation not supported"):
+            await client.call_tool("ask_for_name")
+
+
+async def test_elicitation_accept_content(fastmcp_server):
+    """Test basic elicitation functionality."""
+
+    async def elicitation_handler(message, response_type, params, ctx):
+        # Mock user providing their name
+        return ElicitResult(action="accept", content=response_type(name="Alice"))
+
+    async with Client(
+        fastmcp_server, mode="legacy", elicitation_handler=elicitation_handler
+    ) as client:
+        result = await client.call_tool("ask_for_name")
+        assert result.data == "Hello, Alice!"
+
+
+async def test_elicitation_decline(fastmcp_server):
+    """Test that elicitation handler receives correct parameters."""
+
+    async def elicitation_handler(message, response_type, params, ctx):
+        return ElicitResult(action="decline")
+
+    async with Client(
+        fastmcp_server, mode="legacy", elicitation_handler=elicitation_handler
+    ) as client:
+        result = await client.call_tool("ask_for_name")
+        assert result.data == "No name provided."
+
+
+async def test_elicitation_handler_parameters():
+    """Test that elicitation handler receives correct parameters."""
+    mcp = FastMCP("TestServer")
+    captured_params = {}
+
+    @mcp.tool
+    async def test_tool(context: Context) -> str:
+        await context.elicit(
+            message="Test message",
+            response_type=int,
+        )
+        return "done"
+
+    async def elicitation_handler(message, response_type, params, ctx):
+        captured_params["message"] = message
+        captured_params["response_type"] = str(response_type)
+        captured_params["params"] = params
+        captured_params["ctx"] = ctx
+        return ElicitResult(action="accept", content={"value": 42})
+
+    async with Client(
+        mcp, mode="legacy", elicitation_handler=elicitation_handler
+    ) as client:
+        await client.call_tool("test_tool", {})
+
+        assert captured_params["message"] == "Test message"
+        assert captured_params["params"].requested_schema == {
+            "properties": {"value": {"title": "Value", "type": "integer"}},
+            "required": ["value"],
+            "type": "object",
+        }
+        assert captured_params["ctx"] is not None
+
+
+async def test_elicitation_response_title_and_description_on_scalar():
+    """response_title and response_description customize the wrapped `value` field."""
+    mcp = FastMCP("TestServer")
+    captured_schema: dict[str, Any] = {}
+
+    @mcp.tool
+    async def confirm_purchase(context: Context) -> str:
+        result = await context.elicit(
+            message="Buy 1x Baguette?",
+            response_type=bool,
+            response_title="Confirm purchase",
+            response_description="Approve this transaction?",
+        )
+        if isinstance(result, AcceptedElicitation):
+            return "confirmed" if result.data else "rejected"
+        return "no answer"
+
+    async def elicitation_handler(message, response_type, params, ctx):
+        captured_schema.update(params.requested_schema)
+        return ElicitResult(action="accept", content={"value": True})
+
+    async with Client(
+        mcp, mode="legacy", elicitation_handler=elicitation_handler
+    ) as client:
+        await client.call_tool("confirm_purchase", {})
+
+    assert captured_schema["properties"]["value"]["title"] == "Confirm purchase"
+    assert (
+        captured_schema["properties"]["value"]["description"]
+        == "Approve this transaction?"
+    )
+    assert captured_schema["properties"]["value"]["type"] == "boolean"
+
+
+async def test_elicitation_response_title_on_dict_shorthand():
+    """response_title applies to the `value` property for dict shorthand."""
+    mcp = FastMCP("TestServer")
+    captured_schema: dict[str, Any] = {}
+
+    @mcp.tool
+    async def pick_priority(context: Context) -> str:
+        result = await context.elicit(
+            message="Priority?",
+            response_type={"low": {"title": "Low"}, "high": {"title": "High"}},
+            response_title="Priority level",
+        )
+        return "ok" if isinstance(result, AcceptedElicitation) else "none"
+
+    async def elicitation_handler(message, response_type, params, ctx):
+        captured_schema.update(params.requested_schema)
+        return ElicitResult(action="accept", content={"value": "low"})
+
+    async with Client(
+        mcp, mode="legacy", elicitation_handler=elicitation_handler
+    ) as client:
+        await client.call_tool("pick_priority", {})
+
+    assert captured_schema["properties"]["value"]["title"] == "Priority level"
+
+
+async def test_elicitation_response_title_on_list_shorthand():
+    """response_title applies to the `value` property for list shorthand."""
+    mcp = FastMCP("TestServer")
+    captured_schema: dict[str, Any] = {}
+
+    @mcp.tool
+    async def pick_color(context: Context) -> str:
+        result = await context.elicit(
+            message="Color?",
+            response_type=["red", "green", "blue"],
+            response_title="Favorite color",
+        )
+        return "ok" if isinstance(result, AcceptedElicitation) else "none"
+
+    async def elicitation_handler(message, response_type, params, ctx):
+        captured_schema.update(params.requested_schema)
+        return ElicitResult(action="accept", content={"value": "red"})
+
+    async with Client(
+        mcp, mode="legacy", elicitation_handler=elicitation_handler
+    ) as client:
+        await client.call_tool("pick_color", {})
+
+    assert captured_schema["properties"]["value"]["title"] == "Favorite color"
+
+
+async def test_elicitation_response_title_rejected_for_basemodel():
+    """response_title raises TypeError when response_type is a BaseModel."""
+    mcp = FastMCP("TestServer")
+
+    class Person(BaseModel):
+        name: str
+
+    @mcp.tool
+    async def ask(context: Context) -> str:
+        await context.elicit(
+            message="Name?",
+            response_type=Person,
+            response_title="Not allowed",
+        )
+        return "done"
+
+    async def elicitation_handler(message, response_type, params, ctx):
+        return ElicitResult(action="accept", content={"name": "x"})
+
+    # Not pinned: response_title is validated locally before any request is
+    # dispatched, so this raises identically on every era.
+    async with Client(mcp, elicitation_handler=elicitation_handler) as client:
+        with pytest.raises(ToolError, match="response_title"):
+            await client.call_tool("ask", {})
+
+
+async def test_elicitation_cancel_action():
+    """Test user canceling elicitation request."""
+    mcp = FastMCP("TestServer")
+
+    @mcp.tool
+    async def ask_for_optional_info(context: Context) -> str:
+        result = await context.elicit(
+            message="Optional: What's your age?", response_type=int
+        )
+        if result.action == "cancel":
+            return "Request was canceled"
+        elif result.action == "accept":
+            assert isinstance(result, AcceptedElicitation)
+            assert isinstance(result.data, int)
+            return f"Age: {result.data}"
+        else:
+            return "No response provided"
+
+    async def elicitation_handler(message, response_type, params, ctx):
+        return ElicitResult(action="cancel")
+
+    async with Client(
+        mcp, mode="legacy", elicitation_handler=elicitation_handler
+    ) as client:
+        result = await client.call_tool("ask_for_optional_info", {})
+        assert result.data == "Request was canceled"
+
+
+class TestScalarResponseTypes:
+    async def test_scalar_handler_return_is_auto_wrapped(self):
+        """Scalar handler returns are wrapped as {"value": ...} for scalar schemas."""
+        mcp = FastMCP("TestServer")
+
+        @mcp.tool
+        async def my_tool(context: Context) -> str:
+            result = await context.elicit(message="", response_type=str)
+            assert isinstance(result, AcceptedElicitation)
+            assert isinstance(result.data, str)
+            return result.data
+
+        async def elicitation_handler(message, response_type, params, ctx):
+            return ElicitResult(action="accept", content="Alice")
+
+        async with Client(
+            mcp, mode="legacy", elicitation_handler=elicitation_handler
+        ) as client:
+            result = await client.call_tool("my_tool", {})
+            assert result.data == "Alice"
+
+    async def test_elicitation_str_response(self):
+        """Test elicitation with string schema."""
+        mcp = FastMCP("TestServer")
+
+        @mcp.tool
+        async def my_tool(context: Context) -> str:
+            result = await context.elicit(message="", response_type=str)
+            assert isinstance(result, AcceptedElicitation)
+            assert isinstance(result.data, str)
+            return result.data
+
+        async def elicitation_handler(message, response_type, params, ctx):
+            return ElicitResult(action="accept", content={"value": "hello"})
+
+        async with Client(
+            mcp, mode="legacy", elicitation_handler=elicitation_handler
+        ) as client:
+            result = await client.call_tool("my_tool", {})
+            assert result.data == "hello"
+
+    async def test_elicitation_int_response(self):
+        """Test elicitation with number schema."""
+        mcp = FastMCP("TestServer")
+
+        @mcp.tool
+        async def my_tool(context: Context) -> int:
+            result = await context.elicit(message="", response_type=int)
+            assert isinstance(result, AcceptedElicitation)
+            assert isinstance(result.data, int)
+            return result.data
+
+        async def elicitation_handler(message, response_type, params, ctx):
+            return ElicitResult(action="accept", content={"value": 42})
+
+        async with Client(
+            mcp, mode="legacy", elicitation_handler=elicitation_handler
+        ) as client:
+            result = await client.call_tool("my_tool", {})
+            assert result.data == 42
+
+    async def test_elicitation_float_response(self):
+        """Test elicitation with number schema."""
+        mcp = FastMCP("TestServer")
+
+        @mcp.tool
+        async def my_tool(context: Context) -> float:
+            result = await context.elicit(message="", response_type=float)
+            assert isinstance(result, AcceptedElicitation)
+            assert isinstance(result.data, float)
+            return result.data
+
+        async def elicitation_handler(message, response_type, params, ctx):
+            return ElicitResult(action="accept", content={"value": 3.14})
+
+        async with Client(
+            mcp, mode="legacy", elicitation_handler=elicitation_handler
+        ) as client:
+            result = await client.call_tool("my_tool", {})
+            assert result.data == 3.14
+
+    async def test_elicitation_bool_response(self):
+        """Test elicitation with boolean schema."""
+        mcp = FastMCP("TestServer")
+
+        @mcp.tool
+        async def my_tool(context: Context) -> bool:
+            result = await context.elicit(message="", response_type=bool)
+            assert isinstance(result, AcceptedElicitation)
+            assert isinstance(result.data, bool)
+            return result.data
+
+        async def elicitation_handler(message, response_type, params, ctx):
+            return ElicitResult(action="accept", content={"value": True})
+
+        async with Client(
+            mcp, mode="legacy", elicitation_handler=elicitation_handler
+        ) as client:
+            result = await client.call_tool("my_tool", {})
+            assert result.data is True
+
+    async def test_elicitation_literal_response(self):
+        """Test elicitation with literal schema."""
+        mcp = FastMCP("TestServer")
+
+        @mcp.tool
+        async def my_tool(context: Context) -> Literal["x", "y"]:
+            # Literal types work at runtime but type checker doesn't recognize them in overloads
+            result = await context.elicit(message="", response_type=Literal["x", "y"])  # type: ignore[arg-type]  # ty:ignore[no-matching-overload]
+            assert isinstance(result, AcceptedElicitation)
+            accepted = cast(AcceptedElicitation[Literal["x", "y"]], result)
+            assert isinstance(accepted.data, str)
+            return accepted.data
+
+        async def elicitation_handler(message, response_type, params, ctx):
+            return ElicitResult(action="accept", content={"value": "x"})
+
+        async with Client(
+            mcp, mode="legacy", elicitation_handler=elicitation_handler
+        ) as client:
+            result = await client.call_tool("my_tool", {})
+            assert result.data == "x"
+
+    async def test_elicitation_enum_response(self):
+        """Test elicitation with enum schema."""
+        mcp = FastMCP("TestServer")
+
+        class ResponseEnum(Enum):
+            X = "x"
+            Y = "y"
+
+        @mcp.tool
+        async def my_tool(context: Context) -> ResponseEnum:
+            result = await context.elicit(message="", response_type=ResponseEnum)
+            assert isinstance(result, AcceptedElicitation)
+            assert isinstance(result.data, ResponseEnum)
+            return result.data
+
+        async def elicitation_handler(message, response_type, params, ctx):
+            return ElicitResult(action="accept", content={"value": "x"})
+
+        async with Client(
+            mcp, mode="legacy", elicitation_handler=elicitation_handler
+        ) as client:
+            result = await client.call_tool("my_tool", {})
+            assert result.data == "x"
+
+    async def test_elicitation_list_of_strings_response(self):
+        """Test elicitation with list schema."""
+        mcp = FastMCP("TestServer")
+
+        @mcp.tool
+        async def my_tool(context: Context) -> str:
+            result = await context.elicit(message="", response_type=["x", "y"])
+            assert isinstance(result, AcceptedElicitation)
+            assert isinstance(result.data, str)
+            return result.data
+
+        async def elicitation_handler(message, response_type, params, ctx):
+            return ElicitResult(action="accept", content={"value": "x"})
+
+        async with Client(
+            mcp, mode="legacy", elicitation_handler=elicitation_handler
+        ) as client:
+            result = await client.call_tool("my_tool", {})
+            assert result.data == "x"
+
+
+async def test_elicitation_handler_error():
+    """Test error handling in elicitation handler."""
+    mcp = FastMCP("TestServer")
+
+    @mcp.tool
+    async def failing_elicit(context: Context) -> str:
+        try:
+            result = await context.elicit(message="This will fail", response_type=str)
+
+            assert isinstance(result, AcceptedElicitation)
+
+            assert result.action == "accept"
+            return f"Got: {result.data}"
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    async def elicitation_handler(message, response_type, params, ctx):
+        raise ValueError("Handler failed!")
+
+    # Pinned: the tool's broad `except Exception` means this would pass under
+    # auto for the wrong reason (elicit() itself raising "unavailable on
+    # 2026-07-28" rather than the handler's ValueError ever running). Legacy
+    # pins the test to what it actually claims to exercise.
+    async with Client(
+        mcp, mode="legacy", elicitation_handler=elicitation_handler
+    ) as client:
+        result = await client.call_tool("failing_elicit", {})
+        assert "Error:" in result.data
+
+
+async def test_elicitation_multiple_calls():
+    """Test multiple elicitation calls in sequence."""
+    mcp = FastMCP("TestServer")
+
+    @mcp.tool
+    async def multi_step_form(context: Context) -> str:
+        # First question
+        name_result = await context.elicit(
+            message="What's your name?", response_type=str
+        )
+
+        assert isinstance(name_result, AcceptedElicitation)
+
+        if name_result.action != "accept":
+            return "Form abandoned"
+
+        # Second question
+        age_result = await context.elicit(message="What's your age?", response_type=int)
+
+        assert isinstance(age_result, AcceptedElicitation)
+
+        if age_result.action != "accept":
+            return f"Hello {name_result.data}, form incomplete"
+
+        return f"Hello {name_result.data}, you are {age_result.data} years old"
+
+    call_count = 0
+
+    async def elicitation_handler(message, response_type, params, ctx):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return ElicitResult(action="accept", content={"value": "Bob"})
+        elif call_count == 2:
+            return ElicitResult(action="accept", content={"value": 25})
+        else:
+            raise ValueError("Unexpected call")
+
+    async with Client(
+        mcp, mode="legacy", elicitation_handler=elicitation_handler
+    ) as client:
+        result = await client.call_tool("multi_step_form", {})
+        assert result.data == "Hello Bob, you are 25 years old"
+        assert call_count == 2
+
+
+@dataclass
+class UserInfo:
+    name: str
+    age: int
+
+
+class UserInfoTypedDict(TypedDict):
+    name: str
+    age: int
+
+
+class UserInfoPydantic(BaseModel):
+    name: str
+    age: int
+
+
+@pytest.mark.parametrize(
+    "structured_type", [UserInfo, UserInfoTypedDict, UserInfoPydantic]
+)
+async def test_structured_response_type(
+    structured_type: type[UserInfo | UserInfoTypedDict | UserInfoPydantic],
+):
+    """Test elicitation with dataclass response type."""
+    mcp = FastMCP("TestServer")
+
+    @mcp.tool
+    async def get_user_info(context: Context) -> str:
+        result = await context.elicit(
+            message="Please provide your information", response_type=structured_type
+        )
+
+        assert isinstance(result, AcceptedElicitation)
+
+        if result.action == "accept":
+            assert isinstance(result, AcceptedElicitation)
+            if isinstance(result.data, dict):
+                data_dict = cast(dict[str, Any], result.data)
+                name = data_dict.get("name")
+                age = data_dict.get("age")
+                assert name is not None
+                assert age is not None
+                return f"User: {name}, age: {age}"
+            else:
+                # result.data is a structured type (UserInfo, UserInfoTypedDict, or UserInfoPydantic)
+                assert hasattr(result.data, "name")
+                assert hasattr(result.data, "age")
+                return f"User: {result.data.name}, age: {result.data.age}"
+        return "No user info provided"
+
+    async def elicitation_handler(message, response_type, params, ctx):
+        # Verify we get the dataclass type
+        assert (
+            TypeAdapter(response_type).json_schema()
+            == TypeAdapter(structured_type).json_schema()
+        )
+
+        # Verify the schema has the dataclass fields (available in params)
+        schema = params.requested_schema
+        assert schema["type"] == "object"
+        assert "name" in schema["properties"]
+        assert "age" in schema["properties"]
+        assert schema["properties"]["name"]["type"] == "string"
+        assert schema["properties"]["age"]["type"] == "integer"
+
+        return ElicitResult(action="accept", content=UserInfo(name="Alice", age=30))
+
+    async with Client(
+        mcp, mode="legacy", elicitation_handler=elicitation_handler
+    ) as client:
+        result = await client.call_tool("get_user_info", {})
+        assert result.data == "User: Alice, age: 30"
+
+
+async def test_all_primitive_field_types():
+    class DataEnum(Enum):
+        X = "x"
+        Y = "y"
+
+    @dataclass
+    class Data:
+        integer: int
+        float_: float
+        number: int | float
+        boolean: bool
+        string: str
+        constant: Literal["x"]
+        union: Literal["x"] | Literal["y"]
+        choice: Literal["x", "y"]
+        enum: DataEnum
+
+    mcp = FastMCP("TestServer")
+
+    @mcp.tool
+    async def get_data(context: Context) -> Data:
+        result = await context.elicit(message="Enter data", response_type=Data)
+        assert isinstance(result, AcceptedElicitation)
+        assert isinstance(result.data, Data)
+        return result.data
+
+    async def elicitation_handler(message, response_type, params, ctx):
+        return ElicitResult(
+            action="accept",
+            content=Data(
+                integer=1,
+                float_=1.0,
+                number=1.0,
+                boolean=True,
+                string="hello",
+                constant="x",
+                union="x",
+                choice="x",
+                enum=DataEnum.X,
+            ),
+        )
+
+    async with Client(
+        mcp, mode="legacy", elicitation_handler=elicitation_handler
+    ) as client:
+        result = await client.call_tool("get_data", {})
+
+        # Now all literal/enum fields should be preserved as strings
+        result_data = asdict(result.data)
+        result_data_enum = result_data.pop("enum")
+        assert result_data_enum == "x"  # Should be a string now, not an enum
+        assert result_data == {
+            "integer": 1,
+            "float_": 1.0,
+            "number": 1.0,
+            "boolean": True,
+            "string": "hello",
+            "constant": "x",
+            "union": "x",
+            "choice": "x",
+        }
+
+
+class TestResponseTypeRequired:
+    """`response_type` is required — the empty-schema form was removed in 4.0."""
+
+    async def test_explicit_none_raises_type_error(self):
+        mcp = FastMCP("TestServer")
+
+        @mcp.tool
+        async def my_tool(context: Context) -> str:
+            await context.elicit(message="Approve?", response_type=None)  # ty: ignore[no-matching-overload]
+            return "unreachable"
+
+        async with Client(mcp, mode="legacy") as client:
+            with pytest.raises(ToolError, match="requires a response_type"):
+                await client.call_tool("my_tool", {})
+
+    async def test_omitting_response_type_raises_type_error(self):
+        ctx = Context(fastmcp=FastMCP("TestServer"))
+
+        with pytest.raises(TypeError, match="response_type"):
+            await ctx.elicit("Approve?")  # ty: ignore[no-matching-overload]
+
+
+class TestValidation:
+    async def test_schema_validation_rejects_non_object(self):
+        """Test that non-object schemas are rejected."""
+
+        with pytest.raises(TypeError, match="must be an object schema"):
+            validate_elicitation_json_schema({"type": "string"})
+
+    async def test_schema_validation_rejects_nested_objects(self):
+        """Test that nested object schemas are rejected."""
+
+        with pytest.raises(
+            TypeError, match="is an object, but nested objects are not allowed"
+        ):
+            validate_elicitation_json_schema(
+                {
+                    "type": "object",
+                    "properties": {
+                        "user": {
+                            "type": "object",
+                            "properties": {"name": {"type": "string"}},
+                        }
+                    },
+                }
+            )
+
+    async def test_schema_validation_rejects_arrays(self):
+        """Test that non-enum array schemas are rejected."""
+
+        with pytest.raises(TypeError, match="is an array, but arrays are only allowed"):
+            validate_elicitation_json_schema(
+                {
+                    "type": "object",
+                    "properties": {
+                        "users": {"type": "array", "items": {"type": "string"}}
+                    },
+                }
+            )
+
+
+class TestPatternMatching:
+    async def test_pattern_matching_accept(self):
+        """Test pattern matching with AcceptedElicitation."""
+        mcp = FastMCP("TestServer")
+
+        @mcp.tool
+        async def pattern_match_tool(context: Context) -> str:
+            result = await context.elicit("Enter your name:", response_type=str)
+
+            match result:
+                case AcceptedElicitation(data=name):
+                    return f"Hello {name}!"
+                case DeclinedElicitation():
+                    return "You declined"
+                case CancelledElicitation():
+                    return "Cancelled"
+                case _:
+                    return "Unknown result"
+
+        async def elicitation_handler(message, response_type, params, ctx):
+            return ElicitResult(action="accept", content={"value": "Alice"})
+
+        async with Client(
+            mcp, mode="legacy", elicitation_handler=elicitation_handler
+        ) as client:
+            result = await client.call_tool("pattern_match_tool", {})
+            assert result.data == "Hello Alice!"
+
+    async def test_pattern_matching_decline(self):
+        """Test pattern matching with DeclinedElicitation."""
+        mcp = FastMCP("TestServer")
+
+        @mcp.tool
+        async def pattern_match_tool(context: Context) -> str:
+            result = await context.elicit("Enter your name:", response_type=str)
+
+            match result:
+                case AcceptedElicitation(data=name):
+                    return f"Hello {name}!"
+                case DeclinedElicitation():
+                    return "You declined"
+                case CancelledElicitation():
+                    return "Cancelled"
+                case _:
+                    return "Unknown result"
+
+        async def elicitation_handler(message, response_type, params, ctx):
+            return ElicitResult(action="decline")
+
+        async with Client(
+            mcp, mode="legacy", elicitation_handler=elicitation_handler
+        ) as client:
+            result = await client.call_tool("pattern_match_tool", {})
+            assert result.data == "You declined"
+
+    async def test_pattern_matching_cancel(self):
+        """Test pattern matching with CancelledElicitation."""
+        mcp = FastMCP("TestServer")
+
+        @mcp.tool
+        async def pattern_match_tool(context: Context) -> str:
+            result = await context.elicit("Enter your name:", response_type=str)
+
+            match result:
+                case AcceptedElicitation(data=name):
+                    return f"Hello {name}!"
+                case DeclinedElicitation():
+                    return "You declined"
+                case CancelledElicitation():
+                    return "Cancelled"
+                case _:
+                    return "Unknown result"
+
+        async def elicitation_handler(message, response_type, params, ctx):
+            return ElicitResult(action="cancel")
+
+        async with Client(
+            mcp, mode="legacy", elicitation_handler=elicitation_handler
+        ) as client:
+            result = await client.call_tool("pattern_match_tool", {})
+            assert result.data == "Cancelled"

@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "Instructor",
+    "path": "docs/img/youtube.gif",
+    "chunks_dir": "Instructor/docs/img/youtube.gif.chunks",
+    "bytes": 9611341,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Instructor",
+    "path": "docs/blog/posts/img/Structured_Output_Extraction.gif",
+    "chunks_dir": "Instructor/docs/blog/posts/img/Structured_Output_Extraction.gif.chunks",
+    "bytes": 12614268,
+    "chunk_bytes": 8388608
+  }
+]

@@ -1,0 +1,100 @@
+[project]
+name = "agent-framework-ag-ui"
+version = "1.2.1"
+description = "AG-UI protocol integration for Agent Framework"
+readme = "README.md"
+license-files = ["LICENSE"]
+authors = [{ name = "Microsoft", email = "af-support@microsoft.com"}]
+requires-python = ">=3.10"
+urls.homepage = "https://aka.ms/agent-framework"
+urls.source = "https://github.com/microsoft/agent-framework/tree/main/python"
+urls.release_notes = "https://github.com/microsoft/agent-framework/releases?q=tag%3Apython-1&expanded=true"
+urls.issues = "https://github.com/microsoft/agent-framework/issues"
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
+]
+dependencies = [
+    "agent-framework-core>=1.15.0,<2",
+    "ag-ui-protocol>=0.1.19,<0.2",
+    "fastapi>=0.121.0,<0.140.0",
+    "httpx>=0.28.1,<1",
+    "sse-starlette>=3.4.5,<4",
+    "uvicorn[standard]>=0.30.0,<1"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+]
+# A2UI (agent-generated UI) support. Optional: the agent_framework_ag_ui._a2ui
+# modules import this lazily, so the base package works without it.
+# Floor 0.0.4 is the first release with singular-`child` validation and
+# `child_cycle` detection (ag-ui-protocol/ag-ui#1944).
+a2ui = [
+    "ag-ui-a2ui-toolkit>=0.0.4",
+]
+
+[dependency-groups]
+test = [
+    "agent-framework-orchestrations",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_framework_ag_ui", "agent_framework_ag_ui_examples"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests/ag_ui"]
+pythonpath = [".", "tests/ag_ui"]
+markers = [
+    "integration: marks tests as integration tests that require external services",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+# ag-ui-a2ui-toolkit is a runtime-only dep that does not yet ship a py.typed marker.
+[[tool.mypy.overrides]]
+module = ["ag_ui_a2ui_toolkit", "ag_ui_a2ui_toolkit.*"]
+ignore_missing_imports = true
+follow_untyped_imports = true
+
+[tool.pyright]
+include = ["agent_framework_ag_ui"]
+exclude = ["tests", "tests/ag_ui", "examples"]
+typeCheckingMode = "basic"
+
+[tool.poe]
+executor.type = "uv"
+include = "../../shared_tasks.toml"
+
+[tool.poe.tasks.mypy]
+help = "Run MyPy for this package."
+cmd = "mypy --config-file $POE_ROOT/pyproject.toml agent_framework_ag_ui"
+
+[tool.poe.tasks.test]
+help = "Run the default unit test suite for this package."
+cmd = 'pytest -m "not integration" --cov=agent_framework_ag_ui --cov-report=term-missing:skip-covered -n auto --dist worksteal tests/ag_ui'

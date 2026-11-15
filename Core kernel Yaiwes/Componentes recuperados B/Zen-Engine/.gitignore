@@ -1,0 +1,13 @@
+.DS_Store
+.temp
+
+/target
+
+.idea
+.env.docker
+
+node_modules
+index.node
+
+.npmrc
+yarn-error.log

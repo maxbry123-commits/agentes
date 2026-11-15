@@ -1,0 +1,725 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use http::{Uri, Version};
+use restate_serde_util::SerdeableHeaderHashMap;
+use restate_types::identifiers::ServiceRevision;
+use restate_types::identifiers::{DeploymentId, LambdaARN};
+use restate_types::schema::deployment::{EndpointLambdaCompression, ProtocolType};
+use restate_types::schema::info::SchemaInfo;
+use restate_types::schema::service::ServiceMetadata;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use std::collections::HashMap;
+
+/// HTTP authentication details.
+#[cfg_attr(feature = "schema", derive(utoipa::ToSchema))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum HttpAuth {
+    GoogleIdToken(GoogleIdTokenAuth),
+}
+
+#[cfg_attr(feature = "schema", derive(utoipa::ToSchema))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct GoogleIdTokenAuth {
+    /// Service account email to impersonate via `iamcredentials:generateIdToken`. Leave unset to
+    /// use the ambient ADC identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "schema", schema(value_type = Option<String>))]
+    pub impersonate_service_account: Option<bytestring::ByteString>,
+    /// Explicit OIDC `aud` claim. Leave unset to automatically derive from the deployment URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "schema", schema(value_type = Option<String>))]
+    pub audience: Option<bytestring::ByteString>,
+}
+
+/// Failure that the URI-aware wire-to-persisted conversion may surface when the operator left
+/// `audience` unset on the wire and the deployment URI has no derivable origin. The REST handler
+/// translates this into an `InvalidField("auth.audience", ...)` 400 response.
+#[derive(Debug, thiserror::Error)]
+pub enum AudienceDerivationError {
+    #[error(
+        "cannot derive OIDC audience from deployment URI '{uri}': missing scheme or host. \
+         Specify auth.audience explicitly."
+    )]
+    UnderivableFromUri { uri: String },
+}
+
+impl HttpAuth {
+    /// Convert this wire-side auth block into its persisted form, deriving any missing
+    /// audience from the deployment URI. Persisted records always carry a concrete audience;
+    /// callers from outside the REST surface should not construct persisted values directly.
+    pub fn into_persisted(
+        self,
+        uri: &Uri,
+    ) -> Result<restate_types::deployment::HttpAuth, AudienceDerivationError> {
+        match self {
+            HttpAuth::GoogleIdToken(g) => Ok(restate_types::deployment::HttpAuth::GoogleIdToken(
+                g.into_persisted(uri)?,
+            )),
+        }
+    }
+}
+
+impl GoogleIdTokenAuth {
+    pub fn into_persisted(
+        self,
+        uri: &Uri,
+    ) -> Result<restate_types::deployment::GoogleIdTokenAuth, AudienceDerivationError> {
+        let audience = match self.audience {
+            Some(a) => a,
+            None => restate_types::deployment::derive_audience(uri)
+                .map(bytestring::ByteString::from)
+                .ok_or_else(|| AudienceDerivationError::UnderivableFromUri {
+                    uri: uri.to_string(),
+                })?,
+        };
+        Ok(restate_types::deployment::GoogleIdTokenAuth::new(
+            audience,
+            self.impersonate_service_account,
+        ))
+    }
+}
+
+impl From<restate_types::deployment::HttpAuth> for HttpAuth {
+    fn from(value: restate_types::deployment::HttpAuth) -> Self {
+        match value {
+            restate_types::deployment::HttpAuth::GoogleIdToken(g) => {
+                HttpAuth::GoogleIdToken(g.into())
+            }
+        }
+    }
+}
+
+impl From<restate_types::deployment::GoogleIdTokenAuth> for GoogleIdTokenAuth {
+    fn from(value: restate_types::deployment::GoogleIdTokenAuth) -> Self {
+        GoogleIdTokenAuth {
+            impersonate_service_account: value.impersonate_service_account().cloned(),
+            audience: Some(value.audience().clone()),
+        }
+    }
+}
+
+// This enum could be a struct with a nested enum to avoid repeating some fields, but serde(flatten) unfortunately breaks the openapi code generation
+#[serde_as]
+#[cfg_attr(feature = "schema", derive(utoipa::ToSchema))]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RegisterDeploymentRequest {
+    /// Register HTTP deployment request
+    #[cfg_attr(feature = "schema", schema(title = "RegisterHttpDeploymentRequest"))]
+    Http {
+        /// # Uri
+        ///
+        /// Uri to use to discover/invoke the http deployment.
+        #[serde_as(as = "serde_with::DisplayFromStr")]
+        #[cfg_attr(feature = "schema", schema(value_type = String, format = "uri"))]
+        uri: Uri,
+
+        /// # Additional headers
+        ///
+        /// Additional headers added to every discover/invoke request to the deployment.
+        ///
+        /// You typically want to include here API keys and other tokens required to send requests to deployments.
+        additional_headers: Option<SerdeableHeaderHashMap>,
+
+        /// # Metadata
+        ///
+        /// Deployment metadata.
+        #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+        metadata: HashMap<String, String>,
+
+        /// # Use http1.1
+        ///
+        /// If `true`, discovery will be attempted using a client that defaults to HTTP1.1
+        /// instead of a prior-knowledge HTTP2 client. HTTP2 may still be used for TLS servers
+        /// that advertise HTTP2 support via ALPN. HTTP1.1 deployments will only work in
+        /// request-response mode.
+        ///
+        #[serde(default = "restate_serde_util::default::bool::<false>")]
+        use_http_11: bool,
+
+        /// # Breaking
+        ///
+        /// If `true`, it allows registering new service revisions with
+        /// schemas incompatible with previous service revisions, such as changing the service type.
+        ///
+        /// See the [versioning documentation](https://docs.restate.dev/operate/versioning) for more information.
+        #[serde(default = "restate_serde_util::default::bool::<false>")]
+        breaking: bool,
+
+        /// # Force
+        ///
+        /// If `true`, it overrides, if existing, any deployment using the same `uri`.
+        /// Beware that this can lead inflight invocations to an unrecoverable error state.
+        ///
+        /// When set to `true`, it implies `breaking = true`.
+        ///
+        /// See the [versioning documentation](https://docs.restate.dev/operate/versioning) for more information.
+        #[cfg_attr(feature = "schema", schema(default = true))]
+        force: Option<bool>,
+
+        /// # Dry-run mode
+        ///
+        /// If `true`, discovery will run but the deployment will not be registered.
+        /// This is useful to see the impact of a new deployment before registering it.
+        /// `force` and `breaking` will be respected.
+        #[serde(default = "restate_serde_util::default::bool::<false>")]
+        dry_run: bool,
+
+        /// # Authentication
+        ///
+        /// Optional per-deployment authentication configuration. When set to `GoogleIdToken`,
+        /// Restate mints a Google-signed OIDC ID token for each request and attaches it as
+        /// `X-Serverless-Authorization: Bearer <token>`. Cloud Run validates this header in
+        /// precedence over `Authorization` and strips it before forwarding to the container, so any
+        /// `Authorization` placed in `additional_headers` passes through to the workload unchanged.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        auth: Option<HttpAuth>,
+    },
+    /// Register Lambda deployment request
+    #[cfg_attr(feature = "schema", schema(title = "RegisterLambdaDeploymentRequest"))]
+    Lambda {
+        /// # ARN
+        ///
+        /// ARN to use to discover/invoke the lambda deployment.
+        arn: String,
+
+        /// # Assume role ARN
+        ///
+        /// Optional ARN of a role to assume when invoking the addressed Lambda, to support role chaining
+        assume_role_arn: Option<String>,
+
+        /// # Additional headers
+        ///
+        /// Additional headers added to every discover/invoke request to the deployment.
+        additional_headers: Option<SerdeableHeaderHashMap>,
+
+        /// # Metadata
+        ///
+        /// Deployment metadata.
+        #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+        metadata: HashMap<String, String>,
+
+        /// # Breaking
+        ///
+        /// If `true`, it allows registering new service revisions with
+        /// schemas incompatible with previous service revisions, such as changing the service type.
+        ///
+        /// See the [versioning documentation](https://docs.restate.dev/operate/versioning) for more information.
+        #[serde(default = "restate_serde_util::default::bool::<false>")]
+        breaking: bool,
+
+        /// # Force
+        ///
+        /// If `true`, it overrides, if existing, any deployment using the same `uri`.
+        /// Beware that this can lead inflight invocations to an unrecoverable error state.
+        ///
+        /// This implies `breaking = true`.
+        ///
+        /// See the [versioning documentation](https://docs.restate.dev/operate/versioning) for more information.
+        #[cfg_attr(feature = "schema", schema(default = true))]
+        force: Option<bool>,
+
+        /// # Dry-run mode
+        ///
+        /// If `true`, discovery will run but the deployment will not be registered.
+        /// This is useful to see the impact of a new deployment before registering it.
+        /// `force` and `breaking` will be respected.
+        #[serde(default = "restate_serde_util::default::bool::<false>")]
+        dry_run: bool,
+    },
+}
+
+#[cfg_attr(feature = "schema", derive(utoipa::ToSchema))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServiceNameRevPair {
+    pub name: String,
+    pub revision: ServiceRevision,
+}
+
+#[cfg_attr(feature = "schema", derive(utoipa::ToSchema))]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RegisterDeploymentResponse {
+    pub id: DeploymentId,
+    pub services: Vec<ServiceMetadata>,
+
+    /// # Minimum Service Protocol version
+    ///
+    /// During registration, the SDKs declare a range from minimum (included) to maximum (included) Service Protocol supported version.
+    #[serde(default)] // To make sure CLI won't complain when interacting with old runtimes
+    pub min_protocol_version: i32,
+
+    /// # Maximum Service Protocol version
+    ///
+    /// During registration, the SDKs declare a range from minimum (included) to maximum (included) Service Protocol supported version.
+    #[serde(default)] // To make sure CLI won't complain when interacting with old runtimes
+    pub max_protocol_version: i32,
+
+    /// # SDK version
+    ///
+    /// SDK library and version declared during registration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub sdk_version: Option<String>,
+
+    /// # Info
+    ///
+    /// List of configuration/deprecation information related to this deployment.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub info: Vec<SchemaInfo>,
+}
+
+/// List of all registered deployments
+#[cfg_attr(feature = "schema", derive(utoipa::ToSchema))]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListDeploymentsResponse {
+    pub deployments: Vec<DeploymentResponse>,
+}
+
+#[cfg_attr(feature = "schema", derive(utoipa::ToSchema))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DeploymentResponse {
+    /// Deployment response for HTTP deployments
+    #[cfg_attr(feature = "schema", schema(title = "HttpDeploymentResponse"))]
+    Http {
+        /// # Deployment ID
+        id: DeploymentId,
+
+        /// # Deployment URI
+        ///
+        /// URI used to invoke this service deployment.
+        #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
+        #[cfg_attr(feature = "schema", schema(value_type = String, format = "uri"))]
+        uri: Uri,
+
+        /// # Protocol Type
+        ///
+        /// Protocol type used to invoke this service deployment.
+        protocol_type: ProtocolType,
+
+        /// # HTTP Version
+        ///
+        /// HTTP Version used to invoke this service deployment.
+        #[serde(with = "http_serde::version")]
+        #[cfg_attr(feature = "schema", schema(value_type = String))]
+        http_version: Version,
+
+        /// # Additional headers
+        ///
+        /// Additional headers used to invoke this service deployment.
+        #[serde(skip_serializing_if = "SerdeableHeaderHashMap::is_empty")]
+        #[serde(default)]
+        additional_headers: SerdeableHeaderHashMap,
+
+        /// # Metadata
+        ///
+        /// Deployment metadata.
+        #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+        metadata: HashMap<String, String>,
+
+        #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
+        #[cfg_attr(feature = "schema", schema(value_type = String))]
+        created_at: humantime::Timestamp,
+
+        /// # Minimum Service Protocol version
+        ///
+        /// During registration, the SDKs declare a range from minimum (included) to maximum (included) Service Protocol supported version.
+        min_protocol_version: i32,
+
+        /// # Maximum Service Protocol version
+        ///
+        /// During registration, the SDKs declare a range from minimum (included) to maximum (included) Service Protocol supported version.
+        max_protocol_version: i32,
+
+        /// # SDK version
+        ///
+        /// SDK library and version declared during registration.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        sdk_version: Option<String>,
+
+        /// # Services
+        ///
+        /// List of services exposed by this deployment.
+        services: Vec<ServiceNameRevPair>,
+
+        /// # Info
+        ///
+        /// List of configuration/deprecation information related to this deployment.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        info: Vec<SchemaInfo>,
+
+        /// # Authentication
+        ///
+        /// Per-deployment authentication, if configured.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        auth: Option<HttpAuth>,
+    },
+    /// Deployment response for Lambda deployments
+    #[cfg_attr(feature = "schema", schema(title = "LambdaDeploymentResponse"))]
+    Lambda {
+        /// # Deployment ID
+        id: DeploymentId,
+
+        /// # Lambda ARN
+        ///
+        /// Lambda ARN used to invoke this service deployment.
+        arn: LambdaARN,
+
+        /// # Assume role ARN
+        ///
+        /// Assume role ARN used to invoke this deployment. Check https://docs.restate.dev/category/aws-lambda for more details.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assume_role_arn: Option<String>,
+
+        /// # Compression
+        ///
+        /// Compression algorithm used for invoking Lambda.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        compression: Option<EndpointLambdaCompression>,
+
+        /// # Additional headers
+        ///
+        /// Additional headers used to invoke this service deployment.
+        #[serde(default, skip_serializing_if = "SerdeableHeaderHashMap::is_empty")]
+        additional_headers: SerdeableHeaderHashMap,
+
+        /// # Metadata
+        ///
+        /// Deployment metadata.
+        #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+        metadata: HashMap<String, String>,
+
+        #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
+        #[cfg_attr(feature = "schema", schema(value_type = String))]
+        created_at: humantime::Timestamp,
+
+        /// # Minimum Service Protocol version
+        ///
+        /// During registration, the SDKs declare a range from minimum (included) to maximum (included) Service Protocol supported version.
+        min_protocol_version: i32,
+
+        /// # Maximum Service Protocol version
+        ///
+        /// During registration, the SDKs declare a range from minimum (included) to maximum (included) Service Protocol supported version.
+        max_protocol_version: i32,
+
+        /// # SDK version
+        ///
+        /// SDK library and version declared during registration.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sdk_version: Option<String>,
+
+        /// # Services
+        ///
+        /// List of services exposed by this deployment.
+        services: Vec<ServiceNameRevPair>,
+
+        /// # Info
+        ///
+        /// List of configuration/deprecation information related to this deployment.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        info: Vec<SchemaInfo>,
+    },
+}
+
+impl DeploymentResponse {
+    pub fn id(&self) -> DeploymentId {
+        match self {
+            Self::Http { id, .. } => *id,
+            Self::Lambda { id, .. } => *id,
+        }
+    }
+}
+
+/// Detailed information about Restate deployments
+#[cfg_attr(feature = "schema", derive(utoipa::ToSchema))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DetailedDeploymentResponse {
+    /// Detailed deployment response for HTTP deployments
+    #[cfg_attr(feature = "schema", schema(title = "HttpDetailedDeploymentResponse"))]
+    Http {
+        /// # Deployment ID
+        id: DeploymentId,
+
+        /// # Deployment URI
+        ///
+        /// URI used to invoke this service deployment.
+        #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
+        #[cfg_attr(feature = "schema", schema(value_type = String, format = "uri"))]
+        uri: Uri,
+
+        /// # Protocol Type
+        ///
+        /// Protocol type used to invoke this service deployment.
+        protocol_type: ProtocolType,
+
+        /// # HTTP Version
+        ///
+        /// HTTP Version used to invoke this service deployment.
+        #[serde(with = "http_serde::version")]
+        #[cfg_attr(feature = "schema", schema(value_type = String))]
+        http_version: Version,
+
+        /// # Additional headers
+        ///
+        /// Additional headers used to invoke this service deployment.
+        #[serde(default, skip_serializing_if = "SerdeableHeaderHashMap::is_empty")]
+        additional_headers: SerdeableHeaderHashMap,
+
+        /// # Metadata
+        ///
+        /// Deployment metadata.
+        #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+        metadata: HashMap<String, String>,
+
+        #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
+        #[cfg_attr(feature = "schema", schema(value_type = String))]
+        created_at: humantime::Timestamp,
+
+        /// # Minimum Service Protocol version
+        ///
+        /// During registration, the SDKs declare a range from minimum (included) to maximum (included) Service Protocol supported version.
+        min_protocol_version: i32,
+
+        /// # Maximum Service Protocol version
+        ///
+        /// During registration, the SDKs declare a range from minimum (included) to maximum (included) Service Protocol supported version.
+        max_protocol_version: i32,
+
+        /// # SDK version
+        ///
+        /// SDK library and version declared during registration.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sdk_version: Option<String>,
+
+        /// # Services
+        ///
+        /// List of services exposed by this deployment.
+        services: Vec<ServiceMetadata>,
+
+        /// # Info
+        ///
+        /// List of configuration/deprecation information related to this deployment.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        info: Vec<SchemaInfo>,
+
+        /// # Authentication
+        ///
+        /// Per-deployment authentication, if configured.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        auth: Option<HttpAuth>,
+    },
+    /// Detailed deployment response for Lambda deployments
+    #[cfg_attr(feature = "schema", schema(title = "LambdaDetailedDeploymentResponse"))]
+    Lambda {
+        /// # Deployment ID
+        id: DeploymentId,
+
+        /// # Lambda ARN
+        ///
+        /// Lambda ARN used to invoke this service deployment.
+        arn: LambdaARN,
+
+        /// # Assume role ARN
+        ///
+        /// Assume role ARN used to invoke this deployment. Check https://docs.restate.dev/category/aws-lambda for more details.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assume_role_arn: Option<String>,
+
+        /// # Compression
+        ///
+        /// Compression algorithm used for invoking Lambda.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        compression: Option<EndpointLambdaCompression>,
+
+        /// # Additional headers
+        ///
+        /// Additional headers used to invoke this service deployment.
+        #[serde(default, skip_serializing_if = "SerdeableHeaderHashMap::is_empty")]
+        additional_headers: SerdeableHeaderHashMap,
+
+        /// # Metadata
+        ///
+        /// Deployment metadata.
+        #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+        metadata: HashMap<String, String>,
+
+        #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
+        #[cfg_attr(feature = "schema", schema(value_type = String))]
+        created_at: humantime::Timestamp,
+
+        /// # Minimum Service Protocol version
+        ///
+        /// During registration, the SDKs declare a range from minimum (included) to maximum (included) Service Protocol supported version.
+        min_protocol_version: i32,
+
+        /// # Maximum Service Protocol version
+        ///
+        /// During registration, the SDKs declare a range from minimum (included) to maximum (included) Service Protocol supported version.
+        max_protocol_version: i32,
+
+        /// # SDK version
+        ///
+        /// SDK library and version declared during registration.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        sdk_version: Option<String>,
+
+        /// # Services
+        ///
+        /// List of services exposed by this deployment.
+        services: Vec<ServiceMetadata>,
+
+        /// # Info
+        ///
+        /// List of configuration/deprecation information related to this deployment.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        info: Vec<SchemaInfo>,
+    },
+}
+
+impl DetailedDeploymentResponse {
+    pub fn id(&self) -> DeploymentId {
+        match self {
+            Self::Http { id, .. } => *id,
+            Self::Lambda { id, .. } => *id,
+        }
+    }
+}
+
+#[cfg_attr(feature = "schema", derive(utoipa::ToSchema))]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum UpdateDeploymentRequest {
+    /// Update HTTP deployment request
+    #[cfg_attr(feature = "schema", schema(title = "UpdateHttpDeploymentRequest"))]
+    Http {
+        /// # Uri
+        ///
+        /// Uri to use to discover/invoke the http deployment.
+        #[serde(
+            with = "serde_with::As::<Option<serde_with::DisplayFromStr>>",
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[cfg_attr(feature = "schema", schema(value_type = Option<String>, format = "uri"))]
+        uri: Option<Uri>,
+
+        /// # Additional headers
+        ///
+        /// Additional headers added to the discover/invoke requests to the deployment.
+        /// When provided, this will overwrite all the headers previously configured for this deployment.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        additional_headers: Option<SerdeableHeaderHashMap>,
+
+        /// # Use http1.1
+        ///
+        /// If `true`, discovery will be attempted using a client that defaults to HTTP1.1
+        /// instead of a prior-knowledge HTTP2 client. HTTP2 may still be used for TLS servers
+        /// that advertise HTTP2 support via ALPN. HTTP1.1 deployments will only work in
+        /// request-response mode.
+        use_http_11: Option<bool>,
+
+        /// # Overwrite
+        ///
+        /// If `true`, the update will overwrite the schema information, including the exposed service and handlers and service configuration, allowing **breaking changes** too. Use with caution.
+        #[serde(default = "restate_serde_util::default::bool::<false>")]
+        overwrite: bool,
+
+        /// # Dry-run mode
+        ///
+        /// If `true`, discovery will run but the deployment will not be registered.
+        /// This is useful to see the impact of a new deployment before registering it.
+        #[serde(default = "restate_serde_util::default::bool::<false>")]
+        dry_run: bool,
+    },
+    /// Update Lambda deployment request
+    #[cfg_attr(feature = "schema", schema(title = "UpdateLambdaDeploymentRequest"))]
+    Lambda {
+        /// # ARN
+        ///
+        /// ARN to use to discover/invoke the lambda deployment.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        arn: Option<String>,
+
+        /// # Assume role ARN
+        ///
+        /// Optional ARN of a role to assume when invoking the addressed Lambda, to support role chaining.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assume_role_arn: Option<String>,
+
+        /// # Additional headers
+        ///
+        /// Additional headers added to the discover/invoke requests to the deployment.
+        /// When provided, this will overwrite all the headers previously configured for this deployment.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        additional_headers: Option<SerdeableHeaderHashMap>,
+
+        /// # Overwrite
+        ///
+        /// If `true`, the update will overwrite the schema information, including the exposed service and handlers and service configuration, allowing **breaking changes** too. Use with caution.
+        #[serde(default = "restate_serde_util::default::bool::<false>")]
+        overwrite: bool,
+
+        /// # Dry-run mode
+        ///
+        /// If `true`, discovery will run but the deployment will not be registered.
+        /// This is useful to see the impact of a new deployment before registering it.
+        #[serde(default = "restate_serde_util::default::bool::<false>")]
+        dry_run: bool,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytestring::ByteString;
+
+    fn wire_auth(audience: Option<ByteString>) -> GoogleIdTokenAuth {
+        GoogleIdTokenAuth {
+            impersonate_service_account: None,
+            audience,
+        }
+    }
+
+    #[test]
+    fn into_persisted_derives_audience_from_uri_when_unset() {
+        let uri: Uri = "https://svc.example.com/discover".parse().unwrap();
+        let persisted = wire_auth(None).into_persisted(&uri).expect("derivable");
+        assert_eq!(persisted.audience(), "https://svc.example.com");
+    }
+
+    #[test]
+    fn into_persisted_preserves_explicit_audience() {
+        let explicit = ByteString::from_static("https://canonical.example.com");
+        let uri: Uri = "https://different.example.com/svc".parse().unwrap();
+        let persisted = wire_auth(Some(explicit.clone()))
+            .into_persisted(&uri)
+            .expect("explicit accepted");
+        assert_eq!(persisted.audience(), &explicit);
+    }
+
+    #[test]
+    fn into_persisted_fails_when_audience_unset_and_uri_has_no_host() {
+        // Path-only URI has no scheme or authority; derivation cannot succeed.
+        let uri: Uri = "/discover".parse().unwrap();
+        let err = wire_auth(None)
+            .into_persisted(&uri)
+            .expect_err("must surface error");
+        match err {
+            AudienceDerivationError::UnderivableFromUri { uri: got } => {
+                assert_eq!(got, "/discover");
+            }
+        }
+    }
+}

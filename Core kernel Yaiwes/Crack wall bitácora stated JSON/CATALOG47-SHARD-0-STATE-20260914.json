@@ -1,0 +1,309 @@
+{
+  "created_at": 1789368762,
+  "items": {
+    "C47-001": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 8006526,
+        "bundle_sha256": "627766e6684ccb16ffae7c6ca46910be0c7e681c9930c8a23ca7405a594e39f8",
+        "elapsed_seconds": 27.16,
+        "extracted_tree": {
+          "bytes": 8756596,
+          "files": 5,
+          "sha256": "e3433ef30a01febba7d7895fb1245bd2297431a16fb49fffa1783f292762353e"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 8006526,
+            "name": "Kimi-K2.5.bundle.zip.part-0001",
+            "sha256": "627766e6684ccb16ffae7c6ca46910be0c7e681c9930c8a23ca7405a594e39f8"
+          }
+        ],
+        "publish": {
+          "commit": "4bd4a7f3f9f8dd851d9c1ef0c39c701589decaaa",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "Kimi-K2.5",
+        "source_bytes": 8756596,
+        "source_commit": "c119f68d1a9a13f88f6a59b8e5e0840983b22689",
+        "source_files": 5,
+        "source_ref": "HEAD",
+        "source_repo": "MoonshotAI/Kimi-K2.5",
+        "source_tree": {
+          "bytes": 8756596,
+          "files": 5,
+          "sha256": "e3433ef30a01febba7d7895fb1245bd2297431a16fb49fffa1783f292762353e"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "Kimi-K2.5",
+      "source_repo": "MoonshotAI/Kimi-K2.5",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-006": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/Continual-Harness\n",
+      "slug": "Continual-Harness",
+      "source_repo": "sethkarten/continual-harness",
+      "status": "FAILED"
+    },
+    "C47-011": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 138, in publish\n    run(['git','push','origin',f'HEAD:{DEST_BRANCH}'],dst,env=env); commit=run(['git','rev-parse','HEAD'],dst)\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 16, in run\n    if check and p.returncode: raise RuntimeError(f'COMMAND_FAILED:{argv[0]}:{p.returncode}:{p.stdout[-3000:]}')\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: COMMAND_FAILED:git:1:remote: warning: See https://gh.io/lfs for more information.        \nremote: warning: File Core kernel Yaiwes/ZERA/code/agent/dataset/meetingbank_data/train.csv is 84.08 MB; this is larger than GitHub's recommended maximum file size of 50.00 MB        \nremote: warning: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.        \nTo https://github.com/maxbry123-commits/agentes.git\n ! [remote rejected]     HEAD -> main (cannot lock ref 'refs/heads/main': is at 2cfe235f053f164eea8bbdb7dbcd79fee9526369 but expected 22344761fff9878be5406abe0a40f5ff2c023416)\nerror: failed to push some refs to 'https://github.com/maxbry123-commits/agentes.git'\n\n",
+      "slug": "ZERA",
+      "source_repo": "younatics/zera-agent",
+      "status": "FAILED"
+    },
+    "C47-016": {
+      "attempts": 2,
+      "result": {
+        "bundle_bytes": 6721479,
+        "bundle_sha256": "0de0d76de96f2b035c9ea003213fe867b7544f0826ab42e258b529cfafe2a5bc",
+        "elapsed_seconds": 40.16,
+        "extracted_tree": {
+          "bytes": 15037206,
+          "files": 538,
+          "sha256": "d4c4a60c39bb96edabc53423c7221b3ed57184a99ce49079280c2db66c64f544"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 6721479,
+            "name": "OpenFang.bundle.zip.part-0001",
+            "sha256": "0de0d76de96f2b035c9ea003213fe867b7544f0826ab42e258b529cfafe2a5bc"
+          }
+        ],
+        "publish": {
+          "commit": "4e9e7d758463e282a6eaa5f26b5a8a6c6d23b464",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "OpenFang",
+        "source_bytes": 15037206,
+        "source_commit": "acf2587e46be174c10200489c9a2d23a39a98aeb",
+        "source_files": 538,
+        "source_ref": "HEAD",
+        "source_repo": "RightNow-AI/openfang",
+        "source_tree": {
+          "bytes": 15037206,
+          "files": 538,
+          "sha256": "d4c4a60c39bb96edabc53423c7221b3ed57184a99ce49079280c2db66c64f544"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "OpenFang",
+      "source_repo": "RightNow-AI/openfang",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-021": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 1249138,
+        "bundle_sha256": "23118a7526fbe58d37839cc57a7480aee1eb354d3741a55c2b091f7f1ee9988b",
+        "elapsed_seconds": 25.96,
+        "extracted_tree": {
+          "bytes": 2299937,
+          "files": 39,
+          "sha256": "09246fccab55f87854f52ae0e9f85c20e4cb6a0b114b7676b52985ee17442da7"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 1249138,
+            "name": "CognitiveKernel-Pro.bundle.zip.part-0001",
+            "sha256": "23118a7526fbe58d37839cc57a7480aee1eb354d3741a55c2b091f7f1ee9988b"
+          }
+        ],
+        "publish": {
+          "commit": "1beb8a2760d8600f3930fbf5a08dd639d95cdef4",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "CognitiveKernel-Pro",
+        "source_bytes": 2299937,
+        "source_commit": "827eea52c3894e6d3edbc4ff82c2bba23b7259d9",
+        "source_files": 39,
+        "source_ref": "HEAD",
+        "source_repo": "Tencent/CognitiveKernel-Pro",
+        "source_tree": {
+          "bytes": 2299937,
+          "files": 39,
+          "sha256": "09246fccab55f87854f52ae0e9f85c20e4cb6a0b114b7676b52985ee17442da7"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "CognitiveKernel-Pro",
+      "source_repo": "Tencent/CognitiveKernel-Pro",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-026": {
+      "attempts": 2,
+      "result": {
+        "bundle_bytes": 18968220,
+        "bundle_sha256": "9eaebe98660bb79f49a00903898e2042ac9e3c62e892454ad3564c05554ac44e",
+        "elapsed_seconds": 43.42,
+        "extracted_tree": {
+          "bytes": 23799346,
+          "files": 721,
+          "sha256": "3bd3248d3b4efc6fdb7a7d2411678225658fdae887dc881763ca8bda0b742e54"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 12582912,
+            "name": "ReMe.bundle.zip.part-0001",
+            "sha256": "2977f9c01f398900e00d993fbd65d558cc67e54e0c521422455c1eb898c4a606"
+          },
+          {
+            "bytes": 6385308,
+            "name": "ReMe.bundle.zip.part-0002",
+            "sha256": "5cebee53be8cca9a086da21b318dc54b9b389536f57483c7271ce2267cc706a9"
+          }
+        ],
+        "publish": {
+          "commit": "f0726b3eb9a8cc6fed71e083d58c4ed6a4262701",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "ReMe",
+        "source_bytes": 23799346,
+        "source_commit": "4f7c8786e3975b6ff1b20685ed56c3ccbaa4ed9f",
+        "source_files": 721,
+        "source_ref": "HEAD",
+        "source_repo": "agentscope-ai/ReMe",
+        "source_tree": {
+          "bytes": 23799346,
+          "files": 721,
+          "sha256": "3bd3248d3b4efc6fdb7a7d2411678225658fdae887dc881763ca8bda0b742e54"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "ReMe",
+      "source_repo": "agentscope-ai/ReMe",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-031": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/TencentDB-Agent-Memory\n",
+      "slug": "TencentDB-Agent-Memory",
+      "source_repo": "TencentCloud/TencentDB-Agent-Memory",
+      "status": "FAILED"
+    },
+    "C47-036": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 57, in scan_tree\n    if special: raise RuntimeError('SOURCE_SPECIAL_FILE_GAP:'+','.join(special[:30]))\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_SPECIAL_FILE_GAP:CybersecurityBenchmarks/datasets/crwd_meta/malware_analysis/hybrid-analysis,CybersecurityBenchmarks/datasets/crwd_meta/threat_intel_reasoning/crowdstrike-reports\n",
+      "slug": "LlamaFirewall",
+      "source_repo": "meta-llama/PurpleLlama",
+      "status": "FAILED"
+    },
+    "C47-041": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 118978,
+        "bundle_sha256": "d3dddd94cfa15ae8f6d38d5189dd895c66d923e62f209af6a34b6996bd820cee",
+        "elapsed_seconds": 34.42,
+        "extracted_tree": {
+          "bytes": 589911,
+          "files": 35,
+          "sha256": "69ee0b0a72694db410512e6bf1eb2114d781e8d20f5a080b3005bb1c1870135d"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 118978,
+            "name": "ERC-8004-Contracts.bundle.zip.part-0001",
+            "sha256": "d3dddd94cfa15ae8f6d38d5189dd895c66d923e62f209af6a34b6996bd820cee"
+          }
+        ],
+        "publish": {
+          "commit": "f5c5880b197b1456bf69f49f9ab765574e812169",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "ERC-8004-Contracts",
+        "source_bytes": 589911,
+        "source_commit": "b9e466c250744a7e06b13dff9d3c2844ed64f825",
+        "source_files": 35,
+        "source_ref": "HEAD",
+        "source_repo": "erc-8004/erc-8004-contracts",
+        "source_tree": {
+          "bytes": 589911,
+          "files": 35,
+          "sha256": "69ee0b0a72694db410512e6bf1eb2114d781e8d20f5a080b3005bb1c1870135d"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "ERC-8004-Contracts",
+      "source_repo": "erc-8004/erc-8004-contracts",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-046": {
+      "attempts": 2,
+      "result": {
+        "bundle_bytes": 134584,
+        "bundle_sha256": "49e5887001aba35c15b77b4d7dd201e6e418c2dd19949861044e4a90495f9eb4",
+        "elapsed_seconds": 24.55,
+        "extracted_tree": {
+          "bytes": 457886,
+          "files": 47,
+          "sha256": "4713f995be643f6b66dcfca10e687b40c20abe0d3312e914c2607f5893e72938"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 134584,
+            "name": "HiRAS.bundle.zip.part-0001",
+            "sha256": "49e5887001aba35c15b77b4d7dd201e6e418c2dd19949861044e4a90495f9eb4"
+          }
+        ],
+        "publish": {
+          "commit": "2e2bec06bbf47980ad2165019b079db18ea5af29",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "HiRAS",
+        "source_bytes": 457886,
+        "source_commit": "38210c4cc7363564cac88eeb6b62e1c0b1347b1b",
+        "source_files": 47,
+        "source_ref": "HEAD",
+        "source_repo": "KOU-199024/HiRAS",
+        "source_tree": {
+          "bytes": 457886,
+          "files": 47,
+          "sha256": "4713f995be643f6b66dcfca10e687b40c20abe0d3312e914c2607f5893e72938"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "HiRAS",
+      "source_repo": "KOU-199024/HiRAS",
+      "status": "VERIFIED_CLOSED"
+    }
+  },
+  "schema": "yaiwes.frontend.download-extract-queue.v1"
+}

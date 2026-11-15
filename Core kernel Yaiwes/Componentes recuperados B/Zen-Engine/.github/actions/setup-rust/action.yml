@@ -1,0 +1,112 @@
+name: 'Setup Rust caching'
+description: 'Swatinem/rust-cache + sccache (s3 backend via oidc, gha fallback).'
+
+inputs:
+  shared-key:
+    description: 'Swatinem/rust-cache shared-key.'
+    required: false
+    default: ''
+  key:
+    description: 'Swatinem/rust-cache key.'
+    required: false
+    default: ''
+  workspaces:
+    description: 'Swatinem/rust-cache workspaces.'
+    required: false
+    default: '. -> target'
+  sccache:
+    description: 'Enable sccache as RUSTC_WRAPPER.'
+    required: false
+    default: 'true'
+  sccache-bucket:
+    description: 'S3 bucket for the sccache backend.'
+    required: false
+    default: ''
+  sccache-region:
+    description: 'AWS region for the sccache S3 bucket.'
+    required: false
+    default: ''
+  sccache-role-arn:
+    description: 'IAM role ARN to assume via OIDC for sccache S3 access.'
+    required: false
+    default: ''
+  zig:
+    description: 'Install ziglang + cargo-zigbuild.'
+    required: false
+    default: 'false'
+  zig-version:
+    description: 'Zig version for mlugg/setup-zig.'
+    required: false
+    default: '0.16.0'
+  glibc-version:
+    description: 'Target glibc for cargo-zigbuild, exported as GLIBC_VERSION.'
+    required: false
+    default: '2.17'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Exclude workspace from Windows Defender
+      if: ${{ runner.os == 'Windows' }}
+      shell: pwsh
+      run: Add-MpPreference -ExclusionPath "${{ github.workspace }}"
+
+    - name: Fast profile on PRs (no LTO)
+      if: ${{ github.event_name == 'pull_request' }}
+      shell: bash
+      run: |
+        echo "CARGO_PROFILE_RELEASE_LTO=false" >> "$GITHUB_ENV"
+        echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16" >> "$GITHUB_ENV"
+
+    - name: Install sccache
+      if: ${{ inputs.sccache == 'true' && github.ref_type != 'tag' }}
+      uses: mozilla-actions/sccache-action@v0.0.10
+
+    - name: Configure aws credentials for sccache
+      if: ${{ inputs.sccache == 'true' && github.ref_type != 'tag' && inputs.sccache-bucket != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+      uses: aws-actions/configure-aws-credentials@v6
+      with:
+        role-to-assume: ${{ inputs.sccache-role-arn }}
+        aws-region: ${{ inputs.sccache-region }}
+
+    - name: Enable sccache (s3)
+      if: ${{ inputs.sccache == 'true' && github.ref_type != 'tag' && inputs.sccache-bucket != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+      shell: bash
+      run: |
+        echo "SCCACHE_BUCKET=${{ inputs.sccache-bucket }}" >> "$GITHUB_ENV"
+        echo "SCCACHE_REGION=${{ inputs.sccache-region }}" >> "$GITHUB_ENV"
+        echo "SCCACHE_S3_KEY_PREFIX=zen" >> "$GITHUB_ENV"
+        echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+
+    - name: Enable sccache (gha fallback)
+      if: ${{ inputs.sccache == 'true' && github.ref_type != 'tag' && (inputs.sccache-bucket == '' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) }}
+      shell: bash
+      run: |
+        echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+        echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+
+    - name: Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: ${{ inputs.shared-key }}
+        key: ${{ inputs.key }}
+        workspaces: ${{ inputs.workspaces }}
+
+    - name: Install zig
+      if: ${{ inputs.zig == 'true' }}
+      uses: mlugg/setup-zig@v2
+      with:
+        version: ${{ inputs.zig-version }}
+
+    - name: Install cargo-zigbuild
+      if: ${{ inputs.zig == 'true' }}
+      uses: taiki-e/install-action@v2
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      with:
+        tool: cargo-zigbuild
+
+    - name: Export target glibc version
+      if: ${{ inputs.zig == 'true' }}
+      shell: bash
+      run: echo "GLIBC_VERSION=${{ inputs.glibc-version }}" >> "$GITHUB_ENV"

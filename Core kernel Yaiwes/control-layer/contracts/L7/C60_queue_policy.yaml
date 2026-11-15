@@ -1,0 +1,17 @@
+# C60 — L7. B6 SALIDA4
+id: C60
+layer: L7
+name: queue_policy
+implementado: true
+critical: false
+description: "Política de colas"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C60 aplica en capa L7"
+checks:
+  - queue_policy_check
+evidence:
+  type: queue_policy_marker
+  required: false

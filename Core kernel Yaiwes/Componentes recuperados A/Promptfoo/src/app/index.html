@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>promptfoo</title>
+    <meta name="description" content="LLM testing and evaluation" />
+    <meta property="og:image" content="https://www.promptfoo.dev/img/thumbnail.png" />
+    <script>
+      (() => {
+        let savedMode = null;
+        let systemPrefersDark = false;
+
+        try {
+          systemPrefersDark =
+            typeof window.matchMedia === 'function' &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches;
+        } catch {}
+
+        try {
+          savedMode = localStorage.getItem('darkMode');
+        } catch {}
+
+        const resolvedTheme =
+          savedMode === 'true' || (savedMode !== 'false' && systemPrefersDark) ? 'dark' : 'light';
+
+        document.documentElement.style.colorScheme = resolvedTheme;
+
+        if (resolvedTheme === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+id: C_WF_INPUT
+name: InputBlock Contract
+version: "1.0"
+layer: wordflow
+required_fields:
+  - schema_version
+  - block_id
+  - source_type
+  - raw_text
+  - quality_bar
+  - goals_hint
+quality_bars: [never_MVP, standard, draft]
+llm_control: DENY

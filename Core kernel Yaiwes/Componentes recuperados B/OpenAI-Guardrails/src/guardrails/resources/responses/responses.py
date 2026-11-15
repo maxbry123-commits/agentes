@@ -1,0 +1,352 @@
+"""Responses API with guardrails."""
+
+import asyncio
+from collections.abc import AsyncIterator
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
+from functools import partial
+from typing import Any
+
+from pydantic import BaseModel
+
+from ..._base_client import GuardrailsBaseClient
+from ...utils.safety_identifier import SAFETY_IDENTIFIER, supports_safety_identifier
+
+
+class Responses:
+    """Responses API with guardrails (sync)."""
+
+    def __init__(self, client: GuardrailsBaseClient) -> None:
+        """Initialize Responses resource.
+
+        Args:
+            client: GuardrailsBaseClient instance with configured guardrails.
+        """
+        self._client = client
+
+    def create(
+        self,
+        input: str | list[dict[str, str]],
+        model: str,
+        stream: bool = False,
+        tools: list[dict] | None = None,
+        suppress_tripwire: bool = False,
+        **kwargs,
+    ):
+        """Create response with guardrails (synchronous).
+
+        Runs preflight first, then executes input guardrails concurrently with the LLM call.
+        """
+        previous_response_id = kwargs.get("previous_response_id")
+        prior_history = self._client._load_conversation_history_from_previous_response(previous_response_id)
+
+        current_turn = self._client._normalize_conversation(input)
+        if prior_history:
+            normalized_conversation = [entry.copy() for entry in prior_history]
+            normalized_conversation.extend(current_turn)
+        else:
+            normalized_conversation = current_turn
+
+        # Determine latest user message text when a list of messages is provided
+        if isinstance(input, list):
+            latest_message, _ = self._client._extract_latest_user_message(input)
+        else:
+            latest_message = input
+
+        # Preflight first (run checks on the latest user message text, with full conversation)
+        preflight_results = self._client._run_stage_guardrails(
+            "pre_flight",
+            latest_message,
+            conversation_history=normalized_conversation,
+            suppress_tripwire=suppress_tripwire,
+        )
+
+        # Apply pre-flight modifications (PII masking, etc.)
+        modified_input = self._client._apply_preflight_modifications(input, preflight_results)
+
+        # Input guardrails and LLM call concurrently
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            # Only include safety_identifier for OpenAI clients (not Azure or local models)
+            llm_kwargs = {
+                "input": modified_input,
+                "model": model,
+                "stream": stream,
+                "tools": tools,
+                **kwargs,
+            }
+            if supports_safety_identifier(self._client._resource_client):
+                llm_kwargs["safety_identifier"] = SAFETY_IDENTIFIER
+
+            llm_call_fn = partial(self._client._resource_client.responses.create, **llm_kwargs)
+            ctx = copy_context()
+            llm_future = executor.submit(ctx.run, llm_call_fn)
+
+            input_results = self._client._run_stage_guardrails(
+                "input",
+                latest_message,
+                conversation_history=normalized_conversation,
+                suppress_tripwire=suppress_tripwire,
+            )
+            llm_response = llm_future.result()
+
+        # Handle streaming vs non-streaming
+        if stream:
+            return self._client._stream_with_guardrails_sync(
+                llm_response,
+                preflight_results,
+                input_results,
+                conversation_history=normalized_conversation,
+                suppress_tripwire=suppress_tripwire,
+            )
+        else:
+            return self._client._handle_llm_response(
+                llm_response,
+                preflight_results,
+                input_results,
+                conversation_history=normalized_conversation,
+                suppress_tripwire=suppress_tripwire,
+            )
+
+    def parse(self, input: list[dict[str, str]], model: str, text_format: type[BaseModel], suppress_tripwire: bool = False, **kwargs):
+        """Parse response with structured output and guardrails (synchronous)."""
+        previous_response_id = kwargs.get("previous_response_id")
+        prior_history = self._client._load_conversation_history_from_previous_response(previous_response_id)
+
+        current_turn = self._client._normalize_conversation(input)
+        if prior_history:
+            normalized_conversation = [entry.copy() for entry in prior_history]
+            normalized_conversation.extend(current_turn)
+        else:
+            normalized_conversation = current_turn
+        latest_message, _ = self._client._extract_latest_user_message(input)
+
+        # Preflight first
+        preflight_results = self._client._run_stage_guardrails(
+            "pre_flight",
+            latest_message,
+            conversation_history=normalized_conversation,
+            suppress_tripwire=suppress_tripwire,
+        )
+
+        # Apply pre-flight modifications (PII masking, etc.)
+        modified_input = self._client._apply_preflight_modifications(input, preflight_results)
+
+        # Input guardrails and LLM call concurrently
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            # Only include safety_identifier for OpenAI clients (not Azure or local models)
+            llm_kwargs = {
+                "input": modified_input,
+                "model": model,
+                "text_format": text_format,
+                **kwargs,
+            }
+            if supports_safety_identifier(self._client._resource_client):
+                llm_kwargs["safety_identifier"] = SAFETY_IDENTIFIER
+
+            llm_call_fn = partial(self._client._resource_client.responses.parse, **llm_kwargs)
+            ctx = copy_context()
+            llm_future = executor.submit(ctx.run, llm_call_fn)
+
+            input_results = self._client._run_stage_guardrails(
+                "input",
+                latest_message,
+                conversation_history=normalized_conversation,
+                suppress_tripwire=suppress_tripwire,
+            )
+            llm_response = llm_future.result()
+
+        return self._client._handle_llm_response(
+            llm_response,
+            preflight_results,
+            input_results,
+            conversation_history=normalized_conversation,
+            suppress_tripwire=suppress_tripwire,
+        )
+
+    def retrieve(self, response_id: str, suppress_tripwire: bool = False, **kwargs):
+        """Retrieve response with output guardrail validation (synchronous)."""
+        # Get the response using the original OpenAI client
+        response = self._client._resource_client.responses.retrieve(response_id, **kwargs)
+
+        # Run output guardrails on the retrieved content
+        output_text = response.output_text if hasattr(response, "output_text") else ""
+        output_results = self._client._run_stage_guardrails("output", output_text, suppress_tripwire=suppress_tripwire)
+
+        # Return wrapped response with guardrail results
+        return self._client._create_guardrails_response(
+            response,
+            [],
+            [],
+            output_results,  # preflight  # input
+        )
+
+
+class AsyncResponses:
+    """Responses API with guardrails (async)."""
+
+    def __init__(self, client):
+        """Initialize AsyncResponses resource.
+
+        Args:
+            client: GuardrailsBaseClient instance with configured guardrails.
+        """
+        self._client = client
+
+    async def create(
+        self,
+        input: str | list[dict[str, str]],
+        model: str,
+        stream: bool = False,
+        tools: list[dict] | None = None,
+        suppress_tripwire: bool = False,
+        **kwargs,
+    ) -> Any | AsyncIterator[Any]:
+        """Create response with guardrails."""
+        previous_response_id = kwargs.get("previous_response_id")
+        prior_history = await self._client._load_conversation_history_from_previous_response(previous_response_id)
+
+        current_turn = self._client._normalize_conversation(input)
+        if prior_history:
+            normalized_conversation = [entry.copy() for entry in prior_history]
+            normalized_conversation.extend(current_turn)
+        else:
+            normalized_conversation = current_turn
+        # Determine latest user message text when a list of messages is provided
+        if isinstance(input, list):
+            latest_message, _ = self._client._extract_latest_user_message(input)
+        else:
+            latest_message = input
+
+        # Run pre-flight guardrails (on latest user message text, with full conversation)
+        preflight_results = await self._client._run_stage_guardrails(
+            "pre_flight",
+            latest_message,
+            conversation_history=normalized_conversation,
+            suppress_tripwire=suppress_tripwire,
+        )
+
+        # Apply pre-flight modifications (PII masking, etc.)
+        modified_input = self._client._apply_preflight_modifications(input, preflight_results)
+
+        # Run input guardrails and LLM call in parallel
+        input_check = self._client._run_stage_guardrails(
+            "input",
+            latest_message,
+            conversation_history=normalized_conversation,
+            suppress_tripwire=suppress_tripwire,
+        )
+
+        # Only include safety_identifier for OpenAI clients (not Azure or local models)
+        llm_kwargs = {
+            "input": modified_input,
+            "model": model,
+            "stream": stream,
+            "tools": tools,
+            **kwargs,
+        }
+        if supports_safety_identifier(self._client._resource_client):
+            llm_kwargs["safety_identifier"] = SAFETY_IDENTIFIER
+
+        llm_call = self._client._resource_client.responses.create(**llm_kwargs)
+
+        input_results, llm_response = await asyncio.gather(input_check, llm_call)
+
+        if stream:
+            return self._client._stream_with_guardrails(
+                llm_response,
+                preflight_results,
+                input_results,
+                conversation_history=normalized_conversation,
+                suppress_tripwire=suppress_tripwire,
+            )
+        else:
+            return await self._client._handle_llm_response(
+                llm_response,
+                preflight_results,
+                input_results,
+                conversation_history=normalized_conversation,
+                suppress_tripwire=suppress_tripwire,
+            )
+
+    async def parse(
+        self, input: list[dict[str, str]], model: str, text_format: type[BaseModel], stream: bool = False, suppress_tripwire: bool = False, **kwargs
+    ) -> Any | AsyncIterator[Any]:
+        """Parse response with structured output and guardrails."""
+        previous_response_id = kwargs.get("previous_response_id")
+        prior_history = await self._client._load_conversation_history_from_previous_response(previous_response_id)
+
+        current_turn = self._client._normalize_conversation(input)
+        if prior_history:
+            normalized_conversation = [entry.copy() for entry in prior_history]
+            normalized_conversation.extend(current_turn)
+        else:
+            normalized_conversation = current_turn
+        latest_message, _ = self._client._extract_latest_user_message(input)
+
+        # Run pre-flight guardrails
+        preflight_results = await self._client._run_stage_guardrails(
+            "pre_flight",
+            latest_message,
+            conversation_history=normalized_conversation,
+            suppress_tripwire=suppress_tripwire,
+        )
+
+        # Apply pre-flight modifications (PII masking, etc.)
+        modified_input = self._client._apply_preflight_modifications(input, preflight_results)
+
+        # Run input guardrails and LLM call in parallel
+        input_check = self._client._run_stage_guardrails(
+            "input",
+            latest_message,
+            conversation_history=normalized_conversation,
+            suppress_tripwire=suppress_tripwire,
+        )
+
+        # Only include safety_identifier for OpenAI clients (not Azure or local models)
+        llm_kwargs = {
+            "input": modified_input,
+            "model": model,
+            "text_format": text_format,
+            "stream": stream,
+            **kwargs,
+        }
+        if supports_safety_identifier(self._client._resource_client):
+            llm_kwargs["safety_identifier"] = SAFETY_IDENTIFIER
+
+        llm_call = self._client._resource_client.responses.parse(**llm_kwargs)
+
+        input_results, llm_response = await asyncio.gather(input_check, llm_call)
+
+        if stream:
+            return self._client._stream_with_guardrails(
+                llm_response,
+                preflight_results,
+                input_results,
+                conversation_history=normalized_conversation,
+                suppress_tripwire=suppress_tripwire,
+            )
+        else:
+            return await self._client._handle_llm_response(
+                llm_response,
+                preflight_results,
+                input_results,
+                conversation_history=normalized_conversation,
+                suppress_tripwire=suppress_tripwire,
+            )
+
+    async def retrieve(self, response_id: str, suppress_tripwire: bool = False, **kwargs):
+        """Retrieve response with output guardrail validation."""
+        # Get the response using the original OpenAI client
+        response = await self._client._resource_client.responses.retrieve(response_id, **kwargs)
+
+        # Run output guardrails on the retrieved content
+        output_text = response.output_text if hasattr(response, "output_text") else ""
+        output_results = await self._client._run_stage_guardrails("output", output_text, suppress_tripwire=suppress_tripwire)
+
+        # Return wrapped response with guardrail results
+        return self._client._create_guardrails_response(
+            response,
+            [],
+            [],
+            output_results,  # preflight  # input
+        )

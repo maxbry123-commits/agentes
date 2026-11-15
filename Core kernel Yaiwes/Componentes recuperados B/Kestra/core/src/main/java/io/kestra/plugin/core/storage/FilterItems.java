@@ -1,0 +1,252 @@
+package io.kestra.plugin.core.storage;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.net.URI;
+import java.nio.file.Path;
+import java.util.Map;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.models.tasks.Task;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.FileSerde;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.utils.TruthUtils;
+
+import io.micronaut.core.util.functional.ThrowingFunction;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
+
+@Schema(
+    title = "Filter line-oriented files with a Pebble expression.",
+    description = """
+        Reads a line-delimited file from internal storage, evaluates `filterCondition` per item, and writes matched lines to a new file. `filterType` controls include vs exclude; `errorOrNullBehavior` handles expression errors or nulls.
+
+        Expressions can reference columns directly (rendered as strings unless cast) and must return a boolean."""
+)
+@Plugin(
+    examples = {
+        @Example(
+            title = "Filter a CSV file and retain rows with a product ID equal to 20.",
+            full = true,
+            code = {
+                """
+                    id: filter_items
+                    namespace: company.team
+
+                    tasks:
+                      - id: download
+                        type: io.kestra.plugin.core.http.Download
+                        uri: https://huggingface.co/datasets/kestra/datasets/raw/main/csv/orders.csv
+
+                      - id: csv_to_ion
+                        type: io.kestra.plugin.serdes.csv.CsvToIon
+                        from: "{{ outputs.download.uri }}"
+
+                      - id: filter
+                        type: io.kestra.plugin.core.storage.FilterItems
+                        from: "{{ outputs.download.uri }}"
+                        filterCondition: "{{ (product_id | number) == 20 }}"
+                        filterType: INCLUDE
+                    """
+            }
+        )
+    }
+)
+@SuperBuilder
+@ToString
+@EqualsAndHashCode
+@Getter
+@NoArgsConstructor
+public class FilterItems extends Task implements RunnableTask<FilterItems.Output> {
+
+    @Schema(
+        title = "The file to be filtered"
+    )
+    @NotNull
+    @PluginProperty(internalStorageURI = true)
+    private Property<String> from;
+
+    @Schema(
+        title = "The expression used to match items to be included or excluded",
+        description = "Headers from the file can be referenced directly, e.g., `{{ product_id }}`, but will be rendered as a string unless combined with a filter, e.g., `product_id | number`. The Pebble expression should return a BOOLEAN value (i.e., `true` or `false`). Values `0`, `-0`, and `\"\"` are interpreted as `false`. "
+            +
+            "Otherwise, any non empty value will be interpreted as `true`."
+    )
+    @PluginProperty
+    @NotNull
+    private String filterCondition;
+
+    @Schema(
+        title = "Specifies the action to perform with items that match the `filterCondition` predicate",
+        description = "Use `INCLUDE` to pass the item through, or `EXCLUDE` to drop the items."
+    )
+    @Builder.Default
+    private Property<FilterType> filterType = Property.ofValue(FilterType.INCLUDE);
+
+    @Schema(
+        title = "Specifies the behavior when the expression fails to be evaluated on an item or returns `null`.",
+        description = "Use `FAIL` to throw the exception and fail the task, `INCLUDE` to pass the item through, or `EXCLUDE` to drop the item."
+    )
+    @Builder.Default
+    private Property<ErrorOrNullBehavior> errorOrNullBehavior = Property.ofValue(ErrorOrNullBehavior.FAIL);
+
+    /**
+     * {@inheritDoc}
+     **/
+    @Override
+    public Output run(RunContext runContext) throws Exception {
+
+        URI from = new URI(runContext.render(this.from).as(String.class).orElseThrow());
+
+        final PebbleExpressionPredicate predicate = getExpressionPredication(runContext);
+
+        final Path path = runContext.workingDir().createTempFile(".ion");
+        long processedItemsTotal = 0L;
+        long droppedItemsTotal = 0L;
+        try (
+            final OutputStream output = new BufferedOutputStream(new FileOutputStream(path.toFile()), FileSerde.BUFFER_SIZE);
+            final var input = new BufferedInputStream(runContext.storage().getFile(from), FileSerde.BUFFER_SIZE)
+        ) {
+
+            var records = new java.util.ArrayList<>();
+            FileSerde.read(input, records::add);
+
+            for (Object record : records) {
+                String item = PebbleExpressionPredicate.MAPPER.writeValueAsString(record);
+                IllegalVariableEvaluationException exception = null;
+                Boolean match = null;
+                try {
+                    match = predicate.apply(item);
+                } catch (IllegalVariableEvaluationException e) {
+                    exception = e;
+                }
+
+                FilterType action = runContext.render(this.filterType).as(FilterType.class).orElseThrow();
+
+                if (match == null) {
+                    switch (runContext.render(errorOrNullBehavior).as(ErrorOrNullBehavior.class).orElseThrow()) {
+                        case FAIL -> {
+                            if (exception != null) {
+                                throw exception;
+                            } else {
+                                throw new IllegalVariableEvaluationException(
+                                    String.format(
+                                        "Expression `%s` return `null` on item `%s`",
+                                        filterCondition,
+                                        item
+                                    )
+                                );
+                            }
+                        }
+                        case INCLUDE -> action = FilterType.INCLUDE;
+                        case EXCLUDE -> action = FilterType.EXCLUDE;
+                    }
+                    match = true;
+                }
+
+                if (!match) {
+                    action = action.reverse();
+                }
+
+                switch (action) {
+                    case INCLUDE -> FileSerde.write(output, record);
+                    case EXCLUDE -> droppedItemsTotal++;
+                }
+                processedItemsTotal++;
+            }
+        }
+        URI uri = runContext.storage().putFile(path.toFile());
+        return Output.builder()
+            .uri(uri)
+            .processedItemsTotal(processedItemsTotal)
+            .droppedItemsTotal(droppedItemsTotal)
+            .build();
+    }
+
+    private PebbleExpressionPredicate getExpressionPredication(RunContext runContext) {
+        return new PebbleExpressionPredicate(runContext, filterCondition);
+    }
+
+    @Builder
+    @Getter
+    public static class Output implements io.kestra.core.models.tasks.Output {
+        @Schema(
+            title = "The filtered file URI"
+        )
+        private final URI uri;
+
+        @Schema(
+            title = "The total number of items that were processed by the task"
+        )
+        private final Long processedItemsTotal;
+
+        @Schema(
+            title = "The total number of items that were dropped by the task"
+        )
+        private final Long droppedItemsTotal;
+    }
+
+    private static class PebbleExpressionPredicate implements ThrowingFunction<String, Boolean, Exception> {
+
+        protected static final ObjectMapper MAPPER = JacksonMapper.ofIon();
+        private final RunContext runContext;
+        private final String expression;
+
+        /** {@inheritDoc} */
+        @Override
+        public Boolean apply(String data) throws Exception {
+            try {
+                String rendered = extract(MAPPER.readTree(data));
+                return rendered == null ? null : TruthUtils.isTruthy(rendered.trim());
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        /**
+         * Creates a new {@link PebbleExpressionPredicate} instance.
+         *
+         * @param expression the 'pebble' expression.
+         */
+        public PebbleExpressionPredicate(final RunContext runContext,
+            final String expression) {
+            this.runContext = runContext;
+            this.expression = expression;
+        }
+
+        public String extract(final JsonNode jsonNode) throws Exception {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = MAPPER.convertValue(jsonNode, Map.class);
+            return runContext.render(expression, map);
+        }
+    }
+
+    public enum FilterType {
+        INCLUDE,
+        EXCLUDE;
+
+        public FilterType reverse() {
+            return equals(INCLUDE) ? EXCLUDE : INCLUDE;
+        }
+    }
+
+    public enum ErrorOrNullBehavior {
+        FAIL,
+        INCLUDE,
+        EXCLUDE;
+    }
+}

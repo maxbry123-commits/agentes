@@ -1,0 +1,60 @@
+---
+cases:
+  # Results are rendered with sprintf because the golden-case loader parses expected
+  # numbers as float64, which cannot represent these values. sprintf formats the exact
+  # integer, so the assertion is on the aggregate rather than on the loader.
+  - note: "aggregates/bignum exact (>64-bit integers through sum and product)"
+    query: data.generated.p = x
+    modules:
+      - |
+        package generated
+
+        p := result if {
+        	result := {
+        		"sum_array": sprintf("%v", [sum([18446744073709551617, 1])]),
+        		"sum_set": sprintf("%v", [sum({18446744073709551617, 1})]),
+        		"product_array": sprintf("%v", [product([18446744073709551617, 2])]),
+        		"sum_small": sprintf("%v", [sum([1, 2, 3])]),
+        		"product_small": sprintf("%v", [product([2, 3, 4])]),
+        		"sum_float": sprintf("%v", [sum([1.5, 2.5])]),
+        		"sum_mixed": sprintf("%v", [sum([1, 2.5])]),
+        		"product_float": sprintf("%v", [product([1.5, 2])]),
+        	}
+        }
+    data: {}
+    want_result:
+      - x:
+          sum_array: "18446744073709551618"
+          sum_set: "18446744073709551618"
+          product_array: "36893488147419103234"
+          sum_small: "6"
+          product_small: "24"
+          sum_float: "4"
+          sum_mixed: "3.5"
+          product_float: "3"
+  # Every element fits in a machine int, but the running sum does not. The sum
+  # fast path accumulated into a plain int and wrapped silently; it now falls
+  # back to exact big.Int accumulation, matching the plus builtin.
+  - note: "aggregates/sum integer fast-path overflow (elements fit int64, sum does not)"
+    query: data.generated.p = x
+    modules:
+      - |
+        package generated
+
+        p := result if {
+        	result := {
+        		"sum_array": sprintf("%v", [sum([9223372036854775807, 1])]),
+        		"sum_set": sprintf("%v", [sum({9223372036854775807, 1, 2})]),
+        		"sum_negative": sprintf("%v", [sum([-9223372036854775808, -1])]),
+        		"sum_at_limit": sprintf("%v", [sum([9223372036854775806, 1])]),
+        		"plus_control": sprintf("%v", [9223372036854775807 + 1]),
+        	}
+        }
+    data: {}
+    want_result:
+      - x:
+          sum_array: "9223372036854775808"
+          sum_set: "9223372036854775810"
+          sum_negative: "-9223372036854775809"
+          sum_at_limit: "9223372036854775807"
+          plus_control: "9223372036854775808"

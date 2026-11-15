@@ -1,0 +1,38 @@
+{"params":
+ {"version": 7,
+  "uri": "file:///test.lean",
+  "diagnostics":
+  [{"source": "Lean 4",
+    "severity": 3,
+    "range":
+    {"start": {"line": 4, "character": 0}, "end": {"line": 4, "character": 6}},
+    "message": "n : Nat",
+    "fullRange":
+    {"start": {"line": 4, "character": 0}, "end": {"line": 4, "character": 6}}},
+   {"source": "Lean 4",
+    "severity": 3,
+    "range":
+    {"start": {"line": 8, "character": 0}, "end": {"line": 8, "character": 6}},
+    "message": "s : String",
+    "fullRange":
+    {"start": {"line": 8, "character": 0}, "end": {"line": 8, "character": 6}}},
+   {"source": "Lean 4",
+    "severity": 3,
+    "range":
+    {"start": {"line": 12, "character": 0},
+     "end": {"line": 12, "character": 5}},
+    "message": "Hello world!\n",
+    "fullRange":
+    {"start": {"line": 12, "character": 0},
+     "end": {"line": 12, "character": 5}}},
+   {"source": "Lean 4",
+    "severity": 3,
+    "range":
+    {"start": {"line": 16, "character": 0},
+     "end": {"line": 16, "character": 6}},
+    "message": "def α : Unit :=\n()",
+    "fullRange":
+    {"start": {"line": 16, "character": 0},
+     "end": {"line": 16, "character": 6}}}]},
+ "method": "textDocument/publishDiagnostics",
+ "jsonrpc": "2.0"}

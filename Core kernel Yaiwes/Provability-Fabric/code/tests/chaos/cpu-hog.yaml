@@ -1,0 +1,17 @@
+
+            apiVersion: chaos-mesh.org/v1alpha1
+            kind: PodChaos
+            metadata:
+              name: cpu-hog-chaos
+            spec:
+              action: pod-failure
+              mode: one
+              selector:
+                namespaces:
+                  - default
+                labelSelectors:
+                  app: pf
+              duration: '30s'
+              scheduler:
+                cron: '@every 30s'
+            

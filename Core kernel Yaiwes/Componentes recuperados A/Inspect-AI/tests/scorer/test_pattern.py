@@ -1,0 +1,188 @@
+import pytest
+from test_helpers.utils import simple_task_state
+
+from inspect_ai.scorer import CORRECT, INCORRECT, Target, pattern
+
+
+@pytest.mark.anyio
+async def test_single_match_success():
+    scorer = pattern("(foo)")
+    state = simple_task_state(model_output="foo")
+    result = await scorer(state, Target(["foo"]))
+
+    assert result.text == CORRECT
+
+
+@pytest.mark.anyio
+async def test_single_match_failure_with_target():
+    scorer = pattern("(foo)")
+    state = simple_task_state(model_output="foo")
+    result = await scorer(state, Target(["target doesn't match"]))
+
+    assert result.text == INCORRECT
+    assert result.reason is None
+
+
+@pytest.mark.anyio
+async def test_single_match_failure_from_model():
+    scorer = pattern("(foo)")
+    state = simple_task_state(model_output="model doesn't match")
+    result = await scorer(state, Target(["foo"]))
+
+    assert result.text == INCORRECT
+    assert result.reason == "invalid_response_format"
+
+
+@pytest.mark.anyio
+async def test_single_match_case_sensitive():
+    scorer = pattern(pattern="(FOO)", ignore_case=True)
+    state = simple_task_state(model_output="foo")
+    result = await scorer(state, Target(["foo"]))
+
+    assert result.text == CORRECT
+
+
+@pytest.mark.anyio
+async def test_multi_match_success_on_first_match():
+    scorer = pattern("(foo) (bar)")
+    state = simple_task_state(model_output="foo bar")
+    result = await scorer(state, Target(["foo"]))
+
+    assert result.text == CORRECT
+    assert result.answer == "foo"
+
+
+@pytest.mark.anyio
+async def test_multi_match_success_on_subsequent_match():
+    scorer = pattern("(foo) (bar)")
+    state = simple_task_state(model_output="foo bar")
+    result = await scorer(state, Target(["bar"]))
+
+    assert result.text == CORRECT
+    assert result.answer == "bar"
+
+
+@pytest.mark.anyio
+async def test_multi_match_success_all_match():
+    scorer = pattern("(foo) (foo)", match_all=True)
+    state = simple_task_state(model_output="foo foo")
+    result = await scorer(state, Target(["foo"]))
+
+    assert result.text == CORRECT
+    assert result.answer == "foo"
+
+
+@pytest.mark.anyio
+async def test_multi_match_failure_when_matching_all():
+    scorer = pattern("(foo|bar) (foo|bar)", match_all=True)
+    state = simple_task_state(model_output="foo bar")
+    result = await scorer(state, Target(["bar"]))
+
+    assert result.text == INCORRECT
+    assert result.answer is None
+
+
+@pytest.mark.anyio
+async def test_multi_match_failure_with_target():
+    scorer = pattern("(foo) (bar)")
+    state = simple_task_state(model_output="foo bar")
+    result = await scorer(state, Target(["target doesn't match"]))
+
+    assert result.text == INCORRECT
+    assert result.reason is None
+
+
+@pytest.mark.anyio
+async def test_multi_match_failure_from_model():
+    scorer = pattern("(foo) (bar)")
+    state = simple_task_state(model_output="model doesn't match")
+    result = await scorer(state, Target(["bar"]))
+
+    assert result.text == INCORRECT
+    assert result.reason == "invalid_response_format"
+
+
+@pytest.mark.anyio
+async def test_only_returns_exact_target_matches():
+    scorer = pattern("(f[oz]o) (b[az]r)")
+    state = simple_task_state(model_output="foo bzr")
+    result = await scorer(state, Target(["bar"]))
+
+    assert result.text == INCORRECT
+
+
+@pytest.mark.anyio
+async def test_one_match_group_returns_incorrect_match():
+    scorer = pattern(
+        "ANSWER: (A|B)",
+        ignore_case=False,
+        match_all=False,
+    )
+    state = simple_task_state(model_output="ANSWER: A")
+    result = await scorer(state, Target(["B"]))
+
+    assert result.answer == "A"
+    assert result.text == INCORRECT
+
+
+@pytest.mark.anyio
+async def test_multiple_match_group_returns_none():
+    scorer = pattern(
+        "ANSWER: (A|B) ALTERNATE_ANSWER: (A|B)",
+        ignore_case=False,
+        match_all=False,
+    )
+    state = simple_task_state(model_output="ANSWER: A ALTERNATE_ANSWER: A")
+    result = await scorer(state, Target(["B"]))
+
+    assert result.answer is None
+    assert result.text == INCORRECT
+
+
+@pytest.mark.anyio
+async def test_match_all_unmatched_optional_group_is_not_correct():
+    # A regex whose only capture group is optional and does not capture
+    # (so `match.groups()` is `(None,)`). With `match_all=True` this must not
+    # be scored CORRECT, because nothing was extracted from the model output.
+    scorer = pattern(r"ANSWER:\s*(\d+)?", match_all=True)
+    state = simple_task_state(model_output="ANSWER: ")
+    result = await scorer(state, Target(["42"]))
+
+    assert result.text == INCORRECT
+    assert result.answer is None
+
+
+@pytest.mark.anyio
+async def test_pattern_no_capture_groups():
+    # A regex without explicit capture groups (e.g. `\d+`) should fall back
+    # to the full match `match.group(0)`.
+    scorer = pattern(r"\d+")
+    state = simple_task_state(model_output="The answer is 42")
+    result = await scorer(state, Target(["42"]))
+
+    assert result.text == CORRECT
+    assert result.answer == "42"
+
+
+@pytest.mark.anyio
+async def test_pattern_no_capture_groups_non_matching_target():
+    # No-groups fallback with a non-matching target: INCORRECT, with the
+    # extracted full match reported as the answer.
+    scorer = pattern(r"\d+")
+    state = simple_task_state(model_output="The answer is 42")
+    result = await scorer(state, Target(["43"]))
+
+    assert result.text == INCORRECT
+    assert result.answer == "42"
+
+
+@pytest.mark.anyio
+async def test_pattern_no_capture_groups_match_all():
+    # match_all=True with a no-groups pattern reduces to the single
+    # full-match comparison.
+    scorer = pattern(r"\d+", match_all=True)
+    state = simple_task_state(model_output="The answer is 42")
+    result = await scorer(state, Target(["42"]))
+
+    assert result.text == CORRECT
+    assert result.answer == "42"

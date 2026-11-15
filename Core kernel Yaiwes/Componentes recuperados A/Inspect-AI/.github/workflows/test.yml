@@ -1,0 +1,20 @@
+# Test harness shell. GitHub only exposes workflow_dispatch for workflows that
+# exist on the default branch, but a dispatch can target any ref — and the
+# targeted ref's version of this file is what runs. This stub exists on main
+# solely to register the workflow; to experiment with action behavior, replace
+# the contents on a feature branch and dispatch against that branch (Web UI or
+# `gh workflow run test.yml --ref <branch>`). Don't merge experiment contents
+# back to main.
+name: Workflow Test Harness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Test harness stub — replace on a branch and dispatch against it."

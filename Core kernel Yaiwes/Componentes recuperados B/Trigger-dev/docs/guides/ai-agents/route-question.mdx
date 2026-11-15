@@ -1,0 +1,93 @@
+---
+title: "Route a question to a different AI model"
+sidebarTitle: "Route a question"
+description: "Create an AI agent workflow that routes a question to a different AI model depending on its complexity"
+---
+
+## Overview
+
+**Routing** is a workflow pattern that classifies an input and directs it to a specialized followup task. This pattern allows for separation of concerns and building more specialized prompts, which is particularly effective when there are distinct categories that are better handled separately. Without routing, optimizing for one kind of input can hurt performance on other inputs.
+
+![Routing](/guides/ai-agents/routing.png)
+
+## Example task
+
+In this example, we'll create a workflow that routes a question to a different AI model depending on its complexity. This approach is particularly effective when tasks require different models or approaches for different inputs.
+
+**This task:**
+
+- Uses `generateObject` from the [AI SDK](https://ai-sdk.dev/) to classify the question into a typed routing decision
+- Uses `experimental_telemetry` to surface each LLM call on the Run page in the dashboard
+- Classifies complexity with a fast, cheap model (`claude-haiku-4-5`)
+- Directs simple questions to `claude-haiku-4-5` and complex ones to `claude-sonnet-4-5`
+- Returns both the answer and metadata about the routing decision
+
+```typescript
+import { anthropic } from "@ai-sdk/anthropic";
+import { task } from "@trigger.dev/sdk";
+import { generateObject, generateText } from "ai";
+import { z } from "zod";
+
+// The router's structured decision. generateObject validates the model
+// output against this schema, so there's no manual JSON parsing.
+const routingSchema = z.object({
+  model: z.enum(["claude-haiku-4-5", "claude-sonnet-4-5"]),
+  reason: z.string(),
+});
+
+export const routeAndAnswerQuestion = task({
+  id: "route-and-answer-question",
+  run: async (payload: { question: string }) => {
+    // Step 1: Classify the question and pick a model
+    const { object: routing } = await generateObject({
+      model: anthropic("claude-haiku-4-5"),
+      schema: routingSchema,
+      system:
+        "You are a routing assistant. Pick the model best suited to answer the question:\n" +
+        "- claude-haiku-4-5 for simple, common, or straightforward questions\n" +
+        "- claude-sonnet-4-5 for complex, unusual, or questions needing deep reasoning",
+      prompt: payload.question,
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: "route-question",
+      },
+    });
+
+    // Step 2: Answer with the selected model
+    const answer = await generateText({
+      model: anthropic(routing.model),
+      prompt: payload.question,
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: "answer-question",
+      },
+    });
+
+    return {
+      answer: answer.text,
+      selectedModel: routing.model,
+      routingReason: routing.reason,
+    };
+  },
+});
+```
+
+
+
+## Run a test
+
+Triggering our task with a simple question shows it routing to the `claude-haiku-4-5` model and returning the answer with reasoning:
+
+```json
+{
+  "question": "How many planets are there in the solar system?"
+}
+```
+
+<video 
+  src="https://content.trigger.dev/agent-routing.mp4"
+  controls
+  muted
+  autoPlay
+  loop
+/>

@@ -1,0 +1,16 @@
+{
+  "name": "openswarm-e2e",
+  "private": true,
+  "description": "Cross-platform end-to-end tests that drive the PACKAGED OpenSwarm desktop app (Electron) on macOS and Windows via Playwright, plus an MCP server that hands a Claude Code instance the same Playwright hand to drive the app interactively.",
+  "scripts": {
+    "test": "playwright test",
+    "mcp": "node mcp/electron-mcp.js",
+    "mcp:selftest": "node mcp/selftest.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1"
+  }
+}

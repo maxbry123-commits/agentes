@@ -1,0 +1,68 @@
+interactions:
+  - request:
+      headers:
+        accept:
+          - "*/*"
+        accept-encoding:
+          - gzip, deflate
+        connection:
+          - keep-alive
+        content-length:
+          - "213"
+        content-type:
+          - application/json
+        host:
+          - aiplatform.googleapis.com
+      method: POST
+      parsed_body:
+        contents:
+          - parts:
+              - text: What is the main content of this URL?
+              - fileData:
+                  file_uri: gs://pydantic-ai-dev/openai-alloy.wav
+                  mime_type: audio/wav
+            role: user
+        generationConfig: {}
+      uri: https://aiplatform.googleapis.com/v1beta1/projects/pydantic-ai/locations/global/publishers/google/models/gemini-2.0-flash:generateContent
+    response:
+      headers:
+        alt-svc:
+          - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+        content-length:
+          - "891"
+        content-type:
+          - application/json; charset=UTF-8
+        transfer-encoding:
+          - chunked
+        vary:
+          - Origin
+          - X-Origin
+          - Referer
+      parsed_body:
+        candidates:
+          - avgLogprobs: -0.4282286794562089
+            content:
+              parts:
+                - text: The content describes the basic concept of the sun rising in the east and setting in the west.
+              role: model
+            finishReason: STOP
+        createTime: "2025-05-31T21:33:48.763452Z"
+        modelVersion: gemini-2.0-flash
+        responseId: vHU7aLzMLryqnvgP7vyi0Qg
+        usageMetadata:
+          candidatesTokenCount: 19
+          candidatesTokensDetails:
+            - modality: TEXT
+              tokenCount: 19
+          promptTokenCount: 159
+          promptTokensDetails:
+            - modality: TEXT
+              tokenCount: 9
+            - modality: AUDIO
+              tokenCount: 150
+          totalTokenCount: 178
+          trafficType: ON_DEMAND
+      status:
+        code: 200
+        message: OK
+version: 1

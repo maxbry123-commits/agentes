@@ -1,0 +1,5 @@
+src/pact_ffi/data
+src/pact_ffi/*.pyd
+src/pact_ffi/*.so
+src/pact_ffi/*.dylib
+src/pact_ffi/*.a

@@ -1,0 +1,55 @@
+### model
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+#deepspeed: dcft/train/zero3_offload.json  # choices: [ds_z0_config.json, ds_z2_config.json, ds_z3_config.json]
+#deepspeed: dcft/train/zero2.json  # choices: [ds_z0_config.json, ds_z2_config.json, ds_z3_config.json]
+deepspeed: dcft/train/zero3.json
+packing: true
+neat_packing: true
+enable_liger_kernel: true
+
+
+
+### dataset
+dataset: mli-lab/OHprompts_GPT4oresponses_7.5k
+dataset_dir: ONLINE
+template: qwen25
+cutoff_len: 2048
+max_samples: 1000000
+overwrite_cache: true
+preprocessing_num_workers: 16
+messages: conversations
+formatting: sharegpt
+role_tag: from
+content_tag: value
+user_tag: user
+assistant_tag: assistant
+
+### output
+output_dir: /data/horse/ws/rehe951g-p_finetuning/checkpoints/qwen_OHprompts_GPT4oresponses_8k
+logging_steps: 1
+save_steps: 10
+plot_loss: true
+overwrite_output_dir: true
+
+### train
+global_batch_size: 96
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 6
+per_device_eval_batch_size: 2
+learning_rate: 1.0e-5
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+
+report_to: wandb
+run_name: qwen_OHprompts_GPT4oresponses_8k
+hub_model_id: mli-lab/qwen_OHprompts_GPT4oresponses_8k
+push_to_db: true
+push_to_hub: true

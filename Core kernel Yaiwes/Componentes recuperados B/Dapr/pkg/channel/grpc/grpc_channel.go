@@ -1,0 +1,316 @@
+/*
+Copyright 2021 The Dapr Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package grpc
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"strconv"
+	"sync"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	grpcMetadata "google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/dapr/dapr/pkg/actors/callbackstream"
+	"github.com/dapr/dapr/pkg/apphealth"
+	"github.com/dapr/dapr/pkg/config"
+	"github.com/dapr/dapr/pkg/messages"
+	invokev1 "github.com/dapr/dapr/pkg/messaging/v1"
+	commonv1pb "github.com/dapr/dapr/pkg/proto/common/v1"
+	internalv1pb "github.com/dapr/dapr/pkg/proto/internals/v1"
+	runtimev1pb "github.com/dapr/dapr/pkg/proto/runtime/v1"
+	securityConsts "github.com/dapr/dapr/pkg/security/consts"
+)
+
+// ConnFn returns a gRPC connection and a teardown function.
+// The teardown function must be called when the connection is no longer needed,
+// with true to destroy the connection or false to release it back to the pool.
+type ConnFn func() (*grpc.ClientConn, func(bool), error)
+
+// Channel is a concrete AppChannel implementation for interacting with gRPC based user code.
+type Channel struct {
+	connFn              ConnFn
+	actorCallbackStream *callbackstream.Manager
+	baseAddress         string
+	ch                  chan struct{}
+	tracingSpec         config.TracingSpec
+	appMetadataToken    string
+	maxRequestBodySize  int
+	appHealth           *apphealth.AppHealth
+}
+
+// CreateLocalChannel creates a gRPC connection with user code.
+func CreateLocalChannel(port, maxConcurrency int, connFn ConnFn, spec config.TracingSpec, maxRequestBodySize int, readBufferSize int, baseAddress string, appAPIToken string) *Channel {
+	// readBufferSize is unused
+	c := &Channel{
+		connFn:             connFn,
+		baseAddress:        net.JoinHostPort(baseAddress, strconv.Itoa(port)),
+		tracingSpec:        spec,
+		appMetadataToken:   appAPIToken,
+		maxRequestBodySize: maxRequestBodySize,
+	}
+	if maxConcurrency > 0 {
+		c.ch = make(chan struct{}, maxConcurrency)
+	}
+	return c
+}
+
+// SetActorCallbackStream attaches the runtime-owned stream manager that
+// the Dapr gRPC API handler registers SubscribeActorEventsAlpha1 streams
+// with, and that the actor transport consumes when sending callbacks.
+// Injected once during channel refresh; the manager's lifecycle (its
+// event loop) is driven by the runtime's RunnerCloserManager.
+func (g *Channel) SetActorCallbackStream(m *callbackstream.Manager) {
+	g.actorCallbackStream = m
+}
+
+// ActorCallbackStream returns the manager that owns the app-initiated
+// actor callback stream(s) for this channel.
+func (g *Channel) ActorCallbackStream() *callbackstream.Manager {
+	return g.actorCallbackStream
+}
+
+// GetAppConfig gets application config from user application.
+//
+// With the streaming actor callback protocol the app registers its actor
+// types by opening SubscribeActorEventsAlpha1 and sending an initial
+// message. GetAppConfig is non-blocking: it returns whatever config the
+// stream has registered so far (nil if none). Daprd startup does not
+// wait for the stream — registration is handled imperatively by the
+// SubscribeActorEventsAlpha1 gRPC handler
+// (pkg/api/grpc/actorcallbacks.go), which calls
+// actors.RegisterHosted / UnRegisterHosted directly, mirroring how
+// pkg/api/grpc/subscribe.go handles SubscribeTopicEventsAlpha1.
+func (g *Channel) GetAppConfig(_ context.Context, _ string) (*config.ApplicationConfig, error) {
+	return g.actorCallbackStream.CurrentConfig(), nil
+}
+
+// InvokeMethod invokes user code via gRPC.
+func (g *Channel) InvokeMethod(ctx context.Context, req *invokev1.InvokeMethodRequest, _ string) (*invokev1.InvokeMethodResponse, error) {
+	if g.appHealth != nil && !g.appHealth.GetStatus().IsHealthy {
+		return nil, status.Error(codes.Internal, messages.ErrAppUnhealthy)
+	}
+
+	switch req.APIVersion() {
+	case internalv1pb.APIVersion_V1: //nolint:nosnakecase
+		return g.invokeMethodV1(ctx, req)
+
+	default:
+		// Reject unsupported version
+		return nil, status.Error(codes.Unimplemented, fmt.Sprintf("Unsupported spec version: %d", req.APIVersion()))
+	}
+}
+
+// TriggerJob sends the triggered job to the app via gRPC.
+func (g *Channel) TriggerJob(ctx context.Context, name string, data *anypb.Any) (*invokev1.InvokeMethodResponse, error) {
+	if g.appHealth != nil && !g.appHealth.GetStatus().IsHealthy {
+		return nil, status.Error(codes.Internal, messages.ErrAppUnhealthy)
+	}
+
+	return g.sendJob(ctx, name, data)
+}
+
+func (g *Channel) sendJob(ctx context.Context, name string, data *anypb.Any) (*invokev1.InvokeMethodResponse, error) {
+	if g.ch != nil {
+		// Acquiring the max-concurrency slot must respect cancellation: a
+		// caller whose context is already dead would otherwise queue on the
+		// limiter forever.
+		select {
+		case g.ch <- struct{}{}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	defer func() {
+		if g.ch != nil {
+			<-g.ch
+		}
+	}()
+
+	conn, teardown, err := g.connFn()
+	if err != nil {
+		return nil, fmt.Errorf("error getting app connection: %w", err)
+	}
+	defer teardown(false)
+
+	ctx = g.AddAppTokenToContext(ctx)
+	var header, trailer grpcMetadata.MD
+
+	req := &runtimev1pb.JobEventRequest{
+		Name:          name,
+		Data:          data,
+		Method:        "job/" + name,
+		ContentType:   data.GetTypeUrl(),
+		HttpExtension: &commonv1pb.HTTPExtension{Verb: commonv1pb.HTTPExtension_POST},
+	}
+
+	callOpts := []grpc.CallOption{
+		grpc.Header(&header),
+		grpc.Trailer(&trailer),
+		grpc.MaxCallSendMsgSize(g.maxRequestBodySize),
+		grpc.MaxCallRecvMsgSize(g.maxRequestBodySize),
+	}
+
+	// Try stable OnJobEvent first, fall back to alpha OnJobEventAlpha1 if unimplemented
+	_, err = runtimev1pb.NewAppCallbackClient(conn).OnJobEvent(ctx, req, callOpts...)
+	if err != nil {
+		if errStatus, ok := status.FromError(err); ok && errStatus.Code() == codes.Unimplemented {
+			// Fallback to alpha if stable is unimplemented
+			header = nil
+			trailer = nil
+			_, err = runtimev1pb.NewAppCallbackAlphaClient(conn).OnJobEventAlpha1(ctx, req, callOpts...) //nolint:staticcheck
+		}
+	}
+
+	var rsp *invokev1.InvokeMethodResponse
+	if err != nil {
+		// Convert status code
+		respStatus := status.Convert(err)
+		// Prepare response
+		// TODO: fix types
+		//nolint:gosec
+		rsp = invokev1.NewInvokeMethodResponse(int32(respStatus.Code()), respStatus.Message(), respStatus.Proto().GetDetails())
+	} else {
+		rsp = invokev1.NewInvokeMethodResponse(int32(codes.OK), "", nil)
+	}
+
+	rsp.WithHeaders(header).
+		WithTrailers(trailer)
+
+	return rsp, nil
+}
+
+// invokeMethodV1 calls user applications using daprclient v1.
+func (g *Channel) invokeMethodV1(ctx context.Context, req *invokev1.InvokeMethodRequest) (*invokev1.InvokeMethodResponse, error) {
+	if g.ch != nil {
+		select {
+		case g.ch <- struct{}{}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	defer func() {
+		if g.ch != nil {
+			<-g.ch
+		}
+	}()
+
+	// Read the request, including the data
+	pd, err := req.ProtoWithData()
+	if err != nil {
+		return nil, err
+	}
+
+	md := invokev1.InternalMetadataToGrpcMetadata(ctx, pd.GetMetadata(), true)
+
+	if g.appMetadataToken != "" {
+		md.Set(securityConsts.APITokenHeader, g.appMetadataToken)
+	}
+
+	// Prepare gRPC Metadata
+	ctx = grpcMetadata.NewOutgoingContext(context.Background(), md)
+
+	conn, teardown, err := g.connFn()
+	if err != nil {
+		return nil, fmt.Errorf("error getting app connection: %w", err)
+	}
+	defer teardown(false)
+
+	var header, trailer grpcMetadata.MD
+
+	opts := []grpc.CallOption{
+		grpc.Header(&header),
+		grpc.Trailer(&trailer),
+		grpc.MaxCallSendMsgSize(g.maxRequestBodySize),
+		grpc.MaxCallRecvMsgSize(g.maxRequestBodySize),
+	}
+
+	// The slot is released exactly once, by the defer above: an additional
+	// inline release here would double-release, blocking the return path on
+	// an empty limiter channel and defeating the concurrency bound.
+	resp, err := runtimev1pb.NewAppCallbackClient(conn).OnInvoke(ctx, pd.GetMessage(), opts...)
+
+	var rsp *invokev1.InvokeMethodResponse
+	if err != nil {
+		// Convert status code
+		respStatus := status.Convert(err)
+		// Prepare response
+		// TODO: fix types
+		//nolint:gosec
+		rsp = invokev1.NewInvokeMethodResponse(int32(respStatus.Code()), respStatus.Message(), respStatus.Proto().GetDetails())
+	} else {
+		rsp = invokev1.NewInvokeMethodResponse(int32(codes.OK), "", nil)
+	}
+
+	rsp.WithHeaders(header).
+		WithTrailers(trailer).
+		WithMessage(resp)
+
+	// If the data has a type_url, set that in the object too
+	// This is necessary to support the HTTP->gRPC and gRPC->gRPC service invocation (legacy, non-proxy) paths correctly
+	// (Note that GetTypeUrl could return an empty value, so this call becomes a no-op)
+	rsp.WithDataTypeURL(resp.GetData().GetTypeUrl())
+
+	return rsp, nil
+}
+
+var emptyPbPool = sync.Pool{
+	New: func() any {
+		return &emptypb.Empty{}
+	},
+}
+
+// HealthProbe performs a health probe.
+func (g *Channel) HealthProbe(ctx context.Context) (*apphealth.Status, error) {
+	conn, teardown, err := g.connFn()
+	if err != nil {
+		reason := fmt.Sprintf("Health check failed: %v", err)
+		return apphealth.NewStatus(false, &reason), err
+	}
+	defer teardown(false)
+
+	// We use the low-level method here so we can avoid allocating multiple &emptypb.Empty and use the pool
+	in := emptyPbPool.Get()
+	defer emptyPbPool.Put(in)
+	out := emptyPbPool.Get()
+	defer emptyPbPool.Put(out)
+	err = conn.Invoke(ctx, "/dapr.proto.runtime.v1.AppCallbackHealthCheck/HealthCheck", in, out)
+	if err != nil {
+		reason := fmt.Sprintf("Health check failed: %v", err)
+		return apphealth.NewStatus(false, &reason), err
+	}
+
+	return apphealth.NewStatus(true, nil), nil
+}
+
+// SetAppHealth sets the apphealth.AppHealth object.
+func (g *Channel) SetAppHealth(ah *apphealth.AppHealth) {
+	g.appHealth = ah
+}
+
+// AddAppTokenToContext adds the app API token to the outgoing gRPC context using the
+// token captured at channel creation time
+func (g *Channel) AddAppTokenToContext(ctx context.Context) context.Context {
+	if g.appMetadataToken != "" {
+		return grpcMetadata.AppendToOutgoingContext(ctx, securityConsts.APITokenHeader, g.appMetadataToken)
+	}
+	return ctx
+}

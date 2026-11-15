@@ -1,0 +1,111 @@
+# Runtime evidence boundaries
+
+## Runtime evidence overview
+
+Runtime evidence in Evidence v0.1 is an **additive binding layer** on top of existing CERT-V1 sidecar emission. The sidecar continues to write CERT-V1 JSON and append CERT lines to `evidence/logs/sidecar.jsonl`. On every emit path through `write_cert_with_binding`, an `evidence_v01_binding` JSONL event is appended linking the session, cert path, cert digest, and optional bundle reference.
+
+## Event sources
+
+| Source | Event | Output |
+|--------|-------|--------|
+| Sidecar `emit` handling | `permit_enforcement` CERT emission | `evidence/certs/<session>/<seq>.cert.json` |
+| Binding hook | `write_cert_with_binding` (always on emit) | `evidence/logs/sidecar.jsonl` (`evidence_v01_binding`) |
+| Platform services | evidence-service, replay-service | Out of bundle scope unless explicitly packaged |
+
+## Artifact binding
+
+Binding events record:
+
+- `session_id`, `cert_path`
+- `artifact_digests.cert-v1` (SHA-256 of the written CERT file)
+- Optional `evidence_bundle_ref` (only when `EVIDENCE_BUNDLE_REF` is set)
+
+CERT-V1 itself is **not modified**. Full v0.1 bundles are assembled separately via `pf evidence bundle pack`.
+
+## Trust assumptions
+
+- Sidecar process integrity and filesystem write permissions
+- CERT-V1 schema validation at write time (external schema required)
+- Digest computation over bytes actually written to disk
+- Bundle references are opaque paths unless validated by `pf evidence validate --strict`
+
+## Enforcement boundary
+
+Runtime binding records **what the sidecar emitted** and **optional cross-links** to bundle manifests. It does **not**:
+
+- Prove policy correctness
+- Prove proof soundness
+- Aggregate multi-session evidence automatically
+- Replace PCS admission or SWE-bench evidence writers
+
+## What is recorded
+
+- CERT-V1 payloads (existing behavior)
+- Optional `evidence_v01_binding` JSONL with schema version `0.1`
+- Cert file digest under role `cert-v1`
+
+## What is not recorded
+
+- Full claim/proof/trace artifacts (unless packaged into bundles separately)
+- TRACE-REPLAY-KIT execution output (unless referenced in a bundle)
+- Cross-tenant bundle aggregation
+- DSSE signature verification state beyond CERT `sig` field presence (see [attestation signatures](../specs/evidence-attestation-signatures.md))
+
+## What validation proves
+
+`pf evidence validate --strict` on a v0.1 bundle proves:
+
+- Schema conformance for the bundle manifest
+- Referenced artifact presence and byte digests
+- Self-consistent `bundle_digest`
+
+Binding JSONL alone is **not** validated by the bundle validator unless included as bundle artifacts.
+
+## What validation does not prove
+
+- Runtime binding events were emitted for every cert
+- CERT signatures are valid DSSE envelopes
+- Replay determinism of external systems
+- Science-claim admission (PCS domain)
+
+## Failure modes
+
+- Invalid CERT: deny-wins via existing `validate_cert` (cert not written)
+- Binding write failure after cert write: cert remains; binding may be absent
+- Missing `external/CERT-V1` schema: validation and emit tests fail closed; run `make submodules`
+
+## Tamper semantics
+
+Tampering CERT bytes after write invalidates `artifact_digests.cert-v1` in a subsequent binding event only if rebinding occurs. Bundle-level tamper detection requires `pf evidence validate --strict` on the packaged bundle.
+
+## Replay relationship
+
+Runtime binding does not execute replay. Bundles that include `execution-trace` artifacts may be checked with `pf evidence replay`. See [Replay guarantees](replay-guarantees.md).
+
+## Operational guidance
+
+1. Clone `external/CERT-V1` before running sidecar in strict environments.
+2. Set `EVIDENCE_BUNDLE_REF` when linking emissions to a known bundle manifest path.
+3. Package certs and traces into v0.1 bundles with `pf evidence bundle pack`.
+4. Validate bundles before archival: `pf evidence validate <bundle> --strict`.
+
+## Runtime E2E verification authority
+
+Deliverable D3 (runtime integration) is verified on **Linux CI** as the authoritative path when local Windows hosts cannot reach crates.io or lack sidecar build prerequisites.
+
+| Check | Local command | CI authority |
+|-------|---------------|--------------|
+| Rust emit integration | `cargo test -p sidecar-watcher -- emit_evidence` | Covered indirectly via Evidence smoke pytest |
+| Linux sidecar binding | `pytest tests/runtime_evidence/test_runtime_evidence_sidecar.py -q` | [Evidence smoke 27616315269](https://github.com/SentinelOps-CI/provability-fabric/actions/runs/27616315269) job `smoke` |
+
+**Windows caveat:** `cargo test` may fail with `CRYPT_E_NO_REVOCATION_CHECK` or other schannel SSL errors when fetching crates.io. This does not block evidence acceptance when the Linux smoke job above is green on the same commit family.
+
+**Acceptance wording:**
+
+> Runtime evidence binding is demonstrated by the sidecar emit integration test and Linux pytest path in Evidence v0.1 smoke CI. Local `cargo test emit_evidence` is recommended on Linux/macOS; Windows maintainers may defer to CI authority when network or SSL blocks crate downloads.
+
+## Related
+
+- [Runtime evidence basic](runtime-evidence-basic.md)
+- [Compatibility matrix](../specs/evidence-compatibility.md)
+- [Evidence model v0.1](../specs/evidence-model-v0.1.md)

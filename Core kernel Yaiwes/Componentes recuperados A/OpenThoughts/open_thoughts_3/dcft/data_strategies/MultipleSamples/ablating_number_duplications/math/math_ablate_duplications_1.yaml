@@ -1,0 +1,52 @@
+operators:
+- id: load_preexisting
+  config:
+    type: load_preexisting
+    framework_name: base_math_ablate_duplications
+- id: subsample_dataset
+  config:
+    type: function
+    function: data_strategies.MultipleSamples.ablating_number_duplications.utils.subsample_row
+    function_config:
+      num_samples: 1
+      column_name: final_reasoning_trace
+  input_ids:
+    - load_preexisting
+- id: majority_gpt_verification
+  config:
+    type: completions
+    map: math_same
+    map_config:
+      response_column: final_reasoning_trace
+      math_column: final_reasoning_trace
+      question_column: problem
+      output_column: correct_majority_indices
+      ending_characters: 1000
+      num_responses: 1
+    require_all_responses: False
+    model: gpt-4o-mini
+    temperature: 1.0
+  input_ids:
+  - subsample_dataset
+- id: majority_gpt_verification_extraction
+  config:
+    type: function
+    function: data_strategies.MultipleSamples.utils.code_same_verification
+    function_config:
+      verification_column: correct_majority_indices
+      code_answers_column:  final_reasoning_trace
+      output_column: verified_final_reasoning_trace
+  input_ids:
+  - majority_gpt_verification
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: problem
+      input_response_column: verified_final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - majority_gpt_verification_extraction
+
+  

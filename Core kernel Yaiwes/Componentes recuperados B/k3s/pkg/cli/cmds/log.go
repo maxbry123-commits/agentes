@@ -1,0 +1,81 @@
+package cmds
+
+import (
+	"fmt"
+	"io"
+	"sync"
+	"time"
+
+	"github.com/sirupsen/logrus"
+	"github.com/urfave/cli/v2"
+	"google.golang.org/grpc/grpclog"
+)
+
+type Log struct {
+	VLevel          int
+	VModule         string
+	LogFile         string
+	AlsoLogToStderr bool
+}
+
+var (
+	LogConfig Log
+
+	VLevel = &cli.IntFlag{
+		Name:        "v",
+		Usage:       "(logging) Number for the log level verbosity",
+		Destination: &LogConfig.VLevel,
+	}
+	VModule = &cli.StringFlag{
+		Name:        "vmodule",
+		Usage:       "(logging) Comma-separated list of FILE_PATTERN=LOG_LEVEL settings for file-filtered logging",
+		Destination: &LogConfig.VModule,
+	}
+	LogFile = &cli.StringFlag{
+		Name:        "log",
+		Aliases:     []string{"l"},
+		Usage:       "(logging) Log to file",
+		Destination: &LogConfig.LogFile,
+	}
+	AlsoLogToStderr = &cli.BoolFlag{
+		Name:        "alsologtostderr",
+		Usage:       "(logging) Log to standard error as well as file (if set)",
+		Destination: &LogConfig.AlsoLogToStderr,
+	}
+
+	logSetupOnce sync.Once
+)
+
+func InitLogging() error {
+	var rErr error
+	logSetupOnce.Do(func() {
+		if err := forkIfLoggingOrReaping(); err != nil {
+			rErr = err
+			return
+		}
+
+		if err := checkUnixTimestamp(); err != nil {
+			rErr = err
+			return
+		}
+
+		setupLogging()
+	})
+	return rErr
+}
+
+func checkUnixTimestamp() error {
+	timeNow := time.Now()
+	// check if time before 01/01/1980
+	if timeNow.Before(time.Unix(315532800, 0)) {
+		return fmt.Errorf("server time isn't set properly: %v", timeNow)
+	}
+	return nil
+}
+
+func setupLogging() {
+	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, io.Discard))
+	if Debug {
+		logrus.SetLevel(logrus.DebugLevel)
+	}
+}

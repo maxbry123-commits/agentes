@@ -1,0 +1,164 @@
+import type { ComponentProps, FC, ReactNode } from 'react';
+import type { INavigationMenuItem } from 'interfaces/route';
+import type { NavigationMode } from './NavigationMode.tsx';
+import {
+    ExternalFullListItem,
+    MenuListItem,
+    SignOutItem,
+} from './ListItems.tsx';
+import { Box, List, styled } from '@mui/material';
+import { IconRenderer } from './IconRenderer.tsx';
+import useUiConfig from 'hooks/api/getters/useUiConfig/useUiConfig';
+import { useNewAdminMenu } from 'hooks/useNewAdminMenu';
+import { AdminMenuNavigation } from '../AdminMenu/AdminNavigationItems.tsx';
+import { ConfigurationAccordion } from './ConfigurationAccordion.tsx';
+import { useUiFlag } from 'hooks/useUiFlag.ts';
+import { Badge } from 'component/common/Badge/Badge.tsx';
+import { PendingAccessRequestsIndicator } from 'component/admin/users/AccessRequestsNotifications/PendingAccessRequestsIndicator.tsx';
+
+const StyledNavigationList = styled(List)(({ theme }) => ({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.25),
+}));
+
+export const OtherLinksList = () => {
+    const { uiConfig } = useUiConfig();
+
+    return (
+        <StyledNavigationList>
+            {uiConfig.links.map((link) => (
+                <ExternalFullListItem
+                    href={link.href}
+                    text={link.value}
+                    key={link.value}
+                >
+                    <IconRenderer path={link.value} />
+                </ExternalFullListItem>
+            ))}
+            <SignOutItem />
+        </StyledNavigationList>
+    );
+};
+
+export const PrimaryNavigationList: FC<{
+    mode: NavigationMode;
+    setMode: (mode: NavigationMode) => void;
+    onClick: (activeItem: string) => void;
+    activeItem?: string;
+}> = ({ mode, setMode, onClick, activeItem }) => {
+    const PrimaryListItem = ({
+        href,
+        text,
+        badge,
+    }: Pick<ComponentProps<typeof MenuListItem>, 'href' | 'text'> & {
+        badge?: ReactNode;
+    }) => (
+        <MenuListItem
+            href={href}
+            text={text}
+            icon={<IconRenderer path={href} />}
+            onClick={() => onClick(href)}
+            selected={activeItem === href}
+            mode={mode}
+            badge={badge}
+        />
+    );
+
+    const { isOss, isEnterprise } = useUiConfig();
+    const impactViewsEnabled = useUiFlag('impactViews');
+    const showChangeRequestList = isEnterprise();
+
+    return (
+        <StyledNavigationList data-public>
+            <PrimaryListItem href='/personal' text='Dashboard' />
+            <PrimaryListItem href='/projects' text='Projects' />
+            <PrimaryListItem href='/search' text='Flags overview' />
+            {showChangeRequestList ? (
+                <PrimaryListItem
+                    href='/change-requests'
+                    text='Change requests'
+                />
+            ) : null}
+            <PrimaryListItem href='/playground' text='Playground' />
+            {!isOss() ? (
+                <PrimaryListItem href='/insights' text='Analytics' />
+            ) : null}
+            {!isOss() && impactViewsEnabled ? (
+                <PrimaryListItem
+                    href='/impact-views'
+                    text='Impact views'
+                    badge={
+                        <Badge
+                            color='info'
+                            sx={{
+                                fontSize: '10px',
+                                py: 0,
+                                px: 0.75,
+                                height: 'auto',
+                                lineHeight: 1.4,
+                                whiteSpace: 'nowrap',
+                            }}
+                        >
+                            Beta
+                        </Badge>
+                    }
+                />
+            ) : null}
+            <ConfigurationAccordion
+                mode={mode}
+                setMode={setMode}
+                activeItem={activeItem}
+                onClick={onClick}
+            />
+        </StyledNavigationList>
+    );
+};
+
+export const AdminSettingsNavigation: FC<{
+    onClick: (activeItem: string) => void;
+    onSetFullMode: () => void;
+    expanded: boolean;
+    routes: INavigationMenuItem[];
+    onExpandChange: (expanded: boolean) => void;
+    activeItem: string;
+    mode: NavigationMode;
+}> = ({
+    onClick,
+    onSetFullMode,
+    expanded,
+    routes,
+    onExpandChange,
+    activeItem,
+    mode,
+}) => {
+    const { showOnlyAdminMenu } = useNewAdminMenu();
+    if (showOnlyAdminMenu) {
+        return <AdminMenuNavigation onClick={() => onClick('/admin')} />;
+    }
+
+    const setFullModeOnClick = (activeItem: string) => {
+        onSetFullMode();
+        onClick(activeItem);
+    };
+
+    return <AdminSettingsLink mode={mode} onClick={setFullModeOnClick} />;
+};
+
+export const AdminSettingsLink: FC<{
+    mode: NavigationMode;
+    onClick: (activeItem: string) => void;
+}> = ({ mode, onClick }) => (
+    <Box>
+        <StyledNavigationList>
+            <MenuListItem
+                href='/admin'
+                text='Admin settings'
+                onClick={() => onClick('/admin')}
+                mode={mode}
+                icon={<IconRenderer path='/admin' />}
+                badge={<PendingAccessRequestsIndicator />}
+            />
+        </StyledNavigationList>
+    </Box>
+);

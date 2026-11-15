@@ -1,0 +1,4 @@
+[submodule "idls"]
+	path = idls
+	url = https://github.com/cadence-workflow/cadence-idl.git
+	branch = master

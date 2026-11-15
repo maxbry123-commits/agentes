@@ -1,0 +1,107 @@
+/*
+Copyright 2021 The Dapr Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package diagnostics
+
+import (
+	"time"
+
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
+
+	"github.com/dapr/dapr/pkg/config"
+	"github.com/dapr/dapr/pkg/diagnostics/utils"
+)
+
+// appIDKey is a tag key for App ID.
+var appIDKey = tag.MustNewKey("app_id")
+
+var (
+	// DefaultReportingPeriod is the default view reporting period.
+	DefaultReportingPeriod = 1 * time.Minute
+
+	// DefaultMonitoring holds service monitoring metrics definitions.
+	DefaultMonitoring = newServiceMetrics()
+	// DefaultGRPCMonitoring holds default gRPC monitoring handlers and middlewares.
+	DefaultGRPCMonitoring = newGRPCMetrics()
+	// DefaultHTTPMonitoring holds default HTTP monitoring handlers and middlewares.
+	DefaultHTTPMonitoring = newHTTPMetrics()
+	// DefaultComponentMonitoring holds component specific metrics.
+	DefaultComponentMonitoring = newComponentMetrics()
+	// DefaultResiliencyMonitoring holds resiliency specific metrics.
+	DefaultResiliencyMonitoring = newResiliencyMetrics()
+	// DefaultWorkflowMonitoring holds workflow specific metrics.
+	DefaultWorkflowMonitoring = newWorkflowMetrics()
+	// DefaultErrorCodeMonitoring holds error code specific metrics.
+	DefaultErrorCodeMonitoring = newErrorCodeMetrics()
+)
+
+// <<10 -> KBs; <<20 -> MBs; <<30 -> GBs
+var defaultSizeDistribution = view.Distribution(1<<10, 2<<10, 4<<10, 16<<10, 64<<10, 256<<10, 1<<20, 4<<20, 16<<20, 64<<20, 256<<20, 1<<30, 4<<30)
+
+// payloadRatioDistribution buckets payload-size ratios concentrated near
+// the stall threshold (~0.95). Values above 1.0 indicate the precheck
+// recorded a payload that exceeds the configured gRPC max body size.
+var payloadRatioDistribution = view.Distribution(0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 1.0, 1.5, 2.0)
+
+// InitMetrics initializes metrics.
+func InitMetrics(meter view.Meter, appID, namespace string, metricSpec config.MetricSpec) error {
+	meter.Start()
+
+	if err := utils.CreateRulesMap(metricSpec.Rules); err != nil {
+		return err
+	}
+
+	latencyDistribution := metricSpec.GetLatencyDistribution(log)
+	// Workflow latency views default to the shared latencyDistribution unless
+	// spec.metrics.workflow.latencyDistributionBuckets provides an override.
+	workflowLatencyDistribution := metricSpec.GetWorkflowLatencyDistribution(log, latencyDistribution)
+	if err := DefaultMonitoring.Init(meter, appID, latencyDistribution); err != nil {
+		return err
+	}
+
+	if err := DefaultGRPCMonitoring.Init(meter, appID, latencyDistribution); err != nil {
+		return err
+	}
+
+	httpConfig := NewHTTPMonitoringConfig(
+		metricSpec.GetHTTPPathMatching(),
+		metricSpec.GetHTTPIncreasedCardinality(log),
+		metricSpec.GetHTTPExcludeVerbs(),
+	)
+	if err := DefaultHTTPMonitoring.Init(meter, appID, httpConfig, latencyDistribution); err != nil {
+		return err
+	}
+
+	if err := DefaultComponentMonitoring.Init(meter, appID, namespace, latencyDistribution); err != nil {
+		return err
+	}
+
+	if err := DefaultResiliencyMonitoring.Init(meter, appID); err != nil {
+		return err
+	}
+
+	if err := DefaultWorkflowMonitoring.Init(meter, appID, namespace, latencyDistribution, workflowLatencyDistribution); err != nil {
+		return err
+	}
+
+	if metricSpec.GetRecordErrorCodes() {
+		if err := DefaultErrorCodeMonitoring.Init(meter, appID); err != nil {
+			return err
+		}
+	}
+
+	// Set reporting period of views on the explicit meter
+	meter.SetReportingPeriod(DefaultReportingPeriod)
+	return nil
+}

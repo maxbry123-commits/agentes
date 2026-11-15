@@ -1,0 +1,74 @@
+Exit code: 1
+---
+Stdout:
+Schemathesis dev
+━━━━━━━━━━━━━━━━
+
+
+ ✅  Loaded specification from http://127.0.0.1/openapi.json (in 0.00s)
+
+     Base URL:         http://127.0.0.1/
+     Specification:    Open API 3.0.2
+     Operations:       1 selected / 1 total
+
+
+ ✅  API capabilities:
+
+     Supports NULL byte in headers:                            ✓
+     Accepts backslash and control characters in URL paths:    ✓
+
+ ⏭   Examples (in 0.00s)
+
+     ⏭  1 skipped
+
+ 🚫  Coverage (in 0.00s)
+
+     🚫 1 error
+
+ 🚫  Fuzzing (in 0.00s)
+
+     🚫 1 error
+
+==================================== ERRORS ====================================
+_______________________________ GET /api/success _______________________________
+Runtime Error
+
+division by zero
+
+    Traceback (most recent call last):
+      File "/package-root/engine/run/unit/_case.py", line XXX, in run_one_case
+        _do_call_and_validate(
+      File "/package-root/engine/run/unit/_case.py", line XXX, in _do_call_and_validate
+        validate_response(
+      File "/package-root/engine/_validate.py", line XXX, in validate_response
+        failures = run_checks(
+      File "/package-root/checks.py", line XXX, in run_checks
+        skip_check = check(ctx, response, case)
+      File "/tmp/module.py", line XXX, in with_error
+        1 / 0
+    ZeroDivisionError: division by zero
+
+Need more help?
+    Join our Discord server: https://discord.gg/R9ASRAmHnA
+=================================== SUMMARY ====================================
+
+API Operations:
+  Selected: 1/1
+  Tested: 0
+  Errored: 1
+
+Test Phases:
+  ⏭  Examples
+  🚫 Coverage
+  🚫 Fuzzing
+  ⏭  Stateful (not applicable)
+
+Errors:
+  🚫 Runtime Error: 1
+
+Test cases:
+  N generated
+
+Seed: 42
+
+=============================== 1 error in 1.00s ===============================

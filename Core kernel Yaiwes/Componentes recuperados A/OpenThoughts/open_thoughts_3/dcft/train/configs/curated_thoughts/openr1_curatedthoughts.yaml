@@ -1,0 +1,21 @@
+include_hp: dcft/train/hp_settings/reasoning.yaml
+
+dataset_dir: ONLINE
+dataset: bethgelab/CuratedThoughts
+subset: OpenR1-Math-220k-default
+messages: messages
+formatting: sharegpt
+role_tag: from
+content_tag: value
+user_tag: user
+assistant_tag: assistant
+
+per_device_train_batch_size: 1      # Can change depending on hardware
+gradient_accumulation_steps: 16      # Can change depending on number of GPUs
+
+output_dir: "/data4/dcft/experiments/train/checkpoints/CuratedThoughts-OpenR1-Math-220k-default"
+run_name: CuratedThoughts-OpenR1-Math-220k-default
+hub_model_id: mlfoundations-dev/CuratedThoughts-OpenR1-Math-220k-default
+report_to: wandb
+push_to_db: true
+push_to_hub: true

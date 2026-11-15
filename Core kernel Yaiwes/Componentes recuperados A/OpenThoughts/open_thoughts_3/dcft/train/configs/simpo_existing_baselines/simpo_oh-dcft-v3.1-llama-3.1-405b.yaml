@@ -1,0 +1,30 @@
+### preset
+include_hp: dcft/train/hp_settings/simpo.yaml
+
+### model
+model_name_or_path: mlfoundations-dev/oh-dcft-v3.1-llama-3.1-405b
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 32
+per_device_eval_batch_size: 1
+
+### dataset
+dataset: mlfoundations-dev/gemma2-ultrafeedback-armorm
+dataset_dir: ONLINE
+template: gemma
+formatting: sharegpt
+ranking: true
+messages: conversations
+chosen: chosen
+rejected: rejected
+
+### output
+output_dir: experiments/train/checkpoints/simpo-oh-dcft-v3.1-llama-3.1-405b
+
+## reporting
+report_to: wandb
+run_name: simpo-oh-dcft-v3.1-llama-3.1-405b
+push_to_db: true
+push_to_hub: true
+hub_model_id: mlfoundations-dev/simpo-oh-dcft-v3.1-llama-3.1-405b

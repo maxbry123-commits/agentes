@@ -1,0 +1,54 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsReleased>true</IsReleased>
+    <NoWarn>$(NoWarn);MEAI001;OPENAI001</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <InjectSharedThrow>true</InjectSharedThrow>
+    <InjectSharedDiagnosticIds>true</InjectSharedDiagnosticIds>
+    <InjectIsExternalInitOnLegacy>true</InjectIsExternalInitOnLegacy>
+    <InjectTrimAttributesOnLegacy>true</InjectTrimAttributesOnLegacy>
+    <InjectExperimentalAttributeOnLegacy>true</InjectExperimentalAttributeOnLegacy>
+  </PropertyGroup>
+
+  <Import Project="$(RepoRoot)/dotnet/nuget/nuget-package.props" />
+
+  <!-- First Stable release after the RC milestone. Baseline against the latest 
+       published RC so package validation catches accidental breaking changes. 
+       Future releases should bump this to the previous stable version. -->
+  <PropertyGroup>
+    <PackageValidationBaselineVersion>1.8.0-rc1</PackageValidationBaselineVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- NuGet Package Settings -->
+    <Title>Microsoft Agent Framework Declarative Workflows</Title>
+    <Description>Provides Microsoft Agent Framework support for declarative workflows.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Agents.ObjectModel" />
+    <PackageReference Include="Microsoft.Agents.ObjectModel.Json" />
+    <PackageReference Include="Microsoft.Agents.ObjectModel.PowerFx" />
+    <PackageReference Include="Microsoft.PowerFx.Interpreter" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="System.CodeDom" TreatAsUsed="true" />
+    <PackageReference Include="System.Collections.Immutable" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.Agents.AI.Workflows\Microsoft.Agents.AI.Workflows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Microsoft.Agents.AI.Workflows.Declarative.UnitTests" />
+    <InternalsVisibleTo Include="Microsoft.Agents.AI.Workflows.Declarative.IntegrationTests" />
+  </ItemGroup>
+</Project>

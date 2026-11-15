@@ -1,0 +1,5 @@
+# 30B-A3B coder RL checkpoint — RE-EXPORTED to HF per-expert MoE layout 2026-07-02
+# (fused-MoE export bug fixed + checkpoint repaired via convert_fused_moe_to_hf.py;
+#  HF index-verified: 18867 tensors / 13 shards, 0 residual .moe.experts.w* keys).
+# Now vLLM-loadable under qwen3_moe. Resubmit swebench/tb2/v2 via the front door.
+laion/rl__24GPU_qwen3_coder_30b_a3b__exp_rpt_pymethods2test-large__Qwen3-Coder-30B-A3B-40-30B

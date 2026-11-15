@@ -1,0 +1,129 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  # Manual trigger so we can publish after a tag push, because GitHub Actions
+  # does not cascade the `release: published` event when the release is created
+  # by another workflow via GITHUB_TOKEN (loop-prevention). Use this when the
+  # release workflow succeeded but publish.yml did not auto-trigger.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. v0.92.3). Defaults to latest.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Ruff
+        run: pip install ruff==0.12.12
+      - name: Ruff check (critical errors)
+        run: ruff check src/ tests/ --select=F821,F811 --no-fix
+
+  test:
+    name: Test before publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,memory,search,mcp,telegram,web,documents,cron,vector,postgresql,arc]"
+      - name: Run tests
+        run: python -m pytest tests/ -x -q --tb=short --ignore=tests/test_channels/test_voice_ws_bridge.py
+        env:
+          COGNITHOR_TEST_MODE: "1"
+
+  validate:
+    name: Validate wheel (${{ matrix.os }})
+    needs: [lint, test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Build wheel
+        run: python -m build --wheel --outdir dist/
+
+      - name: Install wheel
+        shell: bash
+        run: pip install dist/*.whl
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          cognithor --version
+          python -c "from cognithor.config import load_config; print('Config OK')"
+
+  publish:
+    needs: [lint, test, validate]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate tag matches pyproject.toml version
+        env:
+          MANUAL_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          PYPROJECT_VERSION=$(python -c "
+          import re
+          with open('pyproject.toml') as f:
+              m = re.search(r'^version\s*=\s*\"(.+?)\"', f.read(), re.M)
+              print(m.group(1) if m else '0.0.0')
+          ")
+          # Prefer the manual `tag` input when present (workflow_dispatch),
+          # otherwise fall back to GITHUB_REF_NAME (set to the tag name on
+          # the `release` event).
+          if [ -n "$MANUAL_TAG" ]; then
+            REF="$MANUAL_TAG"
+          else
+            REF="$GITHUB_REF_NAME"
+          fi
+          TAG_VERSION="${REF#v}"
+          if [ "$PYPROJECT_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match pyproject.toml ($PYPROJECT_VERSION)"
+            exit 1
+          fi
+          echo "Version match confirmed: $PYPROJECT_VERSION"
+
+      - name: Install build tools
+        run: pip install build
+      - name: Build package
+        run: python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+          verbose: true

@@ -1,0 +1,485 @@
+package tcp
+
+import (
+	"math"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/traefik/traefik/v3/pkg/config/dynamic"
+	"github.com/traefik/traefik/v3/pkg/config/runtime"
+	tcpmiddleware "github.com/traefik/traefik/v3/pkg/server/middleware/tcp"
+	"github.com/traefik/traefik/v3/pkg/server/service/tcp"
+	tcp2 "github.com/traefik/traefik/v3/pkg/tcp"
+	traefiktls "github.com/traefik/traefik/v3/pkg/tls"
+)
+
+func TestRuntimeConfiguration(t *testing.T) {
+	testCases := []struct {
+		desc              string
+		httpServiceConfig map[string]*runtime.ServiceInfo
+		httpRouterConfig  map[string]*runtime.RouterInfo
+		tcpServiceConfig  map[string]*runtime.TCPServiceInfo
+		tcpRouterConfig   map[string]*runtime.TCPRouterInfo
+		expectedError     int
+	}{
+		{
+			desc: "No error",
+			tcpServiceConfig: map[string]*runtime.TCPServiceInfo{
+				"foo-service": {
+					TCPService: &dynamic.TCPService{
+						LoadBalancer: &dynamic.TCPServersLoadBalancer{
+							Servers: []dynamic.TCPServer{
+								{
+									Port:    "8085",
+									Address: "127.0.0.1:8085",
+								},
+								{
+									Address: "127.0.0.1:8086",
+									Port:    "8086",
+								},
+							},
+						},
+					},
+				},
+			},
+			tcpRouterConfig: map[string]*runtime.TCPRouterInfo{
+				"foo": {
+					TCPRouter: &dynamic.TCPRouter{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "HostSNI(`bar.foo`)",
+						TLS: &dynamic.RouterTCPTLSConfig{
+							Passthrough: false,
+							Options:     "foo",
+						},
+					},
+				},
+				"bar": {
+					TCPRouter: &dynamic.TCPRouter{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "HostSNI(`foo.bar`)",
+						TLS: &dynamic.RouterTCPTLSConfig{
+							Passthrough: false,
+							Options:     "bar",
+						},
+					},
+				},
+			},
+			expectedError: 0,
+		},
+		{
+			desc: "Non-ASCII domain error",
+			tcpServiceConfig: map[string]*runtime.TCPServiceInfo{
+				"foo-service": {
+					TCPService: &dynamic.TCPService{
+						LoadBalancer: &dynamic.TCPServersLoadBalancer{
+							Servers: []dynamic.TCPServer{
+								{
+									Port:    "8085",
+									Address: "127.0.0.1:8085",
+								},
+							},
+						},
+					},
+				},
+			},
+			tcpRouterConfig: map[string]*runtime.TCPRouterInfo{
+				"foo": {
+					TCPRouter: &dynamic.TCPRouter{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "HostSNI(`bàr.foo`)",
+						TLS: &dynamic.RouterTCPTLSConfig{
+							Passthrough: false,
+							Options:     "foo",
+						},
+					},
+				},
+			},
+			expectedError: 1,
+		},
+		{
+			desc: "HTTP routers with same domain but different TLS options",
+			httpServiceConfig: map[string]*runtime.ServiceInfo{
+				"foo-service": {
+					Service: &dynamic.Service{
+						LoadBalancer: &dynamic.ServersLoadBalancer{
+							Servers: []dynamic.Server{
+								{
+									Port: "8085",
+									URL:  "127.0.0.1:8085",
+								},
+								{
+									URL:  "127.0.0.1:8086",
+									Port: "8086",
+								},
+							},
+						},
+					},
+				},
+			},
+			httpRouterConfig: map[string]*runtime.RouterInfo{
+				"foo": {
+					Router: &dynamic.Router{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "Host(`bar.foo`)",
+						TLS: &dynamic.RouterTLSConfig{
+							Options:         "foo",
+							ResolvedOptions: "default",
+						},
+					},
+				},
+				"bar": {
+					Router: &dynamic.Router{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "Host(`bar.foo`) && PathPrefix(`/path`)",
+						TLS: &dynamic.RouterTLSConfig{
+							Options:         "bar",
+							ResolvedOptions: "default",
+						},
+					},
+				},
+			},
+			expectedError: 2,
+		},
+		{
+			desc: "One router with wrong rule",
+			tcpServiceConfig: map[string]*runtime.TCPServiceInfo{
+				"foo-service": {
+					TCPService: &dynamic.TCPService{
+						LoadBalancer: &dynamic.TCPServersLoadBalancer{
+							Servers: []dynamic.TCPServer{
+								{
+									Address: "127.0.0.1:80",
+								},
+							},
+						},
+					},
+				},
+			},
+			tcpRouterConfig: map[string]*runtime.TCPRouterInfo{
+				"foo": {
+					TCPRouter: &dynamic.TCPRouter{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "WrongRule(`bar.foo`)",
+					},
+				},
+
+				"bar": {
+					TCPRouter: &dynamic.TCPRouter{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "HostSNI(`foo.bar`)",
+						TLS:         &dynamic.RouterTCPTLSConfig{},
+					},
+				},
+			},
+			expectedError: 1,
+		},
+		{
+			desc: "All router with wrong rule",
+			tcpServiceConfig: map[string]*runtime.TCPServiceInfo{
+				"foo-service": {
+					TCPService: &dynamic.TCPService{
+						LoadBalancer: &dynamic.TCPServersLoadBalancer{
+							Servers: []dynamic.TCPServer{
+								{
+									Address: "127.0.0.1:80",
+								},
+							},
+						},
+					},
+				},
+			},
+			tcpRouterConfig: map[string]*runtime.TCPRouterInfo{
+				"foo": {
+					TCPRouter: &dynamic.TCPRouter{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "WrongRule(`bar.foo`)",
+					},
+				},
+				"bar": {
+					TCPRouter: &dynamic.TCPRouter{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "WrongRule(`foo.bar`)",
+					},
+				},
+			},
+			expectedError: 2,
+		},
+		{
+			desc: "Router with unknown service",
+			tcpServiceConfig: map[string]*runtime.TCPServiceInfo{
+				"foo-service": {
+					TCPService: &dynamic.TCPService{
+						LoadBalancer: &dynamic.TCPServersLoadBalancer{
+							Servers: []dynamic.TCPServer{
+								{
+									Address: "127.0.0.1:80",
+								},
+							},
+						},
+					},
+				},
+			},
+			tcpRouterConfig: map[string]*runtime.TCPRouterInfo{
+				"foo": {
+					TCPRouter: &dynamic.TCPRouter{
+						EntryPoints: []string{"web"},
+						Service:     "wrong-service",
+						Rule:        "HostSNI(`bar.foo`)",
+						TLS:         &dynamic.RouterTCPTLSConfig{},
+					},
+				},
+				"bar": {
+					TCPRouter: &dynamic.TCPRouter{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "HostSNI(`foo.bar`)",
+						TLS:         &dynamic.RouterTCPTLSConfig{},
+					},
+				},
+			},
+			expectedError: 1,
+		},
+		{
+			desc: "Router with broken service",
+			tcpServiceConfig: map[string]*runtime.TCPServiceInfo{
+				"foo-service": {
+					TCPService: &dynamic.TCPService{
+						LoadBalancer: nil,
+					},
+				},
+			},
+			tcpRouterConfig: map[string]*runtime.TCPRouterInfo{
+				"bar": {
+					TCPRouter: &dynamic.TCPRouter{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "HostSNI(`foo.bar`)",
+						TLS:         &dynamic.RouterTCPTLSConfig{},
+					},
+				},
+			},
+			expectedError: 2,
+		},
+		{
+			desc: "Router with priority exceeding the max user-defined priority",
+			tcpServiceConfig: map[string]*runtime.TCPServiceInfo{
+				"foo-service": {
+					TCPService: &dynamic.TCPService{
+						LoadBalancer: &dynamic.TCPServersLoadBalancer{
+							Servers: []dynamic.TCPServer{
+								{
+									Port:    "8085",
+									Address: "127.0.0.1:8085",
+								},
+								{
+									Address: "127.0.0.1:8086",
+									Port:    "8086",
+								},
+							},
+						},
+					},
+				},
+			},
+			tcpRouterConfig: map[string]*runtime.TCPRouterInfo{
+				"bar": {
+					TCPRouter: &dynamic.TCPRouter{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "HostSNI(`foo.bar`)",
+						TLS:         &dynamic.RouterTCPTLSConfig{},
+						Priority:    math.MaxInt,
+					},
+				},
+			},
+			expectedError: 1,
+		},
+		{
+			desc: "Router with HostSNI but no TLS",
+			tcpServiceConfig: map[string]*runtime.TCPServiceInfo{
+				"foo-service": {
+					TCPService: &dynamic.TCPService{
+						LoadBalancer: &dynamic.TCPServersLoadBalancer{
+							Servers: []dynamic.TCPServer{
+								{
+									Address: "127.0.0.1:80",
+								},
+							},
+						},
+					},
+				},
+			},
+			tcpRouterConfig: map[string]*runtime.TCPRouterInfo{
+				"foo": {
+					TCPRouter: &dynamic.TCPRouter{
+						EntryPoints: []string{"web"},
+						Service:     "foo-service",
+						Rule:        "HostSNI(`bar.foo`)",
+					},
+				},
+			},
+			expectedError: 1,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			t.Parallel()
+
+			entryPoints := []string{"web"}
+
+			conf := &runtime.Configuration{
+				Services:    test.httpServiceConfig,
+				Routers:     test.httpRouterConfig,
+				TCPServices: test.tcpServiceConfig,
+				TCPRouters:  test.tcpRouterConfig,
+			}
+			dialerManager := tcp2.NewDialerManager(nil)
+			dialerManager.Update(map[string]*dynamic.TCPServersTransport{"default@internal": {}})
+			serviceManager := tcp.NewManager(conf, dialerManager)
+			tlsManager := traefiktls.NewManager(nil)
+			tlsManager.UpdateConfigs(
+				t.Context(),
+				map[string]traefiktls.Store{},
+				map[string]traefiktls.Options{
+					"default": {
+						MinVersion: "VersionTLS10",
+					},
+					"foo": {
+						MinVersion: "VersionTLS12",
+					},
+					"bar": {
+						MinVersion: "VersionTLS11",
+					},
+				},
+				[]*traefiktls.CertAndStores{})
+
+			middlewaresBuilder := tcpmiddleware.NewBuilder(conf.TCPMiddlewares)
+
+			routerManager := NewManager(conf, serviceManager, middlewaresBuilder,
+				nil, nil, tlsManager, nil)
+
+			_ = routerManager.BuildHandlers(t.Context(), entryPoints)
+
+			// even though conf was passed by argument to the manager builders above,
+			// it's ok to use it as the result we check, because everything worth checking
+			// can be accessed by pointers in it.
+			var allErrors int
+			for _, v := range conf.TCPServices {
+				if v.Err != nil {
+					allErrors++
+				}
+			}
+			for _, v := range conf.TCPRouters {
+				if len(v.Err) > 0 {
+					allErrors++
+				}
+			}
+			for _, v := range conf.Services {
+				if v.Err != nil {
+					allErrors++
+				}
+			}
+			for _, v := range conf.Routers {
+				if len(v.Err) > 0 {
+					allErrors++
+				}
+			}
+			assert.Equal(t, test.expectedError, allErrors)
+		})
+	}
+}
+
+func TestConflictingTLSOptions(t *testing.T) {
+	testCases := []struct {
+		desc               string
+		conflictingOptions bool
+		expectedTLSConf    bool
+	}{
+		{
+			desc:            "not conflicting, the resolved TLS options are applied",
+			expectedTLSConf: true,
+		},
+		{
+			desc:               "conflicting TLS options, no TLS configuration is mounted for the domain",
+			conflictingOptions: true,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			t.Parallel()
+
+			conf := &runtime.Configuration{
+				Services: map[string]*runtime.ServiceInfo{
+					"foo-service": {
+						Service: &dynamic.Service{
+							LoadBalancer: &dynamic.ServersLoadBalancer{
+								Servers: []dynamic.Server{{URL: "127.0.0.1:8085"}},
+							},
+						},
+					},
+				},
+				Routers: map[string]*runtime.RouterInfo{
+					"foo": {
+						Router: &dynamic.Router{
+							EntryPoints: []string{"web"},
+							Service:     "foo-service",
+							Rule:        "Host(`bar.foo`)",
+							TLS: &dynamic.RouterTLSConfig{
+								Options:            "foo",
+								ResolvedOptions:    "foo",
+								ConflictingOptions: test.conflictingOptions,
+							},
+						},
+					},
+				},
+			}
+
+			dialerManager := tcp2.NewDialerManager(nil)
+			dialerManager.Update(map[string]*dynamic.TCPServersTransport{"default@internal": {}})
+			serviceManager := tcp.NewManager(conf, dialerManager)
+			tlsManager := traefiktls.NewManager(nil)
+			tlsManager.UpdateConfigs(
+				t.Context(),
+				map[string]traefiktls.Store{},
+				map[string]traefiktls.Options{
+					"default": {MinVersion: "VersionTLS10"},
+					"foo":     {MinVersion: "VersionTLS12"},
+				},
+				[]*traefiktls.CertAndStores{})
+
+			middlewaresBuilder := tcpmiddleware.NewBuilder(conf.TCPMiddlewares)
+
+			routerManager := NewManager(conf, serviceManager, middlewaresBuilder, nil, nil, tlsManager, nil)
+
+			handlers := routerManager.BuildHandlers(t.Context(), []string{"web"})
+
+			require.Contains(t, handlers, "web")
+
+			if test.expectedTLSConf {
+				tlsConf, ok := handlers["web"].hostHTTPTLSConfig["bar.foo"]
+				require.True(t, ok, "no TLS configuration for the router domain")
+
+				assert.Equal(t, "foo", tlsConf.optionsName)
+				assert.NotNil(t, tlsConf.cfg)
+				assert.Empty(t, conf.Routers["foo"].Err)
+
+				return
+			}
+
+			// The router being disabled, its domain is not mapped to any TLS configuration,
+			// and is therefore served with the default TLS options.
+			assert.NotContains(t, handlers["web"].hostHTTPTLSConfig, "bar.foo")
+		})
+	}
+}

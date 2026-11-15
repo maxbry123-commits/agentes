@@ -1,0 +1,29 @@
+# C-26 Policy Engine seed — consulted by every node
+version: "1.0"
+fail_closed: true
+llm_control: DENY
+
+security:
+  can_write_kernel: false
+  can_write_github: false
+  token_in_logs: false
+
+license:
+  allowed: ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]
+  require_gate: true
+
+deploy:
+  force_push: false
+  require_expected_head: true
+  dry_run_first: true
+  protected_patterns: [".github/workflows/**", "**/secrets/**"]
+
+credentials:
+  mode: token_ref_only
+  never_literal: true
+  providers: ["env", "github", "vault"]
+
+limits:
+  max_parallel: 4
+  timeout_ms: 30000
+  max_repair: 2

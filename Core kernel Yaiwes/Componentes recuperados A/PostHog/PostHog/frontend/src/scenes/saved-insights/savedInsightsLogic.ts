@@ -1,0 +1,817 @@
+import { MakeLogicType, actions, afterMount, connect, kea, listeners, path, reducers, selectors } from 'kea'
+import { loaders } from 'kea-loaders'
+import { router, urlToAction } from 'kea-router'
+
+import api, { CountedPaginatedResponse } from 'lib/api'
+import { dayjs } from 'lib/dayjs'
+import { Sorting } from 'lib/lemon-ui/LemonTable'
+import { lemonToast } from 'lib/lemon-ui/LemonToast/LemonToast'
+import { PaginationManual } from 'lib/lemon-ui/PaginationControl'
+import { trackedActionToUrl } from 'lib/logic/scenes/trackedActionToUrl'
+import { eventUsageLogic } from 'lib/utils/eventUsageLogic'
+import { objectDiffShallow, objectsEqual } from 'lib/utils/objects'
+import { toParams } from 'lib/utils/url'
+import { deleteDashboardLogic } from 'scenes/dashboard/deleteDashboardLogic'
+import { duplicateDashboardLogic } from 'scenes/dashboard/duplicateDashboardLogic'
+import { crushDraftQueryForLocalStorage, parseDraftQueryFromLocalStorage } from 'scenes/insights/utils'
+import { insightsApi } from 'scenes/insights/utils/api'
+import { sceneLogic } from 'scenes/sceneLogic'
+import { Scene } from 'scenes/sceneTypes'
+import { urls } from 'scenes/urls'
+import { userLogic } from 'scenes/userLogic'
+
+import { SIDE_PANEL_CONTEXT_KEY, SidePanelSceneContext } from '~/layout/navigation-3000/sidepanel/types'
+import { dashboardsModel } from '~/models/dashboardsModel'
+import { insightsModel } from '~/models/insightsModel'
+import { getQueryBasedInsightModel } from '~/queries/nodes/InsightViz/utils'
+import { Breadcrumb, InsightModel, QueryBasedInsightModel, SavedInsightsTabs, UserType } from '~/types'
+
+import {
+    InsightBulkDeleteResponseApi,
+    InsightBulkRestoreResponseApi,
+} from 'products/product_analytics/frontend/generated/api.schemas'
+
+import type { Node } from '../../queries/schema/schema-general'
+import type { DeleteDashboardForm } from '../dashboard/deleteDashboardLogic'
+import type { DuplicateDashboardForm } from '../dashboard/duplicateDashboardLogic'
+import { teamLogic } from '../teamLogic'
+import { DraftInsightQuery, draftInsightListItem, isValidDraftInsightQuery } from './draftInsight'
+
+export const INSIGHTS_PER_PAGE = 30
+
+export interface SavedInsightListItem extends QueryBasedInsightModel {
+    search_match_type?: 'exact' | 'similar' | null
+}
+
+export interface InsightsResult extends CountedPaginatedResponse<SavedInsightListItem> {
+    /* not in the API response */
+    filters?: SavedInsightFilters | null
+    /* not in the API response */
+    offset: number
+}
+
+export interface SavedInsightFilters {
+    order: string
+    tab: SavedInsightsTabs
+    search: string
+    insightType: string
+    createdBy: number[] | 'All users'
+    tags: string[] | undefined | null
+    dateFrom: string | dayjs.Dayjs | undefined | null
+    dateTo: string | dayjs.Dayjs | undefined | null
+    createdDateFrom: string | dayjs.Dayjs | undefined | null
+    createdDateTo: string | dayjs.Dayjs | undefined | null
+    lastViewedDateFrom: string | dayjs.Dayjs | undefined | null
+    lastViewedDateTo: string | dayjs.Dayjs | undefined | null
+    page: number
+    dashboardId: number | undefined | null
+    events: string[] | undefined | null
+    hideFeatureFlagInsights: boolean | undefined | null
+    favorited: boolean | undefined | null
+}
+
+export function cleanFilters(values: Partial<SavedInsightFilters>): SavedInsightFilters {
+    return {
+        order: values.order || '-last_modified_at', // Sync with `sorting` selector
+        tab: values.tab || SavedInsightsTabs.All,
+        search: String(values.search || ''),
+        insightType: values.insightType || 'All types',
+        // Clearing a multi-select sends an empty array, which must read as "no filter" and not linger in the URL
+        createdBy: values.createdBy?.length ? values.createdBy : 'All users',
+        tags: values.tags?.length ? values.tags : undefined,
+        dateFrom: values.dateFrom || 'all',
+        dateTo: values.dateTo || undefined,
+        createdDateFrom: values.createdDateFrom || undefined,
+        createdDateTo: values.createdDateTo || undefined,
+        lastViewedDateFrom: values.lastViewedDateFrom || undefined,
+        lastViewedDateTo: values.lastViewedDateTo || undefined,
+        page: parseInt(String(values.page)) || 1,
+        dashboardId: values.dashboardId,
+        events: values.events,
+        hideFeatureFlagInsights: values.hideFeatureFlagInsights || false,
+        favorited: values.favorited || false,
+    }
+}
+
+/** Query params the insights list API is called with for a given set of filters. */
+function insightsListParams(filters: SavedInsightFilters): Record<string, any> {
+    return {
+        order: filters.order,
+        limit: INSIGHTS_PER_PAGE,
+        offset: Math.max(0, (filters.page - 1) * INSIGHTS_PER_PAGE),
+        saved: true,
+        ...(filters.favorited && { favorited: true }),
+        ...(filters.search && { search: filters.search }),
+        ...(filters.insightType?.toLowerCase() !== 'all types' && {
+            insight: filters.insightType?.toUpperCase(),
+        }),
+        ...(filters.tab === SavedInsightsTabs.Yours && { user: true }),
+        ...(filters.tab !== SavedInsightsTabs.Yours &&
+            filters.createdBy !== 'All users' && {
+                created_by: JSON.stringify(filters.createdBy),
+            }),
+        ...(filters.tags && filters.tags.length > 0 && { tags: JSON.stringify(filters.tags) }),
+        ...(filters.dateFrom &&
+            filters.dateFrom !== 'all' && {
+                date_from: filters.dateFrom,
+                date_to: filters.dateTo,
+            }),
+        ...(filters.createdDateFrom &&
+            filters.createdDateFrom !== 'all' && {
+                created_date_from: filters.createdDateFrom,
+                created_date_to: filters.createdDateTo,
+            }),
+        ...(filters.lastViewedDateFrom &&
+            filters.lastViewedDateFrom !== 'all' && {
+                last_viewed_date_from: filters.lastViewedDateFrom,
+                last_viewed_date_to: filters.lastViewedDateTo,
+            }),
+        ...(!!filters.dashboardId && {
+            dashboards: [filters.dashboardId],
+        }),
+        ...(filters.hideFeatureFlagInsights && { hide_feature_flag_insights: true }),
+    }
+}
+
+/** Params that scope, page, or sort the list rather than filter it. */
+const NON_NARROWING_PARAM_KEYS = ['order', 'limit', 'offset', 'saved', 'user']
+
+/**
+ * Whether any filter that narrows the insights list is active, i.e. the API request would carry a
+ * filtering param. Deriving this from the request params keeps it agreeing with what actually
+ * filters the list (a cleared tag filter produces no param, for example). Tab, page, and sort
+ * order are navigation rather than filters.
+ */
+export function hasNarrowingFilters(filters: SavedInsightFilters): boolean {
+    return Object.keys(insightsListParams(filters)).some((key) => !NON_NARROWING_PARAM_KEYS.includes(key))
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface savedInsightsLogicValues {
+    activeSceneId: string | null // sceneLogic
+    currentTeamId: number | null // teamLogic
+    user: UserType | null // userLogic
+    breadcrumbs: Breadcrumb[]
+    bulkDeleteResponse: InsightBulkDeleteResponseApi | null
+    bulkDeleteResponseLoading: boolean
+    bulkRestoreResponse: InsightBulkRestoreResponseApi | null
+    bulkRestoreResponseLoading: boolean
+    count: number
+    dashboardUpdatesInProgress: Record<number, boolean>
+    draftInsightRow: SavedInsightListItem | null
+    draftQuery: DraftInsightQuery | null
+    filters: SavedInsightFilters
+    insights: InsightsResult
+    insightsLoadFailed: boolean
+    insightsLoading: boolean
+    pagination: PaginationManual
+    paramsFromFilters: Record<string, any>
+    rawFilters: Partial<SavedInsightFilters> | null
+    sidePanelContext: SidePanelSceneContext
+    sorting: Sorting | null
+    usingFilters: boolean
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface savedInsightsLogicActions {
+    addInsight: (insight: QueryBasedInsightModel) => {
+        insight: QueryBasedInsightModel<Node<Record<string, any>>>
+    }
+    bulkDeleteInsights: ({ ids }: { ids: number[] }) => {
+        ids: number[]
+    }
+    bulkDeleteInsightsFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    bulkDeleteInsightsSuccess: (
+        bulkDeleteResponse: InsightBulkDeleteResponseApi,
+        payload?: {
+            ids: number[]
+        }
+    ) => {
+        bulkDeleteResponse: InsightBulkDeleteResponseApi
+        payload?: {
+            ids: number[]
+        }
+    }
+    bulkRestoreInsights: ({ ids }: { ids: number[] }) => {
+        ids: number[]
+    }
+    bulkRestoreInsightsFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    bulkRestoreInsightsSuccess: (
+        bulkRestoreResponse: InsightBulkRestoreResponseApi,
+        payload?: {
+            ids: number[]
+        }
+    ) => {
+        bulkRestoreResponse: InsightBulkRestoreResponseApi
+        payload?: {
+            ids: number[]
+        }
+    }
+    discardDraftQuery: () => {
+        value: true
+    }
+    duplicateInsight: (
+        insight: QueryBasedInsightModel,
+        redirectToInsight?: any
+    ) => {
+        insight: QueryBasedInsightModel<Node<Record<string, any>>>
+        redirectToInsight: any
+    }
+    loadDraftQuery: () => {
+        value: true
+    }
+    loadInsights: (debounce?: boolean) => {
+        debounce: boolean
+    }
+    loadInsightsFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    loadInsightsSuccess: (
+        insights: InsightsResult,
+        payload?: {
+            debounce: boolean
+        }
+    ) => {
+        insights: InsightsResult
+        payload?: {
+            debounce: boolean
+        }
+    }
+    renameInsight: (insight: QueryBasedInsightModel) => {
+        insight: QueryBasedInsightModel<Node<Record<string, any>>>
+    }
+    setDashboardUpdateLoading: (
+        insightId: number,
+        loading: boolean
+    ) => {
+        insightId: number
+        loading: boolean
+    }
+    setDraftQuery: (draftQuery: DraftInsightQuery | null) => {
+        draftQuery: DraftInsightQuery | null
+    }
+    setSavedInsightsFilters: (
+        filters: Partial<SavedInsightFilters>,
+        merge?: boolean,
+        debounce?: boolean
+    ) => {
+        debounce: boolean
+        filters: Partial<SavedInsightFilters>
+        merge: boolean
+    }
+    updateFavoritedInsight: (
+        insight: QueryBasedInsightModel,
+        favorited: boolean
+    ) => {
+        favorited: boolean
+        insight: QueryBasedInsightModel<Node<Record<string, any>>>
+    }
+    updateFavoritedInsightFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    updateFavoritedInsightSuccess: (
+        insights: {
+            count: number
+            filters?: SavedInsightFilters | null | undefined
+            next?: string | null | undefined
+            offset: number
+            previous?: string | null | undefined
+            results: QueryBasedInsightModel<Node<Record<string, any>>>[]
+        },
+        payload?: {
+            favorited: boolean
+            insight: QueryBasedInsightModel<Node<Record<string, any>>>
+        }
+    ) => {
+        insights: {
+            count: number
+            filters?: SavedInsightFilters | null | undefined
+            next?: string | null | undefined
+            offset: number
+            previous?: string | null | undefined
+            results: QueryBasedInsightModel<Node<Record<string, any>>>[]
+        }
+        payload?: {
+            favorited: boolean
+            insight: QueryBasedInsightModel<Node<Record<string, any>>>
+        }
+    }
+    updateInsight: (insight: QueryBasedInsightModel) => {
+        insight: QueryBasedInsightModel<Node<Record<string, any>>>
+    }
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface savedInsightsLogicMeta {
+    __keaTypeGenInternalSelectorTypes: {
+        filters: (rawFilters: Partial<SavedInsightFilters> | null) => SavedInsightFilters
+        count: (insights: InsightsResult) => number
+        usingFilters: (filters: SavedInsightFilters) => boolean
+        sorting: (filters: SavedInsightFilters) => Sorting | null
+        paramsFromFilters: (filters: SavedInsightFilters) => Record<string, any>
+        pagination: (filters: SavedInsightFilters, count: number) => PaginationManual
+        draftInsightRow: (
+            draftQuery: DraftInsightQuery | null,
+            user: UserType | null,
+            filters: SavedInsightFilters
+        ) => SavedInsightListItem | null
+    }
+}
+
+export type savedInsightsLogicType = MakeLogicType<
+    savedInsightsLogicValues,
+    savedInsightsLogicActions,
+    Record<string, any>,
+    savedInsightsLogicMeta
+>
+
+export const savedInsightsLogic = kea<savedInsightsLogicType>([
+    path(['scenes', 'saved-insights', 'savedInsightsLogic']),
+    connect(() => ({
+        values: [teamLogic, ['currentTeamId'], sceneLogic, ['activeSceneId'], userLogic, ['user']],
+        logic: [eventUsageLogic],
+    })),
+    actions({
+        setSavedInsightsFilters: (
+            filters: Partial<SavedInsightFilters>,
+            merge: boolean = true,
+            debounce: boolean = true
+        ) => ({ filters, merge, debounce }),
+        updateFavoritedInsight: (insight: QueryBasedInsightModel, favorited: boolean) => ({ insight, favorited }),
+        renameInsight: (insight: QueryBasedInsightModel) => ({ insight }),
+        duplicateInsight: (insight: QueryBasedInsightModel, redirectToInsight = false) => ({
+            insight,
+            redirectToInsight,
+        }),
+        loadInsights: (debounce: boolean = true) => ({ debounce }),
+        updateInsight: (insight: QueryBasedInsightModel) => ({ insight }),
+        addInsight: (insight: QueryBasedInsightModel) => ({ insight }),
+        setDashboardUpdateLoading: (insightId: number, loading: boolean) => ({ insightId, loading }),
+        loadDraftQuery: true,
+        setDraftQuery: (draftQuery: DraftInsightQuery | null) => ({ draftQuery }),
+        discardDraftQuery: true,
+    }),
+    loaders(({ values }) => ({
+        insights: {
+            __default: { results: [], count: 0, filters: null, offset: 0 } as InsightsResult,
+            loadInsights: async ({ debounce }, breakpoint) => {
+                if (debounce && values.insights.filters !== null) {
+                    await breakpoint(300)
+                }
+                const { filters } = values
+
+                const params: Record<string, any> = {
+                    ...values.paramsFromFilters,
+                    basic: true,
+                }
+
+                const legacyResponse: CountedPaginatedResponse<InsightModel> = await api.get(
+                    `api/environments/${teamLogic.values.currentTeamId}/insights/?${toParams(params)}`
+                )
+
+                // Cancel if a newer request came in while this one was in flight
+                await breakpoint()
+
+                const response = {
+                    ...legacyResponse,
+                    results: legacyResponse.results.map((legacyInsight) => getQueryBasedInsightModel(legacyInsight)),
+                }
+
+                if (filters.search && String(filters.search).match(/^[0-9]+$/)) {
+                    try {
+                        const insight = await insightsApi.getByNumericId(Number(filters.search))
+                        await breakpoint()
+                        return {
+                            ...response,
+                            count: response.count + 1,
+                            results: [insight, ...response.results],
+                            filters,
+                            offset: params.offset,
+                        } as InsightsResult
+                    } catch {
+                        // no insight with this ID found, discard
+                    }
+                }
+
+                // scroll to top if the page changed, except if changed via back/forward
+                if (
+                    sceneLogic.findMounted()?.values.activeSceneId === Scene.SavedInsights &&
+                    router.values.lastMethod !== 'POP' &&
+                    values.insights.filters?.page !== filters.page
+                ) {
+                    window.scrollTo(0, 0)
+                }
+
+                return {
+                    ...response,
+                    filters,
+                    offset: params.offset,
+                } as InsightsResult
+            },
+            updateFavoritedInsight: async ({ insight, favorited }) => {
+                const response = await insightsApi.update(insight.id, {
+                    favorited,
+                })
+                const updatedInsights = values.insights.results.map((i) =>
+                    i.short_id === insight.short_id ? response : i
+                )
+                return { ...values.insights, results: updatedInsights }
+            },
+        },
+        bulkDeleteResponse: [
+            null as InsightBulkDeleteResponseApi | null,
+            {
+                bulkDeleteInsights: async ({ ids }: { ids: number[] }) => {
+                    return (await api.create(`api/environments/${values.currentTeamId}/insights/bulk_delete/`, {
+                        ids,
+                    })) as InsightBulkDeleteResponseApi
+                },
+            },
+        ],
+        bulkRestoreResponse: [
+            null as InsightBulkRestoreResponseApi | null,
+            {
+                bulkRestoreInsights: async ({ ids }: { ids: number[] }) => {
+                    return (await api.create(`api/environments/${values.currentTeamId}/insights/bulk_restore/`, {
+                        ids,
+                    })) as InsightBulkRestoreResponseApi
+                },
+            },
+        ],
+    })),
+    reducers({
+        insights: {
+            updateInsight: (state, { insight }) => ({
+                ...state,
+                results: state.results.map((i) => (i.short_id === insight.short_id ? insight : i)),
+            }),
+            addInsight: (state, { insight }) => ({
+                ...state,
+                count: state.count + 1,
+                results: [insight, ...state.results],
+            }),
+        },
+        rawFilters: [
+            null as Partial<SavedInsightFilters> | null,
+            {
+                setSavedInsightsFilters: (state, { filters, merge }) =>
+                    cleanFilters({
+                        ...(merge ? state || {} : {}),
+                        ...filters,
+                        // Reset page on filter change EXCEPT if it's page that's being updated
+                        ...('page' in filters ? {} : { page: 1 }),
+                    }),
+            },
+        ],
+        insightsLoadFailed: [
+            false,
+            {
+                loadInsights: () => false,
+                loadInsightsSuccess: () => false,
+                loadInsightsFailure: () => true,
+            },
+        ],
+        dashboardUpdatesInProgress: [
+            {} as Record<number, boolean>,
+            {
+                setDashboardUpdateLoading: (state, { insightId, loading }) => {
+                    return { ...state, [insightId]: loading }
+                },
+            },
+        ],
+        draftQuery: [
+            null as DraftInsightQuery | null,
+            {
+                setDraftQuery: (_, { draftQuery }) => draftQuery,
+            },
+        ],
+    }),
+    selectors({
+        filters: [
+            (s) => [s.rawFilters],
+            (rawFilters: Partial<SavedInsightFilters> | null): SavedInsightFilters => cleanFilters(rawFilters || {}),
+        ],
+        count: [(s) => [s.insights], (insights: InsightsResult) => insights.count],
+        usingFilters: [
+            (s) => [s.filters],
+            (filters: SavedInsightFilters) =>
+                !objectsEqual(cleanFilters({ ...filters, tab: SavedInsightsTabs.All }), cleanFilters({})),
+        ],
+        sorting: [
+            (s) => [s.filters],
+            (filters: SavedInsightFilters): Sorting | null => {
+                if (!filters.order) {
+                    // Sync with `cleanFilters` function
+                    return {
+                        columnKey: 'last_modified_at',
+                        order: -1,
+                    }
+                }
+                return filters.order.startsWith('-')
+                    ? {
+                          columnKey: filters.order.slice(1),
+                          order: -1,
+                      }
+                    : {
+                          columnKey: filters.order,
+                          order: 1,
+                      }
+            },
+        ],
+        paramsFromFilters: [(s) => [s.filters], (filters: SavedInsightFilters) => insightsListParams(filters)],
+        pagination: [
+            (s) => [s.filters, s.count],
+            (filters: SavedInsightFilters, count: number): PaginationManual => {
+                return {
+                    controlled: true,
+                    pageSize: INSIGHTS_PER_PAGE,
+                    currentPage: filters.page,
+                    entryCount: count,
+                }
+            },
+        ],
+        draftInsightRow: [
+            (s) => [s.draftQuery, s.user, s.filters],
+            (
+                draftQuery: DraftInsightQuery | null,
+                user: UserType | null,
+                filters: SavedInsightFilters
+            ): SavedInsightListItem | null =>
+                // The draft is pinned to the top of the list and can't match filters, so it only
+                // belongs on the first page of the unfiltered view
+                draftQuery && filters.page === 1 && !hasNarrowingFilters(filters)
+                    ? draftInsightListItem(draftQuery, user)
+                    : null,
+        ],
+        [SIDE_PANEL_CONTEXT_KEY]: [
+            () => [],
+            (): SidePanelSceneContext => {
+                return {
+                    discussions_disabled: true,
+                }
+            },
+        ],
+        breadcrumbs: [
+            () => [],
+            (): Breadcrumb[] => [
+                {
+                    key: 'saved_insights',
+                    name: 'Product analytics',
+                    iconType: 'product_analytics',
+                },
+            ],
+        ],
+    }),
+    listeners(({ actions, asyncActions, values, selectors }) => ({
+        setSavedInsightsFilters: async ({ merge, debounce }, breakpoint, __, previousState) => {
+            const oldFilters = selectors.filters(previousState)
+            const firstLoad = selectors.rawFilters(previousState) === null
+            const { filters } = values // not taking from props because sometimes we merge them
+
+            if (
+                debounce &&
+                !firstLoad &&
+                typeof filters.search !== 'undefined' &&
+                filters.search !== oldFilters.search
+            ) {
+                await breakpoint(300)
+            }
+            if (firstLoad || !objectsEqual(oldFilters, filters)) {
+                await asyncActions.loadInsights(debounce)
+            }
+
+            // Filters from clicks come with "merge: true",
+            // Filters from the URL come with "merge: false" and override everything
+            if (merge) {
+                let keys = Object.keys(objectDiffShallow(oldFilters, filters))
+                if (keys.includes('tab')) {
+                    keys = keys.filter((k) => k !== 'tab')
+                    eventUsageLogic.actions.reportSavedInsightTabChanged(filters.tab)
+                }
+                if (keys.length > 0) {
+                    eventUsageLogic.actions.reportSavedInsightFilterUsed(keys)
+                }
+            }
+        },
+        renameInsight: async ({ insight }) => {
+            insightsModel.actions.renameInsight(insight)
+        },
+        duplicateInsight: async ({ insight, redirectToInsight }) => {
+            const newInsight = await insightsApi.duplicate(insight)
+            actions.addInsight(newInsight)
+            redirectToInsight && router.actions.push(urls.insightEdit(newInsight.short_id))
+        },
+        setDates: () => {
+            actions.loadInsights()
+        },
+        [insightsModel.actionTypes.renameInsightSuccess]: ({ item }: { item: QueryBasedInsightModel }) => {
+            actions.updateInsight(item)
+        },
+        [dashboardsModel.actionTypes.updateDashboardInsight]: ({
+            insight,
+            sourceDashboardId,
+        }: {
+            insight: QueryBasedInsightModel
+            sourceDashboardId?: number
+        }) => {
+            if (sourceDashboardId != null) {
+                // That payload is only valid on the dashboard that refreshed it (date range, etc. are baked into
+                // `query`). The saved list should show the saved insight definition, not the merged view.
+                return
+            }
+            const matchingInsightIndex = values.insights.results.findIndex((i) => i.id === insight.id)
+            if (matchingInsightIndex >= 0) {
+                actions.updateInsight(insight)
+            } else {
+                actions.addInsight(insight)
+            }
+        },
+        [deleteDashboardLogic.actionTypes.submitDeleteDashboardSuccess]: ({
+            deleteDashboard,
+        }: {
+            deleteDashboard: DeleteDashboardForm
+        }) => {
+            if (deleteDashboard.deleteInsights) {
+                actions.loadInsights()
+            }
+        },
+        [duplicateDashboardLogic.actionTypes.submitDuplicateDashboardSuccess]: ({
+            duplicateDashboard,
+        }: {
+            duplicateDashboard: DuplicateDashboardForm
+        }) => {
+            if (duplicateDashboard.duplicateTiles) {
+                actions.loadInsights()
+            }
+        },
+        bulkDeleteInsightsSuccess: ({ bulkDeleteResponse }) => {
+            if (!bulkDeleteResponse) {
+                return
+            }
+            const { deleted, skipped } = bulkDeleteResponse
+            const deletedIds = deleted.map((insight) => insight.id)
+            if (deletedIds.length > 0) {
+                const noun = deletedIds.length === 1 ? 'insight' : 'insights'
+                const skippedSuffix = skipped.length > 0 ? ` ${skipped.length} skipped (no permission).` : ''
+                lemonToast.info(`Deleted ${deletedIds.length} ${noun}.${skippedSuffix}`, {
+                    toastId: 'bulk-delete-insights',
+                    button: {
+                        label: 'Undo',
+                        action: () => actions.bulkRestoreInsights({ ids: deletedIds }),
+                    },
+                })
+            } else if (skipped.length > 0) {
+                lemonToast.warning(`No insights deleted. ${skipped.length} skipped due to permissions.`)
+            }
+            actions.loadInsights()
+        },
+        bulkDeleteInsightsFailure: () => {
+            lemonToast.error('Failed to delete insights')
+        },
+        bulkRestoreInsightsSuccess: ({ bulkRestoreResponse }) => {
+            if (!bulkRestoreResponse) {
+                return
+            }
+            const { restored } = bulkRestoreResponse
+            if (restored.length > 0) {
+                const noun = restored.length === 1 ? 'insight' : 'insights'
+                lemonToast.success(`Restored ${restored.length} ${noun}`)
+            }
+            actions.loadInsights()
+        },
+        bulkRestoreInsightsFailure: () => {
+            lemonToast.error('Failed to restore insights')
+        },
+        loadDraftQuery: () => {
+            if (!values.currentTeamId) {
+                actions.setDraftQuery(null)
+                return
+            }
+            const storageKey = `draft-query-${values.currentTeamId}`
+            const stored = localStorage.getItem(storageKey)
+            const parsed = stored ? parseDraftQueryFromLocalStorage(stored) : null
+            const draft = isValidDraftInsightQuery(parsed) ? parsed : null
+            if (stored && !draft) {
+                // A malformed draft would resurface (or crash the row) on every visit, so drop it for good
+                localStorage.removeItem(storageKey)
+            }
+            actions.setDraftQuery(draft)
+        },
+        discardDraftQuery: () => {
+            const draft = values.draftQuery
+            if (!draft) {
+                return
+            }
+            const storageKey = `draft-query-${values.currentTeamId}`
+            localStorage.removeItem(storageKey)
+            actions.setDraftQuery(null)
+            eventUsageLogic.actions.reportInsightDraftDiscarded(
+                Math.max(0, Math.round((Date.now() - draft.timestamp) / 1000))
+            )
+            lemonToast.info('Draft discarded', {
+                button: {
+                    label: 'Undo',
+                    action: () => {
+                        // The editor may have written a newer draft since the discard — don't clobber it
+                        if (localStorage.getItem(storageKey) === null) {
+                            localStorage.setItem(
+                                storageKey,
+                                crushDraftQueryForLocalStorage(draft.query, draft.timestamp)
+                            )
+                        }
+                        actions.loadDraftQuery()
+                    },
+                },
+            })
+        },
+    })),
+    trackedActionToUrl(({ values }) => {
+        const changeUrl = ():
+            | [
+                  string,
+                  Record<string, any>,
+                  Record<string, any>,
+                  {
+                      replace: boolean
+                  },
+              ]
+            | void => {
+            const currentScene = sceneLogic.findMounted()?.values
+            if (currentScene?.activeSceneId === Scene.SavedInsights) {
+                const nextValues = cleanFilters(values.filters)
+                const urlValues = cleanFilters(router.values.searchParams)
+                if (!objectsEqual(nextValues, urlValues)) {
+                    return [
+                        urls.savedInsights(),
+                        objectDiffShallow(cleanFilters({}), nextValues),
+                        {},
+                        { replace: false },
+                    ]
+                }
+            }
+        }
+        return {
+            loadInsights: changeUrl,
+        }
+    }),
+    urlToAction(({ actions, values }) => ({
+        [urls.savedInsights()]: async (_, searchParams, hashParams) => {
+            if (searchParams.tab === SavedInsightsTabs.Alerts || searchParams.alert_id) {
+                const alertsSearchParams = { ...searchParams }
+                delete alertsSearchParams.tab
+                router.actions.replace(urls.alerts(), alertsSearchParams, hashParams)
+                return
+            }
+
+            if (hashParams.fromItem && String(hashParams.fromItem).match(/^[0-9]+$/)) {
+                // `fromItem` for legacy /insights url redirect support
+                const insightNumericId = parseInt(hashParams.fromItem)
+                try {
+                    const insight = await insightsApi.getByNumericId(insightNumericId)
+                    if (!insight?.short_id) {
+                        throw new Error('Could not find insight or missing short_id')
+                    }
+                    router.actions.replace(
+                        hashParams.edit ? urls.insightEdit(insight.short_id) : urls.insightView(insight.short_id)
+                    )
+                } catch {
+                    lemonToast.error(`Insight ID ${insightNumericId} couldn't be retrieved`)
+                    router.actions.push(urls.savedInsights())
+                }
+                return
+            }
+
+            // The insight editor may have written or cleared a draft since this logic mounted
+            actions.loadDraftQuery()
+
+            const currentFilters = cleanFilters(values.filters)
+            const nextFilters = cleanFilters(searchParams)
+            if (values.rawFilters === null || !objectsEqual(currentFilters, nextFilters)) {
+                actions.setSavedInsightsFilters(nextFilters, false)
+            }
+        },
+    })),
+    afterMount(({ actions }) => {
+        actions.loadDraftQuery()
+    }),
+])

@@ -1,0 +1,173 @@
+---
+id: metrics-knowledge-retention
+title: Knowledge Retention
+sidebar_label: Knowledge Retention
+languages: [python, typescript]
+---
+<MetricTagsDisplayer multiTurn={true} chatbot={true} referenceless={true} />
+
+The knowledge retention metric is a conversational metric that determines whether your LLM chatbot is able to retain factual information presented **throughout a conversation**.
+
+:::info
+This is great for a LLM powered questionnaire use case.
+:::
+
+## Required Arguments
+
+To use the `KnowledgeRetentionMetric`, you'll have to provide the following arguments when creating a [`ConversationalTestCase`](/docs/evaluation-multiturn-test-cases):
+
+- `turns`
+
+You must provide the `role` and `content` for evaluation to happen. Read the [How Is It Calculated](#how-is-it-calculated) section below to learn more.
+
+## Usage
+
+The `KnowledgeRetentionMetric()` can be used for [end-to-end](/docs/evaluation-end-to-end-llm-evals) multi-turn evaluation:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import Turn, ConversationalTestCase
+from deepeval.metrics import KnowledgeRetentionMetric
+from deepeval import evaluate
+
+convo_test_case = ConversationalTestCase(
+    turns=[Turn(role="...", content="..."), Turn(role="...", content="...")]
+)
+metric = KnowledgeRetentionMetric(threshold=0.5)
+
+# To run metric as a standalone
+# metric.measure(convo_test_case)
+# print(metric.score, metric.reason)
+
+evaluate(test_cases=[convo_test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { Turn, ConversationalTestCase } from "deepeval/test-case";
+import { KnowledgeRetentionMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+const convoTestCase = new ConversationalTestCase({
+  turns: [new Turn({ role: "user", content: "..." }), new Turn({ role: "assistant", content: "..." })],
+});
+const metric = new KnowledgeRetentionMetric({ threshold: 0.5 });
+
+// To run metric as a standalone
+// await metric.measure(convoTestCase);
+// console.log(metric.score, metric.reason);
+
+await evaluate([convoTestCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+There are **SIX** optional parameters when creating a `KnowledgeRetentionMetric`:
+
+- [Optional] `threshold`: a number representing the minimum passing threshold. Can also be set to <Term py="None" ts="null"/> to run the metric in [score-only mode](/docs/metrics-introduction#metric-thresholds). Defaulted to `0.5`.
+- [Optional] `model`: a string specifying which of OpenAI's GPT models to use, **OR** [any custom LLM model](/docs/metrics-introduction#using-a-custom-llm) of type `DeepEvalBaseLLM`. Defaulted to <DefaultLLMModel />.
+- [Optional] <Term py="include_reason" ts="includeReason"/>: a boolean which when set to <Term py="True" ts="true"/>, will include a reason for its evaluation score. Defaulted to <Term py="True" ts="true"/>.
+- [Optional] <Term py="strict_mode" ts="strictMode"/>: a boolean which when set to <Term py="True" ts="true"/>, enforces a binary metric score: 1 for perfection, 0 otherwise. It also overrides the current threshold and sets it to 0. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] `flaky`: a boolean which when set to <Term py="True" ts="true"/>, [marks the metric as flaky](/docs/metrics-introduction#flaky-metrics). Defaulted to <Term py="False" ts="false"/>.
+
+### As a standalone
+
+You can also run the `KnowledgeRetentionMetric` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(test_case)
+print(metric.score, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+...
+
+await metric.measure(convoTestCase);
+console.log(metric.score, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+:::caution
+This is great for debugging or if you wish to build your own evaluation pipeline, but you will **NOT** get the benefits (testing reports, Confident AI platform) and all the optimizations (speed, caching, computation) the `evaluate()` function or `deepeval test run` offers.
+:::
+
+## How Is It Calculated?
+
+The `KnowledgeRetentionMetric` score is calculated according to the following equation:
+
+<Equation formula="\text{Knowledge Retention} = \frac{\text{Number of Assistant Turns without Knowledge Attritions}}{\text{Total Number of Assistant Turns}}" />
+
+The `KnowledgeRetentionMetric` first uses an LLM to extract knowledge supplied in `"content"` by the `"user"` role throughout `turns`, before using the same LLM to determine whether each corresponding `"assistant"` content indicates an inability to recall said knowledge.
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question:
+        "Why does my chatbot keep asking for information the user already gave it?",
+      answer: (
+        <>
+          Exactly the failure <code>KnowledgeRetentionMetric</code> catches. It
+          extracts facts the user supplied earlier and flags any later assistant
+          turn that asks for them again, quantifying how often your bot
+          "forgets."
+        </>
+      ),
+    },
+    {
+      question: "How does the metric detect that the bot forgot something?",
+      answer: (
+        <>
+          An LLM extracts knowledge stated in the <code>"user"</code> turns,
+          then checks each later <code>"assistant"</code> turn for a{" "}
+          <em>knowledge attrition</em> — failing to recall info already
+          provided.
+        </>
+      ),
+    },
+    {
+      question: "Which turns are scored?",
+      answer: (
+        <>
+          Assistant turns <em>without</em> a knowledge attrition over total
+          assistant turns, so a single turn that re-requests known info pulls
+          the whole conversation down.
+        </>
+      ),
+    },
+    {
+      question: "Why does strict mode set the `threshold` to 0?",
+      answer: (
+        <>
+          With <Term py="strict_mode" ts="strictMode"/> set to <Term py="True" ts="true"/> the metric is
+          binary (1 only for zero attritions, else 0), so the threshold is{" "}
+          <code>0</code> and any single forgotten fact fails the test case.
+        </>
+      ),
+    },
+  ]}
+/>
+

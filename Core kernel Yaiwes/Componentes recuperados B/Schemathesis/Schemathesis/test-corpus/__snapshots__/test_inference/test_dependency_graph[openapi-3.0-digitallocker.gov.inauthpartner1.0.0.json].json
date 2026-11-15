@@ -1,0 +1,661 @@
+{
+  "operations": {
+    "GET /oauth2/1/authorize": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "query",
+          "parameter_name": "client_id",
+          "resource": "Client",
+          "resource_field": "client_id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Authorize",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /oauth2/1/file/{uri}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "uri",
+          "resource": "File",
+          "resource_field": "uri"
+        }
+      ],
+      "outputs": []
+    },
+    "GET /oauth2/1/files/": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/items",
+          "resource": "File",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /oauth2/1/files/issued": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Issued",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /oauth2/1/files/{id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "id",
+          "resource": "File",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "File",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /oauth2/1/user": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "User",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /oauth2/1/xml/{uri}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "uri",
+          "resource": "Xml",
+          "resource_field": "uri"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "XMLFormatSchema",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /oauth2/2/files/issued": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/items",
+          "resource": "Issued",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /oauth2/2/xml/eaadhaar": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "EaadharXamlSchema",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /account/1/pushuri": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Pushuri",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /account/2/verify": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "VerifyAccountResponse",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /oauth2/1/code": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "client_id",
+          "resource": "Client",
+          "resource_field": "client_id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DeviceAuthorizationCodeResponse",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /oauth2/1/file/upload": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "FileUploadResponse",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /oauth2/1/pull/doctype": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DocTypeResponse",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /oauth2/1/pull/issuers": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/issuers",
+          "resource": "IssuerResponse",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /oauth2/1/pull/parameters": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "SearchParametersResponse",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /oauth2/1/pull/pulldocument": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Pulldocument",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /oauth2/1/revoke": {
+      "inputs": [],
+      "outputs": []
+    },
+    "POST /oauth2/1/token": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "AccessResponse",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /signup/1/demoauthverify": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DemoAuthVerifyResponse",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /signup/2/demoauth": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DemoAuthResponse",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /statistics/1/counts": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "GetStatisticsResponse",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "AccessResponse": {
+      "fields": [
+        "access_token",
+        "digilocker_id",
+        "dob",
+        "eaadhar",
+        "expires_in",
+        "gender",
+        "name",
+        "reference_key",
+        "refresh_token",
+        "scope",
+        "token_type"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "digilocker_id",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Digilocker"
+        }
+      ],
+      "types": {
+        "access_token": [
+          "string"
+        ],
+        "digilocker_id": [
+          "string"
+        ],
+        "dob": [
+          "integer"
+        ],
+        "eaadhar": [
+          "string"
+        ],
+        "expires_in": [
+          "integer"
+        ],
+        "gender": [
+          "string"
+        ],
+        "name": [
+          "string"
+        ],
+        "reference_key": [
+          "string"
+        ],
+        "refresh_token": [
+          "string"
+        ],
+        "scope": [
+          "string"
+        ],
+        "token_type": [
+          "string"
+        ]
+      }
+    },
+    "Authorize": {
+      "fields": [
+        "details"
+      ],
+      "types": {
+        "details": [
+          "object"
+        ]
+      }
+    },
+    "Client": {
+      "fields": [
+        "client_id"
+      ],
+      "types": {}
+    },
+    "DemoAuthResponse": {
+      "fields": [
+        "details"
+      ],
+      "types": {
+        "details": [
+          "object"
+        ]
+      }
+    },
+    "DemoAuthVerifyResponse": {
+      "fields": [
+        "details"
+      ],
+      "types": {
+        "details": [
+          "object"
+        ]
+      }
+    },
+    "DeviceAuthorizationCodeResponse": {
+      "fields": [
+        "device_code",
+        "dl_masked_email",
+        "dl_masked_mobile",
+        "expires_in"
+      ],
+      "types": {
+        "device_code": [
+          "string"
+        ],
+        "dl_masked_email": [
+          "string"
+        ],
+        "dl_masked_mobile": [
+          "integer"
+        ],
+        "expires_in": [
+          "integer"
+        ]
+      }
+    },
+    "DocTypeResponse": {
+      "fields": [
+        "documents"
+      ],
+      "types": {
+        "documents": [
+          "array"
+        ]
+      }
+    },
+    "EaadharXamlSchema": {
+      "fields": [
+        "KycRes"
+      ],
+      "types": {
+        "KycRes": [
+          "object"
+        ]
+      }
+    },
+    "File": {
+      "fields": [
+        "date",
+        "description",
+        "id",
+        "issuer",
+        "mime",
+        "name",
+        "parent",
+        "size",
+        "type",
+        "uri"
+      ],
+      "types": {
+        "date": [
+          "string"
+        ],
+        "description": [
+          "string"
+        ],
+        "id": [
+          "string"
+        ],
+        "issuer": [
+          "string"
+        ],
+        "mime": [
+          "string"
+        ],
+        "name": [
+          "string"
+        ],
+        "parent": [
+          "string"
+        ],
+        "size": [
+          "string"
+        ],
+        "type": [
+          "string"
+        ],
+        "uri": [
+          "string"
+        ]
+      }
+    },
+    "FileUploadResponse": {
+      "fields": [
+        "details"
+      ],
+      "types": {
+        "details": [
+          "object"
+        ]
+      }
+    },
+    "GetStatisticsResponse": {
+      "fields": [
+        "authentic_documents",
+        "count_as_on",
+        "issuers",
+        "monthwise_registations",
+        "requestors",
+        "users",
+        "yearwise_authentic_documents"
+      ],
+      "types": {
+        "authentic_documents": [
+          "string"
+        ],
+        "count_as_on": [
+          "string"
+        ],
+        "issuers": [
+          "string"
+        ],
+        "monthwise_registations": [
+          "object"
+        ],
+        "requestors": [
+          "string"
+        ],
+        "users": [
+          "string"
+        ],
+        "yearwise_authentic_documents": [
+          "object"
+        ]
+      }
+    },
+    "Issued": {
+      "fields": [
+        "details"
+      ],
+      "types": {
+        "details": [
+          "object"
+        ]
+      }
+    },
+    "IssuerResponse": {
+      "fields": [
+        "categories",
+        "description",
+        "issuerid",
+        "name",
+        "orgid"
+      ],
+      "types": {
+        "categories": [
+          "string"
+        ],
+        "description": [
+          "string"
+        ],
+        "issuerid": [
+          "string"
+        ],
+        "name": [
+          "string"
+        ],
+        "orgid": [
+          "string"
+        ]
+      }
+    },
+    "Pulldocument": {
+      "fields": [
+        "details"
+      ],
+      "types": {
+        "details": [
+          "object"
+        ]
+      }
+    },
+    "Pushuri": {
+      "fields": [],
+      "types": {}
+    },
+    "SearchParametersResponse": {
+      "fields": [
+        "example",
+        "label",
+        "paramname",
+        "valuelist"
+      ],
+      "types": {
+        "example": [
+          "string"
+        ],
+        "label": [
+          "string"
+        ],
+        "paramname": [
+          "string"
+        ],
+        "valuelist": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "User": {
+      "fields": [
+        "details"
+      ],
+      "types": {
+        "details": [
+          "object"
+        ]
+      }
+    },
+    "VerifyAccountResponse": {
+      "fields": [
+        "digilockerid",
+        "registered"
+      ],
+      "types": {
+        "digilockerid": [
+          "string"
+        ],
+        "registered": [
+          "string"
+        ]
+      }
+    },
+    "XMLFormatSchema": {
+      "fields": [
+        "CertificateData",
+        "Signature"
+      ],
+      "types": {
+        "CertificateData": [
+          "array"
+        ],
+        "Signature": [
+          "object"
+        ]
+      }
+    },
+    "Xml": {
+      "fields": [
+        "uri"
+      ],
+      "types": {}
+    }
+  }
+}

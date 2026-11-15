@@ -1,0 +1,10 @@
+{
+  "title": "Integrations",
+  "pages": [
+    "index",
+    "frameworks",
+    "models",
+    "vector-databases",
+    "others"
+  ]
+}

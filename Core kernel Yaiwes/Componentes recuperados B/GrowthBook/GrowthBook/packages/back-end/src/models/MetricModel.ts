@@ -1,0 +1,769 @@
+import mongoose, { FilterQuery } from "mongoose";
+import { evalCondition } from "@growthbook/growthbook";
+import { ExperimentMetricInterface } from "shared/experiments";
+import isEqual from "lodash/isEqual";
+import omit from "lodash/omit";
+import {
+  InsertMetricProps,
+  LegacyMetricInterface,
+  MetricDefinitionInterface,
+  MetricInterface,
+} from "shared/types/metric";
+import { getConfigMetrics, usingFileConfig } from "back-end/src/init/config";
+import { upgradeMetricDoc } from "back-end/src/util/migrations";
+import { validatePriorSettings } from "back-end/src/util/priors";
+import { ALLOW_CREATE_METRICS } from "back-end/src/util/secrets";
+import { ReqContext } from "back-end/types/request";
+import { ApiReqContext } from "back-end/types/api";
+import {
+  ToInterface,
+  getCollection,
+  projectFilterQuery,
+  removeMongooseFields,
+} from "back-end/src/util/mongo.util";
+import { generateEmbeddings } from "back-end/src/enterprise/services/ai";
+import { createModelAuditLogger } from "back-end/src/services/audit";
+import { queriesSchema } from "./QueryModel";
+import { ImpactEstimateModel } from "./ImpactEstimateModel";
+import { removeMetricFromExperiments } from "./ExperimentModel";
+import { addTagsDiff } from "./TagModel";
+import {
+  definitionsScope,
+  touchDefinitionsVersion,
+} from "./DefinitionsVersionModel";
+
+const audit = createModelAuditLogger({
+  entity: "metric",
+  createEvent: "metric.create",
+  updateEvent: "metric.update",
+  deleteEvent: "metric.delete",
+  autocreateEvent: "metric.autocreate",
+});
+
+export const ALLOWED_METRIC_TYPES = [
+  "binomial",
+  "count",
+  "duration",
+  "revenue",
+];
+
+const metricSchema = new mongoose.Schema({
+  id: String,
+  organization: {
+    type: String,
+    index: true,
+  },
+  managedBy: String,
+  owner: String,
+  datasource: String,
+  name: String,
+  description: String,
+  type: { type: String },
+  table: { type: String },
+  column: String,
+  earlyStart: Boolean,
+  inverse: Boolean,
+  ignoreNulls: Boolean,
+  cappingSettings: {
+    type: { type: String },
+    value: Number,
+    ignoreZeros: Boolean,
+  },
+  windowSettings: {
+    type: { type: String },
+    windowValue: Number,
+    windowUnit: String,
+    delayValue: Number,
+    delayUnit: String,
+  },
+  priorSettings: {
+    override: Boolean,
+    proper: Boolean,
+    mean: Number,
+    stddev: Number,
+  },
+  denominator: String,
+  winRisk: Number,
+  loseRisk: Number,
+  maxPercentChange: Number,
+  minPercentChange: Number,
+  minSampleSize: Number,
+  targetMDE: Number,
+  regressionAdjustmentOverride: Boolean,
+  regressionAdjustmentEnabled: Boolean,
+  regressionAdjustmentDays: Number,
+  dateCreated: Date,
+  dateUpdated: Date,
+  segment: String,
+  userIdTypes: [String],
+  userIdColumns: {},
+  status: String,
+  sql: String,
+  templateVariables: {
+    eventName: String,
+    valueColumn: String,
+  },
+  aggregation: String,
+  timestampColumn: String,
+  queryFormat: String,
+  tags: [String],
+  projects: {
+    type: [String],
+    index: true,
+  },
+  conditions: [
+    {
+      _id: false,
+      column: String,
+      operator: String,
+      value: String,
+    },
+  ],
+  queries: queriesSchema,
+  runStarted: Date,
+  analysisError: String,
+  analysis: {
+    createdAt: Date,
+    segment: String,
+    average: Number,
+    stddev: Number,
+    count: Number,
+    histogram: [
+      {
+        _id: false,
+        b: String,
+        c: Number,
+      },
+    ],
+    dates: [
+      {
+        _id: false,
+        d: Date,
+        v: Number,
+        s: Number,
+        c: Number,
+      },
+    ],
+
+    // deprecated fields
+    capping: String,
+    capValue: Number,
+    conversionWindowHours: Number,
+    conversionDelayHours: Number,
+  },
+});
+
+metricSchema.index({ id: 1, organization: 1 }, { unique: true });
+// Compound indexes for API list filtering
+metricSchema.index({ organization: 1, datasource: 1 });
+
+const MetricModel = mongoose.model<LegacyMetricInterface>(
+  "Metric",
+  metricSchema,
+);
+const COLLECTION = "metrics";
+
+const toInterface: ToInterface<MetricInterface> = (doc) => {
+  return upgradeMetricDoc(removeMongooseFields(doc));
+};
+
+export async function insertMetric(
+  context: ReqContext | ApiReqContext,
+  metric: Partial<MetricInterface>,
+) {
+  const metricWithOrganization = {
+    ...metric,
+    organization: context.org.id,
+  };
+
+  if (usingFileConfig() && !ALLOW_CREATE_METRICS) {
+    throw new Error("Cannot add new metrics. Metrics managed by config.yml");
+  }
+
+  if (
+    metricWithOrganization.managedBy === "api" &&
+    context.auditUser?.type !== "api_key"
+  ) {
+    throw new Error(
+      "Cannot mark a metric as managed by the API outside of the API.",
+    );
+  }
+
+  if (metricWithOrganization.managedBy === "admin") {
+    throw new Error(
+      "We have deprecated support for marking Legacy Metrics as Official via the UI. We suggest using Fact Metrics instead.",
+    );
+  }
+
+  if (!context.permissions.canCreateMetric(metricWithOrganization)) {
+    context.permissions.throwPermissionError();
+  }
+
+  validatePriorSettings(metricWithOrganization.priorSettings);
+
+  const created = toInterface(await MetricModel.create(metricWithOrganization));
+  await audit.logCreate(context, created);
+  await touchDefinitionsVersion(
+    context.org.id,
+    definitionsScope(created.projects),
+  );
+  return created;
+}
+
+export async function insertMetrics(
+  context: ReqContext | ApiReqContext,
+  metrics: InsertMetricProps[],
+) {
+  if (usingFileConfig() && !ALLOW_CREATE_METRICS) {
+    throw new Error("Cannot add metrics. Metrics managed by config.yml");
+  }
+  const metricsWithOrganization = metrics.map((metric) => ({
+    ...metric,
+    organization: context.org.id,
+  }));
+
+  for (const metric of metricsWithOrganization) {
+    if (metric.managedBy === "api" && context.auditUser?.type !== "api_key") {
+      throw new Error(
+        "Cannot mark a metric as managed by the API outside of the API.",
+      );
+    }
+    if (metric.managedBy === "admin") {
+      throw new Error(
+        "We have deprecated support for marking Legacy Metrics as Official via the UI. We suggest using Fact Metrics instead.",
+      );
+    }
+    if (!context.permissions.canCreateMetric(metric)) {
+      context.permissions.throwPermissionError();
+    }
+  }
+  const created = (await MetricModel.insertMany(metricsWithOrganization)).map(
+    toInterface,
+  );
+  for (const metric of created) {
+    await audit.logAutocreate(context, metric);
+  }
+  await touchDefinitionsVersion(
+    context.org.id,
+    definitionsScope(...created.map((m) => m.projects)),
+  );
+  return created;
+}
+
+export async function deleteMetricById(
+  context: ReqContext | ApiReqContext,
+  metric: LegacyMetricInterface | MetricInterface,
+) {
+  if (metric.managedBy === "config") {
+    throw new Error("Cannot delete a metric managed by config.yml");
+  }
+  if (metric.managedBy === "api" && context.auditUser?.type !== "api_key") {
+    throw new Error("Cannot delete a metric managed by the API");
+  }
+  if (!context.permissions.canDeleteMetric(metric)) {
+    context.permissions.throwPermissionError();
+  }
+
+  // delete references:
+  // ideas (impact estimate)
+  await ImpactEstimateModel.updateMany(
+    {
+      metric: metric.id,
+      organization: context.org.id,
+    },
+    { metric: "" },
+  );
+
+  // Experiments
+  await removeMetricFromExperiments(context, metric.id);
+
+  // Metric Groups
+  await context.models.metricGroups.removeMetricFromAllGroups(metric.id);
+
+  await MetricModel.deleteOne({
+    id: metric.id,
+    organization: context.org.id,
+  });
+
+  await audit.logDelete(context, metric);
+  await touchDefinitionsVersion(
+    context.org.id,
+    definitionsScope(metric.projects),
+  );
+}
+
+/**
+ * Deletes metrics where the provided project is the only project for that metric
+ * @param projectId
+ * @param organization
+ * @param user
+ */
+export async function projectHasMetrics(
+  context: ReqContext | ApiReqContext,
+  projectId: string,
+): Promise<boolean> {
+  const metric = await getCollection(COLLECTION).findOne(
+    {
+      organization: context.org.id,
+      projects: [projectId],
+    },
+    { projection: { _id: 1 } },
+  );
+  return !!metric;
+}
+
+export async function deleteAllMetricsForAProject({
+  projectId,
+  context,
+}: {
+  projectId: string;
+  context: ReqContext | ApiReqContext;
+}) {
+  const metricsToDelete = await getCollection(COLLECTION)
+    .find({
+      organization: context.org.id,
+      projects: [projectId],
+    })
+    .toArray();
+
+  for (const metric of metricsToDelete) {
+    await deleteMetricById(context, toInterface(metric));
+  }
+}
+
+export async function getMetricMap(
+  context: ReqContext | ApiReqContext,
+): Promise<Map<string, ExperimentMetricInterface>> {
+  const metricMap = new Map<string, ExperimentMetricInterface>();
+  const allMetrics = await getMetricsByOrganization(context);
+  allMetrics.forEach((m) => {
+    metricMap.set(m.id, m);
+  });
+
+  const allFactMetrics = await context.models.factMetrics.getAll();
+  allFactMetrics.forEach((m) => {
+    metricMap.set(m.id, m);
+  });
+
+  return metricMap;
+}
+
+async function findMetrics(
+  context: ReqContext | ApiReqContext,
+  additionalQuery?: FilterQuery<LegacyMetricInterface>,
+  excludeFields?: readonly (keyof MetricInterface)[],
+): Promise<MetricInterface[]> {
+  const metrics: MetricInterface[] = [];
+  const metricIds = new Set<string>();
+
+  // If using config.yml, first check there
+  if (usingFileConfig()) {
+    getConfigMetrics(context)
+      .filter((m) => !additionalQuery || evalCondition(m, additionalQuery))
+      .forEach((m) => {
+        metrics.push(
+          excludeFields ? (omit(m, excludeFields) as MetricInterface) : m,
+        );
+        metricIds.add(m.id);
+      });
+
+    // If metrics are locked down to just a config file, return immediately
+    if (!ALLOW_CREATE_METRICS) {
+      return metrics;
+    }
+  }
+
+  // `analysis` is never needed when finding multiple metrics and can get
+  // quite large, so it's always excluded
+  const projection: Record<string, 0> = { analysis: 0 };
+  excludeFields?.forEach((f) => {
+    projection[f] = 0;
+  });
+
+  const docs = await getCollection(COLLECTION)
+    .find(
+      {
+        ...additionalQuery,
+        organization: context.org.id,
+      },
+      { projection },
+    )
+    .toArray();
+  docs.forEach((doc) => {
+    if (metricIds.has(doc.id)) {
+      return;
+    }
+    metrics.push(toInterface(doc));
+    metricIds.add(doc.id);
+  });
+
+  return metrics.filter((m) =>
+    context.permissions.canReadMultiProjectResource(m.projects),
+  );
+}
+
+export async function getMetricsByOrganization(
+  context: ReqContext | ApiReqContext,
+  options?: {
+    datasourceId?: string;
+    projectId?: string;
+    includeArchived?: boolean;
+  },
+) {
+  const query: FilterQuery<LegacyMetricInterface> = {
+    ...(options?.datasourceId && { datasource: options.datasourceId }),
+    ...(options?.projectId && projectFilterQuery(options.projectId)),
+    ...(options?.includeArchived === false && {
+      status: { $ne: "archived" },
+    }),
+  };
+
+  return findMetrics(context, query);
+}
+
+// Exported for MetricModel.test.ts, which enforces that this stays a superset
+// of FIELDS_NOT_REQUIRING_DATE_UPDATED and METRIC_QUERY_STATUS_FIELDS — the
+// write paths that skip the definitions-version bump.
+export const METRIC_DEFINITION_EXCLUDED_FIELDS = [
+  "sql",
+  "templateVariables",
+  "conditions",
+  "queries",
+  "analysis",
+  "analysisError",
+  // Not part of the definitions payload; kept in sync with
+  // FIELDS_NOT_REQUIRING_DATE_UPDATED so skipping the definitions-version
+  // touch aligns with skipping dateUpdated.
+  "runStarted",
+] as const;
+
+// Slimmed version of getMetricsByOrganization for the definitions endpoint.
+// Heavy fields are excluded at the DB layer to keep the payload small.
+export async function getMetricsForDefinitions(
+  context: ReqContext | ApiReqContext,
+): Promise<MetricDefinitionInterface[]> {
+  return findMetrics(context, undefined, METRIC_DEFINITION_EXCLUDED_FIELDS);
+}
+
+export async function getMetricsByDatasource(
+  context: ReqContext | ApiReqContext,
+  datasource: string,
+) {
+  return findMetrics(context, { datasource });
+}
+
+export async function getSampleMetrics(context: ReqContext | ApiReqContext) {
+  const docs = await getCollection(COLLECTION)
+    .find({
+      id: /^met_sample/,
+      organization: context.org.id,
+    })
+    .toArray();
+  return docs
+    .map(toInterface)
+    .filter((m) => context.permissions.canReadMultiProjectResource(m.projects));
+}
+
+export async function getMetricById(
+  context: ReqContext | ApiReqContext,
+  id: string,
+  includeAnalysis: boolean = false,
+) {
+  // If using config.yml, immediately return the from there if found
+  if (usingFileConfig()) {
+    const doc = getConfigMetrics(context).filter((m) => m.id === id)[0] || null;
+    if (doc) {
+      if (includeAnalysis) {
+        const metric = await getCollection(COLLECTION).findOne({
+          id,
+          organization: context.org.id,
+        });
+        doc.queries = metric?.queries || [];
+        doc.analysis = metric?.analysis || undefined;
+        doc.analysisError = metric?.analysisError || undefined;
+        doc.runStarted = metric?.runStarted || null;
+      }
+      return doc;
+    }
+    // If metrics are locked down to just a config file, return immediately
+    if (!ALLOW_CREATE_METRICS) {
+      return null;
+    }
+  }
+
+  const res = await getCollection(COLLECTION).findOne({
+    id,
+    organization: context.org.id,
+  });
+
+  const metric = res ? toInterface(res) : null;
+
+  if (
+    !metric ||
+    !context.permissions.canReadMultiProjectResource(metric.projects)
+  ) {
+    return null;
+  }
+  return metric;
+}
+
+export async function getMetricsByIds(
+  context: ReqContext | ApiReqContext,
+  ids: string[],
+): Promise<MetricInterface[]> {
+  const metrics: MetricInterface[] = [];
+
+  if (!ids.length) {
+    return metrics;
+  }
+
+  // If using config.yml, immediately return the list from there
+  if (usingFileConfig()) {
+    getConfigMetrics(context)
+      .filter((m) => ids.includes(m.id))
+      .forEach((m) => {
+        metrics.push(m);
+      });
+    // If metrics are locked down to just a config file, return immediately
+    if (!ALLOW_CREATE_METRICS) {
+      return metrics;
+    }
+  }
+
+  const remainingIds = ids.filter((id) => !metrics.some((m) => m.id === id));
+
+  if (remainingIds.length > 0) {
+    const docs = await getCollection(COLLECTION)
+      .find({
+        id: { $in: remainingIds },
+        organization: context.org.id,
+      })
+      .toArray();
+    docs.forEach((doc) => {
+      metrics.push(toInterface(doc));
+    });
+  }
+  return metrics.filter((m) =>
+    context.permissions.canReadMultiProjectResource(m.projects),
+  );
+}
+
+export async function findRunningMetricsByQueryId(
+  orgIds: string[],
+  queryIds: string[],
+) {
+  const docs = await getCollection(COLLECTION)
+    .find({
+      // Query ids are globally unique, this filter is just for index performance
+      organization: { $in: orgIds },
+      queries: {
+        $elemMatch: { query: { $in: queryIds }, status: "running" },
+      },
+    })
+    .toArray();
+
+  // TODO: some of these might be from config.yml and the docs will be missing fields
+  return docs.map((doc) => toInterface(doc));
+}
+
+export async function removeProjectFromMetrics(
+  project: string,
+  organization: string,
+) {
+  await MetricModel.updateMany(
+    { organization, projects: project },
+    {
+      $pull: { projects: project },
+      $set: { dateUpdated: new Date() },
+    },
+  );
+  await touchDefinitionsVersion(organization);
+}
+
+export async function getMetricsUsingSegment(
+  context: ReqContext | ApiReqContext,
+  segment: string,
+) {
+  return findMetrics(context, { segment });
+}
+
+const FILE_CONFIG_UPDATEABLE_FIELDS: (keyof MetricInterface)[] = [
+  "analysis",
+  "analysisError",
+  "queries",
+  "runStarted",
+];
+
+export const FIELDS_NOT_REQUIRING_DATE_UPDATED: (keyof MetricInterface)[] = [
+  "analysis",
+  "analysisError",
+  "queries",
+  "runStarted",
+];
+
+function addDateUpdatedToUpdates(
+  updates: Partial<MetricInterface>,
+): Partial<MetricInterface> {
+  // If any field requires dateUpdated to be set
+  if (
+    Object.keys(updates).some(
+      (k) =>
+        !FIELDS_NOT_REQUIRING_DATE_UPDATED.includes(k as keyof MetricInterface),
+    )
+  ) {
+    return { ...updates, dateUpdated: new Date() };
+  }
+
+  // Otherwise, just return the original updates
+  return updates;
+}
+
+// The fields updateMetricQueriesAndStatus may write. It skips the
+// definitions-version bump entirely, which is safe only while every field here
+// is excluded from the definitions payload (enforced by MetricModel.test.ts).
+export const METRIC_QUERY_STATUS_FIELDS = ["queries", "analysisError"] as const;
+
+export async function updateMetricQueriesAndStatus(
+  metric: MetricInterface,
+  updates: Partial<
+    Pick<MetricInterface, (typeof METRIC_QUERY_STATUS_FIELDS)[number]>
+  >,
+) {
+  await MetricModel.updateOne(
+    {
+      id: metric.id,
+      organization: metric.organization,
+    },
+    {
+      $set: updates,
+    },
+  );
+}
+
+export async function updateMetric(
+  context: ReqContext | ApiReqContext,
+  metric: MetricInterface,
+  updates: Partial<MetricInterface>,
+) {
+  const safeUpdates = (Object.keys(updates) as (keyof MetricInterface)[]).every(
+    (k) => FILE_CONFIG_UPDATEABLE_FIELDS.includes(k),
+  );
+  if (!safeUpdates) {
+    if (metric.managedBy === "config") {
+      throw new Error("Cannot update. Metric managed by config.yml");
+    }
+    if (metric.managedBy === "api" && context.auditUser?.type !== "api_key") {
+      throw new Error("Cannot update. Metric managed by the API");
+    }
+    if (!context.permissions.canUpdateMetric(metric, updates)) {
+      context.permissions.throwPermissionError();
+    }
+  }
+
+  validatePriorSettings(updates.priorSettings);
+
+  // Compare submitted values against the caller's snapshot (read fresh in the
+  // same request) rather than checking which keys were submitted — the
+  // front-end resubmits the whole form on every save. Bailing before the write
+  // keeps the write and the definitions-version bump in lockstep. Config
+  // metrics always write: the upsert below is what materializes their doc.
+  const changedFields = (
+    Object.keys(updates) as (keyof MetricInterface)[]
+  ).filter((k) => !isEqual(metric[k], updates[k]));
+  if (!changedFields.length && metric.managedBy !== "config") return;
+
+  // queries/analysis/analysisError/runStarted change on every analysis run but
+  // aren't in the definitions payload (METRIC_DEFINITION_EXCLUDED_FIELDS, kept
+  // in sync by MetricModel.test.ts), so they stamp neither dateUpdated nor the
+  // definitions version.
+  const changedDefinitionFields = changedFields.some(
+    (k) => !FIELDS_NOT_REQUIRING_DATE_UPDATED.includes(k),
+  );
+  if (changedDefinitionFields) {
+    updates = { ...updates, dateUpdated: new Date() };
+  }
+
+  // If using config.yml, need to do an `upsert` since it might not exist in mongo yet
+  if (metric.managedBy === "config") {
+    await MetricModel.updateOne(
+      { id: metric.id, organization: context.org.id },
+      {
+        $set: updates,
+      },
+      { upsert: true },
+    );
+  } else {
+    await MetricModel.updateOne(
+      {
+        id: metric.id,
+        organization: context.org.id,
+      },
+      {
+        $set: updates,
+      },
+    );
+  }
+
+  await addTagsDiff(context.org.id, metric.tags || [], updates.tags || []);
+
+  await audit.logUpdate(context, metric, { ...metric, ...updates });
+
+  if (changedDefinitionFields) {
+    await touchDefinitionsVersion(
+      context.org.id,
+      definitionsScope(metric.projects, updates.projects ?? metric.projects),
+    );
+  }
+}
+
+export async function removeSegmentFromAllMetrics(
+  organization: string,
+  segment: string,
+) {
+  const updates = addDateUpdatedToUpdates({ segment: "" });
+  await MetricModel.updateMany(
+    { organization, segment },
+    {
+      $set: updates,
+    },
+  );
+  await touchDefinitionsVersion(organization);
+}
+
+export async function removeTagInMetrics(organization: string, tag: string) {
+  await MetricModel.updateMany(
+    { organization, tags: tag },
+    {
+      $set: { dateUpdated: new Date() },
+      $pull: { tags: tag },
+    },
+  );
+  await touchDefinitionsVersion(organization);
+}
+
+export async function generateMetricEmbeddings(
+  context: ReqContext | ApiReqContext,
+  metricsToGenerateEmbeddings: MetricInterface[],
+) {
+  const batchSize = 15;
+  for (let i = 0; i < metricsToGenerateEmbeddings.length; i += batchSize) {
+    const batch = metricsToGenerateEmbeddings.slice(i, i + batchSize);
+    const input = batch.map((m) => getTextForEmbedding(m));
+    const embeddings = await generateEmbeddings({ context, input });
+
+    for (let j = 0; j < batch.length; j++) {
+      const m = batch[j];
+      // save the embeddings back to the experiment:
+      try {
+        await context.models.vectors.addOrUpdateMetricVector(m.id, {
+          embeddings: embeddings[j],
+        });
+      } catch (error) {
+        throw new Error("Error updating embeddings");
+      }
+    }
+  }
+}
+const getTextForEmbedding = (metric: MetricInterface): string => {
+  return `Name: ${metric.name}\nDescription: ${metric.description}`;
+};

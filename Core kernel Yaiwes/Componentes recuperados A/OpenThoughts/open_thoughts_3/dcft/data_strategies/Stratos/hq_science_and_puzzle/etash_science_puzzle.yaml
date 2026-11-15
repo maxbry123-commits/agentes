@@ -1,0 +1,97 @@
+operators:
+- id: load_gsm_hard
+  config: 
+      type: hf_source
+      dataset: reasoning-machines/gsm-hard
+      split: train
+- id: rename_task_column_gsm
+  config:
+      type: function
+      function: data_strategies.commons.force_rename_columns
+      function_config:
+        column_maps:
+            input: problem
+            target: ground_truth_solution
+  input_ids:
+      - load_gsm_hard
+- id: str_cast
+  config:
+      type: function
+      function: data_strategies.Stratos.hq_science_and_puzzle.str_to_float.str_to_float
+  input_ids:
+      - rename_task_column_gsm
+- id: label_gsm
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: gsm
+  input_ids:
+    - str_cast
+- id: load_chess
+  config:
+    type: hf_source
+    dataset: EleutherAI/lichess-puzzles
+    split: train
+- id: rename_task_column_chess
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        ctx: problem
+        target: ground_truth_solution
+  input_ids:
+    - load_chess
+- id: label_chess
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: chess
+  input_ids:
+    - sample_dataset
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_limited
+    function_config:
+      num_samples: 3000  # 1.25% of 10000 target from stage 1
+  input_ids:
+    - rename_task_column_chess
+- id: decontaminate
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function:  data_strategies.DeepSeekR1.utils.decontaminate_table
+    function_config:
+      column: problem
+      eval_datasets:
+        - HuggingFaceH4/MATH-500
+        - Maxwell-Jia/AIME_2024
+        - AI-MO/aimo-validation-amc
+        - livecodebench/code_generation_lite
+      eval_columns:
+        - problem
+        - Problem
+        - problem
+        - question_content
+      eval_splits:
+        - test
+        - train
+        - train
+        - test
+      similarity_threshold: 95.0
+  input_ids:
+    - label_chess
+    - label_gsm
+- id: fuzzy_dedup
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+    function_config:
+      column: problem
+      similarity_threshold: 95.0
+  input_ids:
+    - decontaminate

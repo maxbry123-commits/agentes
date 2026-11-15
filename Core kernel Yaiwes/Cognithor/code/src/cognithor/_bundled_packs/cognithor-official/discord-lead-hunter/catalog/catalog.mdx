@@ -1,0 +1,27 @@
+---
+slug: discord-lead-hunter
+title: Discord Lead Hunter
+tagline: Monitor Discord channels with local LLM scoring. Free, bundled.
+status: live
+tier: B
+category:
+  - lead-generation
+version: 1.0.0
+releasedAt: '2026-04-16T00:00:00Z'
+lastUpdated: '2026-04-16T00:00:00Z'
+requires:
+  cognithor: '>=0.92.0'
+  llm: 'qwen3:7b'
+  env: 'COGNITHOR_DISCORD_TOKEN'
+tools:
+  - discord_scan
+seo:
+  title: 'Discord Lead Hunter · Cognithor Agent Pack'
+  description: 'Free Discord monitoring pack for Cognithor.'
+---
+
+## Discord Lead Hunter
+
+A free, bundled pack that scans Discord channels and scores messages with your local LLM.
+Requires a Discord bot token set as the `COGNITHOR_DISCORD_TOKEN` environment variable.
+If no token is configured, `scan()` returns an empty list gracefully.

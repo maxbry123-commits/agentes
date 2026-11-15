@@ -1,0 +1,139 @@
+{
+  "versions": [
+    {
+      "version": "4.4.0",
+      "capabilities": ["trackingPlugin"]
+    },
+    {
+      "version": "4.3.0",
+      "capabilities": ["caseInsensitiveRegex", "caseInsensitiveMembership"]
+    },
+    {
+      "version": "4.2.5"
+    },
+    {
+      "version": "4.2.4"
+    },
+    {
+      "version": "4.2.3"
+    },
+    {
+      "version": "4.2.2"
+    },
+    {
+      "version": "4.2.1"
+    },
+    {
+      "version": "4.1.1"
+    },
+    {
+      "version": "4.1.0"
+    },
+    {
+      "version": "4.0.0"
+    },
+    {
+      "version": "3.9.14"
+    },
+    {
+      "version": "3.9.12"
+    },
+    {
+      "version": "3.9.11"
+    },
+    {
+      "version": "3.9.10"
+    },
+    {
+      "version": "3.9.9"
+    },
+    {
+      "version": "3.9.8"
+    },
+    {
+      "version": "3.9.7"
+    },
+    {
+      "version": "3.9.6"
+    },
+    {
+      "version": "3.9.5"
+    },
+    {
+      "version": "3.9.4",
+      "capabilities": ["savedGroupReferences"]
+    },
+    {
+      "version": "3.9.3"
+    },
+    {
+      "version": "3.9.2"
+    },
+    {
+      "version": "3.9.1"
+    },
+    {
+      "version": "3.9.0"
+    },
+    {
+      "version": "3.8.0",
+      "capabilities": ["stickyBucketing"]
+    },
+    {
+      "version": "3.7.0",
+      "capabilities": ["remoteEval"]
+    },
+    {
+      "version": "3.6.0"
+    },
+    {
+      "version": "3.5.0"
+    },
+    {
+      "version": "3.4.0",
+      "capabilities": ["streaming"]
+    },
+    {
+      "version": "3.3.0"
+    },
+    {
+      "version": "3.2.0",
+      "capabilities": ["prerequisites"]
+    },
+    {
+      "version": "3.1.0",
+      "capabilities": ["encryption", "bucketingV2", "semverTargeting"]
+    },
+    {
+      "version": "3.0.0"
+    },
+    {
+      "version": "2.1.0"
+    },
+    {
+      "version": "2.0.1"
+    },
+    {
+      "version": "2.0.0"
+    },
+    {
+      "version": "1.2.0"
+    },
+    {
+      "version": "1.1.2"
+    },
+    {
+      "version": "1.1.1"
+    },
+    {
+      "version": "1.1.0"
+    },
+    {
+      "version": "1.0.0"
+    },
+    {
+      "version": "0.0.0",
+      "capabilities": ["looseUnmarshalling", "namespacesV2"]
+    }
+  ]
+}

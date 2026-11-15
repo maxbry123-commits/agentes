@@ -1,0 +1,120 @@
+name: create_release_pull_request
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.0" # run this workflow when a new minor version is published
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Which version are we creating a release pull request for?"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-release-pull-request:
+    runs-on: oracle-vm-2cpu-8gb-x86-64
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Set release version and target branch for vNext
+        if: github.event_name == 'push'
+        run: |
+          TAG="$(echo "${{ github.ref }}" | tr -d 'refs/tags/v')"
+          MAJOR_VERSION="$(echo "${TAG}" | cut -d '.' -f1)"
+          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> ${GITHUB_ENV}
+          MINOR_VERSION="$(echo "${TAG}" | cut -d '.' -f2)"
+          echo "MINOR_VERSION=${MINOR_VERSION}" >> ${GITHUB_ENV}
+
+          # increment the minor version by 1 for vNext
+          echo "NEWVERSION=v${MAJOR_VERSION}.$((MINOR_VERSION+1)).0-beta.0" >> ${GITHUB_ENV}
+          # pre-release is always being merged to the master branch
+          echo "TARGET_BRANCH=master" >> ${GITHUB_ENV}
+          echo "TAG=${TAG}" >> ${GITHUB_ENV}
+
+      - name: Set release version and target branch from input
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          NEWVERSION="${{ github.event.inputs.release_version }}"
+          echo "${NEWVERSION}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9](-(beta|rc)\.[0-9]+)?$' || (echo "release_version should be in the format vX.Y.Z, vX.Y.Z-beta.A, or vX.Y.Z-rc.B" && exit 1)
+
+          echo "NEWVERSION=${NEWVERSION}" >> ${GITHUB_ENV}
+          echo "TAG=${NEWVERSION}" >> ${GITHUB_ENV}
+          MAJOR_VERSION="$(echo "${NEWVERSION}" | cut -d '.' -f1 | tr -d 'v')"
+          MINOR_VERSION="$(echo "${NEWVERSION}" | cut -d '.' -f2)"
+
+          # non-beta releases should always be merged to release branches
+          echo "TARGET_BRANCH=release-${MAJOR_VERSION}.${MINOR_VERSION}" >> ${GITHUB_ENV}
+
+          # beta releases should always be merged to master
+          if [[ "${NEWVERSION}" =~ "beta" ]]; then
+            echo "TARGET_BRANCH=master" >> ${GITHUB_ENV}
+          fi
+
+      - name: Create release branch if needed
+        run: |
+          git checkout "${TARGET_BRANCH}" && exit 0
+
+          # Create and push release branch if it doesn't exist
+          git checkout -b "${TARGET_BRANCH}"
+          git push --set-upstream origin "${TARGET_BRANCH}"
+
+      - run: make release-manifest promote-staging-manifest
+
+      - if: github.event_name == 'push'
+        run: |
+          tags=$(git tag -l --sort=-v:refname)
+          versions=''
+          for tag in $tags; do
+            if echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              opa=$(curl https://raw.githubusercontent.com/open-policy-agent/gatekeeper/$tag/go.mod | grep /opa | awk '{print $2}')
+              if [ $opa ]; then
+                versions+="| \`$tag\`          | \`$opa\`   |\n"
+              fi
+            fi
+          done
+          make version-docs NEWVERSION=v${MAJOR_VERSION}.${MINOR_VERSION}.x TAG=v${TAG} OPA_VERSIONS="${versions}"
+
+      - name: Create release pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          commit-message: "chore: Prepare ${{ env.NEWVERSION }} release"
+          title: "chore: Prepare ${{ env.NEWVERSION }} release"
+          branch: "release-${{ env.NEWVERSION }}"
+          base: "${{ env.TARGET_BRANCH }}"
+          signoff: true
+          body: |
+            ## Release Preparation Checklist
+
+            Before merging this PR, please ensure the following items are completed:
+
+            ### Pre-Release Dependencies Check
+            - [ ] **Dependabot PRs**: All open [Dependabot PRs](https://github.com/open-policy-agent/gatekeeper/pulls?q=is%3Apr+author%3Aapp%2Fdependabot) have been reviewed and merged
+            - [ ] **OPA**: Updated to latest stable version from [OPA releases](https://github.com/open-policy-agent/opa/releases)
+            - [ ] **cert-controller**: Updated to latest commit from [cert-controller](https://github.com/open-policy-agent/cert-controller/)
+            - [ ] **Constraint Framework**: Updated to latest commit from [frameworks releases](https://github.com/open-policy-agent/frameworks/)
+
+            ### Security Check
+            - [ ] **Trivy Scan**: [Latest vulnerability scan](https://github.com/open-policy-agent/gatekeeper/actions/workflows/scan-vulns.yaml?query=branch%3Amaster) passes with no detected vulnerabilities
+
+            ---
+
+            This PR prepares release ${{ env.NEWVERSION }}. All automated checks must pass before merging.
+          labels: |
+            release-pr
+            ${{ github.event.inputs.release_version }}

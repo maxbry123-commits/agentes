@@ -1,0 +1,42 @@
+# memory-core (TencentDB-Agent-Memory) gateway config — standalone, single-team.
+# Mounted read-only into the container at /data/config/tdai-gateway.yaml.
+# This is the exact config used to smoke-test the useAgent integration.
+#
+# `instanceId` MUST match the backend's MEMORY_SERVICE_ID (x-tdai-service-id).
+# The production compose service overrides `llm.*` through TDAI_LLM_* variables
+# from a root-owned env file. These empty values are deliberate safe defaults:
+# writes still persist without credentials, but no facts are distilled.
+deployMode: standalone
+stateBackend: local
+instanceId: skynet
+
+server:
+  port: 8420
+  host: 0.0.0.0
+
+data:
+  baseDir: /data/tdai-memory
+
+llm:
+  baseUrl: ""
+  apiKey: ""
+  model: ""
+  maxTokens: 32000
+  timeoutMs: 300000
+
+memory:
+  promptMode: chat
+  capture: { enabled: true }
+  extraction:
+    enabled: true
+    enableDedup: true
+    maxMemoriesPerSession: 20
+  recall:
+    enabled: true
+    maxResults: 5
+    scoreThreshold: 0.3
+    strategy: hybrid
+    timeoutMs: 5000
+  storeBackend: sqlite
+  embedding:
+    provider: none

@@ -1,0 +1,58 @@
+# ============================================================================
+# Cognithor · Web UI Systemd Service (System-Level)
+# ============================================================================
+# Installation (bare-metal):
+#   sudo cp deploy/cognithor-webui.service /etc/systemd/system/cognithor-webui.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cognithor-webui
+#
+# Installation (user-level, replace paths):
+#   cp deploy/cognithor-webui.service ~/.config/systemd/user/cognithor-webui.service
+#   sed -i "s|/opt/cognithor/venv|$HOME/.cognithor/venv|g" ~/.config/systemd/user/cognithor-webui.service
+#   sed -i "s|/var/lib/cognithor|$HOME/.cognithor|g" ~/.config/systemd/user/cognithor-webui.service
+#   sed -i "s|User=cognithor||; s|Group=cognithor||" ~/.config/systemd/user/cognithor-webui.service
+#   sed -i "s|WantedBy=multi-user.target|WantedBy=default.target|" ~/.config/systemd/user/cognithor-webui.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now cognithor-webui
+# ============================================================================
+
+[Unit]
+Description=Cognithor Web UI (FastAPI + WebSocket)
+Documentation=https://github.com/team-soellner/cognithor
+After=cognithor.service
+BindsTo=cognithor.service
+
+[Service]
+Type=simple
+User=cognithor
+Group=cognithor
+ExecStart=/opt/cognithor/venv/bin/python -m uvicorn cognithor.channels.webui:create_app \
+    --host 0.0.0.0 \
+    --port 8080 \
+    --factory \
+    --log-level warning
+WorkingDirectory=/var/lib/cognithor
+EnvironmentFile=-/var/lib/cognithor/.env
+
+# Restart on failure
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cognithor /tmp
+PrivateTmp=true
+
+# Resource limits
+MemoryMax=1G
+TasksMax=32
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cognithor-webui
+
+[Install]
+WantedBy=multi-user.target

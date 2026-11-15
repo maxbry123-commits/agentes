@@ -1,0 +1,39 @@
+engine:
+  type: vllm_local
+  model: s3://marin-eu-west4/ot-agent/models/QuantTrio/GLM-5.1-AWQ/
+  max_output_tokens: 4096
+  healthcheck_interval: 1800
+  vllm_local: {}
+backend:
+  type: ray
+  wait_for_endpoint: true
+vllm_server:
+  model_path: s3://marin-eu-west4/ot-agent/models/QuantTrio/GLM-5.1-AWQ/
+  num_replicas: 1
+  tensor_parallel_size: 32
+  pipeline_parallel_size: 1
+  data_parallel_size: 1
+  time_limit: '48:00:00'
+  max_model_len: 32768
+  max_num_seqs: 4
+  gpu_memory_utilization: 0.85
+  enable_expert_parallel: true
+  enable_auto_tool_choice: true
+  tool_call_parser: glm47
+  reasoning_parser: glm45
+  trust_remote_code: true
+  extra_args:
+  - --dtype
+  - bfloat16
+  - --load-format
+  - runai_streamer
+  - --block-size
+  - '64'
+  - --max-num-partial-prefills
+  - '1'
+  - --limit-mm-per-prompt
+  - '{"image":0,"video":0}'
+  - --chat-template-content-format
+  - string
+  - --max-num-batched-tokens
+  - '32768'

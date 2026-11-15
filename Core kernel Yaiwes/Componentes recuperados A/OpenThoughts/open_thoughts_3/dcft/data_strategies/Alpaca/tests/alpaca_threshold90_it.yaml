@@ -1,0 +1,44 @@
+output_ids: ['alpaca_it']
+operators:  
+  - id: load_seed_instructions
+    config:
+      type: function
+      function: data_strategies.Alpaca.utils.load_seed_instructions
+      function_config:
+        seed_tasks_path: "dcft/data_strategies/Alpaca/resources/seed_tasks.jsonl"
+    
+  - id: generate_from_openai
+    config:
+      type: function
+      function: data_strategies.Alpaca.utils.generate_from_openai
+      function_config:
+        num_instructions_to_generate: 1000000
+    input_ids:
+      - load_seed_instructions
+  
+  - id: filter_instructions_heuristics
+    config:
+      type: function
+      function: data_strategies.Alpaca.utils.filter_instructions_heuristics
+    input_ids:
+      - generate_from_openai
+
+  - id: filter_instructions_rouge
+    config:
+      type: function
+      function: data_strategies.Alpaca.utils.filter_instructions_rouge_fast
+      function_config:
+        similarity_threshold: 0.9
+      input_dataset_map:
+        dataset: generate_from_openai
+        seed_instructions: load_seed_instructions
+    input_ids:
+      - generate_from_openai
+      - load_seed_instructions
+
+  - id: alpaca_it
+    config:
+      type: function
+      function: data_strategies.Alpaca.utils.format_instructions
+    input_ids:
+      - filter_instructions_rouge

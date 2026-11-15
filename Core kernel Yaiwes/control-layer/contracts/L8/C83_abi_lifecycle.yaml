@@ -1,0 +1,28 @@
+# C83 — L8 ABI. B7 SALIDA4 + Enchufe v2
+id: C83
+layer: L8
+name: abi_lifecycle
+implementado: true
+critical: true
+description: "Lifecycle load/unload extensión"
+requires:
+  - C00
+  - C82
+forbids: []
+rules:
+  - "C83 obligatorio para MOUNT_EXTENSION"
+  - "abi_version + mount_mode + load_priority requeridos"
+  - "llm_control DENY por defecto en montaje"
+checks:
+  - abi_lifecycle_check
+evidence:
+  type: abi_lifecycle_marker
+  required: true
+links:
+  enchufe: ficha.v2.json
+  fields:
+    - abi_version
+    - extension_type
+    - kernel_min
+    - mount_mode
+    - load_priority

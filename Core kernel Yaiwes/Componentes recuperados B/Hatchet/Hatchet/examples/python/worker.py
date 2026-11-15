@@ -1,0 +1,312 @@
+from examples.affinity_workers.worker import affinity_worker_workflow
+from examples.batch_assign.worker import (
+    batch_keyed,
+    batch_keyed_interval,
+    batch_keyed_failable,
+    batch_large,
+    batch_simple,
+    batch_single,
+    batch_ordered,
+    batch_broadcast,
+    batch_cancel,
+    batch_child_spawn,
+    batch_child_batch_spawn,
+    child_batch,
+    child,
+)
+from examples.bug_tests.payload_bug_on_replay.worker import (
+    payload_initial_cancel_bug_workflow,
+)
+from examples.bulk_fanout.worker import bulk_child_wf, bulk_parent_wf
+from examples.bulk_operations.worker import (
+    bulk_replay_test_1,
+    bulk_replay_test_2,
+    bulk_replay_test_3,
+)
+from examples.cancellation.worker import cancellation_workflow
+from examples.concurrency_cancel_in_progress.worker import (
+    concurrency_cancel_in_progress_workflow,
+)
+from examples.concurrency_cancel_in_progress_task_level.worker import (
+    concurrency_cancel_in_progress_task_level_workflow,
+)
+from examples.concurrency_cancel_newest.worker import concurrency_cancel_newest_workflow
+from examples.concurrency_cancel_newest_task_level.worker import (
+    concurrency_cancel_newest_task_level_workflow,
+)
+from examples.concurrency_limit.worker import concurrency_limit_workflow
+from examples.concurrency_limit_rr.worker import concurrency_limit_rr_workflow
+from examples.concurrency_multiple_keys.worker import concurrency_multiple_keys_workflow
+from examples.concurrency_workflow_level.worker import (
+    concurrency_workflow_level_workflow,
+)
+from examples.conditions.worker import (
+    task_condition_workflow,
+    cancel_if_workflow,
+    skip_if_sleep_workflow,
+    skip_if_or_workflow,
+    cancel_if_event_workflow,
+    cancel_if_sleep_workflow,
+    cancel_if_or_workflow,
+    wait_for_event_only_workflow,
+)
+from examples.conditions.worker import task_condition_workflow
+from examples.cron.cron_input import cron_input_example_send_greeting
+from examples.dag.worker import dag_workflow
+from examples.dataclasses.worker import say_hello
+from examples.dedupe.worker import dedupe_child_wf, dedupe_parent_wf
+from examples.dependency_injection.worker import (
+    async_task_with_dependencies,
+    di_workflow,
+    durable_async_task_with_dependencies,
+    sync_task_with_dependencies,
+    task_with_type_aliases,
+)
+from examples.dict_input.worker import say_hello_unsafely
+from examples.durable.worker import (
+    durable_sleep_event_spawn,
+    durable_with_bulk_spawn,
+    durable_with_spawn,
+    durable_workflow,
+    spawn_child_task,
+    wait_for_sleep_twice,
+    dag_child_workflow,
+    durable_spawn_dag,
+    durable_non_determinism,
+    durable_replay_reset,
+    memo_task,
+    memo_now_caching,
+    wait_for_event_lookback,
+    wait_for_or_event_lookback,
+    wait_for_two_events_second_pushed_first,
+    durable_child_key_dedup_replay,
+    durable_spawn_many_dags,
+    error_raising_task,
+    error_raising_durable_parent,
+)
+from examples.durable_event.worker import (
+    durable_event_task,
+    durable_event_task_with_filter,
+)
+from examples.durable_eviction.worker import (
+    branch_child,
+    bulk_child_task as eviction_bulk_child_task,
+    child_task as eviction_child_task,
+    concurrent_branches,
+    evictable_child_bulk_spawn,
+    evictable_child_spawn,
+    evictable_sleep,
+    evictable_wait_for_event,
+    multiple_eviction,
+    non_evictable_sleep,
+)
+from examples.events.worker import event_workflow
+from examples.fanout.worker import child_wf, parent_wf
+from examples.fanout_sync.worker import sync_fanout_child, sync_fanout_parent
+from examples.lifespans.simple import lifespan, lifespan_task
+from examples.logger.workflow import logging_workflow
+from examples.non_retryable.worker import non_retryable_workflow
+from examples.on_failure.worker import on_failure_wf, on_failure_wf_with_details
+from examples.return_exceptions.worker import (
+    exception_parsing_workflow,
+    return_exceptions_task,
+)
+from examples.run_details.worker import run_detail_test_workflow
+from examples.serde.worker import serde_workflow
+from examples.pdf_pipeline.worker import pdf_pipeline
+from examples.simple.worker import simple, simple_durable
+from examples.support_agent.worker import (
+    escalate_ticket,
+    generate_reply,
+    support_agent,
+    triage_ticket,
+)
+from examples.timeout.worker import refresh_timeout_wf, timeout_wf
+from examples.webhook_with_scope.worker import (
+    webhook_with_scope,
+    webhook_with_static_payload,
+)
+from examples.webhooks.worker import webhook
+from examples.welcome_email.worker import welcome_email
+from examples.opentelemetry_instrumentation.worker import (
+    otel_workflow,
+    otel_simple_task,
+    otel_spawn_parent,
+)
+from examples.bug_tests.durable_child_key_duplicate_child.worker import (
+    durable_parent_child_key_bug,
+    child_child_key_bug,
+)
+from examples.idempotency.worker import (
+    idempotent_task,
+    idempotent_task_short_window,
+    idempotent_status_based_task,
+    idempotent_status_based_task_with_retries,
+)
+from examples.bug_tests.durable_spawn_index_collision.worker import (
+    durable_spawn_index_collision,
+    spawn_index_child_a,
+    spawn_index_child_b,
+)
+from examples.bug_tests.durable_evict_timeout.worker import evictable_durable
+
+from examples.workflow_pause.worker import pausable_workflow
+from examples.bug_tests.test_durable_event_wait_scopes.worker import scope_waiter
+from examples.bug_tests.durable_dag_child.worker import (
+    dag_spawning_dag,
+    diamond_dag,
+    durable_spawner_dag,
+    mixed_spawner_dag,
+    multi_spawner_dag,
+    parent_dag,
+    spawned_child,
+    spawned_child_dag,
+)
+from hatchet_sdk import Hatchet
+
+hatchet = Hatchet()
+
+
+def main() -> None:
+    worker = hatchet.worker(
+        "e2e-test-worker",
+        slots=250,
+        workflows=[
+            affinity_worker_workflow,
+            batch_simple,
+            batch_keyed,
+            batch_keyed_interval,
+            batch_keyed_failable,
+            batch_large,
+            batch_single,
+            batch_ordered,
+            batch_broadcast,
+            batch_child_spawn,
+            batch_child_batch_spawn,
+            child_batch,
+            child,
+            batch_cancel,
+            bulk_child_wf,
+            bulk_parent_wf,
+            concurrency_limit_workflow,
+            concurrency_limit_rr_workflow,
+            concurrency_multiple_keys_workflow,
+            dag_workflow,
+            dedupe_child_wf,
+            dedupe_parent_wf,
+            durable_workflow,
+            child_wf,
+            event_workflow,
+            parent_wf,
+            on_failure_wf,
+            on_failure_wf_with_details,
+            logging_workflow,
+            timeout_wf,
+            refresh_timeout_wf,
+            task_condition_workflow,
+            skip_if_sleep_workflow,
+            skip_if_or_workflow,
+            cancel_if_event_workflow,
+            cancel_if_sleep_workflow,
+            cancel_if_or_workflow,
+            wait_for_event_only_workflow,
+            cron_input_example_send_greeting,
+            cancellation_workflow,
+            sync_fanout_parent,
+            sync_fanout_child,
+            non_retryable_workflow,
+            concurrency_workflow_level_workflow,
+            concurrency_cancel_newest_workflow,
+            concurrency_cancel_in_progress_workflow,
+            concurrency_cancel_newest_task_level_workflow,
+            concurrency_cancel_in_progress_task_level_workflow,
+            di_workflow,
+            payload_initial_cancel_bug_workflow,
+            run_detail_test_workflow,
+            lifespan_task,
+            simple,
+            simple_durable,
+            bulk_replay_test_1,
+            bulk_replay_test_2,
+            bulk_replay_test_3,
+            webhook,
+            webhook_with_scope,
+            webhook_with_static_payload,
+            return_exceptions_task,
+            exception_parsing_workflow,
+            wait_for_sleep_twice,
+            spawn_child_task,
+            durable_with_spawn,
+            durable_with_bulk_spawn,
+            durable_sleep_event_spawn,
+            durable_event_task,
+            durable_event_task_with_filter,
+            async_task_with_dependencies,
+            sync_task_with_dependencies,
+            durable_async_task_with_dependencies,
+            task_with_type_aliases,
+            say_hello,
+            say_hello_unsafely,
+            serde_workflow,
+            durable_spawn_dag,
+            dag_child_workflow,
+            durable_non_determinism,
+            durable_replay_reset,
+            memo_task,
+            evictable_sleep,
+            evictable_wait_for_event,
+            evictable_child_spawn,
+            evictable_child_bulk_spawn,
+            multiple_eviction,
+            non_evictable_sleep,
+            eviction_child_task,
+            eviction_bulk_child_task,
+            concurrent_branches,
+            branch_child,
+            memo_now_caching,
+            wait_for_event_lookback,
+            wait_for_or_event_lookback,
+            wait_for_two_events_second_pushed_first,
+            otel_simple_task,
+            otel_spawn_parent,
+            otel_workflow,
+            pdf_pipeline,
+            support_agent,
+            triage_ticket,
+            generate_reply,
+            escalate_ticket,
+            welcome_email,
+            durable_parent_child_key_bug,
+            child_child_key_bug,
+            durable_spawn_index_collision,
+            spawn_index_child_a,
+            spawn_index_child_b,
+            durable_child_key_dedup_replay,
+            durable_spawn_many_dags,
+            idempotent_task,
+            idempotent_task_short_window,
+            idempotent_status_based_task,
+            idempotent_status_based_task_with_retries,
+            error_raising_durable_parent,
+            error_raising_task,
+            cancel_if_workflow,
+            pausable_workflow,
+            scope_waiter,
+            parent_dag,
+            spawned_child,
+            spawned_child_dag,
+            dag_spawning_dag,
+            diamond_dag,
+            multi_spawner_dag,
+            durable_spawner_dag,
+            mixed_spawner_dag,
+            evictable_durable,
+        ],
+        lifespan=lifespan,
+    )
+
+    worker.start()
+
+
+if __name__ == "__main__":
+    main()

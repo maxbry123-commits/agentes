@@ -1,0 +1,35 @@
+operators:
+- id: load_hf
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/herorun1_code
+    split: train
+- id: select_range
+  config:
+    type: function
+    function: data_strategies.commons.choose_range
+    function_config:
+      start_idx: 50_000
+      end_idx: 150_000
+  input_ids:
+    - load_hf
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: problem
+    model: deepseek-reasoner
+    batch: False
+    temperature: 1.0
+    backend: openai_client
+    backend_params:
+      max_requests_per_minute: 500
+      max_tokens_per_minute: 1_000_000_000
+      api_key: API_KEY
+      base_url: "https://api.deepseek.com/"
+      invalid_finish_reasons: ['content_filter']
+      num_retries: 2
+      num_clients: 2
+  input_ids:
+    - select_range

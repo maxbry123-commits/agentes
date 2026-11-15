@@ -1,0 +1,17 @@
+# C64 — L7. B6 SALIDA4
+id: C64
+layer: L7
+name: circuit_breaker
+implementado: true
+critical: false
+description: "Circuit breaker"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C64 aplica en capa L7"
+checks:
+  - circuit_breaker_check
+evidence:
+  type: circuit_breaker_marker
+  required: false

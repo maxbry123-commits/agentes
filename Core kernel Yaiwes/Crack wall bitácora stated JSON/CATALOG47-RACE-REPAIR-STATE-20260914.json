@@ -1,0 +1,178 @@
+{
+  "created_at": 1789394889,
+  "items": {
+    "C47-003": {
+      "attempts": 4,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/Hermes-Agent\n",
+      "slug": "Hermes-Agent",
+      "source_repo": "NousResearch/hermes-agent",
+      "status": "RUNNING"
+    },
+    "C47-007": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 10438291,
+        "bundle_sha256": "533ea0c3ee0241da8afb97caa0fccefe3e453d7024d929b92155b35bf7b6a451",
+        "elapsed_seconds": 27.23,
+        "extracted_tree": {
+          "bytes": 11483324,
+          "files": 107,
+          "sha256": "08de85093a35cd3677808e00e1a6df8814703c4daf2c1ae8148d56f5e5d1392d"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 10438291,
+            "name": "Bayesian-Agent.bundle.zip.part-0001",
+            "sha256": "533ea0c3ee0241da8afb97caa0fccefe3e453d7024d929b92155b35bf7b6a451"
+          }
+        ],
+        "publish": {
+          "commit": "296425d19d396c1a92bb4597e0e0ca46732cf5f8",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "Bayesian-Agent",
+        "source_bytes": 11483324,
+        "source_commit": "4b69b4ed02d166c8d1673ea67e2ac836ac377896",
+        "source_files": 107,
+        "source_ref": "HEAD",
+        "source_repo": "DataArcTech/Bayesian-Agent",
+        "source_tree": {
+          "bytes": 11483324,
+          "files": 107,
+          "sha256": "08de85093a35cd3677808e00e1a6df8814703c4daf2c1ae8148d56f5e5d1392d"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "Bayesian-Agent",
+      "source_repo": "DataArcTech/Bayesian-Agent",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-011": {
+      "attempts": 2,
+      "result": {
+        "bundle_bytes": 63708649,
+        "bundle_sha256": "71785753890ee700b945ebe366dfdd77878791e08321122cdbb25f2767b250bc",
+        "elapsed_seconds": 68.5,
+        "extracted_tree": {
+          "bytes": 193065397,
+          "files": 240,
+          "sha256": "6282f410001cd80940baf02fb120668a9dedee0d5b0b3f41ebc0b5d13a775aef"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 12582912,
+            "name": "ZERA.bundle.zip.part-0001",
+            "sha256": "18b456ea34b00a4db1ee0a4d3ffe9f1aea6aa337d5dcaf36e569b2dcca1d1e11"
+          },
+          {
+            "bytes": 12582912,
+            "name": "ZERA.bundle.zip.part-0002",
+            "sha256": "0d206214c77851d9517c1769e91379ef0788269634f8ca64de5c3826ec8eceb8"
+          },
+          {
+            "bytes": 12582912,
+            "name": "ZERA.bundle.zip.part-0003",
+            "sha256": "d59ba8c580950314b698a63f2fd3d05db8af85a3572f4b860596eef5e7f6e3b8"
+          },
+          {
+            "bytes": 12582912,
+            "name": "ZERA.bundle.zip.part-0004",
+            "sha256": "537da3f88716d0df6d8174d0b4c4330c8809b920351c4d67cb231bbe1b4b48c4"
+          },
+          {
+            "bytes": 12582912,
+            "name": "ZERA.bundle.zip.part-0005",
+            "sha256": "16a5d87bd5058ec6a872a1541a05af5579a872c9b3dcbdcb711258717e1efad1"
+          },
+          {
+            "bytes": 794089,
+            "name": "ZERA.bundle.zip.part-0006",
+            "sha256": "ccc8c345bd5fffae9a91307c8a8b41ba9ae4786364c9aa7d77f7500534576399"
+          }
+        ],
+        "publish": {
+          "commit": "58a09d699eeda114a061485f5939490b828145f2",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "ZERA",
+        "source_bytes": 193065397,
+        "source_commit": "40267c46e97fd386371f5e8d96f48529170503ba",
+        "source_files": 240,
+        "source_ref": "HEAD",
+        "source_repo": "younatics/zera-agent",
+        "source_tree": {
+          "bytes": 193065397,
+          "files": 240,
+          "sha256": "6282f410001cd80940baf02fb120668a9dedee0d5b0b3f41ebc0b5d13a775aef"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "ZERA",
+      "source_repo": "younatics/zera-agent",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-028": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 15598493,
+        "bundle_sha256": "2200f6b3873378d320f8c8083eb41d0710ec7348d5f4e15695779dc238a3ac9d",
+        "elapsed_seconds": 28.42,
+        "extracted_tree": {
+          "bytes": 18361906,
+          "files": 397,
+          "sha256": "700557f936697204638b01532be94e594ca15fd51248e93f64c1dbeb872d5e72"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 12582912,
+            "name": "GrayMatter.bundle.zip.part-0001",
+            "sha256": "7d44d00f2a264c35766dd2ab2289984954cb8934a46c433c0fc95d2b6eafb069"
+          },
+          {
+            "bytes": 3015581,
+            "name": "GrayMatter.bundle.zip.part-0002",
+            "sha256": "e3a495575792b4301b663d7beefacae80a0429e1b76b1db2b0b7d83e4b89d7cb"
+          }
+        ],
+        "publish": {
+          "commit": "a4d905e40ac5885cc990ce6f8827c2b37678cbe6",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "GrayMatter",
+        "source_bytes": 18361906,
+        "source_commit": "d03c408e22c935d232d3c9456ed03188300eff28",
+        "source_files": 397,
+        "source_ref": "HEAD",
+        "source_repo": "angelnicolasc/graymatter",
+        "source_tree": {
+          "bytes": 18361906,
+          "files": 397,
+          "sha256": "700557f936697204638b01532be94e594ca15fd51248e93f64c1dbeb872d5e72"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "GrayMatter",
+      "source_repo": "angelnicolasc/graymatter",
+      "status": "VERIFIED_CLOSED"
+    }
+  },
+  "schema": "yaiwes.frontend.download-extract-queue.v1"
+}

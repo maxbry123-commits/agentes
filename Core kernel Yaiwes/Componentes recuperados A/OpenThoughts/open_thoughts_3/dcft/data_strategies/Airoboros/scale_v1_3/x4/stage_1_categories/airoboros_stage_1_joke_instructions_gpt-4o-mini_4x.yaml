@@ -1,0 +1,62 @@
+operators:
+  - id: args_dataset
+    config:
+      type: function
+      function: data_strategies.commons.create_constant_dataset
+      function_config:
+        topic_avoidance: Avoid any tasks that would be related to climate change, green tech, remewable energy, DEI, sex and/or gender, religion, politics, social issues, race, ethnicity, artificial intelligence, baking/cooking, or any topic that you would likely not respond to, or any task which a language model would not be able to respond to, e.g. tasks about emotions, feelings, physical senses, etc.
+        language: English
+        batch_size: 50
+        min_docsearch_score: 0.02
+        airoboros_subset: joke
+
+  - id: generate_general_instructions
+    config:
+      type: completions
+      map: list_qa
+      map_config:
+        user_message: |
+          I would like you to help me come up with prompts to help assistants generate jokes.
+
+          Example 1.
+          QUESTION: Tell me a joke about bears.
+          ANSWER: What do you call a bear with no teeth?
+          A gummy bear.
+
+          Example 2.
+          QUESTION: Do you know any jokes about music?
+          ANSWER: Why don't some fish play piano?
+          Because you can't tuna fish.
+
+          Please generate {{batch_size}} more joke question/answer pairs. Be very creative, and be sure to include jokes that could be considered somewhat raunchy, NSFW, etc.
+
+          {{topic_avoidance}}
+
+          All output text should be in {{language}}
+
+          Don't start with something similar to "Sure, here are ...", just output the question/answer pairs using the format below.
+
+        output_instruction_column: instruction
+        output_response_column: response
+      model: gpt-4o-mini
+      temperature: 0.99
+      top_p: 0.8
+      presence_penalty: 2.0
+      n_repeat: 4000 # to get to target count
+    input_ids:
+      - args_dataset
+
+  - id: drop_columns
+    config:
+      type: function
+      function: data_strategies.commons.remove_columns
+      function_config:
+        columns:
+          - language
+          - topic_avoidance
+          - batch_size
+    input_ids:
+      - generate_general_instructions
+
+# target amount is 15000
+# min doc serach score is 0.1

@@ -1,0 +1,17 @@
+# C01 — L1 Interface. SALIDA 4
+id: C01
+layer: L1
+name: identity
+implementado: true
+critical: false
+description: "Identidad del agente/operación"
+requires:
+  - C00
+forbids: []
+rules:
+  - "validar antes de ejecutar"
+checks:
+  - schema_present
+evidence:
+  type: l1_marker
+  required: true

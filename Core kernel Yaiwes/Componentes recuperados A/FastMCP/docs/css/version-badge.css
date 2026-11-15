@@ -1,0 +1,23 @@
+/* Version badge -- display a badge with the current version of the documentation */
+.version-badge {
+  --color-text: #ff5400 !important;
+  --color-bg: #fef2f2 !important;
+  color: #ff5400 !important;
+  background: #fef2f2 !important;
+  border: 1px solid rgba(220, 38, 38, 0.3) !important;
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+
+.version-badge:hover {
+  box-shadow: 0 2px 8px 0 rgba(160, 132, 252, 0.1);
+  transform: translateY(-1px) scale(1.03);
+}
+
+.dark .version-badge {
+  --color-text: #f1f5f9 !important;
+  --color-bg: #334155 !important;
+  color: #f1f5f9 !important;
+  background: #334155 !important;
+  border: 1px solid #64748b !important;
+}
+

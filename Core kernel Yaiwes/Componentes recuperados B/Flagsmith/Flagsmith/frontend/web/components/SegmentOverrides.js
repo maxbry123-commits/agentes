@@ -1,0 +1,910 @@
+import React, { Component, Fragment } from 'react'
+import cloneDeep from 'lodash/cloneDeep'
+import filter from 'lodash/filter'
+import find from 'lodash/find'
+import classNames from 'classnames'
+import { DragDropProvider } from '@dnd-kit/react'
+import { useSortable, isSortable } from '@dnd-kit/react/sortable'
+import { RestrictToVerticalAxis } from '@dnd-kit/abstract/modifiers'
+import { arrayMove } from '@dnd-kit/helpers'
+import ProjectStore from 'common/stores/project-store'
+import ValueEditor from './ValueEditor'
+import { VariationOptions } from './mv/VariationOptions'
+import FeatureListStore from 'common/stores/feature-list-store'
+import CreateSegmentModal from './modals/CreateSegment'
+import SegmentSelect from './SegmentSelect'
+import JSONReference from './JSONReference'
+import Permission from 'common/providers/Permission'
+import Icon from './icons/Icon'
+import SegmentOverrideLimit from './SegmentOverrideLimit'
+import { getStore } from 'common/store'
+import { getEnvironment } from 'common/services/useEnvironment'
+import { getSegment } from 'common/services/useSegment'
+import Tooltip from './Tooltip'
+import SegmentsIcon from './icons/SegmentsIcon'
+import SegmentOverrideActions from './SegmentOverrideActions'
+import CompareSegmentOverride from './diff/CompareSegmentOverride'
+import Button from './base/forms/Button'
+import { EnvironmentPermission } from 'common/types/permissions.types'
+
+const getSegmentId = (segment) =>
+  typeof segment === 'object' && segment !== null ? segment.id : segment
+
+const SegmentOverrideInner = class Override extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = {}
+    ES6Component(this)
+  }
+
+  componentDidMount() {
+    this.listenTo(FeatureListStore, 'saved', () => {
+      this.setState({ changed: false })
+    })
+  }
+
+  render() {
+    const {
+      confirmRemove,
+      controlValue,
+      disabled,
+      dragHandleRef,
+      environmentId,
+      hideViewSegment,
+      highlightSegmentId,
+      index,
+      multivariateOptions,
+      name,
+      onSortEnd,
+      projectFlag,
+      readOnly,
+      setCompare,
+      setSegmentEditId,
+      setShowCreateSegment,
+      setValue,
+      setVariations,
+      toggle,
+      value: v,
+    } = this.props
+
+    const mvOptions =
+      multivariateOptions &&
+      multivariateOptions.map((mv) => {
+        const foundMv =
+          v.multivariate_options &&
+          v.multivariate_options.find(
+            (v) => v.multivariate_feature_option === mv.id,
+          )
+        if (foundMv) {
+          return foundMv
+        }
+        return {
+          multivariate_feature_option: mv.id,
+          percentage_allocation: 0,
+        }
+      })
+    const changed = !v.id || this.state.changed
+    const showValue = !(multivariateOptions && multivariateOptions.length)
+    const canCompare =
+      showValue && v.value !== '' && v.value !== null && v.value !== undefined
+    const getOverrideLabel = (override) =>
+      override.name || override.segment_name || `Segment ${override.segment}`
+    const onCompare = () => {
+      setCompare({
+        source: {
+          enabled: !!v.enabled,
+          label: getOverrideLabel(v),
+          value: v.value,
+        },
+        sourceDescriptor: {
+          kind: 'segment',
+          segmentId: getSegmentId(v.segment),
+        },
+      })
+    }
+    const controlPercent = Utils.calculateControl(mvOptions)
+    const isHighlighted = highlightSegmentId && v.segment === highlightSegmentId
+    if (!v || v.toRemove) {
+      if (this.props.id) {
+        return (
+          <div>
+            You have removed this segment override, click save to confirm your
+            changes.
+          </div>
+        )
+      }
+      return <div />
+    }
+    return (
+      <div
+        data-test={`segment-override-${index}`}
+        className={classNames('segment-overrides mb-3', {
+          'border-2 border-primary': isHighlighted,
+          'panel user-select-none panel-without-heading panel--draggable pb-0':
+            !this.props.id,
+        })}
+      >
+        <Row className='p-0 table-header px-3 py-1' space>
+          <div
+            ref={dragHandleRef}
+            className={classNames('flex flex-1 text-start', {
+              'drag-handle': dragHandleRef,
+            })}
+          >
+            {this.props.id ? (
+              <>
+                <Row className='font-weight-medium text-default mb-1'>
+                  {projectFlag.description ? (
+                    <Tooltip
+                      title={
+                        <Row>
+                          {projectFlag.name}
+                          <span className={'ms-1'}></span>
+                          <Icon name='info-outlined' />
+                        </Row>
+                      }
+                    >
+                      {projectFlag.description}
+                    </Tooltip>
+                  ) : (
+                    projectFlag.name
+                  )}
+                  {v.is_feature_specific && (
+                    <div className='chip chip--xs ml-2'>Feature-Specific</div>
+                  )}
+                  {changed && <div className='chip chip--xs ml-2'>Unsaved</div>}
+                </Row>
+                <div className='list-item-footer faint'>
+                  <Row>
+                    <div>
+                      Created{' '}
+                      {moment(projectFlag.created_date).format(
+                        'Do MMM YYYY HH:mma',
+                      )}
+                    </div>
+                  </Row>
+                </div>
+              </>
+            ) : (
+              <Row className='fs-small'>
+                <SegmentsIcon
+                  className='opacity-50'
+                  fill='#9DA4AE'
+                  width={16}
+                  height={16}
+                />
+                <span className='ms-2 fw-bold text-default mb-0'>
+                  {name || v.segment_name}
+                </span>
+                {v.is_feature_specific && (
+                  <div className='chip chip--xs ml-2'>Feature-Specific</div>
+                )}
+                {changed && <div className='chip chip--xs ml-2'>Unsaved</div>}
+              </Row>
+            )}
+          </div>
+          <div>
+            <Row className='gap-3'>
+              {/* Input to adjust order without drag for E2E */}
+              {E2E && (
+                <input
+                  readOnly={readOnly}
+                  data-test={`sort-${index}`}
+                  onChange={(e) => {
+                    this.setState({ changed: true })
+                    onSortEnd({
+                      newIndex: parseInt(Utils.safeParseEventValue(e)),
+                      oldIndex: index,
+                    })
+                  }}
+                  type='text'
+                />
+              )}
+              <Row className='gap-2'>
+                {/* Compare is read-only, so the actions render outside the
+                    MANAGE_SEGMENT_OVERRIDES gate; edit and remove remain gated
+                    by canEdit / canRemove below. */}
+                <Permission
+                  id={environmentId}
+                  permission={EnvironmentPermission.MANAGE_SEGMENT_OVERRIDES}
+                  level={'environment'}
+                >
+                  {({ permission }) => (
+                    <SegmentOverrideActions
+                      hideViewSegment={hideViewSegment}
+                      canCompare={canCompare}
+                      onCompare={onCompare}
+                      onCopyValue={() => {
+                        this.setState({ changed: true })
+                        setValue(
+                          Utils.getTypedValue(
+                            Utils.safeParseEventValue(controlValue),
+                          ),
+                        )
+                      }}
+                      canCopyValue={
+                        permission &&
+                        !!controlValue &&
+                        (!multivariateOptions || !multivariateOptions.length)
+                      }
+                      canRemove={permission && !disabled && !readOnly}
+                      onRemove={confirmRemove}
+                      onEdit={() => {
+                        if (v.is_feature_specific) {
+                          setShowCreateSegment(true)
+                          setSegmentEditId(v.segment)
+                        } else {
+                          window.open(
+                            `${document.location.origin}/project/${this.props.projectId}/segments/${v.segment}`,
+                            '_blank',
+                          )
+                        }
+                      }}
+                      canEdit={permission}
+                    />
+                  )}
+                </Permission>
+              </Row>
+            </Row>
+          </div>
+        </Row>
+        <div className='d-flex px-3 mt-2'>
+          <div>
+            <div className='me-4'>
+              <Tooltip
+                title={
+                  <div className='label-switch justify-content-center d-flex align-items-center gap-1'>
+                    <span>Enabled</span> <Icon name='info-outlined' />
+                  </div>
+                }
+              >
+                Controls whether the feature is enabled for users belonging to
+                this segment.
+              </Tooltip>
+            </div>
+            <Switch
+              className='mt-4'
+              data-test={`segment-override-toggle-${index}`}
+              disabled={disabled}
+              checked={v.enabled}
+              onChange={(v) => {
+                if (!readOnly) {
+                  this.setState({ changed: true })
+                  toggle(v)
+                }
+              }}
+            />
+          </div>
+          {showValue ? (
+            <>
+              <div className='flex-fill overflow-hidden'>
+                <label>Value</label>
+                <ValueEditor
+                  readOnly={readOnly}
+                  disabled={readOnly}
+                  value={v.value}
+                  data-test={`segment-override-value-${index}`}
+                  onChange={
+                    readOnly
+                      ? null
+                      : (e) => {
+                          this.setState({ changed: true })
+                          setValue(
+                            Utils.getTypedValue(Utils.safeParseEventValue(e)),
+                          )
+                        }
+                  }
+                  placeholder="Value e.g. 'big' "
+                />
+              </div>
+            </>
+          ) : (
+            <div className='flex-1 flex-column'>
+              <label>Segment Control Value - {controlPercent}%</label>
+              <ValueEditor
+                value={v.value}
+                data-test={`segment-override-value-${index}`}
+                placeholder="Value e.g. 'big' "
+                disabled={readOnly}
+                onChange={
+                  readOnly
+                    ? null
+                    : (e) => {
+                        this.setState({ changed: true })
+                        setValue(
+                          Utils.getTypedValue(Utils.safeParseEventValue(e)),
+                        )
+                      }
+                }
+              />
+            </div>
+          )}
+        </div>
+        {!!multivariateOptions?.length && (
+          <div className='px-3'>
+            <VariationOptions
+              readOnly
+              disabled={readOnly}
+              controlValue={controlValue}
+              controlPercentage={controlPercent}
+              variationOverrides={mvOptions}
+              multivariateOptions={multivariateOptions.map((mv) => {
+                const foundMv =
+                  v.multivariate_options &&
+                  v.multivariate_options.find(
+                    (v) => v.multivariate_feature_option === mv.id,
+                  )
+                if (foundMv) {
+                  return {
+                    ...mv,
+                    default_percentage_allocation:
+                      foundMv.percentage_allocation,
+                  }
+                }
+                return {
+                  ...mv,
+                  default_percentage_allocation: 0,
+                }
+              })}
+              setVariations={(i, e, variationOverrides) => {
+                setVariations(i, e, variationOverrides)
+                this.setState({ changed: true })
+              }}
+              setValue={(i, e, variationOverrides) => {
+                setVariations(i, e, variationOverrides)
+                this.setState({ changed: true })
+              }}
+              updateVariation={(i, e, variationOverrides) => {
+                setVariations(i, e, variationOverrides)
+                this.setState({ changed: true })
+              }}
+              weightTitle='Override Weight %'
+            />
+          </div>
+        )}
+      </div>
+    )
+  }
+}
+
+const SortableSegmentOverride = (props) => {
+  const { handleRef, ref } = useSortable({
+    id: props.sortId,
+    index: props.index,
+    modifiers: [RestrictToVerticalAxis],
+  })
+
+  return (
+    <div ref={ref}>
+      <SegmentOverrideInner {...props} dragHandleRef={handleRef} />
+    </div>
+  )
+}
+
+const SegmentOverrideListInner = ({
+  confirmRemove,
+  controlEnabled,
+  controlValue,
+  disabled,
+  environmentId,
+  hideViewSegment,
+  highlightSegmentId,
+  id,
+  items,
+  multivariateOptions,
+  name,
+  onSortEnd,
+  projectFlag,
+  projectId,
+  readOnly,
+  setCompare,
+  setSegmentEditId,
+  setShowCreateSegment,
+  setValue,
+  setVariations,
+  showEditSegment,
+  toggle,
+}) => {
+  const canSort = !id && !disabled
+  return (
+    <div>
+      {items.map((value, index) => {
+        const segmentId = getSegmentId(value.segment)
+        const sortId = `segment-${segmentId ?? index}`
+        if (canSort) {
+          return (
+            <Fragment key={sortId}>
+              <SortableSegmentOverride
+                sortId={sortId}
+                id={id}
+                name={name}
+                segment={value.segment}
+                hideViewSegment={hideViewSegment}
+                highlightSegmentId={highlightSegmentId}
+                onSortEnd={onSortEnd}
+                disabled={disabled}
+                showEditSegment={showEditSegment}
+                environmentId={environmentId}
+                projectId={projectId}
+                multivariateOptions={multivariateOptions}
+                index={index}
+                readOnly={readOnly}
+                value={value}
+                setSegmentEditId={setSegmentEditId}
+                setShowCreateSegment={setShowCreateSegment}
+                confirmRemove={() => confirmRemove(index)}
+                controlValue={controlValue}
+                controlEnabled={controlEnabled}
+                items={items}
+                setCompare={setCompare}
+                toggle={() => toggle(index)}
+                setValue={(value) => {
+                  setValue(index, value)
+                }}
+                setVariations={(i, override, mvOptions) => {
+                  const newValue = cloneDeep(mvOptions)
+                  newValue[i] = {
+                    ...newValue[i],
+                    percentage_allocation:
+                      override.default_percentage_allocation,
+                  }
+                  setVariations(index, newValue)
+                }}
+                projectFlag={projectFlag}
+              />
+              <div className='text-start'>
+                <JSONReference
+                  showNamesButton
+                  title={'Segment Override'}
+                  json={value}
+                />
+              </div>
+            </Fragment>
+          )
+        }
+
+        return (
+          <Fragment key={sortId}>
+            <SegmentOverrideInner
+              id={id}
+              name={name}
+              segment={value.segment}
+              hideViewSegment={hideViewSegment}
+              highlightSegmentId={highlightSegmentId}
+              onSortEnd={onSortEnd}
+              disabled={disabled}
+              showEditSegment={showEditSegment}
+              environmentId={environmentId}
+              projectId={projectId}
+              multivariateOptions={multivariateOptions}
+              index={index}
+              readOnly={readOnly}
+              value={value}
+              setSegmentEditId={setSegmentEditId}
+              setShowCreateSegment={setShowCreateSegment}
+              confirmRemove={() => confirmRemove(index)}
+              controlValue={controlValue}
+              controlEnabled={controlEnabled}
+              items={items}
+              setCompare={setCompare}
+              toggle={() => toggle(index)}
+              setValue={(value) => {
+                setValue(index, value)
+              }}
+              setVariations={(i, override, mvOptions) => {
+                const newValue = cloneDeep(mvOptions)
+                newValue[i] = {
+                  ...newValue[i],
+                  percentage_allocation: override.default_percentage_allocation,
+                }
+                setVariations(index, newValue)
+              }}
+              projectFlag={projectFlag}
+            />
+            <div className='text-start'>
+              <JSONReference
+                showNamesButton
+                title={'Segment Override'}
+                json={value}
+              />
+            </div>
+          </Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
+const SortableSegmentOverrideList = ({
+  items,
+  onSortEnd: handleSortEnd,
+  ...rest
+}) => {
+  const handleDragEnd = (event) => {
+    if (event.canceled) return
+    const { source } = event.operation
+    if (isSortable(source)) {
+      const { index, initialIndex } = source
+      if (initialIndex !== index) {
+        handleSortEnd({ newIndex: index, oldIndex: initialIndex })
+      }
+    }
+  }
+
+  return (
+    <DragDropProvider onDragEnd={handleDragEnd}>
+      <SegmentOverrideListInner
+        items={items}
+        onSortEnd={handleSortEnd}
+        {...rest}
+      />
+    </DragDropProvider>
+  )
+}
+
+class TheComponent extends Component {
+  static displayName = 'TheComponent'
+
+  static propTypes = {}
+
+  constructor(props) {
+    super(props)
+    this.state = {
+      compare: null,
+      segmentEditId: undefined,
+      totalSegmentOverrides: 0,
+    }
+  }
+
+  setCompare = (compare) => {
+    this.setState({ compare })
+    this.props.onCompareChange?.(!!compare)
+  }
+  componentDidMount() {
+    getEnvironment(getStore(), {
+      id: this.props.environmentId,
+    }).then((res) => {
+      this.setState({
+        totalSegmentOverrides: res.data.total_segment_overrides,
+      })
+    })
+    this.checkPreselectedSegment()
+  }
+
+  componentDidUpdate(prevProps) {
+    if (
+      this.props.highlightSegmentId &&
+      this.props.highlightSegmentId !== prevProps.highlightSegmentId
+    ) {
+      this.checkPreselectedSegment()
+    }
+  }
+
+  checkPreselectedSegment = () => {
+    const { highlightSegmentId, projectId, value } = this.props
+    if (!highlightSegmentId) return
+
+    const existingOverride = value?.find(
+      (v) => v.segment === highlightSegmentId,
+    )
+    if (existingOverride) {
+      return
+    }
+
+    getSegment(getStore(), {
+      id: highlightSegmentId,
+      projectId: projectId,
+    }).then((res) => {
+      this.setState({
+        selectedSegment: {
+          label: res.data.name,
+          value: res.data.id,
+        },
+      })
+    })
+  }
+
+  addItem = () => {
+    const value = (this.props.value || []).map((val) => ({
+      ...val,
+      priority: val.priority,
+    }))
+    const matchingValue = value.find(
+      (v) => v.segment === this.state.selectedSegment.value,
+    )
+    if (matchingValue) {
+      matchingValue.toRemove = false
+      this.props.onChange(value)
+      return
+    }
+    const newValue = {
+      environment: ProjectStore.getEnvironmentIdFromKey(
+        this.props.environmentId,
+      ),
+      feature: this.props.feature,
+      feature_segment_value: {
+        enabled: false,
+        environment: ProjectStore.getEnvironmentIdFromKey(
+          this.props.environmentId,
+        ),
+        feature: this.props.feature,
+        feature_segment: null,
+        feature_state_value: Utils.valueToFeatureState(
+          `${this.props.controlValue || ''}`,
+        ),
+      },
+      priority: value.length,
+      segment: this.state.selectedSegment.value,
+      segment_name: this.state.selectedSegment.label,
+      value: `${this.props.controlValue || ''}`,
+    }
+    this.props.onChange(value.concat([newValue]))
+    this.setState({ selectedSegment: null })
+    setTimeout(() => {
+      const container = document.querySelector('.tabs-content .tab-active')
+      if (container) {
+        container.scrollTop = container.scrollHeight
+      }
+    }, 0)
+  }
+
+  confirmRemove = (i) => {
+    if (!this.props.value[i].id) {
+      this.props.onChange(
+        filter(this.props.value, (v, index) => index !== i).map((v, i) => ({
+          ...v,
+          priority: i,
+        })),
+      )
+      if (this.props.onRemove) {
+        this.props.onRemove()
+      }
+      return
+    }
+    openConfirm({
+      body: (
+        <div>
+          {`Are you sure you want to delete this segment override?${
+            this.props.is4Eyes
+              ? ''
+              : ' This will be applied when you click Update Segment Overrides and cannot be undone.'
+          }`}
+        </div>
+      ),
+      destructive: true,
+      onYes: () => {
+        this.props.value[i].toRemove = true
+        this.setState({ isLoading: false })
+      },
+      title: 'Delete Segment Override',
+      yesText: 'Confirm',
+    })
+  }
+
+  setValue = (i, value) => {
+    this.props.value[i].value = value
+    this.props.onChange(this.props.value)
+  }
+
+  setSegmentEditId = (id) => {
+    this.setState({ segmentEditId: id })
+  }
+
+  setVariations = (i, value) => {
+    this.props.value[i].multivariate_options = value
+    this.props.onChange(this.props.value)
+  }
+
+  toggle = (i) => {
+    this.props.value[i].enabled = !this.props.value[i].enabled
+    this.props.onChange(this.props.value)
+  }
+
+  onSortEnd = ({ newIndex, oldIndex }) => {
+    this.props.onChange(
+      arrayMove(this.props.value, oldIndex, newIndex).map((v, i) => ({
+        ...v,
+        priority: i,
+      })),
+    )
+  }
+
+  render() {
+    const {
+      props: { multivariateOptions, value },
+    } = this
+    if (this.state.compare) {
+      return (
+        <div>
+          <div className='mb-3'>
+            <Button
+              theme='text'
+              size='small'
+              onClick={() => this.setCompare(null)}
+            >
+              <Icon name='arrow-left' width={16} />
+              Back to segment overrides
+            </Button>
+          </div>
+          <CompareSegmentOverride
+            projectId={this.props.projectId}
+            environmentId={this.props.environmentId}
+            featureId={this.props.feature}
+            source={this.state.compare.source}
+            sourceDescriptor={this.state.compare.sourceDescriptor}
+          />
+        </div>
+      )
+    }
+    const filter = (segment) => {
+      if (segment.feature && segment.feature !== this.props.feature)
+        return false
+      // A cohort-managed segment only has members in its own environment.
+      if (
+        segment.cohort &&
+        segment.cohort.environment_api_key !== this.props.environmentId
+      )
+        return false
+      if (this.props.id && this.props.id !== segment.id) return null
+      const foundSegment = find(value, (v) => v.segment === segment.id)
+      return !value || !foundSegment || (foundSegment && foundSegment.toRemove)
+    }
+    const InnerComponent =
+      this.props.id || this.props.readOnly
+        ? SegmentOverrideListInner
+        : SortableSegmentOverrideList
+
+    const visibleValues = value && value.filter((v) => !v.toRemove)
+
+    const segmentOverrideLimitAlert = Utils.calculateRemainingLimitsPercentage(
+      this.state.totalSegmentOverrides,
+      ProjectStore.getMaxSegmentOverridesAllowed(),
+    )
+
+    const isLimitReached =
+      segmentOverrideLimitAlert.percentage &&
+      segmentOverrideLimitAlert.percentage >= 100
+    return (
+      <div>
+        <div className='mt-2 mb-2'>
+          {!this.props.id &&
+            !this.props.disableCreate &&
+            !this.props.showCreateSegment &&
+            !this.props.readOnly && (
+              <Row className='text-start gap-2'>
+                <div className='flex-1'>
+                  <SegmentSelect
+                    className='w-100'
+                    disabled={!!isLimitReached}
+                    projectId={this.props.projectId}
+                    data-test='select-segment'
+                    placeholder='Create a Segment Override...'
+                    filter={filter}
+                    value={this.state.selectedSegment?.value}
+                    onChange={(selectedSegment) => {
+                      if (this.props.highlightSegmentId) {
+                        this.setState({ selectedSegment })
+                      } else {
+                        this.setState({ selectedSegment }, this.addItem)
+                      }
+                    }}
+                  />
+                </div>
+                {this.props.highlightSegmentId &&
+                  this.state.selectedSegment && (
+                    <Button
+                      disabled={!!isLimitReached}
+                      onClick={this.addItem}
+                      data-test='create-segment-override-btn'
+                      className='align-self-start'
+                    >
+                      Create
+                    </Button>
+                  )}
+              </Row>
+            )}
+          {this.props.showCreateSegment && !this.state.segmentEditId && (
+            <div className='create-segment-overrides'>
+              <CreateSegmentModal
+                onComplete={(segment) => {
+                  this.props.setShowCreateSegment(false)
+                  if (!this.state.selectedSegment) {
+                    this.setState(
+                      {
+                        selectedSegment: {
+                          label: segment.name,
+                          value: segment.id,
+                        },
+                      },
+                      this.addItem,
+                    )
+                  }
+                }}
+                onCancel={() => {
+                  this.props.setShowCreateSegment(false)
+                }}
+                condensed
+                feature={this.props.feature}
+                environmentId={this.props.environmentId}
+                projectId={this.props.projectId}
+              />
+            </div>
+          )}
+          {this.props.showCreateSegment && this.state.segmentEditId && (
+            <CreateSegmentModal
+              className='my-2'
+              segment={this.state.segmentEditId}
+              condensed
+              onComplete={() => {
+                this.setState({
+                  segmentEditId: undefined,
+                })
+                this.props.setShowCreateSegment(false)
+              }}
+              onCancel={() => {
+                this.setState({ segmentEditId: undefined })
+                this.props.setShowCreateSegment(false)
+              }}
+              environmentId={this.props.environmentId}
+              projectId={this.props.projectId}
+            />
+          )}
+          {visibleValues &&
+            !!visibleValues.length &&
+            !this.props.showCreateSegment && (
+              <div className='overflow-visible'>
+                {!this.props.id && (
+                  <div className='my-4'>
+                    <SegmentOverrideLimit
+                      id={this.props.environmentId}
+                      maxSegmentOverridesAllowed={ProjectStore.getMaxSegmentOverridesAllowed()}
+                    />
+                  </div>
+                )}
+
+                {value && (
+                  <>
+                    <InnerComponent
+                      disabled={this.props.readOnly}
+                      id={this.props.id}
+                      name={this.props.name}
+                      controlValue={this.props.controlValue}
+                      controlEnabled={this.props.controlEnabled}
+                      setCompare={this.setCompare}
+                      multivariateOptions={multivariateOptions}
+                      confirmRemove={this.confirmRemove}
+                      setVariations={this.setVariations}
+                      toggle={this.toggle}
+                      setValue={this.setValue}
+                      readOnly={this.props.readOnly}
+                      showEditSegment={this.props.showEditSegment}
+                      environmentId={this.props.environmentId}
+                      projectId={this.props.projectId}
+                      setShowCreateSegment={this.props.setShowCreateSegment}
+                      items={value.map((v) => ({
+                        ...v,
+                      }))}
+                      setSegmentEditId={this.setSegmentEditId}
+                      onSortEnd={this.onSortEnd}
+                      projectFlag={this.props.projectFlag}
+                      hideViewSegment={this.props.hideViewSegment}
+                      highlightSegmentId={this.props.highlightSegmentId}
+                    />
+                    <div className='text-start mt-4'>
+                      <JSONReference
+                        showNamesButton
+                        title={'Segment Overrides'}
+                        json={value}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+        </div>
+      </div>
+    )
+  }
+}
+
+export default TheComponent

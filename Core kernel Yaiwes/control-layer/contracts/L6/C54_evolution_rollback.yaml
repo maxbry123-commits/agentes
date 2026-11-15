@@ -1,0 +1,18 @@
+# C54 — L6 Evolution. B5 SALIDA4
+id: C54
+layer: L6
+name: evolution_rollback
+implementado: true
+critical: false
+description: "Rollback de evolución"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C54 aplica en capa L6 evolution"
+  - "sin simulación previa → DENY en C53"
+checks:
+  - evolution_rollback_check
+evidence:
+  type: evolution_rollback_marker
+  required: true

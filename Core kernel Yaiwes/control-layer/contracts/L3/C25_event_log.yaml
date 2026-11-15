@@ -1,0 +1,18 @@
+# C25 — L3. B2 SALIDA4
+id: C25
+layer: L3
+name: event_log
+implementado: true
+critical: false
+description: "Registro de eventos append-only"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C25 aplica en capa L3"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - event_log_check
+evidence:
+  type: event_log_marker
+  required: false

@@ -1,0 +1,129 @@
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# https://github.com/EmbarkStudios/cargo-deny/pull/611
+version = 2
+yanked = "deny"
+ignore = [
+    { id = "RUSTSEC-2024-0436", reason = "crate is unmaintained. We need to migrate to a different crate than `paste`" },
+    { id = "RUSTSEC-2024-0437", reason = "protobuf-rs stackoverflow in deep nested messages, not fixed yet" },
+    { id = "RUSTSEC-2025-0057", reason = "fxhash is not maintained anymore, currently used only by raft-rs" },
+    { id = "RUSTSEC-2025-0141", reason = "bincode is no longer maintained, it's only used by restate-queue which will soon be removed" },
+    # package proc-macro-error2 is pulled by `raft` -> `getset` -> `proc-macro-error2`
+    { id = "RUSTSEC-2026-0173", reason = "The author of `proc-macro-error2` has [confirmed](https://github.com/GnomedDev/proc-macro-error-2/issues/17#issuecomment-4643215473) that the crate is no longer maintained and recommends that users migrate away from it" },
+    # quick-xml <0.41 DoS advisories (both fixed only in 0.41.0): RUSTSEC-2026-0194 (quadratic-time
+    # `BytesStart::attributes()`) and RUSTSEC-2026-0195 (unbounded namespace-declaration allocation in
+    # `NsReader`). Only pulled transitively: `inferno` (flamegraph SVG generation from self-generated
+    # profiling data, not exploitable) and `object_store` (parses XML from the configured S3/Azure/GCS
+    # endpoint only). No upstream fix yet: latest inferno (0.12.6) pins quick-xml ^0.39 and latest
+    # object_store (0.14.0) pins ^0.40.1, both <0.41. Revisit once object_store/inferno release versions
+    # using quick-xml >=0.41 and datafusion permits the bump.
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml <0.41 quadratic-time DoS, only reachable via inferno flamegraph generation and object_store XML parsing; no upstream release uses 0.41 yet" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml <0.41 unbounded namespace-declaration allocation DoS, only reachable via inferno flamegraph generation and object_store XML parsing; no upstream release uses 0.41 yet" },
+    # smartstring is a dependency of rust-rocksdb
+    { id = "RUSTSEC-2026-0249", reason = "The smartstring crate is unmaintained; all versions are affected. The GitHub repository was archived by the owner on 2026-05-03." },
+]
+
+
+[licenses]
+version = 2
+allow = [
+    # Permissive licenses
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "BSL-1.0",
+    "OpenSSL",
+    "CC0-1.0",
+    "Zlib",
+    "bzip2-1.0.6",
+    "Unicode-3.0",
+    "CDLA-Permissive-2.0",
+    # Weak copyleft (file-level) licenses. These only require sharing modifications
+    # to the licensed files themselves. Unmodified use in a "Larger Work" (our
+    # binaries) does not impose any copyleft obligation on the surrounding code.
+    # Current deps: smartstring, option-ext, priority-queue (MPL-2.0);
+    # inferno (CDDL-1.0, only included when heap-flamegraph feature is enabled).
+    "MPL-2.0",
+    "CDDL-1.0",
+    "Apache-2.0 WITH LLVM-exception",
+]
+# The confidence threshold for detecting a license from license text.
+# The higher the value, the more closely the license text must be to the
+# canonical license text of a valid SPDX license file.
+# [possible values: any between 0.0 and 1.0].
+confidence-threshold = 0.8
+
+[[licenses.clarify]]
+name = "ring"
+# SPDX considers OpenSSL to encompass both the OpenSSL and SSLeay licenses
+# https://spdx.org/licenses/OpenSSL.html
+# ISC - Both BoringSSL and ring use this for their new files
+# MIT - "Files in third_party/ have their own licenses, as described therein. The MIT
+# license, for third_party/fiat, which, unlike other third_party directories, is
+# compiled into non-test libraries, is included below."
+# OpenSSL - Obviously
+expression = "ISC AND MIT AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+[licenses.private]
+# If true, ignores workspace crates that aren't published, or are only
+# published to private registries.
+# To see how to mark a crate as unpublished (to the official registry),
+# visit https://doc.rust-lang.org/cargo/reference/manifest.html#the-publish-field.
+ignore = true
+# One or more private registries that you might publish crates to, if a crate
+# is only published to private registries, and ignore is true, the crate will
+# not have its license(s) checked
+registries = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+allow = []
+skip = [
+    # It's ok to ignore these dependencies, as they're resolved but we never use them,
+    # since we don't target Windows, nor HermitCore. We have a couple of transitive dependencies
+    # requiring windows and hermit syscalls with conflicting version.
+    # Also see https://github.com/rust-lang/cargo/issues/1197
+    { name = "windows-sys" },
+    { name = "windows-targets" },
+    { name = "windows_x86_64_msvc" },
+    { name = "windows_x86_64_gnullvm" },
+    { name = "windows_aarch64_gnullvm" },
+    { name = "windows_x86_64_gnu" },
+    { name = "windows_i686_gnu" },
+    { name = "windows_i686_msvc" },
+    { name = "windows_aarch64_msvc" },
+
+    # The following is an internal dependency needed by librocksdb-sys
+    { name = "syn" },
+
+    # Clash between datafusion and arrow
+    { name = "hashbrown" },
+
+    # Clash between pprof and datafusion :-(
+    { name = "quick-xml" },
+
+    # Clash with criterion
+    { name = "itertools" },
+
+    # clash between aws-config and pgwire
+    { name = "untrusted" },
+]
+
+[sources]
+unknown-registry = "deny"
+# Lint level for what to happen when a crate from a git repository that is not
+# in the allow list is encountered
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = ["https://github.com/apache/arrow-rs.git"]
+
+[sources.allow-org]
+# 1 or more github.com organizations to allow git sources for
+github = ["restatedev"]

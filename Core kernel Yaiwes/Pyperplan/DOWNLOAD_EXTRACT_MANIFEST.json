@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 1493417,
+  "bundle_sha256": "604aee87064e19d7b9ce8d1bc5e56811e61677b5b626edf6c1d9884a5cdda511",
+  "extracted_tree": {
+    "bytes": 18993887,
+    "files": 836,
+    "sha256": "d98b02ff888f9c4b0b898605f068b4411b453dca82a621de1271a91c4012c4b1"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 1493417,
+      "name": "Pyperplan.bundle.zip.part-0001",
+      "sha256": "604aee87064e19d7b9ce8d1bc5e56811e61677b5b626edf6c1d9884a5cdda511"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Pyperplan",
+  "source_bytes": 18993887,
+  "source_commit": "586b99f060bfe457f359aa8b4bae1a299fa4e8c7",
+  "source_files": 836,
+  "source_ref": "HEAD",
+  "source_repo": "aibasel/pyperplan",
+  "source_tree": {
+    "bytes": 18993887,
+    "files": 836,
+    "sha256": "d98b02ff888f9c4b0b898605f068b4411b453dca82a621de1271a91c4012c4b1"
+  }
+}

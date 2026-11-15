@@ -1,0 +1,98 @@
+operators:
+# - id: create_dataset_from_list
+#   config:
+#     type: function
+#     function: data_strategies.commons.create_dataset_from_list
+#     function_config:
+#       column_name: topics
+#       items:
+#         - "python"
+#         - "django"
+#         - "flask"
+#         - "fastapi"
+#         - "pytorch"
+#         - "tensorflow"
+#         - "machine-learning"
+#         - "data-science"
+#         - "web-scraping"
+#         - "automation"
+#         - "cli"
+#         - "api"
+#         - "testing"
+#         - "database"
+#         - "sqlalchemy"
+#         - "pandas"
+#         - "numpy"
+#         - "scikit-learn"
+#         - "visualization"
+#         - "asyncio"
+#         - "websockets"
+#         - "security"
+#         - "logging"
+#         - "configuration"
+#         - "cli-tool"
+#         - "rest-api"
+#         - "docker"
+#         - "kubernetes"
+#         - "microservices"
+#         - "devops"
+#         - "python-web"
+#         - "python-testing"
+#         - "python-automation"
+#         - "python-scripting"
+#         - "python-package"
+#         - "python-library"
+#         - "python-tools"
+#         - "python-framework"
+#         - "python-api"
+#         - "python-cli"
+#         - "python-utils"
+#         - "python-data"
+#         - "python-ml"
+#         - "python-ai"
+#         - "python-async"
+#         - "python-networking"
+#         - "python-security"
+#         - "python-database"
+#         - "python-orm"
+#         - "python-gui"
+#         - "python-backend"
+#         - "python-server"
+#         - "python-client"
+#         - "python-sdk"
+#         - "python-wrapper"
+#         - "python-integration"
+#         - "python-monitoring"
+#         - "python-logging"
+#         - "python-configuration"
+- id: get_github_topics
+  config:
+    type: function
+    function: data_strategies.SWEGym.scale_up.swebench_get_repo.get_github_topics
+    function_config:
+      limit: 10_000
+- id: scale_up_swegym
+  config:
+    type: generic_resource_function
+    num_shards: 1
+    memory: 200
+    num_cpus: 1
+    sharded: True
+    function: data_strategies.SWEGym.scale_up.swebench_get_repo.get_github_repo_dataset
+    function_config:
+      repos_per_topic: 1_000
+      max_issues_per_repo: 30
+      max_workers: 32
+      topics_column: topics
+  input_ids:
+    - get_github_topics
+- id: rename_instruction
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        body: problem_statement
+        repo_name: repo
+  input_ids:
+  - scale_up_swegym

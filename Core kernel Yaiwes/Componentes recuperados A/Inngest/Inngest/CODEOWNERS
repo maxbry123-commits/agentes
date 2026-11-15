@@ -1,0 +1,8 @@
+# UI
+/ui @amh4r @jacobheric
+
+# Execution
+/pkg/execution @tonyhb @BrunoScheufler @KiKoS0 @lkasinathan
+/pkg/constraintapi @BrunoScheufler @lkasinathan
+/pkg/execution/state @tonyhb @BrunoScheufler @KiKoS0 @lkasinathan
+/pkg/telemetry @BrunoScheufler

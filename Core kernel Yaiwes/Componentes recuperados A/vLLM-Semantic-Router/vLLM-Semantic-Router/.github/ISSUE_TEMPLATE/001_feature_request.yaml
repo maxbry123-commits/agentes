@@ -1,0 +1,61 @@
+name: Feature Request
+description: Propose a scoped capability for Maintainer acceptance
+labels: ["enhancement", "needs-acceptance"]
+title: "[Feature] <title>"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an improvement. New work enters `needs-acceptance`.
+        Please do not begin implementation or open a PR until a collaborator with
+        write access confirms one Workgroup owner and runs `/accept`;
+        contributor-ready work is explicitly marked `ready-for-dev`.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What outcome or user problem should this proposal address?
+    validations:
+      required: true
+  - type: dropdown
+    id: workgroup
+    attributes:
+      label: Proposed Workgroup
+      description: Select the single direction that should own acceptance and review.
+      options:
+        - MoM & Routing
+        - Router Models & Inference Runtime
+        - Data Plane & Networking
+        - Enterprise & Environment
+        - Agentic & Context
+        - Developer Experience & Ecosystem
+        - Evaluation & Quality
+        - Unsure / Maintainer triage
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Describe the bounded behavior, interfaces, or modules included in this proposal.
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: What adjacent work is intentionally outside this proposal?
+    validations:
+      required: false
+  - type: textarea
+    id: completion
+    attributes:
+      label: Completion signal
+      description: What observable result would show that the goal has been met?
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        Reactions help show interest but do not grant acceptance, priority,
+        assignment, or release commitment.

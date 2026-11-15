@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "Ragas",
+    "path": "docs/getstarted/ragas_get_started_evals.gif",
+    "chunks_dir": "Ragas/docs/getstarted/ragas_get_started_evals.gif.chunks",
+    "bytes": 18458800,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Ragas",
+    "path": "docs/getstarted/rag_eval.gif",
+    "chunks_dir": "Ragas/docs/getstarted/rag_eval.gif.chunks",
+    "bytes": 14429634,
+    "chunk_bytes": 8388608
+  }
+]

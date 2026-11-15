@@ -1,0 +1,49 @@
+{
+  "operations": {
+    "GET /data_requests/{data_request_id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "data_request_id",
+          "resource": "DataRequest",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": []
+    },
+    "PUT /data_requests/{data_request_id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "data_request_id",
+          "resource": "DataRequest",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data_request",
+          "resource": "DataRequest",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "DataRequest": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,223 @@
+/*
+Copyright 2024 The Dapr Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package fake
+
+import (
+	"context"
+
+	"github.com/dapr/dapr/pkg/actors"
+	"github.com/dapr/dapr/pkg/actors/api"
+	"github.com/dapr/dapr/pkg/actors/hostconfig"
+	"github.com/dapr/dapr/pkg/actors/internal/placement"
+	placementfake "github.com/dapr/dapr/pkg/actors/internal/placement/fake"
+	"github.com/dapr/dapr/pkg/actors/reminders"
+	remindersfake "github.com/dapr/dapr/pkg/actors/reminders/fake"
+	"github.com/dapr/dapr/pkg/actors/router"
+	routerfake "github.com/dapr/dapr/pkg/actors/router/fake"
+	"github.com/dapr/dapr/pkg/actors/state"
+	statefake "github.com/dapr/dapr/pkg/actors/state/fake"
+	"github.com/dapr/dapr/pkg/actors/table"
+	"github.com/dapr/dapr/pkg/actors/timers"
+	timersfake "github.com/dapr/dapr/pkg/actors/timers/fake"
+	runtimev1pb "github.com/dapr/dapr/pkg/proto/runtime/v1"
+)
+
+type Fake struct {
+	fnInit                     func(actors.InitOptions) error
+	fnRun                      func(context.Context) error
+	fnRouter                   func(context.Context) (router.Interface, error)
+	fnTable                    func(context.Context) (table.Interface, error)
+	fnState                    func(context.Context) (state.Interface, error)
+	fnTimers                   func(context.Context) (timers.Interface, error)
+	fnReminders                func(context.Context) (reminders.Interface, error)
+	fnPlacement                func(context.Context) (placement.Interface, error)
+	fnRuntimeStatus            func() *runtimev1pb.ActorRuntime
+	fnRegisterHosted           func(context.Context, hostconfig.Config) error
+	fnUnRegisterHosted         func(ctx context.Context, actorTypes ...string) error
+	fnWaitForRegisteredHosts   func(ctx context.Context) error
+	fnOnActorStateStoreChanged func()
+}
+
+func New() *Fake {
+	return &Fake{
+		fnInit: func(actors.InitOptions) error {
+			return nil
+		},
+		fnRun: func(context.Context) error {
+			return nil
+		},
+		fnRouter: func(context.Context) (router.Interface, error) {
+			return routerfake.New(), nil
+		},
+		fnTable: func(context.Context) (table.Interface, error) {
+			return nil, nil
+		},
+		fnState: func(context.Context) (state.Interface, error) {
+			return statefake.New(), nil
+		},
+		fnTimers: func(context.Context) (timers.Interface, error) {
+			return timersfake.New(), nil
+		},
+		fnReminders: func(context.Context) (reminders.Interface, error) {
+			return remindersfake.New(), nil
+		},
+		fnPlacement: func(context.Context) (placement.Interface, error) {
+			return nil, nil
+		},
+		fnRuntimeStatus: func() *runtimev1pb.ActorRuntime {
+			return nil
+		},
+		fnRegisterHosted: func(context.Context, hostconfig.Config) error {
+			return nil
+		},
+		fnUnRegisterHosted: func(context.Context, ...string) error {
+			return nil
+		},
+		fnWaitForRegisteredHosts: func(context.Context) error {
+			return nil
+		},
+		fnOnActorStateStoreChanged: func() {},
+	}
+}
+
+func (f *Fake) WithInit(fn func(actors.InitOptions) error) *Fake {
+	f.fnInit = fn
+	return f
+}
+
+func (f *Fake) WithRun(fn func(context.Context) error) *Fake {
+	f.fnRun = fn
+	return f
+}
+
+func (f *Fake) WithRouter(fn func(context.Context) (router.Interface, error)) *Fake {
+	f.fnRouter = fn
+	return f
+}
+
+func (f *Fake) WithTable(fn func(context.Context) (table.Interface, error)) *Fake {
+	f.fnTable = fn
+	return f
+}
+
+func (f *Fake) WithState(fn func(context.Context) (state.Interface, error)) *Fake {
+	f.fnState = fn
+	return f
+}
+
+func (f *Fake) WithTimers(fn func(context.Context) (timers.Interface, error)) *Fake {
+	f.fnTimers = fn
+	return f
+}
+
+func (f *Fake) WithReminders(fn func(context.Context) (reminders.Interface, error)) *Fake {
+	f.fnReminders = fn
+	return f
+}
+
+func (f *Fake) WithPlacement(fn func(context.Context) (placement.Interface, error)) *Fake {
+	f.fnPlacement = fn
+	return f
+}
+
+// WithPlacementLookupActor configures the fake's placement to answer
+// LookupActor with the given function. Unlike WithPlacement, callers outside
+// the actors tree can use this without importing the internal placement
+// package.
+func (f *Fake) WithPlacementLookupActor(fn func(context.Context, *api.LookupActorRequest) (*api.LookupActorResponse, error)) *Fake {
+	f.fnPlacement = func(context.Context) (placement.Interface, error) {
+		return placementfake.New().WithLookupActor(func(ctx context.Context, req *api.LookupActorRequest) (*api.LookupActorResponse, context.Context, context.CancelCauseFunc, error) {
+			lar, err := fn(ctx, req)
+			return lar, ctx, func(error) {}, err
+		}), nil
+	}
+	return f
+}
+
+func (f *Fake) WithRuntimeStatus(fn func() *runtimev1pb.ActorRuntime) *Fake {
+	f.fnRuntimeStatus = fn
+	return f
+}
+
+func (f *Fake) WithRegisterHosted(fn func(context.Context, hostconfig.Config) error) *Fake {
+	f.fnRegisterHosted = fn
+	return f
+}
+
+func (f *Fake) WithUnRegisterHosted(fn func(context.Context, ...string) error) *Fake {
+	f.fnUnRegisterHosted = fn
+	return f
+}
+
+func (f *Fake) WithWaitForRegisteredHosts(fn func(context.Context) error) *Fake {
+	f.fnWaitForRegisteredHosts = fn
+	return f
+}
+
+func (f *Fake) Init(opts actors.InitOptions) error {
+	return f.fnInit(opts)
+}
+
+func (f *Fake) Run(ctx context.Context) error {
+	return f.fnRun(ctx)
+}
+
+func (f *Fake) Router(ctx context.Context) (router.Interface, error) {
+	return f.fnRouter(ctx)
+}
+
+func (f *Fake) Table(ctx context.Context) (table.Interface, error) {
+	return f.fnTable(ctx)
+}
+
+func (f *Fake) State(ctx context.Context) (state.Interface, error) {
+	return f.fnState(ctx)
+}
+
+func (f *Fake) Timers(ctx context.Context) (timers.Interface, error) {
+	return f.fnTimers(ctx)
+}
+
+func (f *Fake) Reminders(ctx context.Context) (reminders.Interface, error) {
+	return f.fnReminders(ctx)
+}
+
+func (f *Fake) Placement(ctx context.Context) (placement.Interface, error) {
+	return f.fnPlacement(ctx)
+}
+
+func (f *Fake) RuntimeStatus() *runtimev1pb.ActorRuntime {
+	return f.fnRuntimeStatus()
+}
+
+func (f *Fake) RegisterHosted(ctx context.Context, cfg hostconfig.Config) error {
+	return f.fnRegisterHosted(ctx, cfg)
+}
+
+func (f *Fake) WaitForRegisteredHosts(ctx context.Context) error {
+	return f.fnWaitForRegisteredHosts(ctx)
+}
+
+func (f *Fake) WithOnActorStateStoreChanged(fn func()) *Fake {
+	f.fnOnActorStateStoreChanged = fn
+	return f
+}
+
+func (f *Fake) OnActorStateStoreChanged() {
+	f.fnOnActorStateStoreChanged()
+}
+
+func (f *Fake) UnRegisterHosted(ctx context.Context, ids ...string) error {
+	return f.fnUnRegisterHosted(ctx, ids...)
+}

@@ -1,0 +1,14 @@
+{
+  "contract_version": "1.0",
+  "source": "extensions/wordflow_kernel/engines/port.py",
+  "interface": "EnginePort.reason(request, gateway)",
+  "request_type": "EngineRequest",
+  "result_type": "EngineResult",
+  "result_status": ["OK", "DENY", "ERROR", "STUB"],
+  "llm_route": "IntelligenceGateway only",
+  "real_body_status": {
+    "openclaw": "OPEN — current implementation is explicitly a stub",
+    "hermes": "OPEN — current implementation is explicitly a stub"
+  },
+  "no_vendor_direct_calls": true
+}

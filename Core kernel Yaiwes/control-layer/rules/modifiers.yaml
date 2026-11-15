@@ -1,0 +1,52 @@
+# rules/modifiers.yaml — B0 SALIDA4 §19 conditional modifiers
+version: "1.0"
+
+modifiers:
+  high_risk:
+    when:
+      risk_band: [8, 9, 10]
+    add_contracts:
+      - C45
+      - C47
+      - C48
+      - C00
+
+  irreversible:
+    when:
+      irreversible: true
+    add_contracts:
+      - C45
+      - C48
+      - C29
+    require_sheriff_state: [GREEN, YELLOW]
+
+  secrets:
+    when:
+      credentials: true
+    add_contracts:
+      - C47
+      - C48
+      - C49
+    forbid_llm: true
+
+  external_network:
+    when:
+      external: true
+    add_contracts:
+      - C33
+      - C36
+      - C40
+
+  parallel:
+    when:
+      parallel: true
+    add_contracts:
+      - C44
+      - C28
+
+  writes:
+    when:
+      writes: true
+    add_contracts:
+      - C27
+      - C29

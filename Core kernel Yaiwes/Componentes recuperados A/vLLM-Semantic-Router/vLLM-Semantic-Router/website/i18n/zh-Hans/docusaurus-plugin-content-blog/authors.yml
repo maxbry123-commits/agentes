@@ -1,0 +1,75 @@
+rootfs:
+  name: Huamin Chen
+  title: AI @Microsoft
+  url: https://github.com/rootfs
+  image_url: /img/team/huamin.png
+
+wangchen615:
+  name: Chen Wang
+  title: Senior Staff Research Scientist @ IBM
+  url: https://github.com/wangchen615
+  image_url: /img/team/chen.png
+
+yuezhu1:
+  name: Yue Zhu
+  title: Staff Research Scientist @ IBM
+  url: https://github.com/yuezhu1
+  image_url: /img/team/yue.png
+
+Xunzhuo:
+  name: Xunzhuo Liu
+  title: Intelligent Routing @vLLM | Open Source & AI @AMD
+  url: https://github.com/Xunzhuo
+  image_url: /img/team/xunzhuo.png
+
+ivar:
+  name: Ivar Flakstad
+  title: Machine Learning @ Hugging Face
+  url: https://github.com/ivarflakstad
+  image_url: /img/team/ivar.jpeg
+
+onezero:
+  name: OneZero-Y
+  title: "LLM Inference"
+  url: https://github.com/OneZero-Y
+  image_url: /img/team/onezero.jpeg
+
+haichen:
+  name: Haichen Zhang
+  title: "Sr. AI Engineer @AMD"
+  url: https://www.linkedin.com/in/haichen-zhang-9010b6382/
+  image_url: /img/team/haichen.jpeg
+
+andyluo:
+  name: Andy Luo
+  title: "Sr. Director @AMD"
+  url: https://www.linkedin.com/in/andyluo77
+  image_url: /img/team/andy.jpeg
+
+anupsharma:
+  name: Anup Sharma
+  title: AI & Distributed System @ Nutanix
+  url: https://www.linkedin.com/in/anup-sharma1
+  image_url: /img/team/anup.jpeg
+
+aayushsaini101:
+  name: Aayush Saini
+  title: SDE, Data and AI @ Red Hat
+  url: https://github.com/AayushSaini101
+  image_url: https://github.com/AayushSaini101.png
+
+shivjikumarjha:
+  name: Shivji Kumar Jha
+  title: Staff Engineer (Data & AI) @ Nutanix
+  url: https://github.com/ShivjiKumarJha
+  image_url: /img/team/shivji.png
+
+adaamko:
+  name: Ádám Kovács
+  title: Co-founder @ KR Labs · LettuceDetect
+  url: https://github.com/adaamko
+  image_url: https://github.com/adaamko.png
+
+boweihe:
+  name: Bowei He
+  title: Postdoctoral Researcher @ MBZUAI · McGill

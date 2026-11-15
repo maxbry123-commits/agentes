@@ -1,0 +1,322 @@
+{
+  "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
+  "index": 1,
+  "name": "Windmill",
+  "slug": "windmill",
+  "source_url": "https://github.com/windmill-labs/windmill",
+  "source_commit": "621fac55abcd1859e8c8c06e5f4412e61bb85d59",
+  "mode": "DOWNLOAD",
+  "delivery": "EXTRACTED_TREE_AFTER_PREFLIGHT",
+  "file_count": 9978,
+  "total_bytes": 105639940,
+  "max_blob": {
+    "path": "imgs/main.mp4",
+    "bytes": 6361713
+  },
+  "top_level_inventory": {
+    ".agents": {
+      "files": 25,
+      "bytes": 147438
+    },
+    ".aiderignore": {
+      "files": 1,
+      "bytes": 25
+    },
+    ".claude": {
+      "files": 29,
+      "bytes": 190738
+    },
+    ".codex": {
+      "files": 1,
+      "bytes": 121
+    },
+    ".devcontainer": {
+      "files": 2,
+      "bytes": 1696
+    },
+    ".dockerignore": {
+      "files": 1,
+      "bytes": 122
+    },
+    ".env": {
+      "files": 1,
+      "bytes": 479
+    },
+    ".envrc": {
+      "files": 1,
+      "bytes": 261
+    },
+    ".gitattributes": {
+      "files": 1,
+      "bytes": 173
+    },
+    ".githooks": {
+      "files": 1,
+      "bytes": 559
+    },
+    ".github": {
+      "files": 74,
+      "bytes": 318973
+    },
+    ".gitignore": {
+      "files": 1,
+      "bytes": 782
+    },
+    ".mcp.json": {
+      "files": 1,
+      "bytes": 534
+    },
+    ".release-please-manifest.json": {
+      "files": 1,
+      "bytes": 21
+    },
+    ".webmux.yaml": {
+      "files": 1,
+      "bytes": 7324
+    },
+    "AGENTS.md": {
+      "files": 1,
+      "bytes": 16478
+    },
+    "CHANGELOG.md": {
+      "files": 1,
+      "bytes": 1432291
+    },
+    "CLA.md": {
+      "files": 1,
+      "bytes": 6909
+    },
+    "CLAUDE.md": {
+      "files": 1,
+      "bytes": 10
+    },
+    "CONTEXT.md": {
+      "files": 1,
+      "bytes": 3489
+    },
+    "CONTRIBUTING.md": {
+      "files": 1,
+      "bytes": 1621
+    },
+    "Caddyfile": {
+      "files": 1,
+      "bytes": 1101
+    },
+    "Dockerfile": {
+      "files": 1,
+      "bytes": 15047
+    },
+    "LICENSE": {
+      "files": 1,
+      "bytes": 2038
+    },
+    "LICENSE-AGPL": {
+      "files": 1,
+      "bytes": 34523
+    },
+    "LICENSE-APACHE": {
+      "files": 1,
+      "bytes": 11348
+    },
+    "NOTICE": {
+      "files": 1,
+      "bytes": 480
+    },
+    "README.md": {
+      "files": 1,
+      "bytes": 28128
+    },
+    "README_WORKMUX_DEV.md": {
+      "files": 1,
+      "bytes": 6040
+    },
+    "REVIEW.md": {
+      "files": 1,
+      "bytes": 6101
+    },
+    "ai_evals": {
+      "files": 228,
+      "bytes": 1219612
+    },
+    "backend": {
+      "files": 5051,
+      "bytes": 35837891
+    },
+    "benchmarks": {
+      "files": 29,
+      "bytes": 273435
+    },
+    "cli": {
+      "files": 324,
+      "bytes": 5100926
+    },
+    "context7.json": {
+      "files": 1,
+      "bytes": 103
+    },
+    "debugger": {
+      "files": 13,
+      "bytes": 326493
+    },
+    "depot.json": {
+      "files": 1,
+      "bytes": 23
+    },
+    "docker": {
+      "files": 19,
+      "bytes": 82231
+    },
+    "docker-compose.yml": {
+      "files": 1,
+      "bytes": 9217
+    },
+    "docs": {
+      "files": 24,
+      "bytes": 371734
+    },
+    "ephemeral-backends": {
+      "files": 12,
+      "bytes": 67459
+    },
+    "examples": {
+      "files": 73,
+      "bytes": 493495
+    },
+    "fixtures": {
+      "files": 6,
+      "bytes": 9826
+    },
+    "flake.lock": {
+      "files": 1,
+      "bytes": 2927
+    },
+    "flake.nix": {
+      "files": 1,
+      "bytes": 21385
+    },
+    "frontend": {
+      "files": 2931,
+      "bytes": 32394382
+    },
+    "functions": {
+      "files": 1,
+      "bytes": 1763
+    },
+    "go-client": {
+      "files": 8,
+      "bytes": 22256
+    },
+    "imgs": {
+      "files": 17,
+      "bytes": 12833989
+    },
+    "init-db-as-superuser.sql": {
+      "files": 1,
+      "bytes": 795
+    },
+    "integration_tests": {
+      "files": 34,
+      "bytes": 220058
+    },
+    "lsp": {
+      "files": 5,
+      "bytes": 107302
+    },
+    "multiplayer": {
+      "files": 5,
+      "bytes": 18515
+    },
+    "openflow.openapi.yaml": {
+      "files": 1,
+      "bytes": 48992
+    },
+    "powershell-client": {
+      "files": 3,
+      "bytes": 26179
+    },
+    "python-client": {
+      "files": 31,
+      "bytes": 2255783
+    },
+    "react-sdk": {
+      "files": 1,
+      "bytes": 217
+    },
+    "release-please-config.json": {
+      "files": 1,
+      "bytes": 248
+    },
+    "rust-client": {
+      "files": 9,
+      "bytes": 105643
+    },
+    "sandbox-image": {
+      "files": 2,
+      "bytes": 4647
+    },
+    "scripts": {
+      "files": 6,
+      "bytes": 20398
+    },
+    "setup-hooks.sh": {
+      "files": 1,
+      "bytes": 142
+    },
+    "start-dev-db.sh": {
+      "files": 1,
+      "bytes": 478
+    },
+    "system_prompts": {
+      "files": 90,
+      "bytes": 1264523
+    },
+    "typescript-client": {
+      "files": 851,
+      "bytes": 9967988
+    },
+    "version.txt": {
+      "files": 1,
+      "bytes": 8
+    },
+    "windmill-overview.mdc": {
+      "files": 1,
+      "bytes": 4196
+    },
+    "windmill-yaml-validator": {
+      "files": 30,
+      "bytes": 217830
+    },
+    "wm-ts-nav": {
+      "files": 7,
+      "bytes": 72001
+    }
+  },
+  "licenses": [
+    {
+      "path": "LICENSE",
+      "sha256": "f8c08feee3f832d3dba0d1fed270fab9fd2528d79e1bc00e8af866b3a1023942",
+      "bytes": 2038
+    },
+    {
+      "path": "LICENSE-AGPL",
+      "sha256": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+      "bytes": 34523
+    },
+    {
+      "path": "LICENSE-APACHE",
+      "sha256": "a8954535368e7af09e498e8da177941b548f3b04352be3f1550da21162735fe0",
+      "bytes": 11348
+    },
+    {
+      "path": "NOTICE",
+      "sha256": "b4553ec18dcc34778a140130e07e52fb7ab917231db751418ddcd48fb7c62feb",
+      "bytes": 480
+    }
+  ],
+  "lfs_pointer_count": 0,
+  "lfs_pointers": [],
+  "oversized_blob_count": 0,
+  "oversized_blobs": [],
+  "deterministic_tree_sha256": "cc09fff53fe1cf06b59eae750af01b919c5d2daa483181f17b24ecb1f0e2a37f",
+  "status": "PREFLIGHT_PASS"
+}

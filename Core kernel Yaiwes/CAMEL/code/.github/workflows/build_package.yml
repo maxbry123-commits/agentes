@@ -1,0 +1,116 @@
+name: Build Package
+
+on:
+  push:
+    branches: [ "master", "qa" ]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "LICENSE"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Free disk space
+        run: |
+          sudo apt-get clean
+          sudo apt-get autoremove -y
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /tmp/*
+          sudo rm -rf $HOME/.cache/pip
+          df -h
+
+      - name: Set up Python environment
+        uses: actions/setup-python@3542bca2639a428e1796aaa6a2ffef0c0f575566 # v3.1.4
+        with:
+          python-version: "3.10"
+
+      - name: Install uv
+        run: |
+          pip install uv
+
+      - name: Create virtual environment
+        run: |
+          uv venv .venv --python=3.10
+          df -h
+
+      - name: Install core dependencies
+        run: |
+          source .venv/bin/activate
+          # Install just the core dependencies first
+          uv pip install -e "."
+          df -h
+
+      - name: Install dev dependencies
+        run: |
+          source .venv/bin/activate
+          # Install dev dependencies separately
+          uv pip install -e ".[dev]"
+          df -h
+
+      - name: Install docs dependencies
+        run: |
+          source .venv/bin/activate
+          # Install docs dependencies separately
+          uv pip install -e ".[docs]"
+          df -h
+
+      - name: Install build tools
+        run: |
+          source .venv/bin/activate
+          uv pip install build
+          df -h
+
+      - name: Build
+        run: |
+          source .venv/bin/activate
+          python -m build
+
+      - name: Set up test environment
+        run: |
+          python -m venv test_venv
+          source test_venv/bin/activate
+
+      - name: Install the package
+        timeout-minutes: 15
+        run: |
+          source test_venv/bin/activate
+          WHEEL_FILE=$(ls dist/*.whl)
+          python -m pip install --verbose "${WHEEL_FILE}"
+          python -m pip check
+
+      - name: Test import
+        run: |
+          source test_venv/bin/activate
+          cd "$(mktemp -d)"
+          python -c "import camel"
+
+      - name: Clean up after build
+        if: always()
+        run: |
+          sudo apt-get clean
+          sudo apt-get autoremove -y
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /tmp/*
+          sudo rm -rf $HOME/.cache/pip
+          df -h

@@ -1,0 +1,69 @@
+interactions:
+  - request:
+      headers:
+        accept:
+          - "*/*"
+        accept-encoding:
+          - gzip, deflate
+        connection:
+          - keep-alive
+        content-length:
+          - "221"
+        content-type:
+          - application/json
+        host:
+          - aiplatform.googleapis.com
+      method: POST
+      parsed_body:
+        contents:
+          - parts:
+              - text: What is the main content of this URL?
+              - fileData:
+                  file_uri: gs://pydantic-ai-dev/wikipedia_screenshot.png
+                  mime_type: image/png
+            role: user
+        generationConfig: {}
+      uri: https://aiplatform.googleapis.com/v1beta1/projects/pydantic-ai/locations/global/publishers/google/models/gemini-2.0-flash:generateContent
+    response:
+      headers:
+        alt-svc:
+          - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+        content-length:
+          - "1098"
+        content-type:
+          - application/json; charset=UTF-8
+        transfer-encoding:
+          - chunked
+        vary:
+          - Origin
+          - X-Origin
+          - Referer
+      parsed_body:
+        candidates:
+          - avgLogprobs: -0.5187065648097618
+            content:
+              parts:
+                - text: |
+                    The main content of the URL is the Wikipedia homepage, featuring options to access Wikipedia in different languages and information about the number of articles in each language. It also includes links to other Wikimedia projects and information about Wikipedia's host, the Wikimedia Foundation.
+              role: model
+            finishReason: STOP
+        createTime: "2025-05-31T21:36:19.466819Z"
+        modelVersion: gemini-2.0-flash
+        responseId: U3Y7aIO_HMT22PgP2-Cw0Ac
+        usageMetadata:
+          candidatesTokenCount: 51
+          candidatesTokensDetails:
+            - modality: TEXT
+              tokenCount: 51
+          promptTokenCount: 2589
+          promptTokensDetails:
+            - modality: IMAGE
+              tokenCount: 2580
+            - modality: TEXT
+              tokenCount: 9
+          totalTokenCount: 2640
+          trafficType: ON_DEMAND
+      status:
+        code: 200
+        message: OK
+version: 1

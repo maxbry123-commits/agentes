@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.code_output.v1",
+  "title": "CodeOutput",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "files",
+    "evidence_ref"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "artifact_id": { "type": "string", "minLength": 1 },
+    "block_id": { "type": ["string", "null"] },
+    "language": {
+      "type": "string",
+      "enum": ["python", "yaml", "json", "markdown", "mixed"]
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["path", "action"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "action": {
+            "type": "string",
+            "enum": ["create", "update", "delete"]
+          },
+          "content_hash": { "type": "string" },
+          "loc": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "evidence_ref": {
+      "type": "object",
+      "required": ["task_id", "claim_status"],
+      "properties": {
+        "task_id": { "type": "string" },
+        "claim_status": {
+          "type": "string",
+          "enum": ["PARTIAL", "COMPLETED", "REFUTADO"]
+        },
+        "doc_anchors": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "llm_control": {
+      "type": "string",
+      "const": "DENY"
+    }
+  }
+}

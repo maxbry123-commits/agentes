@@ -1,0 +1,64 @@
+
+job_name: default-trace-job
+jobs_dir: trace_jobs
+n_attempts: 1
+timeout_multiplier: 1.0
+debug: false
+orchestrator:
+  type: local
+  n_concurrent_trials: 48
+  quiet: false
+  plain_output: true
+  adaptive_concurrency:
+    enabled: false
+    algorithm: gradient2
+    min_limit: null
+    max_limit: null
+    metrics_endpoint: null
+    metrics_timeout_sec: 10.0
+    poll_interval_sec: 120.0
+    window_size: 5
+    queue_p95_drop_threshold: null
+    algorithm_kwargs: {}
+  retry:
+    max_retries: 10
+    include_exceptions:
+    - DaytonaRateLimitError
+    exclude_exceptions:
+    - AgentTimeoutError
+    - VerifierTimeoutError
+    - RewardFileNotFoundError
+    - RewardFileEmptyError
+    - VerifierOutputParseError
+    - SandboxBuildFailedError
+    - VerifierRuntimeError
+    wait_multiplier: 2.0
+    min_wait_sec: 1.0
+    max_wait_sec: 90.0
+  kwargs: {}
+environment:
+  type: daytona
+  force_build: false
+  delete: true
+  override_cpus: 1
+  override_memory_mb: 2048
+  override_storage_mb: 2048
+  kwargs:
+    auto_snapshot: true
+verifier:
+  override_timeout_sec: null
+  max_timeout_sec: null
+  disable: true
+metrics: []
+agents:
+- name: opencode
+  import_path: null
+  model_name: openai/override-at-runtime
+  override_timeout_sec: 1800
+  max_timeout_sec: null
+  override_setup_timeout_sec: 600
+  kwargs:
+    opencode_config: {}
+datasets:
+- path: /replace/with/tasks/path
+tasks: []

@@ -1,0 +1,31 @@
+apiVersion: purr.myapp.sh/v1alpha1
+kind: Purr
+metadata:
+  annotations:
+    shouldPet: manytimes
+  name: big-chungus-purr
+  ownerReferences:
+  - apiVersion: cat.myapp.sh/v1alpha1
+    kind: Cat
+    name: big-chungus
+    uid: ""
+spec:
+  loud: very
+---
+apiVersion: kitten.myapp.sh/v1alpha1
+kind: Kitten
+metadata:
+  annotations:
+    sound: meow
+  labels:
+    fluffy: extremely
+  name: big-chungus-kitten
+  ownerReferences:
+  - apiVersion: cat.myapp.sh/v1alpha1
+    kind: Cat
+    name: big-chungus
+    uid: ""
+spec:
+  age: 10
+  breed: calico
+  weight: 10

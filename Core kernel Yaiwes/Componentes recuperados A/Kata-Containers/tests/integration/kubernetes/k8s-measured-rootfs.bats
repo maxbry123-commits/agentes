@@ -1,0 +1,70 @@
+#!/usr/bin/env bats
+#
+# Copyright (c) 2023 Red Hat
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+load "${BATS_TEST_DIRNAME}/../../common.bash"
+load "${BATS_TEST_DIRNAME}/lib.sh"
+load "${BATS_TEST_DIRNAME}/tests_common.sh"
+
+check_and_skip() {
+	# The CPU-only NVIDIA classes are not confidential, but they still boot
+	# the verity-backed nvidia base image, so measured rootfs applies to them
+	# just like it does to the confidential classes.
+	if ! is_verity_enabled_runtime_class "${KATA_HYPERVISOR}"; then
+		skip "measured rootfs tests not implemented for hypervisor: ${KATA_HYPERVISOR}"
+	fi
+
+	if [[ "$(uname -m)" == "s390x" ]]; then
+		skip "measured rootfs tests not implemented for s390x"
+	fi
+}
+
+setup() {
+	check_and_skip
+
+	setup_common || die "setup_common failed"
+
+	runtime_class="$(get_test_runtime_class)"
+	shim_config_file="$(get_kata_runtime_config_file "${node}")" || \
+		die "No Kata runtime config found for ${KATA_HYPERVISOR}"
+}
+
+@test "Test cannot launch pod with measured boot enabled and incorrect hash" {
+	ensure_yq
+	nginx_registry=$(get_from_kata_deps ".docker_images.nginx.registry")
+	nginx_digest=$(get_from_kata_deps ".docker_images.nginx.digest")
+	nginx_image="${nginx_registry}@${nginx_digest}"
+
+	pod_config="$(new_pod_config "${nginx_image}" "${runtime_class}" \
+		"" "" "1, 2, 3, 4, 6, 10, 11, 20, 26, 27")"
+	auto_generate_policy "${pod_config_dir}" "${pod_config}"
+
+	incorrect_hash="1111111111111111111111111111111111111111111111111111111111111111"
+
+	# Read verity parameters from config, then override via annotations.
+	kernel_verity_params=$(exec_host "$node" "sed -n 's/^kernel_verity_params = \"\\(.*\\)\"/\\1/p' ${shim_config_file}" || true)
+	[ -n "${kernel_verity_params}" ] || die "Missing kernel_verity_params in ${shim_config_file}"
+
+	kernel_verity_params=$(printf '%s\n' "$kernel_verity_params" | sed -E "s/root_hash=[^,]*/root_hash=${incorrect_hash}/")
+	set_metadata_annotation "$pod_config" \
+		"io.katacontainers.config.hypervisor.kernel_verity_params" \
+		"${kernel_verity_params}"
+	# Run on a specific node so we know from where to inspect the logs
+	set_node "$pod_config" "$node"
+
+	# For debug sake
+	echo "Pod $pod_config file:"
+	cat $pod_config
+
+	assert_pod_container_creating "$pod_config"
+	assert_logs_contain "$node" kata "${node_start_time}" "verity: .* metadata block .* is corrupted"
+}
+
+teardown() {
+	check_and_skip
+
+	teardown_common "${node}" "${node_start_time:-}"
+}

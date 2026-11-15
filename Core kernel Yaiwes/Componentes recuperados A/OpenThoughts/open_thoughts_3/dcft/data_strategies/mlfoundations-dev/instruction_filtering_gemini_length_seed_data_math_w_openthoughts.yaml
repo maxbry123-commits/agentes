@@ -1,0 +1,19 @@
+operators:
+  - id: load_hf
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/instruction_filtering_gemini_length_seed_data_math_w_openthoughts
+      split: train
+  - id: rename_columns
+    config:
+      type: function
+      function: data_strategies.commons.change_tags
+      function_config:
+        conversation_column: conversations
+        tags_to_change: 
+          human: user
+          user: user
+          gpt: assistant
+          assistant: assistant
+    input_ids:
+      - load_hf

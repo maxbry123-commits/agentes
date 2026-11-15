@@ -1,0 +1,161 @@
+name: YAIWES adopt Inspect evaluation sandbox repair 02
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/yaiwes-adopt-inspect-evaluation-sandbox-repair-02.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agentes-source-evolution-evaluation-sandbox-repair-02
+  cancel-in-progress: false
+
+jobs:
+  acquire-verify-wire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ROOT: agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/evaluation-sandbox
+      INSPECT_SHA: ed48193d05eb264060d18ed037ddd4c1ad42e3b0
+      SANDBOXING_SHA: c9f2ea1b2a190b92fc2b69a97c237f3a33ee6bee
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Synchronize before mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --ff-only origin main
+
+      - name: Preflight destinations
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in "$ROOT/vendor/inspect-ai" "$ROOT/vendor/inspect-sandboxing"; do
+            if test -e "$p"; then
+              echo "COLLISION_BLOCKED: $p already exists"
+              exit 31
+            fi
+          done
+          mkdir -p "$ROOT/vendor"
+
+      - name: Sparse-copy Inspect AI at fixed commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          git clone --filter=blob:none --no-checkout https://github.com/UKGovernmentBEIS/inspect_ai.git "$tmp/inspect-ai"
+          git -C "$tmp/inspect-ai" sparse-checkout init --cone
+          git -C "$tmp/inspect-ai" sparse-checkout set             src/inspect_ai/scorer             src/inspect_ai/solver             src/inspect_ai/util/_sandbox             docs/scorers.qmd             docs/solvers.qmd             docs/sandboxing.qmd             docs/extensions-sandboxes.qmd             README.md LICENSE pyproject.toml
+          git -C "$tmp/inspect-ai" checkout "$INSPECT_SHA"
+          mkdir -p "$ROOT/vendor/inspect-ai"
+          cp -a "$tmp/inspect-ai/src" "$ROOT/vendor/inspect-ai/"
+          cp -a "$tmp/inspect-ai/docs" "$ROOT/vendor/inspect-ai/"
+          cp -a "$tmp/inspect-ai/README.md" "$tmp/inspect-ai/LICENSE" "$tmp/inspect-ai/pyproject.toml" "$ROOT/vendor/inspect-ai/"
+          printf '%s\n' 'https://github.com/UKGovernmentBEIS/inspect_ai' > "$ROOT/vendor/inspect-ai/SOURCE_URL.txt"
+          printf '%s\n' "$INSPECT_SHA" > "$ROOT/vendor/inspect-ai/SOURCE_COMMIT.txt"
+          printf '%s\n' 'MIT' > "$ROOT/vendor/inspect-ai/SOURCE_LICENSE.txt"
+
+      - name: Copy Inspect Sandboxing protocol at fixed commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          git clone https://github.com/UKGovernmentBEIS/aisi-sandboxing.git "$tmp/inspect-sandboxing"
+          git -C "$tmp/inspect-sandboxing" checkout "$SANDBOXING_SHA"
+          mkdir -p "$ROOT/vendor/inspect-sandboxing"
+          find "$tmp/inspect-sandboxing" -mindepth 1 -maxdepth 1 ! -name .git -exec cp -a {} "$ROOT/vendor/inspect-sandboxing/" \;
+          printf '%s\n' 'https://github.com/UKGovernmentBEIS/aisi-sandboxing' > "$ROOT/vendor/inspect-sandboxing/SOURCE_URL.txt"
+          printf '%s\n' "$SANDBOXING_SHA" > "$ROOT/vendor/inspect-sandboxing/SOURCE_COMMIT.txt"
+          printf '%s\n' 'NOT_DECLARED_BY_SOURCE; DOCUMENTATION_REFERENCE_ONLY' > "$ROOT/vendor/inspect-sandboxing/SOURCE_LICENSE.txt"
+
+      - name: Generate deterministic wiring and passport
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$ROOT/ADOPTION_WIRING.json" <<'JSON'
+          {
+            "schema_version": "1.0",
+            "workflow": "source-evolution-workflow",
+            "boundary": "evaluation-sandbox",
+            "components": [
+              {
+                "name": "inspect-ai",
+                "role": ["evaluation-engine", "scorer", "solver", "sandbox-contract"],
+                "source_mode": "COPY",
+                "execution_state": "ADAPTER_REQUIRED",
+                "license_gate": "PASS_MIT",
+                "kernel_import": false
+              },
+              {
+                "name": "inspect-sandboxing",
+                "role": ["sandbox-policy-reference", "isolation-selection"],
+                "source_mode": "COPY",
+                "execution_state": "DOCUMENTATION_ONLY",
+                "license_gate": "BLOCK_EXECUTION_LICENSE_NOT_DECLARED",
+                "kernel_import": false
+              }
+            ],
+            "route": "microkernel -> evaluation-sandbox -> sheriff -> authorization-gate",
+            "rules": {
+              "llm_may_authorize": false,
+              "network_default": "deny",
+              "external_code_direct_kernel_import": false,
+              "rollback_required": true
+            }
+          }
+          JSON
+          cat > "$ROOT/README.md" <<'MD'
+          # Evaluation Sandbox
+
+          Gate determinista del workflow de autoevolución YAIWES.
+
+          - **Inspect AI** aporta contratos y código fuente para solver, scorer y sandbox. Vive aislado en `vendor/inspect-ai`; el kernel no lo importa directamente. Su activación requiere adapter/ABI, Sheriff, autorización y prueba E2E.
+          - **Inspect Sandboxing Toolkit** aporta el protocolo de selección de aislamiento por herramientas, host y red. La fuente no declara licencia en el repositorio fijado, por lo que queda como referencia documental y su ejecución/copia derivada está bloqueada.
+          - El LLM propone o puntúa; no autoriza instalación, red, escritura, hot-swap ni PASS.
+          - Toda salida ejecutable pasa por pasaporte, hashes, sandbox sin red por defecto y rollback.
+          MD
+
+      - name: Build and verify source manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in "$ROOT/vendor/inspect-ai" "$ROOT/vendor/inspect-sandboxing"; do
+            (cd "$p" && find . -type f ! -name SOURCE_SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SOURCE_SHA256SUMS.txt)
+            (cd "$p" && sha256sum -c SOURCE_SHA256SUMS.txt)
+          done
+          test "$(cat "$ROOT/vendor/inspect-ai/SOURCE_COMMIT.txt")" = "$INSPECT_SHA"
+          test "$(cat "$ROOT/vendor/inspect-sandboxing/SOURCE_COMMIT.txt")" = "$SANDBOXING_SHA"
+          grep -qx MIT "$ROOT/vendor/inspect-ai/SOURCE_LICENSE.txt"
+          grep -q DOCUMENTATION_REFERENCE_ONLY "$ROOT/vendor/inspect-sandboxing/SOURCE_LICENSE.txt"
+          python -m json.tool "$ROOT/ADOPTION_WIRING.json" >/dev/null
+          python -m compileall -q             "$ROOT/vendor/inspect-ai/src/inspect_ai/scorer"             "$ROOT/vendor/inspect-ai/src/inspect_ai/solver"             "$ROOT/vendor/inspect-ai/src/inspect_ai/util/_sandbox"
+          find "$ROOT/vendor/inspect-ai" -type d -name __pycache__ -prune -exec rm -rf {} +
+          find "$ROOT/vendor/inspect-ai" -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete
+          for p in "$ROOT/vendor/inspect-ai" "$ROOT/vendor/inspect-sandboxing"; do
+            (cd "$p" && find . -type f ! -name SOURCE_SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SOURCE_SHA256SUMS.txt)
+            (cd "$p" && sha256sum -c SOURCE_SHA256SUMS.txt)
+          done
+          python -m unittest discover             agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/microkernel             -p 'test_*.py'
+          git diff --check
+
+      - name: Commit through one writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$ROOT"
+          if git diff --cached --quiet; then
+            echo VERIFIED_EXISTING
+            exit 0
+          fi
+          git commit -m "feat(yaiwes): adopt Inspect evaluation sandbox sources"
+          git status --porcelain
+          test -z "$(git status --porcelain)"
+          git push origin HEAD:main

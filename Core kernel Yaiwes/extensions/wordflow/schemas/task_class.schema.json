@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.task_class.v1",
+  "title": "TaskClassification",
+  "description": "Pre-LLM task class. Routes DETERMINISTIC without engine.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "class_id",
+    "route",
+    "use_llm",
+    "reasons",
+    "class_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "class_id": { "type": "string" },
+    "route": {
+      "type": "string",
+      "enum": [
+        "DETERMINISTIC",
+        "SEARCH",
+        "ANALYSIS",
+        "REASONING",
+        "HYBRID",
+        "PLANNING",
+        "MEMORY_REFRESH"
+      ]
+    },
+    "use_llm": { "type": "boolean" },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "signals": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "class_hash": { "type": "string" }
+  }
+}

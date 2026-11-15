@@ -1,0 +1,38 @@
+{
+  "bundle_bytes": 18968220,
+  "bundle_sha256": "9eaebe98660bb79f49a00903898e2042ac9e3c62e892454ad3564c05554ac44e",
+  "extracted_tree": {
+    "bytes": 23799346,
+    "files": 721,
+    "sha256": "3bd3248d3b4efc6fdb7a7d2411678225658fdae887dc881763ca8bda0b742e54"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "ReMe.bundle.zip.part-0001",
+      "sha256": "2977f9c01f398900e00d993fbd65d558cc67e54e0c521422455c1eb898c4a606"
+    },
+    {
+      "bytes": 6385308,
+      "name": "ReMe.bundle.zip.part-0002",
+      "sha256": "5cebee53be8cca9a086da21b318dc54b9b389536f57483c7271ce2267cc706a9"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "ReMe",
+  "source_bytes": 23799346,
+  "source_commit": "4f7c8786e3975b6ff1b20685ed56c3ccbaa4ed9f",
+  "source_files": 721,
+  "source_ref": "HEAD",
+  "source_repo": "agentscope-ai/ReMe",
+  "source_tree": {
+    "bytes": 23799346,
+    "files": 721,
+    "sha256": "3bd3248d3b4efc6fdb7a7d2411678225658fdae887dc881763ca8bda0b742e54"
+  }
+}

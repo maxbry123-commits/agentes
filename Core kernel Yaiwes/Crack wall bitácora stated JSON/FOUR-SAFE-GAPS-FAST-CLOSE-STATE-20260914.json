@@ -1,0 +1,39 @@
+{
+  "items": {
+    "C47-003": {
+      "publish": {
+        "verdict": "ALREADY_PRESENT_EXACT_SOURCE_VERIFIED"
+      },
+      "slug": "Hermes-Agent",
+      "source_repo": "NousResearch/hermes-agent",
+      "source_subdir": null,
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-011": {
+      "publish": {
+        "verdict": "ALREADY_PRESENT_EXACT_SOURCE_VERIFIED"
+      },
+      "slug": "ZERA",
+      "source_repo": "younatics/zera-agent",
+      "source_subdir": null,
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-036": {
+      "publish": {
+        "verdict": "ALREADY_PRESENT_EXACT_SOURCE_VERIFIED"
+      },
+      "slug": "LlamaFirewall",
+      "source_repo": "meta-llama/PurpleLlama",
+      "source_subdir": "LlamaFirewall",
+      "status": "VERIFIED_CLOSED"
+    },
+    "OLD20-AUTOGEN": {
+      "error": "PUSH_RETRIES_EXHAUSTED",
+      "slug": "AutoGen-Core",
+      "source_repo": "microsoft/autogen",
+      "source_subdir": null,
+      "status": "FAILED"
+    }
+  },
+  "schema": "yaiwes.kernel.four-safe-gaps-fast-close/v1"
+}

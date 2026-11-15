@@ -1,0 +1,347 @@
+"""Twitch-Channel: Bidirektionale Kommunikation ueber Twitch Chat (IRC/TMI).
+
+Nutzt Twitch IRC (TMI) + optional Helix API via httpx.
+Unterstuetzt:
+  - Chat-Commands (!jarvis)
+  - Whispers (Private Nachrichten)
+  - Subscriber-Only Mode
+  - User Whitelist
+
+Konfiguration:
+  - COGNITHOR_TWITCH_TOKEN: OAuth Token (oauth:xxx)
+  - COGNITHOR_TWITCH_CHANNEL: Channel-Name (ohne #)
+  - COGNITHOR_TWITCH_ALLOWED_USERS: Erlaubte User
+
+Abhaengigkeiten:
+  Optional: twitchio>=2.0 (Fallback: Raw IRC via TMI)
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import logging
+
+from cognithor.channels.base import Channel, MessageHandler
+from cognithor.models import IncomingMessage, OutgoingMessage, PlannedAction
+
+logger = logging.getLogger(__name__)
+
+_TMI_HOST = "irc.chat.twitch.tv"
+_TMI_PORT = 6667
+_TMI_PORT_SSL = 6697
+_MAX_MSG_LENGTH = 500
+_MIN_MSG_INTERVAL = 1.5  # Twitch Rate Limit
+
+
+class TwitchChannel(Channel):
+    """Twitch Chat Integration fuer Cognithor.
+
+    Verbindet sich zu Twitch IRC (TMI), liest Chat-Nachrichten
+    und antwortet. Unterstuetzt User-Whitelist fuer Sicherheit.
+    """
+
+    def __init__(
+        self,
+        token: str = "",
+        channel: str = "",
+        nick: str = "JarvisBot",
+        allowed_users: list[str] | None = None,
+        command_prefix: str = "!jarvis",
+    ) -> None:
+        self._token = token
+        self._channel = channel.lower().lstrip("#")
+        self._nick = nick.lower()
+        self._allowed_users: set[str] = {u.lower() for u in (allowed_users or [])}
+        self._command_prefix = command_prefix.lower()
+        self._handler: MessageHandler | None = None
+        self._running = False
+        self._reader: asyncio.StreamReader | None = None
+        self._writer: asyncio.StreamWriter | None = None
+        self._recv_task: asyncio.Task[None] | None = None
+        self._last_msg_time: float = 0
+        self._stream_buffers: dict[str, list[str]] = {}
+        self._approval_futures: dict[str, asyncio.Future[bool]] = {}
+        self._approval_users: dict[str, str] = {}  # session_id → nick
+        # PASS-4 SEC-MED: stable session→nick map populated when the
+        # handler RESPONDS, so request_approval no longer relies on
+        # the racy ``_last_sender`` shared field. Bounded LRU via
+        # ``maxsize=2048`` (typical Twitch chat session count).
+        self._session_to_nick: dict[str, str] = {}
+        self._approval_lock = asyncio.Lock()
+        self._last_sender: str = ""  # Nick des letzten Nachrichten-Senders
+
+    @property
+    def name(self) -> str:
+        return "twitch"
+
+    async def start(self, handler: MessageHandler) -> None:
+        """Startet die Twitch IRC-Verbindung."""
+        self._handler = handler
+
+        if not self._token or not self._channel:
+            logger.warning("Twitch: Token oder Channel nicht konfiguriert")
+            return
+
+        try:
+            import ssl as ssl_mod
+
+            ssl_ctx = ssl_mod.create_default_context()
+            self._reader, self._writer = await asyncio.open_connection(
+                _TMI_HOST,
+                _TMI_PORT_SSL,
+                ssl=ssl_ctx,
+            )
+        except Exception as exc:
+            logger.error("Twitch Verbindung fehlgeschlagen: %s", exc)
+            return
+
+        # Authentifizieren
+        token = self._token if self._token.startswith("oauth:") else f"oauth:{self._token}"
+        await self._send_raw(f"PASS {token}")
+        await self._send_raw(f"NICK {self._nick}")
+
+        # Capabilities anfordern (fuer Tags, Commands, etc.)
+        await self._send_raw("CAP REQ :twitch.tv/tags twitch.tv/commands")
+
+        # Channel joinen
+        await self._send_raw(f"JOIN #{self._channel}")
+
+        self._running = True
+        self._recv_task = asyncio.get_running_loop().create_task(self._receive_loop())
+        logger.info("TwitchChannel gestartet: #%s als %s", self._channel, self._nick)
+
+    async def _send_raw(self, line: str) -> None:
+        """Sendet eine rohe IRC-Zeile."""
+        if self._writer is None:
+            return
+        try:
+            self._writer.write(f"{line}\r\n".encode())
+            await self._writer.drain()
+        except Exception as exc:
+            logger.error("Twitch Senden fehlgeschlagen: %s", exc)
+
+    async def _receive_loop(self) -> None:
+        """Empfaengt und verarbeitet Twitch IRC-Nachrichten."""
+        if not self._reader:
+            return
+
+        buffer = ""
+        while self._running:
+            try:
+                data = await self._reader.read(4096)
+                if not data:
+                    logger.warning("Twitch Verbindung geschlossen")
+                    break
+
+                buffer += data.decode("utf-8", errors="replace")
+                while "\r\n" in buffer:
+                    line, buffer = buffer.split("\r\n", 1)
+                    await self._handle_line(line)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                if self._running:
+                    logger.error("Twitch Empfangsfehler: %s", exc)
+                    await asyncio.sleep(1.0)
+
+    async def _handle_line(self, line: str) -> None:
+        """Verarbeitet eine einzelne IRC-Zeile."""
+        if not line:
+            return
+
+        # PING/PONG
+        if line.startswith("PING"):
+            await self._send_raw("PONG :tmi.twitch.tv")
+            return
+
+        # Tags + Nachricht parsen
+        tags: dict[str, str] = {}
+        if line.startswith("@"):
+            tag_str, line = line.split(" ", 1)
+            for tag in tag_str[1:].split(";"):
+                if "=" in tag:
+                    k, v = tag.split("=", 1)
+                    tags[k] = v
+
+        # PRIVMSG parsen
+        if "PRIVMSG" in line:
+            await self._on_privmsg(line, tags)
+
+    async def _on_privmsg(self, line: str, tags: dict[str, str]) -> None:
+        """Verarbeitet eine Chat-Nachricht."""
+        # Format: :nick!nick@nick.tmi.twitch.tv PRIVMSG #channel :message
+        try:
+            prefix, _, rest = line.partition(" PRIVMSG ")
+            target, _, text = rest.partition(" :")
+        except ValueError:
+            return
+
+        nick = prefix.split("!")[0].lstrip(":")
+        if nick.lower() == self._nick:
+            return
+
+        # User-Whitelist pruefen
+        if self._allowed_users and nick.lower() not in self._allowed_users:
+            return
+
+        # Nur auf Command-Prefix reagieren
+        if not text.lower().startswith(self._command_prefix):
+            return
+
+        # Prefix entfernen
+        text = text[len(self._command_prefix) :].strip()
+        if not text:
+            return
+
+        display_name = tags.get("display-name", nick)
+        is_mod = tags.get("mod") == "1"
+        is_sub = tags.get("subscriber") == "1"
+        is_broadcaster = tags.get("badges", "").startswith("broadcaster")
+
+        # Approval-Antworten abfangen (nur vom urspruenglichen User)
+        if text.lower() in ("ja", "yes", "j", "y"):
+            for sid, fut in list(self._approval_futures.items()):
+                if not fut.done() and self._approval_users.get(sid) == nick.lower():
+                    fut.set_result(True)
+                    return
+        elif text.lower() in ("nein", "no", "n"):
+            for sid, fut in list(self._approval_futures.items()):
+                if not fut.done() and self._approval_users.get(sid) == nick.lower():
+                    fut.set_result(False)
+                    return
+
+        incoming = IncomingMessage(
+            channel="twitch",
+            user_id=nick.lower(),
+            text=text,
+            metadata={
+                "display_name": display_name,
+                "target": target,
+                "is_mod": is_mod,
+                "is_sub": is_sub,
+                "is_broadcaster": is_broadcaster,
+                "tags": tags,
+            },
+        )
+
+        if self._handler:
+            try:
+                self._last_sender = nick.lower()
+                response = await self._handler(incoming)
+                # PASS-4 SEC-MED: persist session→nick binding so
+                # request_approval doesn't read the racy _last_sender.
+                resp_session = getattr(response, "session_id", "") or ""
+                if resp_session:
+                    self._session_to_nick[resp_session] = nick.lower()
+                    # Cap dict to avoid unbounded growth.
+                    if len(self._session_to_nick) > 2048:
+                        self._session_to_nick.pop(next(iter(self._session_to_nick)))
+                await self._send_chat(response.text)
+            except Exception as exc:
+                logger.error("Twitch: Handler-Fehler: %s", exc)
+                try:
+                    from cognithor.utils.error_messages import classify_error_for_user
+
+                    friendly = classify_error_for_user(exc)
+                except Exception:
+                    friendly = "Ein Fehler ist bei der Verarbeitung aufgetreten."
+                await self._send_chat(friendly)
+
+    async def _send_chat(self, text: str) -> None:
+        """Sendet eine Chat-Nachricht mit Rate Limiting."""
+        import time
+
+        now = time.monotonic()
+        elapsed = now - self._last_msg_time
+        if elapsed < _MIN_MSG_INTERVAL:
+            await asyncio.sleep(_MIN_MSG_INTERVAL - elapsed)
+
+        # Nachricht splitten wenn zu lang
+        lines = text.split("\n")
+        for line in lines:
+            if not line.strip():
+                continue
+            # Twitch max 500 Zeichen
+            while len(line) > _MAX_MSG_LENGTH:
+                chunk = line[:_MAX_MSG_LENGTH]
+                line = line[_MAX_MSG_LENGTH:]
+                await self._send_raw(f"PRIVMSG #{self._channel} :{chunk}")
+                await asyncio.sleep(_MIN_MSG_INTERVAL)
+            await self._send_raw(f"PRIVMSG #{self._channel} :{line}")
+            self._last_msg_time = time.monotonic()
+            await asyncio.sleep(_MIN_MSG_INTERVAL)
+
+    async def stop(self) -> None:
+        """Trennt die Twitch-Verbindung."""
+        self._running = False
+        if self._writer:
+            with contextlib.suppress(Exception):
+                await self._send_raw(f"PART #{self._channel}")
+            self._writer.close()
+            self._writer = None
+        self._reader = None
+        if self._recv_task:
+            self._recv_task.cancel()
+            self._recv_task = None
+        logger.info("TwitchChannel gestoppt")
+
+    async def send(self, message: OutgoingMessage) -> None:
+        """Sendet eine Nachricht an Twitch Chat."""
+        if not self._writer:
+            logger.warning("TwitchChannel ist nicht einsatzbereit")
+            return
+        await self._send_chat(message.text)
+
+    async def request_approval(
+        self,
+        session_id: str,
+        action: PlannedAction,
+        reason: str,
+    ) -> bool:
+        """Twitch: Textbasierte Approval via ja/nein im Chat."""
+        if not self._writer:
+            logger.warning("Twitch: Nicht verbunden fuer Approval-Anfrage")
+            return False
+
+        tool = action.tool_name if hasattr(action, "tool_name") else str(action)
+        prompt = f"[Approval] Tool: {tool} — {reason}. Antworte 'ja' oder 'nein'."
+        await self._send_chat(prompt)
+
+        future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+        async with self._approval_lock:
+            self._approval_futures[session_id] = future
+            # PASS-4 SEC-MED: prefer the stable session→nick mapping
+            # populated when the handler responded. Fall back to
+            # _last_sender only if we have never seen a response for
+            # this session — at which point _last_sender at least
+            # reflects the user who triggered this very approval.
+            self._approval_users[session_id] = self._session_to_nick.get(
+                session_id, self._last_sender
+            )
+
+        try:
+            return await asyncio.wait_for(future, timeout=120.0)
+        except TimeoutError:
+            logger.info("Twitch: Approval-Timeout fuer Session %s", session_id[:8])
+            return False
+        finally:
+            self._approval_futures.pop(session_id, None)
+            self._approval_users.pop(session_id, None)
+
+    async def send_streaming_token(self, session_id: str, token: str) -> None:
+        """Buffert Streaming-Tokens und sendet sie als eine Nachricht."""
+        buf = self._stream_buffers.setdefault(session_id, [])
+        buf.append(token)
+        if len(buf) == 1:
+            await asyncio.sleep(2.0)  # Längerer Buffer für Twitch (Rate Limit)
+            text = "".join(self._stream_buffers.pop(session_id, []))
+            if text.strip():
+                await self.send(
+                    OutgoingMessage(
+                        channel=self.name,
+                        text=text,
+                        session_id=session_id,
+                    )
+                )

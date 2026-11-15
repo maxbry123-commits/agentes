@@ -1,0 +1,21 @@
+package notifier
+
+import (
+	"context"
+
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/prompb"
+)
+
+// Notifier is a common interface for alert manager provider
+type Notifier interface {
+	// Send sends the given list of alerts.
+	// Returns an error if fails to send the alerts.
+	// Must unblock if the given ctx is cancelled.
+	Send(ctx context.Context, alerts []Alert, alertLabels [][]prompb.Label, notifierHeaders map[string]string) error
+	// Addr returns address where alerts are sent.
+	Addr() string
+	// LastError returns error, that occurred during last attempt to send data
+	LastError() string
+	// Close is a destructor for the Notifier
+	Close()
+}

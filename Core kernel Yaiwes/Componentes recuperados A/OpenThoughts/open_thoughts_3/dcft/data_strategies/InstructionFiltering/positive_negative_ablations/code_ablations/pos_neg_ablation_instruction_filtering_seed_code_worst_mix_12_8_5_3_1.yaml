@@ -1,0 +1,171 @@
+operators:
+- id: seed_code_load_in
+  config:
+    type: load_preexisting
+    framework_name: seed_code_load_in
+
+
+- id: get_codefeedback
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: "codefeedback"
+  input_ids:
+    - seed_code_load_in
+- id: classify_codefeedback
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_code_worst_mix_12_8_5_3_1
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - get_codefeedback
+- id: sample_dataset_codefeedback
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_500
+  input_ids:
+  - classify_codefeedback
+
+
+
+
+- id: get_glaive
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: "glaive"
+  input_ids:
+    - seed_code_load_in
+- id: classify_glaive
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_code_worst_mix_12_8_5_3_1
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - get_glaive
+- id: sample_dataset_glaive
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_500
+  input_ids:
+  - classify_glaive
+
+
+
+- id: get_dolphin
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: "dolphin"
+  input_ids:
+    - seed_code_load_in
+- id: classify_dolphin
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_code_worst_mix_12_8_5_3_1
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - get_dolphin
+- id: sample_dataset_dolphin
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_500
+  input_ids:
+  - classify_dolphin
+
+
+
+- id: get_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: "sharegpt"
+  input_ids:
+    - seed_code_load_in
+- id: classify_sharegpt
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_code_worst_mix_12_8_5_3_1
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - get_sharegpt
+- id: sample_dataset_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_500
+  input_ids:
+  - classify_sharegpt
+- id: mix
+  config: 
+    type: mix
+  input_ids:
+    - sample_dataset_glaive
+    - sample_dataset_dolphin
+    - sample_dataset_sharegpt
+    - sample_dataset_codefeedback
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: instruction_seed
+    model: deepseek-reasoner
+    batch: False
+    temperature: 1.0
+    backend: openai
+    backend_params:
+      max_requests_per_minute: 2_500
+      max_tokens_per_minute: 1_000_000_000
+      api_key: API_KEY
+      base_url: "https://api.deepseek.com"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - mix
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1_distill_70b
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - convert_reasoning_trace_to_final

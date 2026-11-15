@@ -1,0 +1,366 @@
+import io
+import logging
+import os
+from urllib.parse import urlparse, urlunparse
+
+import pytest
+import sqlalchemy as sa
+from sqlalchemy import create_engine, text
+
+from dbos import DBOS, DBOSConfig
+from dbos._error import DBOSQueryTimeoutError
+from dbos._logger import dbos_logger
+from dbos._schemas.system_database import SystemSchema
+from dbos._serialization import DefaultSerializer
+from dbos._sys_db import SystemDatabase
+from dbos._workflow_commands import garbage_collect
+
+
+def test_cockroachdb() -> None:
+    database_url = os.environ.get("DBOS_COCKROACHDB_URL")
+    if database_url is None:
+        pytest.skip("No CockroachDB database URL provided")
+
+    # Drop and recreate the dbos_test database using the provided URL
+    default_engine = create_engine(database_url, isolation_level="AUTOCOMMIT")
+    with default_engine.connect() as conn:
+        conn.execute(text("DROP DATABASE IF EXISTS dbos_test CASCADE"))
+        conn.execute(text("CREATE DATABASE dbos_test"))
+    default_engine.dispose()
+
+    # Use the dbos_test database for the test
+    parsed = urlparse(database_url)
+    test_url = urlunparse(parsed._replace(path="/dbos_test"))
+
+    key = "key"
+    value = "value"
+
+    @DBOS.workflow()
+    def workflow() -> str:
+        DBOS.set_event(key, value)
+        message: str = DBOS.recv()
+        return message
+
+    try:
+        engine = create_engine(test_url)
+        config: DBOSConfig = {
+            "name": "cockroachdb-test",
+            "system_database_url": test_url,
+            "use_listen_notify": False,
+            "system_database_engine": engine,
+        }
+        DBOS(config=config)
+        DBOS.launch()
+        DBOS.register_queue("queue")
+        handle = DBOS.enqueue_workflow("queue", workflow)
+        assert DBOS.get_event(handle.workflow_id, key) == value
+        DBOS.send(handle.workflow_id, value)
+        assert handle.get_result() == value
+    finally:
+        DBOS.destroy(destroy_registry=True)
+
+
+def test_cockroachdb_fork() -> None:
+    database_url = os.environ.get("DBOS_COCKROACHDB_URL")
+    if database_url is None:
+        pytest.skip("No CockroachDB database URL provided")
+
+    default_engine = create_engine(database_url, isolation_level="AUTOCOMMIT")
+    with default_engine.connect() as conn:
+        conn.execute(text("DROP DATABASE IF EXISTS dbos_test_fork CASCADE"))
+        conn.execute(text("CREATE DATABASE dbos_test_fork"))
+    default_engine.dispose()
+
+    parsed = urlparse(database_url)
+    test_url = urlunparse(parsed._replace(path="/dbos_test_fork"))
+
+    step_one_count = 0
+    step_two_count = 0
+    step_three_count = 0
+
+    @DBOS.step()
+    def step_one(x: int) -> int:
+        nonlocal step_one_count
+        step_one_count += 1
+        DBOS.set_event("after_step_one", x + 1)
+        return x + 1
+
+    @DBOS.step()
+    def step_two(x: int) -> int:
+        nonlocal step_two_count
+        step_two_count += 1
+        DBOS.set_event("after_step_two", x + 2)
+        return x + 2
+
+    @DBOS.step()
+    def step_three(x: int) -> int:
+        nonlocal step_three_count
+        step_three_count += 1
+        DBOS.set_event("after_step_three", x + 3)
+        return x + 3
+
+    @DBOS.workflow()
+    def three_step_workflow(x: int) -> int:
+        a = step_one(x)
+        b = step_two(x)
+        c = step_three(x)
+        return a + b + c
+
+    try:
+        engine = create_engine(test_url)
+        config: DBOSConfig = {
+            "name": "cockroachdb-fork-test",
+            "system_database_url": test_url,
+            "use_listen_notify": False,
+            "system_database_engine": engine,
+        }
+        DBOS(config=config)
+        DBOS.launch()
+
+        # Run the original workflow
+        handle = DBOS.start_workflow(three_step_workflow, 5)
+        assert handle.get_result() == 21  # (5+1) + (5+2) + (5+3)
+        assert step_one_count == 1
+        assert step_two_count == 1
+        assert step_three_count == 1
+
+        wfid = handle.workflow_id
+
+        # Verify events on the original workflow
+        assert DBOS.get_event(wfid, "after_step_one") == 6
+        assert DBOS.get_event(wfid, "after_step_two") == 7
+        assert DBOS.get_event(wfid, "after_step_three") == 8
+
+        # Fork from step 2: step_one replayed, step_two and step_three re-executed
+        forked = DBOS.fork_workflow(wfid, 2)
+        assert forked.get_result() == 21
+        assert step_one_count == 1  # replayed
+        assert step_two_count == 2  # re-executed
+        assert step_three_count == 2  # re-executed
+
+        # Events set before the fork point should be accessible on the fork
+        assert DBOS.get_event(forked.workflow_id, "after_step_one") == 6
+        # Events set at or after the fork point should also be set (by re-execution)
+        assert DBOS.get_event(forked.workflow_id, "after_step_two") == 7
+        assert DBOS.get_event(forked.workflow_id, "after_step_three") == 8
+
+        # Verify was_forked_from and forked_from fields
+        assert forked.get_status().forked_from == wfid
+        original_status = DBOS.get_workflow_status(wfid)
+        assert original_status is not None
+        assert original_status.was_forked_from is True
+        assert forked.get_status().was_forked_from is False
+
+        # Verify list_workflows filter
+        forked_from_list = DBOS.list_workflows(was_forked_from=True)
+        assert any(w.workflow_id == wfid for w in forked_from_list)
+        not_forked_from_list = DBOS.list_workflows(was_forked_from=False)
+        assert any(w.workflow_id == forked.workflow_id for w in not_forked_from_list)
+    finally:
+        DBOS.destroy(destroy_registry=True)
+
+
+def test_cockroachdb_reset_truncate() -> None:
+    database_url = os.environ.get("DBOS_COCKROACHDB_URL")
+    if database_url is None:
+        pytest.skip("No CockroachDB database URL provided")
+
+    db_name = "dbos_test_truncate"
+    default_engine = create_engine(database_url, isolation_level="AUTOCOMMIT")
+    with default_engine.connect() as conn:
+        conn.execute(text(f"DROP DATABASE IF EXISTS {db_name} CASCADE"))
+        conn.execute(text(f"CREATE DATABASE {db_name}"))
+    default_engine.dispose()
+
+    parsed = urlparse(database_url)
+    test_url = urlunparse(parsed._replace(path=f"/{db_name}"))
+
+    @DBOS.workflow()
+    def workflow() -> str:
+        assert DBOS.workflow_id
+        DBOS.set_event("key", "value")
+        return DBOS.workflow_id
+
+    sys_db_engine = create_engine(test_url)
+    # A second engine for the post-truncation read: truncation evicts the pool above.
+    check_engine = create_engine(test_url)
+    config: DBOSConfig = {
+        "name": "cockroachdb-truncate-test",
+        "system_database_url": test_url,
+        "use_listen_notify": False,
+        "system_database_engine": sys_db_engine,
+    }
+    try:
+        DBOS(config=config)
+        DBOS.launch()
+        workflow_id = workflow()
+        assert DBOS.get_event(workflow_id, "key") == "value"
+        assert len(DBOS.list_workflows()) == 1
+        DBOS.destroy()
+
+        # Truncation must empty the tables using only SQL CockroachDB accepts.
+        DBOS(config=config)
+        DBOS.reset_system_database(truncate=True)
+
+        # The database survives, fully migrated, so the relaunch runs no migrations
+        with check_engine.connect() as conn:
+            assert (
+                conn.execute(
+                    text(f"SELECT count(*) FROM {db_name}.dbos.workflow_status")
+                ).scalar()
+                == 0
+            )
+        DBOS.launch()
+        assert DBOS.list_workflows() == []
+        assert DBOS.get_event(workflow_id, "key", timeout_seconds=0) is None
+    finally:
+        DBOS.destroy(destroy_registry=True)
+        # DBOS never disposes an engine it was handed, and no fixture knows this database.
+        sys_db_engine.dispose()
+        check_engine.dispose()
+        cleanup_engine = create_engine(database_url, isolation_level="AUTOCOMMIT")
+        with cleanup_engine.connect() as conn:
+            conn.execute(text(f"DROP DATABASE IF EXISTS {db_name} CASCADE"))
+        cleanup_engine.dispose()
+
+
+def test_cockroachdb_observability_query_timeout() -> None:
+    """CockroachDB honors the SET LOCAL statement_timeout that caps observability queries."""
+    database_url = os.environ.get("DBOS_COCKROACHDB_URL")
+    if database_url is None:
+        pytest.skip("No CockroachDB database URL provided")
+
+    # No tables are read, so this needs neither its own database nor migrations.
+    sys_db = SystemDatabase.create(
+        system_database_url=database_url,
+        engine_kwargs={},
+        engine=create_engine(database_url),
+        schema="dbos",
+        serializer=DefaultSerializer(),
+        executor_id=None,
+        observability_query_timeout_sec=0.5,
+    )
+    try:
+        with sys_db._observability_query() as conn:
+            # CockroachDB renders the setting in milliseconds, PostgreSQL as "500ms".
+            assert conn.execute(text("SHOW statement_timeout")).scalar() in (
+                "500",
+                "500ms",
+            )
+
+        # SET LOCAL, so the cap does not ride the pooled connection into other queries.
+        with sys_db.engine.begin() as conn:
+            assert conn.execute(text("SHOW statement_timeout")).scalar() == "0"
+
+        with pytest.raises(DBOSQueryTimeoutError):
+            with sys_db._observability_query() as conn:
+                conn.execute(text("SELECT pg_sleep(30)"))
+
+        # The cancelled query leaves its connection usable.
+        with sys_db.engine.begin() as conn:
+            assert conn.execute(text("SELECT 1")).scalar() == 1
+    finally:
+        sys_db.destroy()
+
+
+def test_cockroachdb_retention() -> None:
+    """A full retention round runs on CockroachDB: it collects, drains the payload
+    tables, spares in-flight rows, and is never blocked by the advisory-lock stub."""
+    database_url = os.environ.get("DBOS_COCKROACHDB_URL")
+    if database_url is None:
+        pytest.skip("No CockroachDB database URL provided")
+
+    db_name = "dbos_test_retention"
+    default_engine = create_engine(database_url, isolation_level="AUTOCOMMIT")
+    with default_engine.connect() as conn:
+        conn.execute(text(f"DROP DATABASE IF EXISTS {db_name} CASCADE"))
+        conn.execute(text(f"CREATE DATABASE {db_name}"))
+    default_engine.dispose()
+
+    parsed = urlparse(database_url)
+    test_url = urlunparse(parsed._replace(path=f"/{db_name}"))
+
+    @DBOS.workflow()
+    def workflow(x: int) -> int:
+        return x
+
+    sys_db_engine = create_engine(test_url)
+    config: DBOSConfig = {
+        "name": "cockroachdb-retention-test",
+        "system_database_url": test_url,
+        "use_listen_notify": False,
+        "system_database_engine": sys_db_engine,
+    }
+    try:
+        dbos = DBOS(config=config)
+        DBOS.launch()
+
+        # Enqueued first, so these are the oldest rows. worker_concurrency=0 keeps
+        # them ENQUEUED, so the status sweep cannot delete them: they are stragglers.
+        DBOS.register_queue("crdb_retention_queue", worker_concurrency=0)
+        straggler_ids = [
+            DBOS.enqueue_workflow("crdb_retention_queue", workflow, i).workflow_id
+            for i in range(2)
+        ]
+
+        rows_threshold = 3
+        completed_ids: list[str] = []
+        for i in range(8):
+            handle = DBOS.start_workflow(workflow, i)
+            assert handle.get_result() == i
+            completed_ids.append(handle.workflow_id)
+
+        def payload_ids(table: sa.Table) -> set[str]:
+            # The DBOS engine, which carries the schema translation these tables need
+            with dbos._sys_db.engine.connect() as conn:
+                return {
+                    r[0] for r in conn.execute(sa.select(table.c.workflow_uuid)).all()
+                }
+
+        assert payload_ids(SystemSchema.workflow_input) == set(
+            straggler_ids + completed_ids
+        )
+
+        # dbos_logger does not propagate, so collect its records directly
+        logged = io.StringIO()
+        handler = logging.StreamHandler(logged)
+        handler.setLevel(logging.WARNING)
+        dbos_logger.addHandler(handler)
+        try:
+            # Inside a held lock: CockroachDB stubs advisory locks out, so a round
+            # must still run rather than skip itself into never collecting.
+            with dbos._sys_db.retention_lock() as acquired:
+                assert acquired
+                garbage_collect(
+                    dbos,
+                    cutoff_epoch_timestamp_ms=None,
+                    rows_threshold=rows_threshold,
+                    batch_size=2,
+                )
+        finally:
+            dbos_logger.removeHandler(handler)
+
+        # The newest completed rows survive, as do the stragglers the sweep cannot touch
+        collected_ids = set(completed_ids[:-rows_threshold])
+        retained_ids = set(completed_ids[-rows_threshold:]) | set(straggler_ids)
+        assert {w.workflow_id for w in DBOS.list_workflows()} == retained_ids
+
+        # Payloads follow their workflows: collected ones gone, in-flight ones spared
+        assert payload_ids(SystemSchema.workflow_input) == retained_ids
+        assert (
+            payload_ids(SystemSchema.workflow_output) & collected_ids == set()
+        ), "outputs of collected workflows survived the sweep"
+
+        # CockroachDB rejects VACUUM outright, so a round that tried would warn
+        # on every table, every time.
+        assert "vacuum" not in logged.getvalue().lower()
+
+        for workflow_id in straggler_ids:
+            DBOS.cancel_workflow(workflow_id)
+    finally:
+        DBOS.destroy(destroy_registry=True)
+        sys_db_engine.dispose()
+        cleanup_engine = create_engine(database_url, isolation_level="AUTOCOMMIT")
+        with cleanup_engine.connect() as conn:
+            conn.execute(text(f"DROP DATABASE IF EXISTS {db_name} CASCADE"))
+        cleanup_engine.dispose()

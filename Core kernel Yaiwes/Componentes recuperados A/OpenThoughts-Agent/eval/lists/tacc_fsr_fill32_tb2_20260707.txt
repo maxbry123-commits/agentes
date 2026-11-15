@@ -1,0 +1,9 @@
+# TACC flawed_summ fill-to-32 2026-07-07 — terminal_bench_2 group (RESET queue, priority-grid order)
+# r205 laion/ablation-pymethods2test-seqnorm-15-8B
+laion/ablation-pymethods2test-seqnorm-15-8B
+# r208 laion/ablation-pymethods2test-shaped-45-8B
+laion/ablation-pymethods2test-shaped-45-8B
+# r244 laion/exp-syh-r2egym-askllm-constrained_glm_4-7_traces_jupiter_cleaned-exp-gfi-swesmith-random-fi
+laion/exp-syh-r2egym-askllm-constrained_glm_4-7_traces_jupiter_cleaned-exp-gfi-swesmith-random-fi
+# r266 penfever/a3-rl-SankalpKJ_swesmith-oracle-filtered-40-8B
+penfever/a3-rl-SankalpKJ_swesmith-oracle-filtered-40-8B

@@ -1,0 +1,18 @@
+# C35 — L4. B3 SALIDA4
+id: C35
+layer: L4
+name: fs_mount
+implementado: true
+critical: false
+description: "Montaje de filesystem permitido"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C35 aplica en capa L4"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - fs_mount_check
+evidence:
+  type: fs_mount_marker
+  required: false

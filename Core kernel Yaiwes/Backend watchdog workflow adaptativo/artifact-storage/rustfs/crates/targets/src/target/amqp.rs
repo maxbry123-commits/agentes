@@ -1,0 +1,867 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! AMQP 0-9-1 event notification target.
+//!
+//! Publishes S3 events to RabbitMQ-compatible AMQP 0-9-1 brokers via `lapin`.
+//! Queue-store mode uses the shared target store and replays the same raw JSON
+//! body through `send_raw_from_store`.
+
+use crate::plugin::PluginEvent;
+use crate::{
+    StoreError, Target,
+    arn::TargetID,
+    error::TargetError,
+    runtime::tls::{
+        ReloadableTargetTls, TargetTlsGeneration, TargetTlsInputSet, TlsReloadAdapter, config::ReloadApplyMode,
+        validate_tls_material,
+    },
+    store::{Key, Store},
+    target::{
+        ChannelTargetType, EntityTarget, QueuedPayload, QueuedPayloadMeta, TargetDeliveryCounters, TargetDeliverySnapshot,
+        TargetTlsState, TargetType, build_queued_payload_with_records, build_target_tls_fingerprint, is_connectivity_error,
+        open_target_queue_store, persist_queued_payload_to_store,
+    },
+};
+use async_trait::async_trait;
+use lapin::{
+    BasicProperties, Channel, Confirmation, Connection, ConnectionProperties, ErrorKind as LapinErrorKind,
+    options::{BasicPublishOptions, ConfirmSelectOptions},
+    tcp::{OwnedIdentity, OwnedTLSConfig},
+};
+use parking_lot::Mutex;
+use rustfs_config::{AMQP_TLS_CA, AMQP_TLS_CLIENT_CERT, AMQP_TLS_CLIENT_KEY};
+use rustfs_tls_runtime::load_cert_bundle_der_bytes;
+use std::fmt;
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Mutex as AsyncMutex;
+use tracing::{info, instrument, warn};
+use url::Url;
+
+/// Upper bound on how long a single publish and its publisher-confirm may block
+/// before being treated as a timeout (backlog#980).
+const AMQP_PUBLISH_TIMEOUT: Duration = Duration::from_secs(30);
+
+#[derive(Clone)]
+pub struct AMQPArgs {
+    pub enable: bool,
+    pub url: Url,
+    pub exchange: String,
+    pub routing_key: String,
+    pub mandatory: bool,
+    pub persistent: bool,
+    pub username: String,
+    pub password: String,
+    pub tls_ca: String,
+    pub tls_client_cert: String,
+    pub tls_client_key: String,
+    pub queue_dir: String,
+    pub queue_limit: u64,
+    pub target_type: TargetType,
+}
+
+impl fmt::Debug for AMQPArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AMQPArgs")
+            .field("enable", &self.enable)
+            .field("url", &redacted_amqp_url(&self.url))
+            .field("exchange", &self.exchange)
+            .field("routing_key", &self.routing_key)
+            .field("mandatory", &self.mandatory)
+            .field("persistent", &self.persistent)
+            .field("username", &self.username)
+            .field("password", if self.password.is_empty() { &"" } else { &"***REDACTED***" })
+            .field("tls_ca", &self.tls_ca)
+            .field("tls_client_cert", &self.tls_client_cert)
+            .field(
+                "tls_client_key",
+                if self.tls_client_key.is_empty() {
+                    &""
+                } else {
+                    &"***REDACTED***"
+                },
+            )
+            .field("queue_dir", &self.queue_dir)
+            .field("queue_limit", &self.queue_limit)
+            .field("target_type", &self.target_type)
+            .finish()
+    }
+}
+
+impl AMQPArgs {
+    pub fn validate(&self) -> Result<(), TargetError> {
+        if !self.enable {
+            return Ok(());
+        }
+
+        validate_amqp_url(&self.url)?;
+
+        if self.exchange.trim().is_empty() {
+            return Err(TargetError::Configuration("AMQP exchange cannot be empty".to_string()));
+        }
+        if self.routing_key.trim().is_empty() {
+            return Err(TargetError::Configuration("AMQP routing_key cannot be empty".to_string()));
+        }
+
+        let url_has_credentials = !self.url.username().is_empty() || self.url.password().is_some();
+        let config_has_credentials = !self.username.is_empty() || !self.password.is_empty();
+        if self.username.is_empty() != self.password.is_empty() {
+            return Err(TargetError::Configuration(
+                "AMQP username and password must be specified together".to_string(),
+            ));
+        }
+        if url_has_credentials && config_has_credentials {
+            return Err(TargetError::Configuration(
+                "AMQP credentials must be specified either in url or username/password, not both".to_string(),
+            ));
+        }
+
+        validate_amqp_tls_paths(self)?;
+
+        if !self.queue_dir.is_empty() && !Path::new(&self.queue_dir).is_absolute() {
+            return Err(TargetError::Configuration("AMQP queue directory must be an absolute path".to_string()));
+        }
+
+        Ok(())
+    }
+}
+
+fn redacted_amqp_url(url: &Url) -> String {
+    if url.password().is_none() {
+        return url.to_string();
+    }
+    let mut redacted = url.clone();
+    let _ = redacted.set_password(Some("***REDACTED***"));
+    redacted.to_string()
+}
+
+pub fn validate_amqp_url(url: &Url) -> Result<(), TargetError> {
+    match url.scheme() {
+        "amqp" | "amqps" => {
+            if url.host_str().is_none() {
+                return Err(TargetError::Configuration("AMQP URL is missing host".to_string()));
+            }
+            Ok(())
+        }
+        scheme => Err(TargetError::Configuration(format!(
+            "Unsupported AMQP URL scheme: {scheme} (only amqp and amqps are allowed)"
+        ))),
+    }
+}
+
+fn validate_amqp_tls_paths(args: &AMQPArgs) -> Result<(), TargetError> {
+    let has_tls_settings = !args.tls_ca.is_empty() || !args.tls_client_cert.is_empty() || !args.tls_client_key.is_empty();
+    if has_tls_settings && args.url.scheme() != "amqps" {
+        return Err(TargetError::Configuration(
+            "AMQP TLS settings are only allowed with amqps URLs".to_string(),
+        ));
+    }
+
+    if args.tls_client_cert.is_empty() != args.tls_client_key.is_empty() {
+        return Err(TargetError::Configuration(
+            "AMQP tls_client_cert and tls_client_key must be specified together".to_string(),
+        ));
+    }
+
+    if !args.tls_ca.is_empty() && !Path::new(&args.tls_ca).is_absolute() {
+        return Err(TargetError::Configuration(format!("{AMQP_TLS_CA} must be an absolute path")));
+    }
+    if !args.tls_client_cert.is_empty() && !Path::new(&args.tls_client_cert).is_absolute() {
+        return Err(TargetError::Configuration(format!("{AMQP_TLS_CLIENT_CERT} must be an absolute path")));
+    }
+    if !args.tls_client_key.is_empty() && !Path::new(&args.tls_client_key).is_absolute() {
+        return Err(TargetError::Configuration(format!("{AMQP_TLS_CLIENT_KEY} must be an absolute path")));
+    }
+
+    Ok(())
+}
+
+fn connection_url(args: &AMQPArgs) -> Result<String, TargetError> {
+    let mut url = args.url.clone();
+    if !args.username.is_empty() {
+        url.set_username(&args.username)
+            .map_err(|_| TargetError::Configuration("AMQP username cannot be set on URL".to_string()))?;
+        url.set_password(Some(&args.password))
+            .map_err(|_| TargetError::Configuration("AMQP password cannot be set on URL".to_string()))?;
+    }
+    Ok(url.to_string())
+}
+
+async fn build_tls_config(args: &AMQPArgs) -> Result<OwnedTLSConfig, TargetError> {
+    let cert_chain = if args.tls_ca.is_empty() {
+        None
+    } else {
+        let certs_der = load_cert_bundle_der_bytes(&args.tls_ca)
+            .map_err(|e| TargetError::Configuration(format!("Failed to parse {AMQP_TLS_CA}: {e}")))?;
+        if certs_der.is_empty() {
+            return Err(TargetError::Configuration(format!(
+                "{AMQP_TLS_CA} did not contain any parsable certificates"
+            )));
+        }
+        let pem = tokio::fs::read_to_string(&args.tls_ca)
+            .await
+            .map_err(|e| TargetError::Configuration(format!("Failed to read {AMQP_TLS_CA}: {e}")))?;
+        Some(pem)
+    };
+
+    let identity = if args.tls_client_cert.is_empty() {
+        None
+    } else {
+        let _ = load_cert_bundle_der_bytes(&args.tls_client_cert)
+            .map_err(|e| TargetError::Configuration(format!("Failed to parse {AMQP_TLS_CLIENT_CERT}: {e}")))?;
+        let pem = tokio::fs::read(&args.tls_client_cert)
+            .await
+            .map_err(|e| TargetError::Configuration(format!("Failed to read {AMQP_TLS_CLIENT_CERT}: {e}")))?;
+        let key = tokio::fs::read(&args.tls_client_key)
+            .await
+            .map_err(|e| TargetError::Configuration(format!("Failed to read {AMQP_TLS_CLIENT_KEY}: {e}")))?;
+        Some(OwnedIdentity::PKCS8 { pem, key })
+    };
+
+    Ok(OwnedTLSConfig { identity, cert_chain })
+}
+
+fn build_publish_properties(args: &AMQPArgs) -> BasicProperties {
+    let mut properties = BasicProperties::default().with_content_type("application/json".into());
+    if args.persistent {
+        properties = properties.with_delivery_mode(2);
+    }
+    properties
+}
+
+/// Returns true for AMQP broker protocol errors that indicate a permanent,
+/// non-connectivity condition (e.g. the exchange/queue does not exist, access is
+/// refused, or a precondition failed). These must not be treated as transient
+/// connectivity errors, otherwise a misconfigured target triggers an endless
+/// reconnect storm instead of surfacing a delivery failure (backlog#973).
+fn is_permanent_amqp_protocol_error(err: &lapin::Error) -> bool {
+    use lapin::protocol::{AMQPErrorKind, AMQPHardError, AMQPSoftError};
+    if let LapinErrorKind::ProtocolError(amqp_err) = err.kind() {
+        return match amqp_err.kind() {
+            // 404 NOT_FOUND (missing exchange/queue), 403 ACCESS_REFUSED,
+            // 406 PRECONDITION_FAILED.
+            AMQPErrorKind::Soft(soft) => {
+                matches!(
+                    soft,
+                    AMQPSoftError::NOTFOUND | AMQPSoftError::ACCESSREFUSED | AMQPSoftError::PRECONDITIONFAILED
+                )
+            }
+            // 530 NOT_ALLOWED, 540 NOT_IMPLEMENTED, 402 INVALID_PATH.
+            AMQPErrorKind::Hard(hard) => {
+                matches!(
+                    hard,
+                    AMQPHardError::NOTALLOWED | AMQPHardError::NOTIMPLEMENTED | AMQPHardError::INVALIDPATH
+                )
+            }
+        };
+    }
+    false
+}
+
+fn map_lapin_error(err: lapin::Error, context: &str) -> TargetError {
+    let message = format!("{context}: {err}");
+    if is_permanent_amqp_protocol_error(&err) {
+        return TargetError::Request(message);
+    }
+    match err.kind() {
+        LapinErrorKind::IOError(io_err) if io_err.kind() == std::io::ErrorKind::TimedOut => TargetError::Timeout(message),
+        LapinErrorKind::IOError(_)
+        | LapinErrorKind::InvalidConnectionState(_)
+        | LapinErrorKind::InvalidChannelState(..)
+        | LapinErrorKind::MissingHeartbeatError
+        | LapinErrorKind::ProtocolError(_)
+            if err.can_be_recovered() =>
+        {
+            TargetError::NotConnected
+        }
+        _ => TargetError::Network(message),
+    }
+}
+
+pub async fn connect_amqp(args: &AMQPArgs) -> Result<AMQPConnection, TargetError> {
+    args.validate()?;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let url = connection_url(args)?;
+        // Reconnect explicitly so every new channel enables publisher confirms below.
+        let properties = ConnectionProperties::default();
+        let connection = if args.url.scheme() == "amqps" && (!args.tls_ca.is_empty() || !args.tls_client_cert.is_empty()) {
+            Connection::connect_with_config(
+                &url,
+                properties,
+                build_tls_config(args).await?,
+                lapin::runtime::default_runtime()
+                    .map_err(|e| TargetError::Initialization(format!("Failed to create AMQP runtime: {e}")))?,
+            )
+            .await
+        } else {
+            Connection::connect(&url, properties).await
+        }
+        .map_err(|e| map_lapin_error(e, "Failed to connect to AMQP broker"))?;
+
+        let channel = connection
+            .create_channel()
+            .await
+            .map_err(|e| map_lapin_error(e, "Failed to create AMQP channel"))?;
+        channel
+            .confirm_select(ConfirmSelectOptions::default())
+            .await
+            .map_err(|e| map_lapin_error(e, "Failed to enable AMQP publisher confirms"))?;
+
+        Ok(AMQPConnection { connection, channel })
+    })
+    .await
+    .unwrap_or_else(|_| Err(TargetError::Timeout("AMQP connection timed out".to_string())))
+}
+
+pub struct AMQPConnection {
+    pub(crate) connection: Connection,
+    pub(crate) channel: Channel,
+}
+
+pub struct AMQPTarget<E>
+where
+    E: PluginEvent,
+{
+    id: TargetID,
+    args: AMQPArgs,
+    connection: Arc<Mutex<Option<Arc<AMQPConnection>>>>,
+    tls_state: Arc<Mutex<TargetTlsState>>,
+    /// When set, the coordinator drives TLS reload; inline fingerprint check is skipped.
+    tls_adapter: Option<TlsReloadAdapter<AMQPConnection>>,
+    connect_lock: Arc<AsyncMutex<()>>,
+    store: Option<Box<dyn Store<QueuedPayload, Error = StoreError, Key = Key> + Send + Sync>>,
+    delivery_counters: Arc<TargetDeliveryCounters>,
+    _phantom: std::marker::PhantomData<E>,
+}
+
+impl<E> AMQPTarget<E>
+where
+    E: PluginEvent,
+{
+    pub fn clone_box(&self) -> Box<dyn Target<E> + Send + Sync> {
+        Box::new(AMQPTarget::<E> {
+            id: self.id.clone(),
+            args: self.args.clone(),
+            connection: Arc::clone(&self.connection),
+            tls_state: Arc::clone(&self.tls_state),
+            tls_adapter: self.tls_adapter.clone(),
+            connect_lock: Arc::clone(&self.connect_lock),
+            store: self.store.as_ref().map(|s| s.boxed_clone()),
+            delivery_counters: Arc::clone(&self.delivery_counters),
+            _phantom: std::marker::PhantomData,
+        })
+    }
+
+    #[instrument(skip(args), fields(target_id_as_string = %id))]
+    pub fn new(id: String, args: AMQPArgs) -> Result<Self, TargetError> {
+        args.validate()?;
+        if args.enable && !args.mandatory {
+            // With mandatory=false the broker silently discards messages that
+            // route to no queue, and the publish is still confirmed as success.
+            // Warn so operators expecting reliable delivery know unroutable
+            // events are dropped without a trace (backlog#980).
+            warn!(
+                target_id = %id,
+                exchange = %args.exchange,
+                routing_key = %args.routing_key,
+                "AMQP target has mandatory=false: messages that route to no queue are silently dropped. Set mandatory=true for reliable delivery."
+            );
+        }
+        let target_id = TargetID::new(id, ChannelTargetType::Amqp.as_str().to_string());
+        let queue_store = open_target_queue_store(
+            &args.queue_dir,
+            args.queue_limit,
+            args.target_type,
+            ChannelTargetType::Amqp.as_str(),
+            &target_id,
+            "Failed to open store for AMQP target",
+        )?;
+
+        Ok(Self {
+            id: target_id,
+            args,
+            connection: Arc::new(Mutex::new(None)),
+            tls_state: Arc::new(Mutex::new(TargetTlsState::default())),
+            tls_adapter: None,
+            connect_lock: Arc::new(AsyncMutex::new(())),
+            store: queue_store,
+            delivery_counters: Arc::new(TargetDeliveryCounters::default()),
+            _phantom: std::marker::PhantomData,
+        })
+    }
+
+    fn build_queued_payload(&self, event: &EntityTarget<E>) -> Result<QueuedPayload, TargetError> {
+        build_queued_payload_with_records(event, vec![event.clone()])
+    }
+
+    async fn get_or_connect(&self) -> Result<Arc<AMQPConnection>, TargetError> {
+        // When a TLS reload adapter is attached, it drives connection rebuilds
+        // in the background. The inline per-send fingerprint check is skipped.
+        if let Some(adapter) = &self.tls_adapter {
+            let material = adapter.current_material();
+            if material.connection.status().connected() && material.channel.status().connected() {
+                return Ok(material);
+            }
+            self.clear_connection_handle();
+        } else {
+            let next_fingerprint =
+                build_target_tls_fingerprint(&self.args.tls_ca, &self.args.tls_client_cert, &self.args.tls_client_key).await?;
+            let tls_changed = {
+                let tls_state_guard = self.tls_state.lock();
+                tls_state_guard.needs_update(&next_fingerprint)
+            };
+            if tls_changed {
+                self.clear_connection_handle();
+                self.tls_state.lock().refresh(next_fingerprint);
+            }
+        }
+
+        if let Some(connection) = self.connection.lock().clone()
+            && connection.connection.status().connected()
+            && connection.channel.status().connected()
+        {
+            return Ok(connection);
+        }
+
+        let _guard = self.connect_lock.lock().await;
+        if let Some(connection) = self.connection.lock().clone()
+            && connection.connection.status().connected()
+            && connection.channel.status().connected()
+        {
+            return Ok(connection);
+        }
+
+        let connection = Arc::new(connect_amqp(&self.args).await?);
+        let mut guard = self.connection.lock();
+        *guard = Some(Arc::clone(&connection));
+        Ok(connection)
+    }
+
+    fn clear_connection_handle(&self) {
+        *self.connection.lock() = None;
+    }
+
+    fn clear_connection_cache(&self) {
+        self.clear_connection_handle();
+        self.tls_state.lock().reset();
+    }
+
+    fn clear_connection(&self) {
+        self.clear_connection_cache();
+    }
+
+    async fn send_body(&self, body: &[u8]) -> Result<(), TargetError> {
+        let connection = self.get_or_connect().await?;
+        // Bound the publish and publisher-confirm waits so a stuck broker cannot
+        // block the send path indefinitely (backlog#980).
+        let publish = match tokio::time::timeout(
+            AMQP_PUBLISH_TIMEOUT,
+            connection.channel.basic_publish(
+                self.args.exchange.clone().into(),
+                self.args.routing_key.clone().into(),
+                BasicPublishOptions {
+                    mandatory: self.args.mandatory,
+                    ..BasicPublishOptions::default()
+                },
+                body,
+                build_publish_properties(&self.args),
+            ),
+        )
+        .await
+        {
+            Ok(publish) => publish,
+            Err(_) => {
+                self.clear_connection();
+                return Err(TargetError::Timeout("AMQP publish timed out".to_string()));
+            }
+        };
+
+        let confirm_future = match publish {
+            Ok(confirm) => confirm,
+            Err(err) => {
+                self.clear_connection();
+                return Err(map_lapin_error(err, "Failed to publish AMQP message"));
+            }
+        };
+
+        let confirm = match tokio::time::timeout(AMQP_PUBLISH_TIMEOUT, confirm_future).await {
+            Ok(confirm) => confirm,
+            Err(_) => {
+                self.clear_connection();
+                return Err(TargetError::Timeout("AMQP publisher confirm timed out".to_string()));
+            }
+        };
+
+        match confirm {
+            Ok(Confirmation::Ack(None) | Confirmation::NotRequested) => {
+                self.delivery_counters.record_success();
+                Ok(())
+            }
+            Ok(Confirmation::Ack(Some(returned)) | Confirmation::Nack(Some(returned))) => {
+                Err(TargetError::Request(format!("AMQP broker returned message: {}", returned.reply_text)))
+            }
+            Ok(Confirmation::Nack(None)) => Err(TargetError::Request("AMQP broker negatively acknowledged message".to_string())),
+            Err(err) => {
+                self.clear_connection();
+                Err(map_lapin_error(err, "Failed to confirm AMQP publish"))
+            }
+        }
+    }
+}
+
+/// Coordinated TLS hot-reload implementation for AMQP targets.
+///
+/// The coordinator calls these methods on a background poll loop to detect
+/// TLS file changes and rebuild the connection without restarting.
+#[async_trait]
+impl<E> ReloadableTargetTls for AMQPTarget<E>
+where
+    E: PluginEvent,
+{
+    type Material = AMQPConnection;
+
+    fn tls_input_set(&self) -> TargetTlsInputSet {
+        TargetTlsInputSet {
+            ca_path: self.args.tls_ca.clone(),
+            client_cert_path: self.args.tls_client_cert.clone(),
+            client_key_path: self.args.tls_client_key.clone(),
+            target_label: format!("amqp:{}", self.id.id),
+        }
+    }
+
+    async fn build_tls_material(&self) -> Result<Self::Material, TargetError> {
+        connect_amqp(&self.args).await
+    }
+
+    async fn apply_tls_material(
+        &self,
+        _generation: TargetTlsGeneration,
+        material: Arc<Self::Material>,
+        _mode: ReloadApplyMode,
+    ) -> Result<(), TargetError> {
+        let mut guard = self.connection.lock();
+        *guard = Some(material);
+        Ok(())
+    }
+
+    async fn validate_tls_files(&self) -> Result<(), TargetError> {
+        validate_tls_material(&self.args.tls_ca, &self.args.tls_client_cert, &self.args.tls_client_key)
+    }
+}
+
+#[async_trait]
+impl<E> Target<E> for AMQPTarget<E>
+where
+    E: PluginEvent,
+{
+    fn id(&self) -> TargetID {
+        self.id.clone()
+    }
+
+    async fn is_active(&self) -> Result<bool, TargetError> {
+        // A disabled target is never active; avoid opening a connection for it
+        // (backlog#980).
+        if !self.args.enable {
+            return Ok(false);
+        }
+        let connection = self.get_or_connect().await?;
+        Ok(connection.connection.status().connected() && connection.channel.status().connected())
+    }
+
+    async fn save(&self, event: Arc<EntityTarget<E>>) -> Result<(), TargetError> {
+        let queued = match self.build_queued_payload(&event) {
+            Ok(queued) => queued,
+            Err(err) => {
+                self.delivery_counters.record_final_failure();
+                return Err(err);
+            }
+        };
+
+        if let Some(store) = &self.store {
+            if let Err(e) = persist_queued_payload_to_store(store.as_ref(), &queued) {
+                self.delivery_counters.record_final_failure();
+                return Err(e);
+            }
+            Ok(())
+        } else {
+            if let Err(err) = self.send_body(&queued.body).await {
+                self.delivery_counters.record_final_failure();
+                return Err(err);
+            }
+            Ok(())
+        }
+    }
+
+    async fn send_raw_from_store(&self, _key: Key, body: Vec<u8>, _meta: QueuedPayloadMeta) -> Result<(), TargetError> {
+        self.send_body(&body).await
+    }
+
+    async fn close(&self) -> Result<(), TargetError> {
+        let connection = self.connection.lock().take();
+        // Capture any close failure but still run the remaining cleanup so a
+        // failed broker close does not leave stale TLS/adapter state behind
+        // (backlog#980).
+        let mut close_result = Ok(());
+        if let Some(connection) = connection
+            && let Err(e) = connection.connection.close(200, "OK".into()).await
+        {
+            close_result = Err(map_lapin_error(e, "Failed to close AMQP connection"));
+        }
+        self.tls_state.lock().reset();
+        // If a TLS reload adapter is attached, reset its error tracking
+        // so that a future re-init does not inherit stale failure state.
+        if let Some(adapter) = &self.tls_adapter {
+            *adapter.runtime_state().last_error.write() = None;
+        }
+        info!(target_id = %self.id, "AMQP target closed");
+        close_result
+    }
+
+    fn store(&self) -> Option<&(dyn Store<QueuedPayload, Error = StoreError, Key = Key> + Send + Sync)> {
+        self.store.as_deref()
+    }
+
+    fn clone_dyn(&self) -> Box<dyn Target<E> + Send + Sync> {
+        self.clone_box()
+    }
+
+    async fn init(&self) -> Result<(), TargetError> {
+        if !self.is_enabled() {
+            return Ok(());
+        }
+        match self.get_or_connect().await {
+            Ok(_) => Ok(()),
+            Err(err) if self.store.is_some() && is_connectivity_error(&err) => {
+                warn!(target_id = %self.id, error = %err, "AMQP init failed; events will buffer in store");
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.args.enable
+    }
+
+    fn delivery_snapshot(&self) -> TargetDeliverySnapshot {
+        self.delivery_counters.snapshot(
+            self.store.as_deref().map_or(0, |store| store.len() as u64),
+            // AMQP targets record no terminal failures and keep no failed store.
+            0,
+        )
+    }
+
+    fn record_final_failure(&self) {
+        self.delivery_counters.record_final_failure();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustfs_s3_types::EventName;
+    use serde_json::json;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    fn valid_args() -> AMQPArgs {
+        AMQPArgs {
+            enable: true,
+            url: Url::parse("amqp://127.0.0.1:5672/%2f").unwrap(),
+            exchange: "rustfs.events".to_string(),
+            routing_key: "objects".to_string(),
+            mandatory: false,
+            persistent: true,
+            username: String::new(),
+            password: String::new(),
+            tls_ca: String::new(),
+            tls_client_cert: String::new(),
+            tls_client_key: String::new(),
+            queue_dir: String::new(),
+            queue_limit: 10,
+            target_type: TargetType::NotifyEvent,
+        }
+    }
+
+    fn unreachable_args() -> AMQPArgs {
+        AMQPArgs {
+            url: Url::parse("amqp://127.0.0.1:1/%2f").unwrap(),
+            ..valid_args()
+        }
+    }
+
+    fn test_event() -> Arc<EntityTarget<serde_json::Value>> {
+        Arc::new(EntityTarget {
+            object_name: "object.txt".to_string(),
+            bucket_name: "bucket".to_string(),
+            event_name: EventName::ObjectCreatedPut,
+            data: json!({"ok": true}),
+        })
+    }
+
+    fn temp_store_dir(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("rustfs-amqp-target-{name}-{}", Uuid::new_v4()))
+    }
+
+    fn assert_connect_failure(err: &TargetError) {
+        assert!(
+            matches!(err, TargetError::NotConnected | TargetError::Timeout(_)),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn new_rejects_invalid_args() {
+        let mut args = valid_args();
+        args.exchange.clear();
+
+        let err = match AMQPTarget::<serde_json::Value>::new("primary".to_string(), args) {
+            Ok(_) => panic!("invalid args should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("exchange cannot be empty"));
+    }
+
+    #[test]
+    fn new_accepts_queue_mode() {
+        let mut args = valid_args();
+        args.queue_dir = temp_store_dir("queue-mode").to_string_lossy().to_string();
+
+        let target =
+            AMQPTarget::<serde_json::Value>::new("primary".to_string(), args.clone()).expect("queue mode should be supported");
+
+        assert!(target.store().is_some());
+        let _ = std::fs::remove_dir_all(args.queue_dir);
+    }
+
+    #[tokio::test]
+    async fn save_with_store_queues_event_without_broker() {
+        let mut args = unreachable_args();
+        args.queue_dir = temp_store_dir("save-store").to_string_lossy().to_string();
+        let target = AMQPTarget::<serde_json::Value>::new("primary".to_string(), args.clone()).expect("target should build");
+
+        target
+            .save(test_event())
+            .await
+            .expect("store-backed save should queue without broker");
+
+        assert_eq!(target.delivery_snapshot().queue_length, 1);
+        assert_eq!(target.delivery_snapshot().failed_messages, 0);
+        let _ = std::fs::remove_dir_all(args.queue_dir);
+    }
+
+    #[tokio::test]
+    async fn save_without_store_returns_connection_error() {
+        let target =
+            AMQPTarget::<serde_json::Value>::new("primary".to_string(), unreachable_args()).expect("target should build");
+
+        let err = target
+            .save(test_event())
+            .await
+            .expect_err("direct publish should fail without broker");
+
+        assert_connect_failure(&err);
+        assert_eq!(target.delivery_snapshot().failed_messages, 1);
+    }
+
+    #[tokio::test]
+    async fn init_with_store_allows_broker_to_recover_later() {
+        let mut args = unreachable_args();
+        args.queue_dir = temp_store_dir("init-store").to_string_lossy().to_string();
+        let target = AMQPTarget::<serde_json::Value>::new("primary".to_string(), args.clone()).expect("target should build");
+
+        target.init().await.expect("store-backed init should tolerate broker failure");
+        let _ = std::fs::remove_dir_all(args.queue_dir);
+    }
+
+    #[tokio::test]
+    async fn init_without_store_returns_connection_error() {
+        let target =
+            AMQPTarget::<serde_json::Value>::new("primary".to_string(), unreachable_args()).expect("target should build");
+
+        let err = target
+            .init()
+            .await
+            .expect_err("init should fail without broker when no store exists");
+
+        assert_connect_failure(&err);
+    }
+
+    #[tokio::test]
+    async fn send_raw_from_store_returns_connection_error() {
+        let target =
+            AMQPTarget::<serde_json::Value>::new("primary".to_string(), unreachable_args()).expect("target should build");
+        let key = Key {
+            name: "queued".to_string(),
+            extension: ".event".to_string(),
+            item_count: 1,
+            compress: false,
+        };
+        let meta = QueuedPayloadMeta::new(
+            EventName::ObjectCreatedPut,
+            "bucket".to_string(),
+            "object.txt".to_string(),
+            "application/json",
+            2,
+        );
+
+        let err = target
+            .send_raw_from_store(key, b"{}".to_vec(), meta)
+            .await
+            .expect_err("queue replay should fail without broker");
+
+        assert_connect_failure(&err);
+    }
+
+    #[test]
+    fn permanent_amqp_protocol_errors_are_not_connectivity_errors() {
+        use lapin::protocol::{AMQPError, AMQPErrorKind, AMQPHardError, AMQPSoftError};
+
+        let make = |kind: AMQPErrorKind| lapin::Error::from(LapinErrorKind::ProtocolError(AMQPError::new(kind, "boom".into())));
+
+        // 404 (missing exchange/queue) is permanent: it must be a request-level
+        // error so a misconfigured target does not reconnect-storm (backlog#973).
+        let not_found = make(AMQPErrorKind::Soft(AMQPSoftError::NOTFOUND));
+        assert!(is_permanent_amqp_protocol_error(&not_found));
+        assert!(matches!(map_lapin_error(not_found, "publish"), TargetError::Request(_)));
+
+        assert!(is_permanent_amqp_protocol_error(&make(AMQPErrorKind::Soft(AMQPSoftError::ACCESSREFUSED))));
+        assert!(is_permanent_amqp_protocol_error(&make(AMQPErrorKind::Hard(AMQPHardError::NOTALLOWED))));
+
+        // A transient soft error (broker resource locked) is not treated as permanent.
+        assert!(!is_permanent_amqp_protocol_error(&make(AMQPErrorKind::Soft(
+            AMQPSoftError::RESOURCELOCKED
+        ))));
+    }
+
+    #[test]
+    fn debug_masks_secret_values() {
+        let args = AMQPArgs {
+            url: Url::parse("amqp://guest:secret@127.0.0.1:5672/%2f").unwrap(),
+            password: "secret".to_string(),
+            tls_client_key: "/tmp/client.key".to_string(),
+            ..valid_args()
+        };
+        let rendered = format!("{args:?}");
+
+        assert!(!rendered.contains("guest:secret"));
+        assert!(!rendered.contains("password: \"secret\""));
+        assert!(!rendered.contains("tls_client_key: \"/tmp/client.key\""));
+        assert!(rendered.contains("***REDACTED***"));
+    }
+}

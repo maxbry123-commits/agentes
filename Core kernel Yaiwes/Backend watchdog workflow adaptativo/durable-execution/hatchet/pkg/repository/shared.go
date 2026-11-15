@@ -1,0 +1,165 @@
+package repository
+
+import (
+	"context"
+	"errors"
+	"log"
+	"time"
+
+	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog"
+
+	"github.com/hatchet-dev/hatchet/internal/cel"
+	"github.com/hatchet-dev/hatchet/pkg/config/limits"
+	"github.com/hatchet-dev/hatchet/pkg/repository/cache"
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlcv1"
+	"github.com/hatchet-dev/hatchet/pkg/validator"
+
+	"github.com/google/uuid"
+)
+
+// implements comparable for the lru cache
+type taskExternalIdTenantIdTuple struct {
+	externalId uuid.UUID
+	tenantId   uuid.UUID
+}
+
+type sharedRepository struct {
+	pool    *pgxpool.Pool
+	ddlPool *pgxpool.Pool // bypasses pgbouncer for DDL operations
+	v       validator.Validator
+	l       *zerolog.Logger
+	queries *sqlcv1.Queries
+
+	limitConfig limits.LimitConfigFile
+
+	queueCache               *cache.Cache
+	stepExpressionCache      *cache.Cache
+	concurrencyStrategyCache *cache.Cache
+
+	tenantIdWorkflowNameCache   *expirable.LRU[string, *sqlcv1.ListWorkflowsByNamesRow]
+	workflowIdNameCache         *expirable.LRU[uuid.UUID, string]
+	stepsInWorkflowVersionCache *expirable.LRU[uuid.UUID, []*sqlcv1.ListStepsByWorkflowVersionIdsRow]
+	stepIdConfigCache           *expirable.LRU[uuid.UUID, *sqlcv1.ListStepsByIdsRow]
+	stepIdLabelsCache           *expirable.LRU[uuid.UUID, []*sqlcv1.GetDesiredLabelsRow]
+	stepIdSlotRequestsCache     *expirable.LRU[uuid.UUID, map[string]int32]
+	stepIdHasBatchConfigCache   *expirable.LRU[uuid.UUID, bool]
+	stepIdMatchConditionsCache  *expirable.LRU[uuid.UUID, []*sqlcv1.V1StepMatchCondition]
+
+	celParser         *cel.CELParser
+	boolExprEvaluator *cel.BoolExprEvaluator
+	taskLookupCache   *lru.Cache[taskExternalIdTenantIdTuple, *sqlcv1.FlattenExternalIdsRow]
+	payloadStore      PayloadStoreRepository
+	m                 TenantLimitRepository
+}
+
+func newSharedRepository(
+	pool, ddlPool *pgxpool.Pool,
+	v validator.Validator,
+	l *zerolog.Logger,
+	payloadStoreOpts PayloadStoreRepositoryOpts,
+	c limits.LimitConfigFile,
+	shouldEnforceLimits bool,
+	cacheDuration time.Duration,
+) (*sharedRepository, func() error) {
+	queries := sqlcv1.New()
+	queueCache := cache.New(5 * time.Minute)
+	stepExpressionCache := cache.New(5 * time.Minute)
+	concurrencyStrategyCache := cache.New(5 * time.Minute)
+	payloadStore := NewPayloadStoreRepository(pool, l, queries, payloadStoreOpts)
+
+	// 5-second cache because the workflow version id can change when a new workflow is deployed
+	tenantIdWorkflowNameCache := expirable.NewLRU(10000, func(key string, value *sqlcv1.ListWorkflowsByNamesRow) {}, 5*time.Second)
+	// a workflow id always maps to the same name, so a long TTL is safe
+	workflowIdNameCache := expirable.NewLRU(10000, func(key uuid.UUID, value string) {}, time.Hour)
+	stepsInWorkflowVersionCache := expirable.NewLRU(10000, func(key uuid.UUID, value []*sqlcv1.ListStepsByWorkflowVersionIdsRow) {}, 5*time.Minute)
+	stepIdConfigCache := expirable.NewLRU(10000, func(key uuid.UUID, value *sqlcv1.ListStepsByIdsRow) {}, 5*time.Minute)
+	stepIdLabelsCache := expirable.NewLRU(10000, func(key uuid.UUID, value []*sqlcv1.GetDesiredLabelsRow) {}, 5*time.Minute)
+	stepIdSlotRequestsCache := expirable.NewLRU(10000, func(key uuid.UUID, value map[string]int32) {}, 5*time.Minute)
+	stepIdHasBatchConfigCache := expirable.NewLRU(10000, func(key uuid.UUID, value bool) {}, 5*time.Minute)
+	stepIdMatchConditionsCache := expirable.NewLRU(10000, func(key uuid.UUID, value []*sqlcv1.V1StepMatchCondition) {}, 5*time.Minute)
+
+	celParser := cel.NewCELParser()
+
+	boolExprEvaluator, err := cel.NewBoolExprEvaluator()
+
+	if err != nil {
+		log.Fatalf("failed to create CEL bool expr evaluator: %v", err)
+	}
+
+	lookupCache, err := lru.New[taskExternalIdTenantIdTuple, *sqlcv1.FlattenExternalIdsRow](20000)
+
+	if err != nil {
+		log.Fatalf("failed to create LRU cache: %v", err)
+	}
+
+	s := &sharedRepository{
+		pool:                        pool,
+		ddlPool:                     ddlPool,
+		v:                           v,
+		l:                           l,
+		queries:                     queries,
+		limitConfig:                 c,
+		queueCache:                  queueCache,
+		stepExpressionCache:         stepExpressionCache,
+		concurrencyStrategyCache:    concurrencyStrategyCache,
+		tenantIdWorkflowNameCache:   tenantIdWorkflowNameCache,
+		workflowIdNameCache:         workflowIdNameCache,
+		stepsInWorkflowVersionCache: stepsInWorkflowVersionCache,
+		stepIdConfigCache:           stepIdConfigCache,
+		stepIdLabelsCache:           stepIdLabelsCache,
+		stepIdSlotRequestsCache:     stepIdSlotRequestsCache,
+		stepIdHasBatchConfigCache:   stepIdHasBatchConfigCache,
+		stepIdMatchConditionsCache:  stepIdMatchConditionsCache,
+		celParser:                   celParser,
+		boolExprEvaluator:           boolExprEvaluator,
+		taskLookupCache:             lookupCache,
+		payloadStore:                payloadStore,
+	}
+
+	tenantLimitRepository := newTenantLimitRepository(s, c, shouldEnforceLimits, cacheDuration)
+
+	s.m = tenantLimitRepository
+
+	return s, s.cleanup
+}
+
+func (s *sharedRepository) isDagOperatorEnabled(ctx context.Context, db sqlcv1.DBTX, tenantId uuid.UUID) (bool, error) {
+	// fixme: can probably cache this?
+	entitlement, err := s.queries.GetTenantEntitlement(ctx, db, tenantId)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	return entitlement.DagOperator, nil
+}
+
+func (s *sharedRepository) hasDAGOperator(ctx context.Context, tenantId uuid.UUID) (bool, error) {
+	enabled, err := s.isDagOperatorEnabled(ctx, s.pool, tenantId)
+
+	if err != nil {
+		return false, err
+	}
+
+	if !enabled {
+		return false, nil
+	}
+
+	return s.queries.TenantHasDAGOperator(ctx, s.pool, tenantId)
+}
+
+func (s *sharedRepository) cleanup() error {
+	s.queueCache.Stop()
+	s.stepExpressionCache.Stop()
+	s.concurrencyStrategyCache.Stop()
+	s.m.Stop()
+	return nil
+}

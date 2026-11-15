@@ -1,0 +1,236 @@
+"""Tests for ping middleware."""
+
+from unittest.mock import AsyncMock, MagicMock
+
+import anyio
+import pytest
+
+from fastmcp import FastMCP
+from fastmcp.client import Client
+from fastmcp.server.middleware.ping import PingMiddleware
+
+
+class TestPingMiddlewareInit:
+    """Test PingMiddleware initialization."""
+
+    def test_init_default(self):
+        """Test default initialization."""
+        middleware = PingMiddleware()
+        assert middleware.interval_ms == 30000
+        assert middleware._active_sessions == set()
+
+    def test_init_custom(self):
+        """Test custom interval initialization."""
+        middleware = PingMiddleware(interval_ms=5000)
+        assert middleware.interval_ms == 5000
+
+    def test_init_invalid_interval_zero(self):
+        """Test that zero interval raises ValueError."""
+        with pytest.raises(ValueError, match="interval_ms must be positive"):
+            PingMiddleware(interval_ms=0)
+
+    def test_init_invalid_interval_negative(self):
+        """Test that negative interval raises ValueError."""
+        with pytest.raises(ValueError, match="interval_ms must be positive"):
+            PingMiddleware(interval_ms=-1000)
+
+
+class TestPingMiddlewareOnMessage:
+    """Test on_message hook behavior."""
+
+    def _mock_session(self):
+        """Build a mock session with a stable per-connection Connection.
+
+        SDK v2 constructs a ServerSession per request; PingMiddleware keys the
+        keepalive loop off the underlying Connection (and registers cleanup on
+        its exit stack), so tests supply a connection with an exit_stack.
+        """
+        connection = MagicMock()
+        connection.exit_stack = MagicMock()
+        connection.exit_stack.push_async_callback = MagicMock()
+        session = MagicMock()
+        session._connection = connection
+        session.send_ping = AsyncMock()
+        return session, connection
+
+    async def test_starts_ping_task_on_first_message(self):
+        """Test that a ping task is started on first message from a connection."""
+        middleware = PingMiddleware(interval_ms=1000)
+
+        mock_session, connection = self._mock_session()
+        mock_context = MagicMock()
+        mock_context.fastmcp_context.session = mock_session
+
+        mock_call_next = AsyncMock(return_value="result")
+
+        result = await middleware.on_message(mock_context, mock_call_next)
+
+        assert result == "result"
+        assert id(connection) in middleware._active_sessions
+        connection.exit_stack.push_async_callback.assert_called_once()
+
+    async def test_does_not_start_duplicate_task(self):
+        """Test that duplicate messages from same connection don't spawn duplicates."""
+        middleware = PingMiddleware(interval_ms=1000)
+
+        mock_session, connection = self._mock_session()
+        mock_context = MagicMock()
+        mock_context.fastmcp_context.session = mock_session
+
+        mock_call_next = AsyncMock(return_value="result")
+
+        # Three messages from the same connection
+        await middleware.on_message(mock_context, mock_call_next)
+        await middleware.on_message(mock_context, mock_call_next)
+        await middleware.on_message(mock_context, mock_call_next)
+
+        # Cleanup registered only once
+        assert connection.exit_stack.push_async_callback.call_count == 1
+        assert len(middleware._active_sessions) == 1
+
+    async def test_starts_separate_task_per_session(self):
+        """Test that different connections get separate ping tasks."""
+        middleware = PingMiddleware(interval_ms=1000)
+
+        mock_session1, connection1 = self._mock_session()
+        mock_session2, connection2 = self._mock_session()
+
+        mock_context1 = MagicMock()
+        mock_context1.fastmcp_context.session = mock_session1
+
+        mock_context2 = MagicMock()
+        mock_context2.fastmcp_context.session = mock_session2
+
+        mock_call_next = AsyncMock(return_value="result")
+
+        await middleware.on_message(mock_context1, mock_call_next)
+        await middleware.on_message(mock_context2, mock_call_next)
+
+        connection1.exit_stack.push_async_callback.assert_called_once()
+        connection2.exit_stack.push_async_callback.assert_called_once()
+        assert len(middleware._active_sessions) == 2
+
+    async def test_skips_when_fastmcp_context_is_none(self):
+        """Test that middleware passes through when fastmcp_context is None."""
+        middleware = PingMiddleware(interval_ms=1000)
+
+        mock_context = MagicMock()
+        mock_context.fastmcp_context = None
+
+        mock_call_next = AsyncMock(return_value="result")
+
+        result = await middleware.on_message(mock_context, mock_call_next)
+
+        assert result == "result"
+        assert len(middleware._active_sessions) == 0
+
+    async def test_skips_when_request_context_is_none(self):
+        """Test that middleware passes through when request_context is None."""
+        middleware = PingMiddleware(interval_ms=1000)
+
+        mock_context = MagicMock()
+        mock_context.fastmcp_context = MagicMock()
+        mock_context.fastmcp_context.request_context = None
+
+        mock_call_next = AsyncMock(return_value="result")
+
+        result = await middleware.on_message(mock_context, mock_call_next)
+
+        assert result == "result"
+        assert len(middleware._active_sessions) == 0
+
+
+class TestPingLoop:
+    """Test the ping loop behavior."""
+
+    async def test_ping_loop_sends_pings_at_interval(self):
+        """Test that ping loop sends pings at configured interval."""
+        middleware = PingMiddleware(interval_ms=50)
+
+        mock_session = MagicMock()
+        mock_session.send_ping = AsyncMock()
+
+        session_id = id(mock_session)
+        middleware._active_sessions.add(session_id)
+
+        # Run ping loop for a short time then cancel
+        with anyio.move_on_after(0.35):
+            await middleware._ping_loop(mock_session, session_id)
+
+        # Should have sent at least 2 pings in 350ms with 50ms interval
+        assert mock_session.send_ping.call_count >= 2
+
+    async def test_ping_loop_cleans_up_on_cancellation(self):
+        """Test that session is removed from active sessions on cancellation."""
+        middleware = PingMiddleware(interval_ms=50)
+
+        mock_session = MagicMock()
+        mock_session.send_ping = AsyncMock()
+
+        session_id = 12345
+        middleware._active_sessions.add(session_id)
+
+        # Run and cancel the ping loop
+        with anyio.move_on_after(0.1):
+            await middleware._ping_loop(mock_session, session_id)
+
+        # Session should be cleaned up after cancellation
+        assert session_id not in middleware._active_sessions
+
+
+class TestPingMiddlewareIntegration:
+    """Integration tests for PingMiddleware with real FastMCP server."""
+
+    async def test_ping_middleware_registers_session(self):
+        """Test that PingMiddleware registers sessions on first request."""
+        mcp = FastMCP("PingTestServer")
+        middleware = PingMiddleware(interval_ms=50)
+        mcp.add_middleware(middleware)
+
+        @mcp.tool
+        def hello() -> str:
+            return "Hello!"
+
+        assert len(middleware._active_sessions) == 0
+
+        # PingMiddleware keys its keepalive loop off the connection, which
+        # persists for the life of a handshake-era session. On the modern
+        # protocol version, a connection lives only for the single request
+        # that built it, so `_active_sessions` never holds a mid-session
+        # entry an outside observer can see — the register-and-clean-up
+        # happens entirely within one call. That per-request lifecycle is
+        # itself the reason this test pins the older era.
+        async with Client(mcp, mode="legacy") as client:
+            result = await client.call_tool("hello")
+            assert result.content[0].text == "Hello!"
+
+            # Should have registered the session
+            assert len(middleware._active_sessions) == 1
+
+            # Make another request - should not add duplicate
+            await client.call_tool("hello")
+            assert len(middleware._active_sessions) == 1
+
+    async def test_ping_task_cancelled_on_disconnect(self):
+        """Test that ping task is properly cancelled when client disconnects."""
+        mcp = FastMCP("PingTestServer")
+        middleware = PingMiddleware(interval_ms=50)
+        mcp.add_middleware(middleware)
+
+        @mcp.tool
+        def hello() -> str:
+            return "Hello!"
+
+        # See the pin note in `test_ping_middleware_registers_session`: a
+        # mid-session `_active_sessions` entry is only observable when the
+        # connection persists across requests, which is handshake-era only.
+        async with Client(mcp, mode="legacy") as client:
+            await client.call_tool("hello")
+            # Should have one active session
+            assert len(middleware._active_sessions) == 1
+
+        # After disconnect, give a moment for cleanup
+        await anyio.sleep(0.01)
+
+        # Session should be cleaned up
+        assert len(middleware._active_sessions) == 0

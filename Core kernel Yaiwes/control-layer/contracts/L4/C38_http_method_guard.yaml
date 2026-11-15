@@ -1,0 +1,18 @@
+# C38 — L4. B3 SALIDA4
+id: C38
+layer: L4
+name: http_method_guard
+implementado: true
+critical: false
+description: "Guard de métodos HTTP"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C38 aplica en capa L4"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - http_method_guard_check
+evidence:
+  type: http_method_guard_marker
+  required: false

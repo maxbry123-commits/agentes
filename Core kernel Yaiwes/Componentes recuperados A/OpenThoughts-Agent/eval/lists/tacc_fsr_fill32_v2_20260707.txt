@@ -1,0 +1,17 @@
+# TACC flawed_summ fill-to-32 2026-07-07 — dev_set_v2 group (now-unblocked HELD legs, priority-grid order)
+# r192 laion/explore-tis-untrunc-45-8B
+laion/explore-tis-untrunc-45-8B
+# r197 laion/ablation-pymethods2test-seqmean-arm0-30-8B
+laion/ablation-pymethods2test-seqmean-arm0-30-8B
+# r243 laion/exp-syh-r2egym-askllm-constrained_glm_4-7_traces_jupiter_cleaned-exp-gfi-swesmith-random-fi
+laion/exp-syh-r2egym-askllm-constrained_glm_4-7_traces_jupiter_cleaned-exp-gfi-swesmith-random-fi
+# r254 laion/exp-syh-tezos-stackoverflow-mixed_glm_4_7_traces_jupiter_cleaned
+laion/exp-syh-tezos-stackoverflow-mixed_glm_4_7_traces_jupiter_cleaned
+# r257 laion/exp-uns-tezos-10x_glm_4_7_traces_jupiter_cleaned
+laion/exp-uns-tezos-10x_glm_4_7_traces_jupiter_cleaned
+# r260 laion/exp-uns-tezos-80x_glm_4_7_traces_jupiter_cleaned
+laion/exp-uns-tezos-80x_glm_4_7_traces_jupiter_cleaned
+# r264 penfever/a3-rl-SankalpKJ_swesmith-oracle-filtered-40-8B
+penfever/a3-rl-SankalpKJ_swesmith-oracle-filtered-40-8B
+# r267 laion/a3-rl-DCAgent_r2egym-patched-full-oracle-75-8B
+laion/a3-rl-DCAgent_r2egym-patched-full-oracle-75-8B

@@ -1,0 +1,2002 @@
+import {
+    MakeLogicType,
+    actions,
+    afterMount,
+    connect,
+    kea,
+    key,
+    listeners,
+    path,
+    props,
+    propsChanged,
+    reducers,
+    selectors,
+    sharedListeners,
+} from 'kea'
+import type { BreakPointFunction } from 'kea'
+import { subscriptions } from 'kea-subscriptions'
+import mergeObject from 'lodash.merge'
+
+import { dayjs } from 'lib/dayjs'
+import { RGBToHex, lightenDarkenColor } from 'lib/utils/colors'
+import { uuid } from 'lib/utils/dom'
+import { compactNumber } from 'lib/utils/numbers'
+import { objectsEqual } from 'lib/utils/objects'
+import { sceneLogic } from 'scenes/sceneLogic'
+import { Scene } from 'scenes/sceneTypes'
+import { teamLogic } from 'scenes/teamLogic'
+
+import { themeLogic } from '~/layout/navigation-3000/themeLogic'
+import {
+    AnyResponseType,
+    ChartAxis,
+    ChartSettings,
+    ChartSettingsDisplay,
+    ChartSettingsFormatting,
+    ConditionalFormattingRule,
+    DataVisualizationNode,
+    HeatmapSettings,
+    HogQLVariable,
+} from '~/queries/schema/schema-general'
+import { QueryContext } from '~/queries/types'
+import { ChartDisplayType, DashboardType } from '~/types'
+
+import type {
+    DataNode,
+    ErrorTrackingQueryResponse,
+    HogQLAutocompleteResponse,
+    HogQLMetadataResponse,
+    HogQLQueryResponse,
+    HogQueryResponse,
+    LogAttributesQueryResponse,
+    LogValuesQueryResponse,
+    MetricsQueryResponse,
+    RefreshType,
+    SessionsQueryResponse,
+    TraceSpansAggregationQueryResponse,
+    TraceSpansAttributeBreakdownQueryResponse,
+    TraceSpansQueryResponse,
+} from '../../schema/schema-general'
+import { dataNodeLogic } from '../DataNode/dataNodeLogic'
+import { QueryFeature, getQueryFeatures } from '../DataTable/queryFeatures'
+import { getAutoBoxPlotSettings } from './Components/Charts/sqlBoxPlotAdapter'
+import { ColumnScalar, FORMATTING_TEMPLATES } from './types'
+
+export enum SideBarTab {
+    Series = 'series',
+    Display = 'display',
+    ConditionalFormatting = 'conditional_formatting',
+}
+
+export interface ColumnType {
+    name: ColumnScalar
+    isNumerical: boolean
+}
+
+export interface Column {
+    name: string
+    type: ColumnType
+    label: string
+    dataIndex: number
+}
+
+export interface TableDataCell<T extends string | number | boolean | Date | null> {
+    value: T
+    formattedValue: string | object | null
+    type: ColumnScalar
+    sourceColumnName?: string
+    isTransposedHeader?: boolean
+}
+
+export interface AxisSeriesSettings {
+    formatting?: ChartSettingsFormatting
+    display?: ChartSettingsDisplay
+}
+
+export interface AxisSeries<T> {
+    column: Column
+    data: T[]
+    settings?: AxisSeriesSettings
+}
+
+export interface DataVisualizationLogicProps {
+    key: string
+    query: DataVisualizationNode
+    editMode?: boolean
+    dataNodeCollectionId: string
+    setQuery?: (setter: (node: DataVisualizationNode) => DataVisualizationNode) => void
+    context?: QueryContext<DataVisualizationNode>
+    cachedResults?: AnyResponseType
+    insightLoading?: boolean
+    dashboardId?: DashboardType['id']
+    loadPriority?: number
+    /** Dashboard variables to override the ones in the query */
+    variablesOverride?: Record<string, HogQLVariable> | null
+    limitContext?: 'posthog_ai'
+}
+
+export interface SelectedYAxis {
+    name: string
+    settings: AxisSeriesSettings
+}
+
+export const EmptyYAxisSeries: AxisSeries<number> = {
+    column: {
+        name: 'None',
+        type: {
+            name: 'INTEGER',
+            isNumerical: false,
+        },
+        label: 'None',
+        dataIndex: -1,
+    },
+    data: [],
+}
+
+const DefaultAxisSettings = (): AxisSeriesSettings => ({
+    formatting: {
+        prefix: '',
+        suffix: '',
+    },
+})
+
+/** Deep clone settings to prevent shared references between Y-axis entries */
+const cloneSettings = (settings: AxisSeriesSettings): AxisSeriesSettings =>
+    mergeObject({}, settings) as AxisSeriesSettings
+
+const cloneOrDefaultSettings = (settings?: AxisSeriesSettings): AxisSeriesSettings =>
+    settings ? cloneSettings(settings) : DefaultAxisSettings()
+
+const TRANSPOSED_FIELD_COLUMN_NAME = '__transpose_field__'
+const TRANSPOSED_ROW_COLUMN_PREFIX = '__transpose_row__'
+
+export const formatDataWithSettings = (
+    data: number | string | null | object,
+    settings?: AxisSeriesSettings
+): string | object | null => {
+    if (data === null || Number.isNaN(data)) {
+        return null
+    }
+
+    if (typeof data === 'object') {
+        return data
+    }
+
+    const decimalPlaces = settings?.formatting?.decimalPlaces
+
+    let dataAsString = `${data}`
+
+    if (typeof data === 'number') {
+        dataAsString = `${decimalPlaces ? data.toFixed(decimalPlaces) : data}`
+
+        if (settings?.formatting?.style === 'number') {
+            dataAsString = data.toLocaleString(undefined, { maximumFractionDigits: decimalPlaces })
+        }
+
+        if (settings?.formatting?.style === 'short') {
+            dataAsString = compactNumber(data)
+        }
+
+        if (settings?.formatting?.style === 'percent') {
+            dataAsString = `${data.toLocaleString(undefined, { maximumFractionDigits: decimalPlaces })}%`
+        }
+    }
+
+    if (settings?.formatting?.prefix) {
+        dataAsString = `${settings.formatting.prefix}${dataAsString}`
+    }
+
+    if (settings?.formatting?.suffix) {
+        dataAsString = `${dataAsString}${settings.formatting.suffix}`
+    }
+
+    return dataAsString
+}
+
+export const convertTableValue = (
+    value: string | number | null,
+    type: ColumnScalar
+): string | number | boolean | null => {
+    if (value == null) {
+        return null
+    }
+
+    if (type === 'STRING') {
+        return value.toString()
+    }
+
+    if (type === 'INTEGER') {
+        if (typeof value === 'number') {
+            return value
+        }
+
+        return parseInt(value)
+    }
+
+    if (type === 'FLOAT' || type === 'DECIMAL') {
+        if (typeof value === 'number') {
+            return value
+        }
+
+        return parseFloat(value)
+    }
+
+    if (type === 'BOOLEAN') {
+        return Boolean(value)
+    }
+
+    if (type === 'DATE' || type === 'DATETIME') {
+        return dayjs(value).unix()
+    }
+
+    return value
+}
+
+const toFriendlyClickhouseTypeName = (type: string | undefined): ColumnScalar => {
+    if (!type) {
+        return 'UNKNOWN'
+    }
+
+    if (type.indexOf('Array') !== -1) {
+        return 'ARRAY'
+    }
+    if (type.indexOf('Tuple') !== -1) {
+        return 'TUPLE'
+    }
+    if (type.indexOf('Int') !== -1) {
+        return 'INTEGER'
+    }
+    if (type.indexOf('Float') !== -1) {
+        return 'FLOAT'
+    }
+    if (type.indexOf('DateTime') !== -1) {
+        return 'DATETIME'
+    }
+    if (type.indexOf('Date') !== -1) {
+        return 'DATE'
+    }
+    if (type.indexOf('Boolean') !== -1) {
+        return 'BOOLEAN'
+    }
+    if (type.indexOf('Decimal') !== -1) {
+        return 'DECIMAL'
+    }
+    if (type.indexOf('String') !== -1) {
+        return 'STRING'
+    }
+
+    return type as ColumnScalar
+}
+
+const isNumericalType = (type: ColumnScalar): boolean => {
+    if (type === 'INTEGER' || type === 'FLOAT' || type === 'DECIMAL') {
+        return true
+    }
+
+    return false
+}
+
+const resolveNonTimeSeriesVisualizationType = (columns: Column[]): ChartDisplayType => {
+    const stringColumns = columns.filter((column) => column.type.name === 'STRING')
+    const numericalColumns = columns.filter((column) => column.type.isNumerical)
+
+    if (stringColumns.length >= 2 && numericalColumns.length >= 1) {
+        return ChartDisplayType.TwoDimensionalHeatmap
+    }
+
+    if (numericalColumns.length === 1 && columns.length === 1) {
+        return ChartDisplayType.BoldNumber
+    }
+
+    if (numericalColumns.length > 0) {
+        return ChartDisplayType.ActionsBar
+    }
+
+    return ChartDisplayType.ActionsTable
+}
+
+const hasTimeSeriesData = (columns: Column[], response: AnyResponseType | null): boolean => {
+    const hasDateColumn = columns.some((column) => ['DATE', 'DATETIME'].includes(column.type.name))
+    const hasNumericColumn = columns.some((column) => column.type.isNumerical)
+    const results =
+        response && 'results' in response ? response.results : response && 'result' in response ? response.result : []
+
+    return hasDateColumn && hasNumericColumn && results.length > 1
+}
+
+const getAutoVisualizationType = (columns: Column[], response: AnyResponseType | null): ChartDisplayType => {
+    if (hasTimeSeriesData(columns, response)) {
+        return ChartDisplayType.ActionsLineGraph
+    }
+
+    return resolveNonTimeSeriesVisualizationType(columns)
+}
+
+const getHeatmapAutoSettings = (columns: Column[], heatmapSettings: HeatmapSettings): Partial<HeatmapSettings> => {
+    const stringColumns = columns.filter((column) => column.type.name === 'STRING')
+    const numericalColumns = columns.filter((column) => column.type.isNumerical)
+
+    const nextSettings: Partial<HeatmapSettings> = {}
+
+    if (!heatmapSettings.xAxisColumn && stringColumns[0]) {
+        nextSettings.xAxisColumn = stringColumns[0].name
+    }
+
+    if (!heatmapSettings.yAxisColumn && stringColumns[1]) {
+        nextSettings.yAxisColumn = stringColumns[1].name
+    }
+
+    if (!heatmapSettings.valueColumn && numericalColumns[0]) {
+        nextSettings.valueColumn = numericalColumns[0].name
+    }
+
+    return nextSettings
+}
+
+const applyAutoHeatmapSettings = (
+    actions: { updateChartSettings: (settings: ChartSettings) => void },
+    columns: Column[],
+    heatmapSettings: HeatmapSettings
+): void => {
+    const autoSettings = getHeatmapAutoSettings(columns, heatmapSettings)
+
+    if (Object.keys(autoSettings).length === 0) {
+        return
+    }
+
+    actions.updateChartSettings({
+        heatmap: {
+            ...heatmapSettings,
+            ...autoSettings,
+        },
+    })
+}
+
+const mergeChartSettings = (state: ChartSettings, settings: ChartSettings): ChartSettings => {
+    return {
+        ...state,
+        ...settings,
+        heatmap:
+            state.heatmap || settings.heatmap
+                ? {
+                      ...state.heatmap,
+                      ...settings.heatmap,
+                  }
+                : undefined,
+        pie:
+            state.pie || settings.pie
+                ? {
+                      ...state.pie,
+                      ...settings.pie,
+                  }
+                : undefined,
+        scatter:
+            state.scatter || settings.scatter
+                ? {
+                      ...state.scatter,
+                      ...settings.scatter,
+                  }
+                : undefined,
+        boxPlot:
+            state.boxPlot || settings.boxPlot
+                ? {
+                      ...state.boxPlot,
+                      ...settings.boxPlot,
+                  }
+                : undefined,
+        leftYAxisSettings:
+            state.leftYAxisSettings || settings.leftYAxisSettings
+                ? {
+                      ...state.leftYAxisSettings,
+                      ...settings.leftYAxisSettings,
+                  }
+                : undefined,
+        rightYAxisSettings:
+            state.rightYAxisSettings || settings.rightYAxisSettings
+                ? {
+                      ...state.rightYAxisSettings,
+                      ...settings.rightYAxisSettings,
+                  }
+                : undefined,
+        chartStyle:
+            state.chartStyle || settings.chartStyle
+                ? {
+                      ...state.chartStyle,
+                      ...settings.chartStyle,
+                  }
+                : undefined,
+    }
+}
+
+const shouldUseFirstNumericColumnAsContinuousChartXAxis = (
+    columns: Column[],
+    numericalColumns: Column[],
+    selectedXAxis: string | null,
+    selectedYAxis: (SelectedYAxis | null)[] | null
+): boolean => {
+    if (selectedXAxis !== null || columns.length < 2 || numericalColumns.length < 2) {
+        return false
+    }
+
+    if (!columns.every((column) => column.type.isNumerical)) {
+        return false
+    }
+
+    if (!selectedYAxis || selectedYAxis.length !== numericalColumns.length) {
+        return false
+    }
+
+    const selectedYAxisNames = new Set(selectedYAxis.map((series) => series?.name))
+
+    return numericalColumns.every((column) => selectedYAxisNames.has(column.name))
+}
+
+/**
+ * A scatter plots two measures against each other, so its x axis has to hold a numeric column.
+ * Returns the column that should sit on the x axis: the current one when it's already numeric,
+ * otherwise a numeric column to move there, preferring one that isn't already a y-series so the
+ * chart isn't left with nothing on either axis. Returns null only when a scatter can't be plotted
+ * (fewer than two numeric columns). The caller drops the chosen column from the y-series if it's
+ * also there, so a column never plots against itself.
+ */
+const resolveScatterXAxisColumn = (
+    columns: Column[],
+    numericalColumns: Column[],
+    selectedXAxis: string | null,
+    selectedYAxis: (SelectedYAxis | null)[] | null
+): Column | null => {
+    // Two numeric columns at minimum — taking the only one for the x axis leaves nothing to plot.
+    if (numericalColumns.length < 2) {
+        return null
+    }
+
+    const currentXAxis = columns.find((column) => column.name === selectedXAxis)
+    if (currentXAxis?.type.isNumerical) {
+        return currentXAxis
+    }
+
+    const selectedYAxisNames = new Set((selectedYAxis ?? []).map((series) => series?.name))
+    return numericalColumns.find((column) => !selectedYAxisNames.has(column.name)) ?? numericalColumns[0]
+}
+
+/**
+ * Establishes the scatter x-axis invariant: a numeric column on the x axis that isn't also a
+ * y-series. Runs from every entry path a scatter can arrive through — the type being picked, the
+ * query's columns changing, and a persisted/assistant-created insight loading — so the chart never
+ * renders blank or plots a column against itself. A no-op when there's nothing to fix.
+ */
+const applyScatterXAxis = (
+    actions: {
+        updateXSeries: (columnName: string) => void
+        deleteYSeries: (seriesIndex: number) => void
+    },
+    columns: Column[],
+    selectedXAxis: string | null,
+    selectedYAxis: (SelectedYAxis | null)[] | null
+): void => {
+    const numericalColumns = columns.filter((column) => column.type.isNumerical)
+    const xAxisColumn = resolveScatterXAxisColumn(columns, numericalColumns, selectedXAxis, selectedYAxis)
+    if (!xAxisColumn) {
+        return
+    }
+
+    if (xAxisColumn.name !== selectedXAxis) {
+        actions.updateXSeries(xAxisColumn.name)
+    }
+
+    // updateXSeries doesn't touch the y-series array, so this index stays valid.
+    const xAxisSeriesIndex = selectedYAxis?.findIndex((series) => series?.name === xAxisColumn.name) ?? -1
+    if (xAxisSeriesIndex > -1) {
+        actions.deleteYSeries(xAxisSeriesIndex)
+    }
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface dataVisualizationLogicValues {
+    hasMoreData: boolean // dataNodeLogic
+    queryCancelled: boolean // dataNodeLogic
+    response:
+        | ErrorTrackingQueryResponse
+        | HogQLAutocompleteResponse
+        | HogQLMetadataResponse
+        | HogQLQueryResponse<any[]>
+        | HogQueryResponse
+        | LogAttributesQueryResponse
+        | LogValuesQueryResponse
+        | MetricsQueryResponse
+        | Record<string, any>
+        | SessionsQueryResponse
+        | TraceSpansAggregationQueryResponse
+        | TraceSpansAttributeBreakdownQueryResponse
+        | TraceSpansQueryResponse
+        | null // dataNodeLogic
+    responseError: string | null // dataNodeLogic
+    responseLoading: boolean // dataNodeLogic
+    activeSceneId: string | null // sceneLogic
+    currentTeamId: number | null // teamLogic
+    isDarkModeOn: boolean // themeLogic
+    activeSideBarTab: SideBarTab
+    autoVisualizationType: ChartDisplayType
+    chartSettings: ChartSettings
+    columns: Column[]
+    conditionalFormattingRules: ConditionalFormattingRule[]
+    conditionalFormattingRulesPanelActiveKeys: string[]
+    dashboardId: any
+    dataVisualizationProps: DataVisualizationLogicProps
+    effectiveVisualizationType: ChartDisplayType
+    hasDateTimeColumns: boolean
+    hasSortedTable: boolean
+    isChartSettingsPanelOpen: boolean
+    isColumnPinned: (columnName: string) => boolean
+    isPinningEnabled: boolean
+    isShowingCachedResults: boolean
+    isTableVisualization: boolean
+    isTransposed: boolean
+    numericalColumns: Column[]
+    pinnedColumns: string[]
+    presetChartHeight: boolean
+    query: DataVisualizationNode
+    selectedXAxis: string | null
+    selectedYAxis: (SelectedYAxis | null)[] | null
+    showEditingUI: boolean
+    showResultControls: boolean
+    showTableSettings: boolean
+    sourceFeatures: Set<QueryFeature>
+    sourceTabularColumns: AxisSeries<any>[]
+    sourceTabularData: TableDataCell<any>[][]
+    tabularColumnSettings: (SelectedYAxis | null)[] | null
+    tabularColumns: AxisSeries<any>[]
+    tabularData: TableDataCell<any>[][]
+    visualizationType: ChartDisplayType
+    xData: AxisSeries<string> | null
+    yData: AxisSeries<number | null>[]
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface dataVisualizationLogicActions {
+    loadData: (
+        refresh?: RefreshType | undefined,
+        alreadyRunningQueryId?: string | undefined,
+        overrideQuery?: DataNode<Record<string, any>> | undefined
+    ) => {
+        overrideQuery: DataNode<Record<string, any>> | undefined
+        pollOnly: boolean
+        queryId: string
+        refresh: RefreshType | undefined
+    } // dataNodeLogic
+    _setQuery: (node: DataVisualizationNode) => {
+        node: DataVisualizationNode
+    }
+    addConditionalFormattingRule: (rule?: ConditionalFormattingRule) => {
+        isDarkModeOn: boolean
+        rule:
+            | ConditionalFormattingRule
+            | {
+                  id: string
+              }
+    }
+    addSeries: (
+        columnName?: string,
+        settings?: AxisSeriesSettings
+    ) => {
+        allColumns: Column[]
+        columnName: string | undefined
+        settings: AxisSeriesSettings | undefined
+    }
+    addYSeries: (
+        columnName?: string,
+        settings?: AxisSeriesSettings
+    ) => {
+        allNumericalColumns: Column[]
+        columnName: string | undefined
+        settings: AxisSeriesSettings | undefined
+    }
+    clearAxis: () => {
+        value: true
+    }
+    deleteYSeries: (seriesIndex: number) => {
+        seriesIndex: number
+    }
+    setConditionalFormattingRulesPanelActiveKeys: (keys: string[]) => {
+        keys: string[]
+    }
+    setQuery: (setter: (node: DataVisualizationNode) => DataVisualizationNode) => {
+        setter: (node: DataVisualizationNode) => DataVisualizationNode
+    }
+    setSideBarTab: (tab: SideBarTab) => {
+        tab: SideBarTab
+    }
+    setTableSorted: () => {
+        value: true
+    }
+    setTransposeResults: (transpose: boolean) => {
+        transpose: boolean
+    }
+    setVisualizationType: (visualizationType: ChartDisplayType) => {
+        visualizationType: ChartDisplayType
+    }
+    toggleChartSettingsPanel: (open?: boolean) => {
+        open: boolean | undefined
+    }
+    toggleColumnPin: (columnName: string) => {
+        columnName: string
+    }
+    updateChartSettings: (settings: ChartSettings) => {
+        settings: ChartSettings
+    }
+    updateConditionalFormattingRule: (
+        rule: ConditionalFormattingRule,
+        deleteRule?: boolean
+    ) => {
+        colorMode: string
+        deleteRule: boolean | undefined
+        rule: ConditionalFormattingRule
+    }
+    updateSeries: (
+        columnName: string,
+        settings?: AxisSeriesSettings
+    ) => {
+        columnName: string
+        settings: AxisSeriesSettings | undefined
+    }
+    updateSeriesIndex: (
+        seriesIndex: number,
+        columnName: string,
+        settings?: AxisSeriesSettings
+    ) => {
+        columnName: string
+        seriesIndex: number
+        settings: AxisSeriesSettings | undefined
+    }
+    updateXSeries: (columnName: string) => {
+        columnName: string
+    }
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface dataVisualizationLogicMeta {
+    key: string
+    sharedListeners: {
+        axesChanged: (
+            payload: any,
+            breakpoint: BreakPointFunction,
+            action: {
+                type: string
+                payload: any
+            },
+            previousState: any
+        ) => void | Promise<void>
+        conditionalFormattingRules: (
+            payload: any,
+            breakpoint: BreakPointFunction,
+            action: {
+                type: string
+                payload: any
+            },
+            previousState: any
+        ) => void | Promise<void>
+        pinnedColumnsChanged: (
+            payload: any,
+            breakpoint: BreakPointFunction,
+            action: {
+                type: string
+                payload: any
+            },
+            previousState: any
+        ) => void | Promise<void>
+    }
+    __keaTypeGenInternalSelectorTypes: {
+        columns: (
+            response:
+                | ErrorTrackingQueryResponse
+                | HogQLAutocompleteResponse
+                | HogQLMetadataResponse
+                | HogQLQueryResponse<any[]>
+                | HogQueryResponse
+                | LogAttributesQueryResponse
+                | LogValuesQueryResponse
+                | MetricsQueryResponse
+                | Record<string, any>
+                | SessionsQueryResponse
+                | TraceSpansAggregationQueryResponse
+                | TraceSpansAttributeBreakdownQueryResponse
+                | TraceSpansQueryResponse
+                | null
+        ) => Column[]
+        numericalColumns: (columns: Column[]) => Column[]
+        hasDateTimeColumns: (columns: Column[]) => boolean
+        dashboardId: (arg: any) => any
+        showEditingUI: (arg: boolean | undefined, dashboardId: any) => boolean
+        showResultControls: (arg: boolean | undefined, dashboardId: any) => boolean
+        presetChartHeight: (key: string, dashboardId: any, activeSceneId: string | null) => boolean
+        sourceFeatures: (query: DataVisualizationNode) => Set<QueryFeature>
+        isShowingCachedResults: (arg: any) => boolean
+        isTransposed: (query: DataVisualizationNode) => boolean
+        yData: (
+            selectedYAxis: (SelectedYAxis | null)[] | null,
+            response:
+                | ErrorTrackingQueryResponse
+                | HogQLAutocompleteResponse
+                | HogQLMetadataResponse
+                | HogQLQueryResponse<any[]>
+                | HogQueryResponse
+                | LogAttributesQueryResponse
+                | LogValuesQueryResponse
+                | MetricsQueryResponse
+                | Record<string, any>
+                | SessionsQueryResponse
+                | TraceSpansAggregationQueryResponse
+                | TraceSpansAttributeBreakdownQueryResponse
+                | TraceSpansQueryResponse
+                | null,
+            columns: Column[],
+            chartSettings: ChartSettings
+        ) => AxisSeries<number | null>[]
+        xData: (
+            selectedXAxis: string | null,
+            response:
+                | ErrorTrackingQueryResponse
+                | HogQLAutocompleteResponse
+                | HogQLMetadataResponse
+                | HogQLQueryResponse<any[]>
+                | HogQueryResponse
+                | LogAttributesQueryResponse
+                | LogValuesQueryResponse
+                | MetricsQueryResponse
+                | Record<string, any>
+                | SessionsQueryResponse
+                | TraceSpansAggregationQueryResponse
+                | TraceSpansAttributeBreakdownQueryResponse
+                | TraceSpansQueryResponse
+                | null,
+            columns: Column[]
+        ) => AxisSeries<string> | null
+        sourceTabularColumns: (
+            tabularColumnSettings: (SelectedYAxis | null)[] | null,
+            response:
+                | ErrorTrackingQueryResponse
+                | HogQLAutocompleteResponse
+                | HogQLMetadataResponse
+                | HogQLQueryResponse<any[]>
+                | HogQueryResponse
+                | LogAttributesQueryResponse
+                | LogValuesQueryResponse
+                | MetricsQueryResponse
+                | Record<string, any>
+                | SessionsQueryResponse
+                | TraceSpansAggregationQueryResponse
+                | TraceSpansAttributeBreakdownQueryResponse
+                | TraceSpansQueryResponse
+                | null,
+            columns: Column[]
+        ) => AxisSeries<any>[]
+        sourceTabularData: (
+            sourceTabularColumns: AxisSeries<any>[],
+            response:
+                | ErrorTrackingQueryResponse
+                | HogQLAutocompleteResponse
+                | HogQLMetadataResponse
+                | HogQLQueryResponse<any[]>
+                | HogQueryResponse
+                | LogAttributesQueryResponse
+                | LogValuesQueryResponse
+                | MetricsQueryResponse
+                | Record<string, any>
+                | SessionsQueryResponse
+                | TraceSpansAggregationQueryResponse
+                | TraceSpansAttributeBreakdownQueryResponse
+                | TraceSpansQueryResponse
+                | null,
+            chartSettings: ChartSettings
+        ) => TableDataCell<any>[][]
+        tabularColumns: (
+            sourceTabularColumns: AxisSeries<any>[],
+            sourceTabularData: TableDataCell<any>[][],
+            isTransposed: boolean
+        ) => AxisSeries<any>[]
+        tabularData: (
+            sourceTabularColumns: AxisSeries<any>[],
+            sourceTabularData: TableDataCell<any>[][],
+            isTransposed: boolean
+        ) => TableDataCell<any>[][]
+        dataVisualizationProps: (arg: any) => DataVisualizationLogicProps
+        effectiveVisualizationType: (
+            visualizationType: ChartDisplayType,
+            autoVisualizationType: ChartDisplayType
+        ) => ChartDisplayType
+        autoVisualizationType: (
+            columns: Column[],
+            response:
+                | ErrorTrackingQueryResponse
+                | HogQLAutocompleteResponse
+                | HogQLMetadataResponse
+                | HogQLQueryResponse<any[]>
+                | HogQueryResponse
+                | LogAttributesQueryResponse
+                | LogValuesQueryResponse
+                | MetricsQueryResponse
+                | Record<string, any>
+                | SessionsQueryResponse
+                | TraceSpansAggregationQueryResponse
+                | TraceSpansAttributeBreakdownQueryResponse
+                | TraceSpansQueryResponse
+                | null
+        ) => ChartDisplayType
+        isTableVisualization: (effectiveVisualizationType: ChartDisplayType) => boolean
+        showTableSettings: (effectiveVisualizationType: ChartDisplayType) => boolean
+        isColumnPinned: (pinnedColumns: string[]) => (columnName: string) => boolean
+        isPinningEnabled: (activeSceneId: string | null, isTransposed: boolean) => boolean
+    }
+}
+
+export type dataVisualizationLogicType = MakeLogicType<
+    dataVisualizationLogicValues,
+    dataVisualizationLogicActions,
+    DataVisualizationLogicProps,
+    dataVisualizationLogicMeta
+>
+
+export const dataVisualizationLogic = kea<dataVisualizationLogicType>([
+    key((props) => props.key),
+    path(['queries', 'nodes', 'DataVisualization', 'dataVisualizationLogic']),
+    connect((props: DataVisualizationLogicProps) => ({
+        values: [
+            teamLogic,
+            ['currentTeamId'],
+            dataNodeLogic({
+                cachedResults: props.cachedResults,
+                key: props.key,
+                query: props.query.source,
+                dataNodeCollectionId: props.dataNodeCollectionId,
+                loadPriority: props.loadPriority,
+                variablesOverride: props.variablesOverride,
+                limitContext: props.limitContext,
+            }),
+            ['response', 'responseLoading', 'responseError', 'queryCancelled', 'hasMoreData'],
+            themeLogic,
+            ['isDarkModeOn'],
+            sceneLogic,
+            ['activeSceneId'],
+        ],
+        actions: [
+            dataNodeLogic({
+                cachedResults: props.cachedResults,
+                key: props.key,
+                query: props.query.source,
+                dataNodeCollectionId: props.dataNodeCollectionId,
+                loadPriority: props.loadPriority,
+                variablesOverride: props.variablesOverride,
+                limitContext: props.limitContext,
+            }),
+            ['loadData'],
+        ],
+    })),
+    afterMount(({ actions, props }) => {
+        if (props.query) {
+            // populate fields like tabularColumnSettings, etc
+            actions._setQuery(props.query)
+        }
+    }),
+    propsChanged(({ actions, values, props }) => {
+        if (props.query && !objectsEqual(props.query, values.query)) {
+            actions._setQuery(props.query)
+        }
+    }),
+    props({ query: { source: {} } } as DataVisualizationLogicProps),
+    actions(({ values }) => ({
+        setVisualizationType: (visualizationType: ChartDisplayType) => ({ visualizationType }),
+        updateXSeries: (columnName: string) => ({
+            columnName,
+        }),
+        updateSeriesIndex: (seriesIndex: number, columnName: string, settings?: AxisSeriesSettings) => ({
+            seriesIndex,
+            columnName,
+            settings,
+        }),
+        updateSeries: (columnName: string, settings?: AxisSeriesSettings) => ({ columnName, settings }),
+        addYSeries: (columnName?: string, settings?: AxisSeriesSettings) => ({
+            columnName,
+            settings,
+            allNumericalColumns: values.numericalColumns,
+        }),
+        addSeries: (columnName?: string, settings?: AxisSeriesSettings) => ({
+            columnName,
+            settings,
+            allColumns: values.columns,
+        }),
+        deleteYSeries: (seriesIndex: number) => ({ seriesIndex }),
+        clearAxis: true,
+        setQuery: (setter: (node: DataVisualizationNode) => DataVisualizationNode) => ({ setter }),
+        updateChartSettings: (settings: ChartSettings) => ({ settings }),
+        setSideBarTab: (tab: SideBarTab) => ({ tab }),
+        toggleChartSettingsPanel: (open?: boolean) => ({ open }),
+        addConditionalFormattingRule: (rule?: ConditionalFormattingRule) => ({
+            rule: rule ?? { id: uuid() },
+            isDarkModeOn: values.isDarkModeOn,
+        }),
+        updateConditionalFormattingRule: (rule: ConditionalFormattingRule, deleteRule?: boolean) => ({
+            rule,
+            deleteRule,
+            colorMode: values.isDarkModeOn ? 'dark' : 'light',
+        }),
+        setConditionalFormattingRulesPanelActiveKeys: (keys: string[]) => ({ keys }),
+        toggleColumnPin: (columnName: string) => ({ columnName }),
+        setTableSorted: true,
+        setTransposeResults: (transpose: boolean) => ({ transpose }),
+        _setQuery: (node: DataVisualizationNode) => ({ node }),
+    })),
+    reducers(({ props }) => ({
+        query: [
+            props.query,
+            {
+                setQuery: (state, { setter }) => setter(state),
+                _setQuery: (_, { node }) => node,
+            },
+        ],
+        visualizationType: [
+            props.query.display ?? ChartDisplayType.ActionsTable,
+            {
+                setVisualizationType: (_, { visualizationType }) => visualizationType,
+                _setQuery: (_, { node }) => node.display ?? ChartDisplayType.ActionsTable,
+            },
+        ],
+        tabularColumnSettings: [
+            null as (SelectedYAxis | null)[] | null,
+            {
+                _setQuery: (state, { node }) => {
+                    if (node.tableSettings?.columns) {
+                        return node.tableSettings.columns.map((column) => ({
+                            name: column.column,
+                            settings: cloneOrDefaultSettings(column.settings),
+                        }))
+                    }
+                    return state
+                },
+                clearAxis: () => null,
+                addSeries: (state, { columnName, settings, allColumns }) => {
+                    if (!state && columnName !== undefined) {
+                        return [{ name: columnName, settings: settings ?? DefaultAxisSettings() }]
+                    }
+
+                    if (!state) {
+                        return [null]
+                    }
+
+                    if (!columnName) {
+                        const ungraphedColumns = allColumns.filter((n) => !state.map((m) => m?.name).includes(n.name))
+                        if (ungraphedColumns.length > 0) {
+                            return [
+                                ...state,
+                                { name: ungraphedColumns[0].name, settings: settings ?? DefaultAxisSettings() },
+                            ]
+                        }
+                    }
+
+                    return [
+                        ...state,
+                        columnName === undefined
+                            ? null
+                            : { name: columnName, settings: settings ?? DefaultAxisSettings() },
+                    ]
+                },
+                updateSeries: (state, { columnName, settings }) => {
+                    if (!state) {
+                        return null
+                    }
+
+                    const ySeries = [...state]
+
+                    const index = ySeries.findIndex((n) => n?.name === columnName)
+                    if (index < 0) {
+                        return ySeries
+                    }
+
+                    ySeries[index] = {
+                        name: columnName,
+                        settings: mergeObject({}, ySeries[index]?.settings ?? {}, settings),
+                    }
+                    return ySeries
+                },
+                updateSeriesIndex: (state, { seriesIndex, columnName, settings }) => {
+                    if (!state) {
+                        return null
+                    }
+
+                    const ySeries = [...state]
+
+                    ySeries[seriesIndex] = {
+                        name: columnName,
+                        settings: mergeObject({}, ySeries[seriesIndex]?.settings ?? {}, settings),
+                    }
+                    return ySeries
+                },
+            },
+        ],
+        selectedXAxis: [
+            props.query.chartSettings?.xAxis?.column ?? null,
+            {
+                _setQuery: (_, { node }) => node.chartSettings?.xAxis?.column ?? null,
+                clearAxis: () => null,
+                updateXSeries: (_, { columnName }) => columnName,
+            },
+        ],
+        selectedYAxis: [
+            (props.query.chartSettings?.yAxis?.map((axis) => ({
+                name: axis.column,
+                settings: cloneOrDefaultSettings(axis.settings),
+            })) ?? null) as (SelectedYAxis | null)[] | null,
+            {
+                _setQuery: (state, { node }) => {
+                    if (node.chartSettings?.yAxis) {
+                        return node.chartSettings.yAxis.map((axis) => ({
+                            name: axis.column,
+                            settings: cloneOrDefaultSettings(axis.settings),
+                        }))
+                    }
+                    return state
+                },
+                clearAxis: () => null,
+                addYSeries: (state, { columnName, settings, allNumericalColumns }) => {
+                    if (!state && columnName !== undefined) {
+                        return [{ name: columnName, settings: settings ?? DefaultAxisSettings() }]
+                    }
+
+                    if (!state) {
+                        return [null]
+                    }
+
+                    if (!columnName) {
+                        const ungraphedColumns = allNumericalColumns.filter(
+                            (n) => !state.map((m) => m?.name).includes(n.name)
+                        )
+                        if (ungraphedColumns.length > 0) {
+                            return [
+                                ...state,
+                                { name: ungraphedColumns[0].name, settings: settings ?? DefaultAxisSettings() },
+                            ]
+                        }
+                    }
+
+                    return [
+                        ...state,
+                        columnName === undefined
+                            ? null
+                            : { name: columnName, settings: settings ?? DefaultAxisSettings() },
+                    ]
+                },
+                updateSeriesIndex: (state, { seriesIndex, columnName, settings }) => {
+                    if (!state) {
+                        return null
+                    }
+
+                    const ySeries = [...state]
+
+                    ySeries[seriesIndex] = {
+                        name: columnName,
+                        settings: mergeObject({}, ySeries[seriesIndex]?.settings ?? {}, settings),
+                    }
+                    return ySeries
+                },
+                updateSeries: (state, { columnName, settings }) => {
+                    if (!state) {
+                        return null
+                    }
+
+                    const ySeries = [...state]
+
+                    const index = ySeries.findIndex((n) => n?.name === columnName)
+                    if (index < 0) {
+                        return ySeries
+                    }
+
+                    ySeries[index] = {
+                        name: columnName,
+                        settings: mergeObject({}, ySeries[index]?.settings ?? {}, settings),
+                    }
+                    return ySeries
+                },
+                deleteYSeries: (state, { seriesIndex }) => {
+                    if (!state) {
+                        return null
+                    }
+
+                    if (state.length <= 1) {
+                        return [null]
+                    }
+
+                    const ySeries = [...state]
+
+                    ySeries.splice(seriesIndex, 1)
+
+                    return ySeries
+                },
+            },
+        ],
+        activeSideBarTab: [
+            SideBarTab.Series as SideBarTab,
+            {
+                setSideBarTab: (_state, { tab }) => tab,
+            },
+        ],
+        chartSettings: [
+            props.query.chartSettings ?? ({} as ChartSettings),
+            {
+                _setQuery: (state, { node }) => node.chartSettings ?? state,
+                updateChartSettings: (state, { settings }) => {
+                    return mergeChartSettings(state, settings)
+                },
+            },
+        ],
+        isChartSettingsPanelOpen: [
+            false as boolean,
+            {
+                toggleChartSettingsPanel: (state, { open }) => {
+                    if (open === undefined) {
+                        return !state
+                    }
+
+                    return open
+                },
+                setVisualizationType: (state, { visualizationType }) => {
+                    if (state) {
+                        return true
+                    }
+
+                    return visualizationType !== ChartDisplayType.ActionsTable
+                },
+            },
+        ],
+        conditionalFormattingRules: [
+            [] as ConditionalFormattingRule[],
+            {
+                _setQuery: (state, { node }) => {
+                    if (node.tableSettings?.conditionalFormatting) {
+                        return node.tableSettings.conditionalFormatting
+                    }
+                    return state
+                },
+                addConditionalFormattingRule: (state, { rule, isDarkModeOn }) => {
+                    const rules = [...state]
+
+                    rules.push({
+                        templateId: FORMATTING_TEMPLATES[0].id,
+                        columnName: '',
+                        bytecode: [],
+                        input: '',
+                        color: isDarkModeOn ? RGBToHex(lightenDarkenColor('#FFADAD', -30)) : '#FFADAD',
+                        ...rule,
+                    })
+
+                    return rules
+                },
+                updateConditionalFormattingRule: (state, { rule, deleteRule, colorMode }) => {
+                    const rules = [...state]
+
+                    const index = rules.findIndex((n) => n.id === rule.id)
+                    if (index === -1) {
+                        return rules
+                    }
+
+                    if (deleteRule) {
+                        rules.splice(index, 1)
+                        return rules
+                    }
+
+                    rules[index] = { ...rule, colorMode: colorMode as 'light' | 'dark' }
+                    return rules
+                },
+            },
+        ],
+        conditionalFormattingRulesPanelActiveKeys: [
+            [] as string[],
+            {
+                _setQuery: (state, { node }) => {
+                    if (node.tableSettings?.conditionalFormatting) {
+                        return node.tableSettings.conditionalFormatting.map((n) => n.id)
+                    }
+                    return state
+                },
+                addConditionalFormattingRule: (state, { rule: { id } }) => {
+                    return [...state, id]
+                },
+                setConditionalFormattingRulesPanelActiveKeys: (_, { keys }) => {
+                    return [...keys]
+                },
+            },
+        ],
+        pinnedColumns: [
+            [] as string[],
+            {
+                persist: true,
+                // strips the dashboard suffix from the key so pinned columns persist across
+                // dashboard and insight views
+                storageKey: `data-visualization-pinned-columns-${props.key.split('/on-dashboard-')[0]}`,
+            },
+            {
+                _setQuery: (state, { node }) => {
+                    return node.tableSettings?.pinnedColumns ?? state
+                },
+                toggleColumnPin: (state, { columnName }) => {
+                    if (state.includes(columnName)) {
+                        return state.filter((k: string) => k !== columnName)
+                    }
+                    return [...state, columnName]
+                },
+            },
+        ],
+        hasSortedTable: [
+            false,
+            {
+                setTableSorted: () => true,
+            },
+        ],
+    })),
+    selectors({
+        columns: [
+            (s) => [s.response],
+            (
+                response:
+                    | Record<string, any>
+                    | null
+                    | import('~/queries/schema/schema-general').ErrorTrackingQueryResponse
+                    | import('~/queries/schema/schema-general').HogQLAutocompleteResponse
+                    | import('~/queries/schema/schema-general').HogQLMetadataResponse
+                    | import('~/queries/schema/schema-general').HogQLQueryResponse<any[]>
+                    | import('~/queries/schema/schema-general').HogQueryResponse
+                    | import('~/queries/schema/schema-general').LogAttributesQueryResponse
+                    | import('~/queries/schema/schema-general').LogValuesQueryResponse
+                    | import('~/queries/schema/schema-general').MetricsQueryResponse
+                    | import('~/queries/schema/schema-general').SessionsQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansAggregationQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansAttributeBreakdownQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansQueryResponse
+            ): Column[] => {
+                if (!response) {
+                    return []
+                }
+
+                const columns: string[] =
+                    'columns' in response && Array.isArray(response.columns) ? response.columns : []
+                const types: string[][] = 'types' in response && Array.isArray(response.types) ? response.types : []
+
+                return columns.map((column, index) => {
+                    const type = types[index]?.[1]
+                    const friendlyClickhouseTypeName = toFriendlyClickhouseTypeName(type)
+
+                    return {
+                        name: column,
+                        type: {
+                            name: friendlyClickhouseTypeName,
+                            isNumerical: isNumericalType(friendlyClickhouseTypeName),
+                        },
+                        label: `${column} - ${type}`,
+                        dataIndex: index,
+                    }
+                })
+            },
+            { resultEqualityCheck: objectsEqual },
+        ],
+        numericalColumns: [
+            (s) => [s.columns],
+            (columns: Column[]): Column[] => {
+                return columns.filter((n) => n.type.isNumerical)
+            },
+        ],
+        hasDateTimeColumns: [
+            (s) => [s.columns],
+            (columns: Column[]): boolean => columns.some((column) => ['DATE', 'DATETIME'].includes(column.type.name)),
+        ],
+        dashboardId: [() => [(_, props) => props.dashboardId], (dashboardId) => dashboardId ?? null],
+        showEditingUI: [
+            (s) => [(_, props: DataVisualizationLogicProps) => props.editMode, s.dashboardId],
+            (editMode: boolean | undefined, dashboardId) => {
+                if (dashboardId) {
+                    return false
+                }
+                return !!editMode
+            },
+        ],
+        showResultControls: [
+            (s) => [(_, props: DataVisualizationLogicProps) => props.editMode, s.dashboardId],
+            (editMode: boolean | undefined, dashboardId) => {
+                if (editMode) {
+                    return true
+                }
+
+                return !dashboardId
+            },
+        ],
+        presetChartHeight: [
+            (s, props) => [props.key, s.dashboardId, s.activeSceneId],
+            (key: string, dashboardId, activeSceneId: string | null) => {
+                // Keys for SQL editor visualizations can render outside the SQLEditor scene,
+                // e.g. in embedded mode, so key matching keeps sizing consistent.
+                const sqlEditorVisualization =
+                    activeSceneId === Scene.SQLEditor ||
+                    key.includes('SQLEditor') ||
+                    key.startsWith('data-warehouse-editor-data-node-')
+
+                if (activeSceneId === Scene.Insight) {
+                    return true
+                }
+
+                return !key.includes('new-SQL') && !dashboardId && !sqlEditorVisualization
+            },
+        ],
+        sourceFeatures: [
+            (_, props) => [props.query],
+            (query: DataVisualizationNode): Set<QueryFeature> => getQueryFeatures(query.source),
+        ],
+        isShowingCachedResults: [
+            () => [(_, props) => props.cachedResults ?? null],
+            (cachedResults: AnyResponseType | null): boolean => !!cachedResults,
+        ],
+        isTransposed: [
+            (s) => [s.query],
+            (query: DataVisualizationNode): boolean => query.tableSettings?.transpose ?? false,
+        ],
+        yData: [
+            (s) => [s.selectedYAxis, s.response, s.columns, s.chartSettings],
+            (
+                ySeries: (SelectedYAxis | null)[] | null,
+                response:
+                    | Record<string, any>
+                    | null
+                    | import('~/queries/schema/schema-general').ErrorTrackingQueryResponse
+                    | import('~/queries/schema/schema-general').HogQLAutocompleteResponse
+                    | import('~/queries/schema/schema-general').HogQLMetadataResponse
+                    | import('~/queries/schema/schema-general').HogQLQueryResponse<any[]>
+                    | import('~/queries/schema/schema-general').HogQueryResponse
+                    | import('~/queries/schema/schema-general').LogAttributesQueryResponse
+                    | import('~/queries/schema/schema-general').LogValuesQueryResponse
+                    | import('~/queries/schema/schema-general').MetricsQueryResponse
+                    | import('~/queries/schema/schema-general').SessionsQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansAggregationQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansAttributeBreakdownQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansQueryResponse,
+                columns: Column[],
+                chartSettings: ChartSettings
+            ): AxisSeries<number | null>[] => {
+                if (!response || ySeries === null || ySeries.length === 0) {
+                    return [EmptyYAxisSeries]
+                }
+
+                const showNullsAsZero = chartSettings.showNullsAsZero ?? false
+                const data =
+                    'results' in response && Array.isArray(response.results)
+                        ? response.results
+                        : 'result' in response && Array.isArray(response.result)
+                          ? response.result
+                          : []
+
+                return ySeries
+                    .map((series): AxisSeries<number | null> | null => {
+                        if (!series) {
+                            return EmptyYAxisSeries
+                        }
+
+                        const column = columns.find((n) => n.name === series.name)
+                        if (!column) {
+                            return EmptyYAxisSeries
+                        }
+
+                        return {
+                            column,
+                            data: data.map((n) => {
+                                try {
+                                    const multiplier = series.settings.formatting?.style === 'percent' ? 100 : 1
+
+                                    if (series.settings.formatting?.decimalPlaces) {
+                                        return parseFloat(
+                                            (parseFloat(n[column.dataIndex]) * multiplier).toFixed(
+                                                series.settings.formatting.decimalPlaces
+                                            )
+                                        )
+                                    }
+
+                                    const isNotANumber =
+                                        Number.isNaN(n[column.dataIndex]) ||
+                                        n[column.dataIndex] === undefined ||
+                                        n[column.dataIndex] === null
+                                    if (isNotANumber) {
+                                        return showNullsAsZero ? 0 : null
+                                    }
+
+                                    const isInt = Number.isInteger(n[column.dataIndex])
+                                    return isInt
+                                        ? parseInt(n[column.dataIndex], 10) * multiplier
+                                        : parseFloat(n[column.dataIndex]) * multiplier
+                                } catch {
+                                    return showNullsAsZero ? 0 : null
+                                }
+                            }),
+                            settings: series.settings,
+                        }
+                    })
+                    .filter((series): series is AxisSeries<number | null> => Boolean(series))
+            },
+        ],
+        xData: [
+            (s) => [s.selectedXAxis, s.response, s.columns],
+            (
+                xSeries: string | null,
+                response:
+                    | Record<string, any>
+                    | null
+                    | import('~/queries/schema/schema-general').ErrorTrackingQueryResponse
+                    | import('~/queries/schema/schema-general').HogQLAutocompleteResponse
+                    | import('~/queries/schema/schema-general').HogQLMetadataResponse
+                    | import('~/queries/schema/schema-general').HogQLQueryResponse<any[]>
+                    | import('~/queries/schema/schema-general').HogQueryResponse
+                    | import('~/queries/schema/schema-general').LogAttributesQueryResponse
+                    | import('~/queries/schema/schema-general').LogValuesQueryResponse
+                    | import('~/queries/schema/schema-general').MetricsQueryResponse
+                    | import('~/queries/schema/schema-general').SessionsQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansAggregationQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansAttributeBreakdownQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansQueryResponse,
+                columns: Column[]
+            ): AxisSeries<string> | null => {
+                if (!response) {
+                    return {
+                        column: {
+                            name: 'None',
+                            type: {
+                                name: 'STRING',
+                                isNumerical: false,
+                            },
+                            label: 'None',
+                            dataIndex: -1,
+                        },
+                        data: [],
+                    }
+                }
+
+                const data =
+                    ('results' in response ? response.results : 'result' in response ? response.result : null) ?? []
+
+                if (xSeries === null) {
+                    return {
+                        column: {
+                            name: 'None',
+                            type: {
+                                name: 'STRING',
+                                isNumerical: false,
+                            },
+                            label: 'None',
+                            dataIndex: -1,
+                        },
+                        data: data.map(() => ''),
+                    }
+                }
+
+                const column = columns.find((n) => n.name === xSeries)
+                if (!column) {
+                    return null
+                }
+
+                return {
+                    column,
+                    data: data.map((n: any) => n[column.dataIndex]),
+                }
+            },
+        ],
+        sourceTabularColumns: [
+            (s) => [s.tabularColumnSettings, s.response, s.columns],
+            (
+                tabularColumnSettings: (SelectedYAxis | null)[] | null,
+                response:
+                    | Record<string, any>
+                    | null
+                    | import('~/queries/schema/schema-general').ErrorTrackingQueryResponse
+                    | import('~/queries/schema/schema-general').HogQLAutocompleteResponse
+                    | import('~/queries/schema/schema-general').HogQLMetadataResponse
+                    | import('~/queries/schema/schema-general').HogQLQueryResponse<any[]>
+                    | import('~/queries/schema/schema-general').HogQueryResponse
+                    | import('~/queries/schema/schema-general').LogAttributesQueryResponse
+                    | import('~/queries/schema/schema-general').LogValuesQueryResponse
+                    | import('~/queries/schema/schema-general').MetricsQueryResponse
+                    | import('~/queries/schema/schema-general').SessionsQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansAggregationQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansAttributeBreakdownQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansQueryResponse,
+                columns: Column[]
+            ): AxisSeries<any>[] => {
+                if (!response) {
+                    return []
+                }
+
+                return columns.map((col) => {
+                    const series = (tabularColumnSettings || []).find((n) => n?.name === col.name)
+
+                    return {
+                        column: col,
+                        data: [],
+                        settings: series?.settings ?? DefaultAxisSettings(),
+                    }
+                })
+            },
+        ],
+        sourceTabularData: [
+            (s) => [s.sourceTabularColumns, s.response, s.chartSettings],
+            (
+                sourceTabularColumns: AxisSeries<any>[],
+                response:
+                    | Record<string, any>
+                    | null
+                    | import('~/queries/schema/schema-general').ErrorTrackingQueryResponse
+                    | import('~/queries/schema/schema-general').HogQLAutocompleteResponse
+                    | import('~/queries/schema/schema-general').HogQLMetadataResponse
+                    | import('~/queries/schema/schema-general').HogQLQueryResponse<any[]>
+                    | import('~/queries/schema/schema-general').HogQueryResponse
+                    | import('~/queries/schema/schema-general').LogAttributesQueryResponse
+                    | import('~/queries/schema/schema-general').LogValuesQueryResponse
+                    | import('~/queries/schema/schema-general').MetricsQueryResponse
+                    | import('~/queries/schema/schema-general').SessionsQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansAggregationQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansAttributeBreakdownQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansQueryResponse,
+                chartSettings: ChartSettings
+            ): TableDataCell<any>[][] => {
+                if (!response) {
+                    return []
+                }
+
+                const showNullsAsZero = chartSettings.showNullsAsZero ?? false
+                const data =
+                    'results' in response && Array.isArray(response.results)
+                        ? response.results
+                        : 'result' in response && Array.isArray(response.result)
+                          ? response.result
+                          : []
+
+                return data.map((row): TableDataCell<any>[] => {
+                    return sourceTabularColumns.map((column): TableDataCell<any> => {
+                        if (!column) {
+                            return {
+                                value: null,
+                                formattedValue: null,
+                                type: 'STRING',
+                            }
+                        }
+
+                        const value = row[column.column.dataIndex]
+
+                        if (column.column.type.isNumerical) {
+                            try {
+                                if (value === null) {
+                                    const nullReplacement = showNullsAsZero ? 0 : null
+
+                                    return {
+                                        value: nullReplacement,
+                                        formattedValue: formatDataWithSettings(nullReplacement, column.settings),
+                                        type: column.column.type.name,
+                                    }
+                                }
+
+                                const multiplier = column.settings?.formatting?.style === 'percent' ? 100 : 1
+
+                                if (column.settings?.formatting?.decimalPlaces) {
+                                    return {
+                                        value,
+                                        formattedValue: formatDataWithSettings(
+                                            parseFloat(
+                                                (parseFloat(value.toString()) * multiplier).toFixed(
+                                                    column.settings.formatting.decimalPlaces
+                                                )
+                                            ),
+                                            column.settings
+                                        ),
+                                        type: column.column.type.name,
+                                    }
+                                }
+
+                                const isInt = Number.isInteger(value)
+                                return {
+                                    value,
+                                    formattedValue: formatDataWithSettings(
+                                        isInt
+                                            ? parseInt(value.toString(), 10) * multiplier
+                                            : parseFloat(value.toString()) * multiplier,
+                                        column.settings
+                                    ),
+                                    type: column.column.type.name,
+                                }
+                            } catch {
+                                return {
+                                    value: 0,
+                                    formattedValue: '0',
+                                    type: column.column.type.name,
+                                }
+                            }
+                        }
+
+                        return {
+                            value: convertTableValue(value, column.column.type.name),
+                            formattedValue: formatDataWithSettings(value, column.settings),
+                            type: column.column.type.name,
+                        }
+                    })
+                })
+            },
+        ],
+        tabularColumns: [
+            (s) => [s.sourceTabularColumns, s.sourceTabularData, s.isTransposed],
+            (
+                sourceTabularColumns: AxisSeries<any>[],
+                sourceTabularData: TableDataCell<any>[][],
+                isTransposed: boolean
+            ): AxisSeries<any>[] => {
+                if (!isTransposed) {
+                    return sourceTabularColumns
+                }
+
+                if (sourceTabularColumns.length === 0) {
+                    return []
+                }
+
+                return [
+                    {
+                        column: {
+                            name: TRANSPOSED_FIELD_COLUMN_NAME,
+                            type: {
+                                name: 'STRING',
+                                isNumerical: false,
+                            },
+                            label: 'Field',
+                            dataIndex: -1,
+                        },
+                        data: [],
+                        settings: {
+                            ...DefaultAxisSettings(),
+                            display: {
+                                label: 'Field',
+                            },
+                        },
+                    },
+                    ...sourceTabularData.map(
+                        (_, index): AxisSeries<any> => ({
+                            column: {
+                                name: `${TRANSPOSED_ROW_COLUMN_PREFIX}${index}`,
+                                type: {
+                                    name: 'STRING',
+                                    isNumerical: false,
+                                },
+                                label: `Row ${index + 1}`,
+                                dataIndex: -1,
+                            },
+                            data: [],
+                            settings: {
+                                ...DefaultAxisSettings(),
+                                display: {
+                                    label: `Row ${index + 1}`,
+                                },
+                            },
+                        })
+                    ),
+                ]
+            },
+        ],
+        tabularData: [
+            (s) => [s.sourceTabularColumns, s.sourceTabularData, s.isTransposed],
+            (
+                sourceTabularColumns: AxisSeries<any>[],
+                sourceTabularData: TableDataCell<any>[][],
+                isTransposed: boolean
+            ): TableDataCell<any>[][] => {
+                if (!isTransposed) {
+                    return sourceTabularData
+                }
+
+                if (sourceTabularData.length === 0) {
+                    return []
+                }
+
+                return sourceTabularColumns.map((column, columnIndex) => [
+                    {
+                        value: column.column.name,
+                        formattedValue: null,
+                        type: 'STRING',
+                        sourceColumnName: column.column.name,
+                        isTransposedHeader: true,
+                    },
+                    ...sourceTabularData.map((row) => ({
+                        ...row[columnIndex],
+                        sourceColumnName: column.column.name,
+                    })),
+                ])
+            },
+        ],
+        dataVisualizationProps: [() => [(_, props) => props], (props): DataVisualizationLogicProps => props],
+        effectiveVisualizationType: [
+            (s) => [s.visualizationType, s.autoVisualizationType],
+            (visualizationType: ChartDisplayType, autoVisualizationType: ChartDisplayType): ChartDisplayType => {
+                if (visualizationType === ChartDisplayType.Auto) {
+                    return autoVisualizationType
+                }
+
+                return visualizationType
+            },
+        ],
+        autoVisualizationType: [
+            (s) => [s.columns, s.response],
+            (
+                columns: Column[],
+                response:
+                    | Record<string, any>
+                    | null
+                    | import('~/queries/schema/schema-general').ErrorTrackingQueryResponse
+                    | import('~/queries/schema/schema-general').HogQLAutocompleteResponse
+                    | import('~/queries/schema/schema-general').HogQLMetadataResponse
+                    | import('~/queries/schema/schema-general').HogQLQueryResponse<any[]>
+                    | import('~/queries/schema/schema-general').HogQueryResponse
+                    | import('~/queries/schema/schema-general').LogAttributesQueryResponse
+                    | import('~/queries/schema/schema-general').LogValuesQueryResponse
+                    | import('~/queries/schema/schema-general').MetricsQueryResponse
+                    | import('~/queries/schema/schema-general').SessionsQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansAggregationQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansAttributeBreakdownQueryResponse
+                    | import('~/queries/schema/schema-general').TraceSpansQueryResponse
+            ): ChartDisplayType => getAutoVisualizationType(columns, response),
+        ],
+        isTableVisualization: [
+            (s) => [s.effectiveVisualizationType],
+            (visualizationType: ChartDisplayType): boolean =>
+                // BoldNumber relies on yAxis formatting so it's considered a table visualization
+                visualizationType === ChartDisplayType.ActionsTable ||
+                visualizationType === ChartDisplayType.BoldNumber,
+        ],
+        showTableSettings: [
+            (s) => [s.effectiveVisualizationType],
+            (visualizationType: ChartDisplayType): boolean =>
+                visualizationType === ChartDisplayType.ActionsTable ||
+                visualizationType === ChartDisplayType.BoldNumber,
+        ],
+        isColumnPinned: [
+            (s) => [s.pinnedColumns],
+            (pinnedColumns: string[]) =>
+                (columnName: string): boolean => {
+                    return pinnedColumns.includes(columnName)
+                },
+        ],
+        isPinningEnabled: [
+            (s) => [s.activeSceneId, s.isTransposed],
+            (activeSceneId: Scene | null, isTransposed: boolean): boolean => {
+                // disable column pinning in sql editor or when transposed
+                return activeSceneId !== Scene.SQLEditor && !isTransposed
+            },
+        ],
+    }),
+    sharedListeners(({ values, actions }) => ({
+        axesChanged: () => {
+            const yColumns =
+                values.selectedYAxis?.filter((n: SelectedYAxis | null): n is SelectedYAxis => Boolean(n)) ?? []
+            const xColumn: ChartAxis | undefined =
+                values.selectedXAxis !== null ? { column: values.selectedXAxis } : undefined
+            const columns =
+                values.tabularColumnSettings?.filter((n: SelectedYAxis | null): n is SelectedYAxis => Boolean(n)) ?? []
+
+            actions.setQuery((query) => ({
+                ...query,
+                chartSettings: {
+                    ...query.chartSettings,
+                    yAxis: yColumns.map((n) => ({ column: n.name, settings: cloneSettings(n.settings) })),
+                    xAxis: xColumn,
+                },
+                tableSettings: {
+                    ...query.tableSettings,
+                    columns: columns.map((n) => ({ column: n.name, settings: cloneSettings(n.settings) })),
+                },
+            }))
+        },
+        conditionalFormattingRules: () => {
+            const rules = values.conditionalFormattingRules
+            const saveableRules = rules.filter((n) => n.columnName && n.input && n.templateId && n.bytecode.length)
+
+            actions.setQuery((query) => ({
+                ...query,
+                tableSettings: {
+                    ...query.tableSettings,
+                    conditionalFormatting: saveableRules,
+                },
+            }))
+        },
+        pinnedColumnsChanged: () => {
+            actions.setQuery((query) => ({
+                ...query,
+                tableSettings: {
+                    ...query.tableSettings,
+                    pinnedColumns: values.pinnedColumns,
+                },
+            }))
+        },
+    })),
+    listeners(({ props, values, actions, sharedListeners }) => ({
+        updateChartSettings: ({ settings }) => {
+            actions.setQuery((query) => ({
+                ...query,
+                chartSettings: mergeChartSettings(query.chartSettings ?? ({} as ChartSettings), settings),
+            }))
+        },
+        setQuery: ({ setter }) => {
+            if (props.setQuery) {
+                props.setQuery(setter)
+            }
+        },
+        setVisualizationType: ({ visualizationType }) => {
+            actions.setQuery((query) => ({
+                ...query,
+                display: visualizationType,
+            }))
+
+            // Newly-picked pies default to labels on slices; existing pies (loaded with the type
+            // already set, so this listener never fires) keep the legacy value-on-slice default.
+            if (
+                visualizationType === ChartDisplayType.ActionsPie &&
+                values.chartSettings.pie?.sliceContent === undefined
+            ) {
+                actions.updateChartSettings({ pie: { sliceContent: 'labels' } })
+            }
+
+            if (
+                [ChartDisplayType.ActionsLineGraph, ChartDisplayType.ActionsAreaGraph].includes(visualizationType) &&
+                shouldUseFirstNumericColumnAsContinuousChartXAxis(
+                    values.columns,
+                    values.numericalColumns,
+                    values.selectedXAxis,
+                    values.selectedYAxis
+                )
+            ) {
+                const [xAxisColumn] = values.numericalColumns
+                const xAxisSeriesIndex =
+                    values.selectedYAxis?.findIndex((series) => series?.name === xAxisColumn.name) ?? -1
+
+                actions.updateXSeries(xAxisColumn.name)
+
+                if (xAxisSeriesIndex > -1) {
+                    actions.deleteYSeries(xAxisSeriesIndex)
+                }
+            }
+
+            if (visualizationType === ChartDisplayType.ScatterPlot) {
+                applyScatterXAxis(actions, values.columns, values.selectedXAxis, values.selectedYAxis)
+            }
+
+            if (visualizationType === ChartDisplayType.BoxPlot) {
+                actions.updateChartSettings({
+                    boxPlot: getAutoBoxPlotSettings(values.columns, values.chartSettings.boxPlot),
+                })
+            }
+
+            const isAutoHeatmap =
+                visualizationType === ChartDisplayType.Auto &&
+                getAutoVisualizationType(values.columns, values.response) === ChartDisplayType.TwoDimensionalHeatmap
+
+            if (visualizationType === ChartDisplayType.TwoDimensionalHeatmap || isAutoHeatmap) {
+                applyAutoHeatmapSettings(actions, values.columns, values.chartSettings.heatmap ?? {})
+            }
+        },
+        setTransposeResults: ({ transpose }) => {
+            actions.setQuery((query) => ({
+                ...query,
+                tableSettings: {
+                    ...query.tableSettings,
+                    transpose,
+                },
+            }))
+        },
+        toggleChartSettingsPanel: ({ open }) => {
+            const shouldOpen = open ?? !values.isChartSettingsPanelOpen
+            if (!shouldOpen) {
+                return
+            }
+
+            if (values.visualizationType !== ChartDisplayType.TwoDimensionalHeatmap) {
+                return
+            }
+
+            applyAutoHeatmapSettings(actions, values.columns, values.chartSettings.heatmap ?? {})
+        },
+        clearAxis: [sharedListeners.axesChanged],
+        updateXSeries: [sharedListeners.axesChanged],
+        addYSeries: [sharedListeners.axesChanged],
+        addSeries: [sharedListeners.axesChanged],
+        updateSeriesIndex: [sharedListeners.axesChanged],
+        updateSeries: [sharedListeners.axesChanged],
+        deleteYSeries: [sharedListeners.axesChanged],
+        updateConditionalFormattingRule: [sharedListeners.conditionalFormattingRules],
+        toggleColumnPin: [sharedListeners.pinnedColumnsChanged],
+    })),
+    subscriptions(({ actions, values }) => ({
+        columns: (value: Column[], oldValue: Column[]) => {
+            // If the response is cleared, then don't update any internal values
+            if (!values.response || (!(values.response as any).results && !(values.response as any).result)) {
+                return
+            }
+
+            // When query columns update, clear all internal values and re-setup tabular columns and chart series
+
+            const oldTabularColumnSettings: (SelectedYAxis | null)[] | null = JSON.parse(
+                JSON.stringify(values.tabularColumnSettings)
+            )
+
+            const currentColumnNames = new Set(value.map((column) => column.name))
+            const hasInvalidSelectedXAxis =
+                values.selectedXAxis !== null && !currentColumnNames.has(values.selectedXAxis)
+            const hasInvalidSelectedYAxis =
+                values.selectedYAxis?.some((series) => {
+                    if (series === null) {
+                        return false
+                    }
+
+                    const column = value.find((nextColumn) => nextColumn.name === series.name)
+                    return !column || !column.type.isNumerical
+                }) ?? false
+
+            if (hasInvalidSelectedXAxis || hasInvalidSelectedYAxis) {
+                actions.clearAxis()
+            } else if (oldValue && oldValue.length) {
+                if (JSON.stringify(value) !== JSON.stringify(oldValue)) {
+                    actions.clearAxis()
+                }
+            }
+
+            // Set up table columns
+            if (values.response && values.tabularColumnSettings === null) {
+                value.forEach((column) => {
+                    if (oldTabularColumnSettings) {
+                        const lastValue = oldTabularColumnSettings.find((n) => n?.name === column.name)
+                        return actions.addSeries(column.name, lastValue?.settings)
+                    }
+
+                    actions.addSeries(column.name)
+                })
+            }
+
+            // Set up chart series
+            if (values.response && values.selectedXAxis === null && values.selectedYAxis === null) {
+                const xAxisTypes = value.find((n) => n.type.name.indexOf('DATE') !== -1)
+                const yAxisTypes = value.filter((n) => n.type.isNumerical)
+
+                if (yAxisTypes) {
+                    yAxisTypes.forEach((y) => {
+                        if (oldTabularColumnSettings) {
+                            const lastValue = oldTabularColumnSettings.find((n) => n?.name === y.name)
+                            return actions.addYSeries(y.name, lastValue?.settings)
+                        }
+
+                        actions.addYSeries(y.name)
+                    })
+                }
+
+                if (xAxisTypes) {
+                    actions.updateXSeries(xAxisTypes.name)
+                } else {
+                    const yAxisColumnNames = new Set(yAxisTypes.map((column) => column.name))
+                    const firstRemainingColumn = value.find((column) => !yAxisColumnNames.has(column.name))
+
+                    if (firstRemainingColumn) {
+                        actions.updateXSeries(firstRemainingColumn.name)
+                    }
+                }
+            }
+
+            if (values.effectiveVisualizationType === ChartDisplayType.TwoDimensionalHeatmap) {
+                applyAutoHeatmapSettings(actions, value, values.chartSettings.heatmap ?? {})
+            }
+
+            if (values.effectiveVisualizationType === ChartDisplayType.BoxPlot) {
+                actions.updateChartSettings({
+                    boxPlot: getAutoBoxPlotSettings(value, values.chartSettings.boxPlot),
+                })
+            }
+
+            // The generic setup above only lands a numeric x for a scatter by luck (a DATE column or a
+            // non-numeric first column). Resolve it explicitly so an all-numeric query, a column change,
+            // or a persisted/assistant-created scatter still gets a plottable x axis.
+            if (values.effectiveVisualizationType === ChartDisplayType.ScatterPlot) {
+                applyScatterXAxis(actions, value, values.selectedXAxis, values.selectedYAxis)
+            }
+        },
+    })),
+])

@@ -1,0 +1,106 @@
+// Copyright IBM Corp. 2015, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package nomad
+
+import (
+	"fmt"
+	"slices"
+
+	"github.com/hashicorp/nomad/nomad/structs"
+)
+
+type jobNamespaceConstraintCheckHook struct {
+	srv *Server
+}
+
+func (jobNamespaceConstraintCheckHook) Name() string {
+	return "namespace-constraint-check"
+}
+
+func (c jobNamespaceConstraintCheckHook) Validate(job *structs.Job) (warnings []error, err error) {
+	// This was validated before and matches the WriteRequest namespace
+	ns, err := c.srv.State().NamespaceByName(nil, job.Namespace)
+	if err != nil {
+		return nil, err
+	}
+	if ns == nil {
+		return nil, fmt.Errorf("job %q is in nonexistent namespace %q", job.ID, job.Namespace)
+	}
+
+	var disallowedDrivers []string
+	for _, tg := range job.TaskGroups {
+		for _, t := range tg.Tasks {
+			if !taskValidateDriver(t, ns) {
+				disallowedDrivers = append(disallowedDrivers, t.Driver)
+			}
+		}
+	}
+	if len(disallowedDrivers) > 0 {
+		if len(disallowedDrivers) == 1 {
+			return nil, fmt.Errorf(
+				"used task driver %q is not allowed in namespace %q", disallowedDrivers[0], ns.Name,
+			)
+
+		} else {
+			return nil, fmt.Errorf(
+				"used task drivers %q are not allowed in namespace %q", disallowedDrivers, ns.Name,
+			)
+		}
+	}
+
+	var disallowedNetworkModes []string
+	for _, tg := range job.TaskGroups {
+		for _, network := range tg.Networks {
+			if allowed, network_mode := taskValidateNetworkMode(network, ns); !allowed {
+				disallowedNetworkModes = append(disallowedNetworkModes, network_mode)
+			}
+		}
+	}
+	if len(disallowedNetworkModes) > 0 {
+		if len(disallowedNetworkModes) == 1 {
+			return nil, fmt.Errorf(
+				"used group network mode %q is not allowed in namespace %q", disallowedNetworkModes[0], ns.Name,
+			)
+
+		} else {
+			return nil, fmt.Errorf(
+				"used group network modes %q are not allowed in namespace %q", disallowedNetworkModes, ns.Name,
+			)
+		}
+	}
+
+	return nil, nil
+}
+
+func taskValidateNetworkMode(network *structs.NetworkResource, ns *structs.Namespace) (bool, string) {
+	network_mode := "host"
+	if len(network.Mode) > 0 {
+		network_mode = network.Mode
+	}
+	if ns.Capabilities == nil {
+		return true, network_mode
+	}
+	allow := len(ns.Capabilities.EnabledNetworkModes) == 0
+	if slices.Contains(ns.Capabilities.EnabledNetworkModes, network_mode) {
+		allow = true
+	}
+	if slices.Contains(ns.Capabilities.DisabledNetworkModes, network_mode) {
+		allow = false
+	}
+	return allow, network_mode
+}
+
+func taskValidateDriver(task *structs.Task, ns *structs.Namespace) bool {
+	if ns.Capabilities == nil {
+		return true
+	}
+	allow := len(ns.Capabilities.EnabledTaskDrivers) == 0
+	if slices.Contains(ns.Capabilities.EnabledTaskDrivers, task.Driver) {
+		allow = true
+	}
+	if slices.Contains(ns.Capabilities.DisabledTaskDrivers, task.Driver) {
+		allow = false
+	}
+	return allow
+}

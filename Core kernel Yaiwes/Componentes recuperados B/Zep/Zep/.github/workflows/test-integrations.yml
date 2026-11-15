@@ -1,0 +1,123 @@
+name: Test Integration Packages
+
+on:
+  pull_request:
+    paths:
+      - 'integrations/**'
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/**'
+
+permissions:
+  contents: read
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.python.outputs.changes }}
+      typescript: ${{ steps.typescript.outputs.changes }}
+      go: ${{ steps.go.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
+        id: python
+        with:
+          filters: |
+            adk:
+              - 'integrations/adk/python/**'
+            autogen:
+              - 'integrations/autogen/python/**'
+            crewai:
+              - 'integrations/crewai/python/**'
+            livekit:
+              - 'integrations/livekit/python/**'
+            ag2:
+              - 'integrations/ag2/python/**'
+            ms-agent-framework:
+              - 'integrations/ms-agent-framework/python/**'
+            langgraph:
+              - 'integrations/langgraph/python/**'
+            pydantic-ai:
+              - 'integrations/pydantic-ai/python/**'
+            strands:
+              - 'integrations/strands/python/**'
+
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
+        id: typescript
+        with:
+          filters: |
+            adk:
+              - 'integrations/adk/typescript/**'
+            mastra:
+              - 'integrations/mastra/typescript/**'
+            vercel-ai:
+              - 'integrations/vercel-ai/typescript/**'
+
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
+        id: go
+        with:
+          filters: |
+            adk:
+              - 'integrations/adk/go/**'
+
+  test-python:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.python != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.detect-changes.outputs.python) }}
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Python integration
+        uses: ./.github/actions/test-python
+        with:
+          package: ${{ matrix.package }}
+          python-version: ${{ matrix.python-version }}
+        env:
+          ZEP_API_KEY: ${{ secrets.ZEP_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+
+  test-typescript:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.typescript != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.detect-changes.outputs.typescript) }}
+        node-version: ["20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test TypeScript integration
+        uses: ./.github/actions/test-typescript
+        with:
+          package: ${{ matrix.package }}
+          node-version: ${{ matrix.node-version }}
+        env:
+          ZEP_API_KEY: ${{ secrets.ZEP_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+
+  test-go:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.go != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.detect-changes.outputs.go) }}
+        go-version: ["1.26"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Go integration
+        uses: ./.github/actions/test-go
+        with:
+          package: ${{ matrix.package }}
+          go-version: ${{ matrix.go-version }}

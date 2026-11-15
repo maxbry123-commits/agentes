@@ -1,0 +1,369 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 SentinelOps Platform Contributors
+#
+# Profiles: default (no profile) = platform + sidecar
+#   docker compose up
+#   make platform-up
+# Ledger stack (postgres + platform + sidecar + ledger GraphQL):
+#   docker compose --profile ledger up
+#   make ledger-up
+# Runtime enforcement (egress-firewall):
+#   docker compose --profile enforcement up
+#   make enforcement-up
+# Full stack (adds console, demos, monitoring, ledger, enforcement):
+#   docker compose --profile full up
+#   make full-up
+#
+# Canonical ports / workflows: docs/dev/local-workflows.md
+# Wiring check: make check-wiring
+
+services:
+  # Database services
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: sentinelops
+      POSTGRES_USER: sentinelops
+      POSTGRES_PASSWORD: sentinelops_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./scripts/db/init-ledger-db.sh:/docker-entrypoint-initdb.d/init-ledger-db.sh
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinelops"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kept for future shared-cache consumers; ledger/sidecar do not depend on it today.
+  redis:
+    image: redis:7-alpine
+    # ports:
+    #   - "6379:6379"
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Platform services
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - SPEC_SERVICE_URL=http://spec-service:8001
+      - PROOF_SERVICE_URL=http://proof-service:8002
+      - BUILD_SERVICE_URL=http://build-orchestrator:8003
+      - EVIDENCE_SERVICE_URL=http://evidence-service:8004
+      - REPLAY_SERVICE_URL=http://replay-service:8005
+      - RUNTIME_SERVICE_URL=http://runtime-sidecar:8006
+    depends_on:
+      spec-service:
+        condition: service_healthy
+      proof-service:
+        condition: service_healthy
+      build-orchestrator:
+        condition: service_healthy
+      evidence-service:
+        condition: service_healthy
+      replay-service:
+        condition: service_healthy
+      runtime-sidecar:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  spec-service:
+    build:
+      context: ./services/spec-service
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  proof-service:
+    build:
+      context: ./services/proof-service
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - PORT=8002
+      - PROOF_CACHE_PATH=/tmp/proof-cache
+      - MORPH_ENABLED=false
+    volumes:
+      - proof_cache:/tmp/proof-cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  build-orchestrator:
+    build:
+      context: ./services/build-orchestrator
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - PORT=8003
+      - BUILD_CACHE_PATH=/tmp/build-cache
+    volumes:
+      - build_cache:/tmp/build-cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  evidence-service:
+    build:
+      context: ./services/evidence-service
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - PORT=8004
+      - DATABASE_URL=postgres://sentinelops:sentinelops_password@postgres:5432/sentinelops
+      - EVIDENCE_STORAGE_PATH=/tmp/evidence
+    volumes:
+      - evidence_data:/tmp/evidence
+      - ./external/CERT-V1:/root/external/CERT-V1:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  replay-service:
+    build:
+      context: ./services/replay-service
+      dockerfile: Dockerfile
+    ports:
+      - "8005:8005"
+    environment:
+      - PORT=8005
+      - REPLAY_WORKING_DIR=/tmp/replay-jobs
+      - REPLAY_KIT_PATH=/app/external/TRACE-REPLAY-KIT/runner.py
+    volumes:
+      - replay_data:/tmp/replay-jobs
+      - ./external/TRACE-REPLAY-KIT:/app/external/TRACE-REPLAY-KIT
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  runtime-sidecar:
+    build:
+      context: .
+      dockerfile: runtime/sidecar-watcher/Dockerfile
+    ports:
+      - "8006:8006"
+      # - "9090:9090"
+    expose:
+      - "9090" # Metrics port
+    environment:
+      - PORT=8006
+      - METRICS_PORT=9090
+      - ENFORCEMENT_MODE=enforce
+      - PF_PROFILE=production
+      - PF_ENFORCE_DSSE=1
+      - PF_ENABLED_TOOLS=
+      - TENANT_ID=demo-tenant
+      - LEDGER_URL=http://ledger:4000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Ledger GraphQL + MCP (ledger / full profiles). Local default is PROFILE=dev.
+  ledger:
+    profiles: ["ledger", "full"]
+    build:
+      context: ./runtime/ledger
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      - PROFILE=dev
+      - PF_PROFILE=dev
+      - PORT=4000
+      - PF_ENFORCE_DSSE=1
+      - PF_ENABLED_TOOLS=
+      - DATABASE_URL=postgresql://sentinelops:sentinelops_password@postgres:5432/ledger?schema=public
+      - SIDECAR_URL=http://runtime-sidecar:8006
+    depends_on:
+      postgres:
+        condition: service_healthy
+      runtime-sidecar:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Egress firewall (enforcement / full profiles)
+  egress-firewall:
+    profiles: ["enforcement", "full"]
+    build:
+      context: ./runtime/egress-firewall
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - RUST_LOG=info
+    healthcheck:
+      # Prefer 127.0.0.1 over localhost (Alpine may resolve localhost to ::1).
+      # Use GET (-O /dev/null), not --spider: spider sends HEAD and actix returns 404
+      # when only GET is registered.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # Retrieval gateway (full profile)
+  retrieval-gateway:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: runtime/retrieval-gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - RECEIPT_SIGNING_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      - LEDGER_ENDPOINT=http://ledger:4000
+      - RUST_LOG=info
+    depends_on:
+      ledger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Tool broker demo (full profile; warm restart under full stack)
+  tool-broker:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: runtime/tool-broker/Dockerfile
+    environment:
+      - KERNEL_URL=http://runtime-sidecar:8006
+      - RUST_LOG=info
+    depends_on:
+      runtime-sidecar:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # WASM adapter sandbox CLI — not a long-running service. Keep off `full` so
+  # `docker compose --profile full up --wait` (demo-up) does not fail when the
+  # process exits after --help. Invoke via: docker compose --profile tools run --rm wasm-sandbox ...
+  wasm-sandbox:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: runtime/wasm-sandbox/Dockerfile
+    entrypoint: ["wasm-sandbox", "--help"]
+    restart: "no"
+
+  # Console Web UI (full stack only). Browser uses same-origin /api → nginx → api-gateway.
+  console:
+    profiles: ["full"]
+    build:
+      context: ./console
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Demo application (full stack only)
+  verifiable-mcp-fraud:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: demos/verifiable-mcp-fraud/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - SENTINELOPS_API_URL=http://api-gateway:8000
+      - TENANT_ID=acme-corp
+      - SIDECAR_URL=http://runtime-sidecar:8006
+    depends_on:
+      - api-gateway
+      - runtime-sidecar
+
+  # Monitoring (full stack only)
+  grafana:
+    profiles: ["full"]
+    image: grafana/grafana:latest
+    ports:
+      - "3003:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+
+  prometheus:
+    profiles: ["full"]
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+
+volumes:
+  postgres_data:
+  redis_data:
+  proof_cache:
+  build_cache:
+  evidence_data:
+  replay_data:
+  grafana_data:
+  prometheus_data:
+
+networks:
+  default:
+    name: sentinelops-platform

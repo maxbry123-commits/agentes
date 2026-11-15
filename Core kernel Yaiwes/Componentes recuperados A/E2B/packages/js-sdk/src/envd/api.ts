@@ -1,0 +1,231 @@
+import createClient from 'openapi-fetch'
+
+import type { components, paths } from './schema.gen'
+import { ConnectionConfig } from '../connectionConfig'
+import { createApiLogger } from '../logs'
+import {
+  SandboxError,
+  InvalidArgumentError,
+  NotFoundError,
+  NotEnoughSpaceError,
+  SandboxNotFoundError,
+  formatSandboxTimeoutError,
+  AuthenticationError,
+  RateLimitError,
+  TimeoutError,
+} from '../errors'
+import { StartResponse, ConnectResponse } from './process/process_pb'
+import { Code, ConnectError } from '@connectrpc/connect'
+import { WatchDirResponse } from './filesystem/filesystem_pb'
+import { isConnectionTerminatedMessage, SandboxHealthCheck } from './rpc'
+
+type ApiError = { message?: string } | string
+
+const DEFAULT_ERROR_MAP: Record<number, (message: string) => Error> = {
+  400: (message) => new InvalidArgumentError(message),
+  401: (message) => new AuthenticationError(message),
+  404: (message) => new NotFoundError(message),
+  429: (message) =>
+    new RateLimitError(`${message}: The requests are being rate limited.`),
+  502: formatSandboxTimeoutError,
+  507: (message) => new NotEnoughSpaceError(message),
+}
+
+const HEALTH_CHECK_TIMEOUT_MS = 5_000
+
+/**
+ * Probes the sandbox's envd health endpoint.
+ *
+ * @param envdApi - The envd API client of the sandbox.
+ * @returns `true` if the sandbox is running, `false` if it is not, `undefined` if its state could not be determined.
+ */
+export async function checkSandboxHealth(
+  envdApi: EnvdApiClient
+): Promise<boolean | undefined> {
+  try {
+    const res = await envdApi.api.GET('/health', {
+      signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
+    })
+
+    if (res.response.status === 502) {
+      return false
+    }
+    if (res.response.ok) {
+      return true
+    }
+
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Handles transport-level fetch failures from envd API calls. When the connection was
+ * dropped mid-request, probes the sandbox health to tell apart the sandbox being killed
+ * from a transient network failure (e.g. a load balancer dropping the connection).
+ *
+ * @param err - The caught error, expected to be a fetch transport failure.
+ * @param checkHealth - Probe returning whether the sandbox is running, or `undefined` when unknown.
+ * @returns A `TimeoutError` when the connection was terminated mid-request and the sandbox is confirmed gone, or the original error otherwise.
+ */
+export async function handleEnvdApiFetchError(
+  err: unknown,
+  checkHealth?: SandboxHealthCheck
+): Promise<Error> {
+  // A connection dropped mid-body surfaces as a fetch failure whose message varies
+  // by runtime (e.g. undici's 'terminated'); match every known variant.
+  if (err instanceof Error && isConnectionTerminatedMessage(err.message)) {
+    const running = checkHealth
+      ? await checkHealth().catch(() => undefined)
+      : undefined
+
+    if (running === false) {
+      return new TimeoutError(
+        `${err.message}: The sandbox was killed or reached its end of life while the request was in flight.`
+      )
+    }
+  }
+
+  return err as Error
+}
+
+/**
+ * Handles errors from envd API responses by mapping HTTP status codes to specific error types.
+ *
+ * @param res - The API response object containing an optional error and the raw `Response`.
+ * @param errorMap - Optional map of HTTP status codes to error factory functions that override the defaults.
+ * @returns The corresponding `Error` instance if an error is present, or `undefined` if the response is successful.
+ */
+export async function handleEnvdApiError(
+  res: {
+    error?: ApiError
+    response: Response
+  },
+  errorMap?: Record<number, (message: string) => Error>
+) {
+  // openapi-fetch leaves `error` empty for non-2xx responses without content
+  // (undefined for Content-Length: 0, '' for an empty body without the
+  // header), so check the status instead
+  if (res.response.ok) {
+    return
+  }
+
+  let message =
+    (typeof res.error === 'string' ? res.error : res.error?.message) ?? ''
+
+  // openapi-fetch consumes the body when parsing the error, except for
+  // responses without content
+  if (!message && !res.response.bodyUsed) {
+    try {
+      message = await res.response.text()
+    } catch {
+      // ignore unreadable bodies
+    }
+  }
+
+  message = message || res.response.statusText
+
+  // Check if a custom error mapping is provided for this error code
+  if (errorMap && res.response.status in errorMap) {
+    return errorMap[res.response.status]?.(message)
+  }
+
+  // Check if there is a default error mapping for this error code
+  if (res.response.status in DEFAULT_ERROR_MAP) {
+    return DEFAULT_ERROR_MAP[res.response.status]?.(message)
+  }
+
+  // Fallback to a generic SandboxError if no specific mapping is found
+  return new SandboxError(`${res.response.status}: ${message}`)
+}
+
+export async function handleProcessStartEvent(
+  events: AsyncIterable<StartResponse | ConnectResponse>
+) {
+  let startEvent: StartResponse | ConnectResponse
+
+  try {
+    startEvent = (await events[Symbol.asyncIterator]().next()).value
+  } catch (err) {
+    if (err instanceof ConnectError) {
+      if (err.code === Code.Unavailable) {
+        throw new SandboxNotFoundError(
+          'Sandbox is probably not running anymore'
+        )
+      }
+    }
+
+    throw err
+  }
+  if (startEvent.event?.event.case !== 'start') {
+    throw new Error('Expected start event')
+  }
+
+  return startEvent.event.event.value.pid
+}
+
+export async function handleWatchDirStartEvent(
+  events: AsyncIterable<WatchDirResponse>
+) {
+  let startEvent: WatchDirResponse
+
+  try {
+    startEvent = (await events[Symbol.asyncIterator]().next()).value
+  } catch (err) {
+    if (err instanceof ConnectError) {
+      if (err.code === Code.Unavailable) {
+        throw new SandboxNotFoundError(
+          'Sandbox is probably not running anymore'
+        )
+      }
+    }
+
+    throw err
+  }
+  if (startEvent.event?.case !== 'start') {
+    throw new Error('Expected start event')
+  }
+
+  return startEvent.event.value
+}
+
+class EnvdApiClient {
+  readonly api: ReturnType<typeof createClient<paths>>
+  readonly version: string
+
+  constructor(
+    config: Pick<ConnectionConfig, 'apiUrl' | 'logger'> & {
+      /**
+       * Sandbox-scoped envd access token, sent as the `X-Access-Token` header.
+       */
+      envdAccessToken?: string
+      fetch?: (request: Request) => ReturnType<typeof fetch>
+      headers?: Record<string, string>
+    },
+    metadata: {
+      version: string
+    }
+  ) {
+    this.api = createClient({
+      baseUrl: config.apiUrl,
+      fetch: config?.fetch,
+      headers: {
+        ...config?.headers,
+        ...(config.envdAccessToken && {
+          'X-Access-Token': config.envdAccessToken,
+        }),
+      },
+      // In HTTP 1.1, all connections are considered persistent unless declared otherwise
+      // keepalive: true,
+    })
+    this.version = metadata.version
+
+    if (config.logger) {
+      this.api.use(createApiLogger(config.logger))
+    }
+  }
+}
+
+export type { components, paths }
+export { EnvdApiClient }

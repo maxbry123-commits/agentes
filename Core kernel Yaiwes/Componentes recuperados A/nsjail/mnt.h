@@ -1,0 +1,80 @@
+/*
+
+   nsjail - CLONE_NEWNS routines
+   -----------------------------------------
+
+   Copyright 2014 Google Inc. All Rights Reserved.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+*/
+
+#ifndef NS_MNT_H
+#define NS_MNT_H
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <sys/mount.h>
+#include <sys/statvfs.h>
+
+#include <string>
+
+#include "nsjail.h"
+
+#if !defined(MS_NOSYMFOLLOW)
+#define MS_NOSYMFOLLOW 256
+#endif /* if !defined(MS_NOSYMFOLLOW) */
+
+#if !defined(MS_LAZYTIME)
+#define MS_LAZYTIME (1 << 25)
+#endif /* if !defined(MS_LAZYTIME) */
+
+#if !defined(MS_ACTIVE)
+#define MS_ACTIVE (1 << 30)
+#endif /* if !defined(MS_ACTIVE) */
+
+#if !defined(MS_NOUSER)
+#define MS_NOUSER (1 << 31)
+#endif /* if !defined(MS_NOUSER) */
+
+#if !defined(ST_NOSYMFOLLOW)
+#define ST_NOSYMFOLLOW 8192
+#endif /* if !defined(ST_NOSYMFOLLOW) */
+
+namespace mnt {
+
+typedef enum {
+	NS_DIR_NO = 0x100,
+	NS_DIR_YES,
+	NS_DIR_MAYBE,
+} isDir_t;
+
+/* Shared mount point structure used by both legacy and new API */
+struct mount_t {
+	const nsjail::MountPt* mpt;
+	std::string src;
+	std::string dst;
+	uintptr_t flags;
+	bool is_dir;
+	bool mounted;
+	int fd; /* Used by new API for deferred remount */
+};
+
+bool initNs(nsj_t* nsj);
+std::unique_ptr<std::string> findWorkDir(nsj_t* nsj, const char* purpose);
+const std::string describeMountPt(const nsjail::MountPt& mpt);
+const std::string flagsToStr(unsigned long flags);
+
+}  // namespace mnt
+
+#endif /* NS_MNT_H */

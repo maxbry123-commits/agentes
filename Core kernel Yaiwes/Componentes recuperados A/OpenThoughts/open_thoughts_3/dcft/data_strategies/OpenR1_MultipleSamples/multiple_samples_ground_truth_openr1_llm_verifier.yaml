@@ -1,0 +1,87 @@
+operators:
+  - id: load_preexisting
+    config:
+      type: load_preexisting
+      framework_name: base_get_openr1_hf
+  - id: select_rows_without_proof
+    config:
+      type: function
+      sharded: true
+      num_shards: 32
+      function: data_strategies.commons.select_rows_without
+      function_config:
+        conditions:
+          answer: "proof"
+    input_ids:
+      - load_preexisting
+  - id: judge
+    config:
+      type: completions
+      map: deepseek_judge
+      merge_shards: false
+      merge_shards: false
+      model: gpt-4o-mini
+      map_config:
+        ground_truth_column: answer
+        answer_column: generation
+    input_ids:
+      - select_rows_without_proof
+  - id: merge_together
+    config:
+      type: high_memory_function
+      memory: 500
+      sharded: true
+      num_shards: 32
+      function: data_strategies.TestTime.generator.merge_duplicate_rows
+      function_config:
+        diff_columns: 
+          - generation
+          - correct
+          - judge_reasoning
+    input_ids:
+      - judge
+  # - id: remove_columns
+  #   config:
+  #     type: function
+  #     sharded: true
+  #     num_shards: 10
+  #     function: data_strategies.commons.remove_columns
+  #     function_config:
+  #       columns:
+  #         - generations
+  #   input_ids:
+  #     - merge_together
+  # - id: gpt_verification
+  #   config:
+  #     type: function
+  #     sharded: true
+  #     num_shards: 10
+  #     function: data_strategies.MultipleSamples.utils.select_correct_multiple_samples
+  #     function_config:
+  #       response_column: generation
+  #       verified_response_column: verified_generation
+  #   input_ids:
+  #     - remove_columns
+  # - id: convert_to_sharegpt
+  #   config:
+  #     type: function
+  #     sharded: true
+  #     num_shards: 10
+  #     function: data_strategies.commons.convert_instruction_response_to_sharegpt
+  #     function_config:
+  #       input_instruction_column: problem
+  #       input_response_column: verified_generation
+  #       output_sharegpt_column: conversations
+  #   input_ids:
+  #     - gpt_verification
+
+  # - id: load_preexisting_all_proofs
+  #   config:
+  #     type: load_preexisting
+  #     framework_name: open_r1_hf_get_all_proofs
+  # - id: mix
+  #   config:
+  #     type: mix
+  #   input_ids:
+  #     - load_preexisting_all_proofs
+  #     - convert_to_sharegpt

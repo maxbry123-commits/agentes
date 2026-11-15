@@ -1,0 +1,56 @@
+# Requirement catalog seed — A-AUD-03b
+# phase: control-layer-fase1 + audit-fase1
+version: "1.0"
+requirements:
+  - id: REQ-CL-FP-01
+    doc_id: SALIDA4_FP
+    section: "§14.2"
+    check_type: path_exists
+    params:
+      path: control-layer/control/fingerprint.py
+    critical: true
+    phase: control-layer-fase1
+
+  - id: REQ-CL-TH-01
+    doc_id: SALIDA4_RISK
+    section: "§16"
+    check_type: path_exists
+    params:
+      path: control-layer/control/threat.py
+    critical: true
+    phase: control-layer-fase1
+
+  - id: REQ-CL-SH-01
+    doc_id: SALIDA4_SHERIFF
+    section: "§20"
+    check_type: path_exists
+    params:
+      path: control-layer/sheriff/states.py
+    critical: true
+    phase: control-layer-fase1
+
+  - id: REQ-CL-C00
+    doc_id: C00
+    section: "root"
+    check_type: path_exists
+    params:
+      path: control-layer/contracts/C00_governance.yaml
+    critical: true
+    phase: control-layer-fase1
+
+  - id: REQ-CL-CI-01
+    doc_id: PIPELINE20
+    section: "motor"
+    check_type: ci_success
+    params: {}
+    critical: true
+    phase: control-layer-fase1
+
+  - id: REQ-AUD-PACKET
+    doc_id: AUDIT_SPEC
+    section: "§4"
+    check_type: path_exists
+    params:
+      path: extensions/audit_forensic/schema_module.json
+    critical: true
+    phase: audit-fase1

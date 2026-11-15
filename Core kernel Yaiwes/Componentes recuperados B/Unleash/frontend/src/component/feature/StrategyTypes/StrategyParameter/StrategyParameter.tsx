@@ -1,0 +1,141 @@
+import type React from 'react';
+import { FormControlLabel, Switch } from '@mui/material';
+import Input from 'component/common/Input/Input';
+import StrategyInputList from '../StrategyInputList/StrategyInputList.tsx';
+import ConditionalRolloutSlider from '../RolloutSlider/ConditionalRolloutSlider.tsx';
+import type {
+    StrategyFormParameters,
+    IStrategyParameter,
+} from 'interfaces/strategy';
+import {
+    parseParameterNumber,
+    parseParameterStrings,
+    parseParameterString,
+} from 'utils/parseParameter';
+import { InputCaption } from 'component/common/InputCaption/InputCaption';
+import type { IFormErrors } from 'hooks/useFormErrors';
+
+interface IStrategyParameterProps {
+    definition: IStrategyParameter;
+    parameters: StrategyFormParameters;
+    updateParameter: (field: string, value: string) => void;
+    errors: IFormErrors;
+}
+
+export const StrategyParameter = ({
+    definition,
+    parameters,
+    updateParameter,
+    errors,
+}: IStrategyParameterProps) => {
+    const { type, name, description, required } = definition;
+    const value = parameters[name];
+    const error = errors.getFormError(name);
+    const label = required ? `${name} * ` : name;
+
+    const onChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        updateParameter(name, event.target.value);
+    };
+
+    const onChangeString = (event: React.ChangeEvent<HTMLInputElement>) => {
+        updateParameter(name, parseParameterString(event.target.value));
+    };
+
+    const onChangePercentage = (_event: Event, next: number | number[]) => {
+        updateParameter(name, next.toString());
+    };
+
+    const onChangeBoolean = (_event: React.ChangeEvent, checked: boolean) => {
+        updateParameter(name, String(checked));
+    };
+
+    const onSetListConfig = (field: string, value: string) => {
+        updateParameter(field, parseParameterStrings(value).join(','));
+    };
+
+    if (type === 'percentage') {
+        return (
+            <div>
+                <ConditionalRolloutSlider
+                    name={name}
+                    onChange={onChangePercentage}
+                    value={parseParameterNumber(parameters[name])}
+                    minLabel='off'
+                    maxLabel='on'
+                />
+                <InputCaption text={description} />
+            </div>
+        );
+    }
+
+    if (type === 'list') {
+        return (
+            <div>
+                <StrategyInputList
+                    name={name}
+                    list={parseParameterStrings(parameters[name])}
+                    setConfig={onSetListConfig}
+                    errors={errors}
+                />
+                <InputCaption text={description} />
+            </div>
+        );
+    }
+
+    if (type === 'number') {
+        return (
+            <div>
+                <Input
+                    error={Boolean(error)}
+                    helperText={error}
+                    size='large'
+                    aria-required={required}
+                    style={{ width: '100%' }}
+                    label={label}
+                    onChange={onChange}
+                    value={value ?? ''}
+                />
+                <InputCaption text={description} />
+            </div>
+        );
+    }
+
+    if (type === 'boolean') {
+        const value = parseParameterString(parameters[name]);
+        const checked = value === 'true';
+        return (
+            <div>
+                <FormControlLabel
+                    label={name}
+                    control={
+                        <Switch
+                            name={name}
+                            onChange={onChangeBoolean}
+                            checked={checked}
+                        />
+                    }
+                />
+                <InputCaption text={description} />
+            </div>
+        );
+    }
+
+    return (
+        <div>
+            <Input
+                rows={1}
+                placeholder=''
+                size='large'
+                style={{ width: '100%' }}
+                aria-required={required}
+                error={Boolean(error)}
+                helperText={error}
+                name={name}
+                label={label}
+                onChange={onChangeString}
+                value={parseParameterString(parameters[name])}
+            />
+            <InputCaption text={description} />
+        </div>
+    );
+};

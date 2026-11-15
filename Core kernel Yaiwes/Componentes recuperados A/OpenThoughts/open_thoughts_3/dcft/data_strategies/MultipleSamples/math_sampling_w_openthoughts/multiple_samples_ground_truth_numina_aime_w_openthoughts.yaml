@@ -1,0 +1,15 @@
+operators: 
+- id: add_openthoughts
+  config:
+    type: load_preexisting 
+    framework_name: 32b_add_verified_extra_unverified
+- id: load_preexisting 
+  config:
+    type: load_preexisting 
+    framework_name: multiple_samples_ground_truth_numina_aime
+- id: mix
+  config:
+    type: mix
+  input_ids:
+  - add_openthoughts
+  - load_preexisting

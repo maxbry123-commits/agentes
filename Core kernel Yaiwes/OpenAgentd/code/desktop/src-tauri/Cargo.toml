@@ -1,0 +1,75 @@
+[package]
+name = "openagentd-desktop"
+version = "2.15.0"
+description = "OpenAgentd — on-machine coding agent (desktop shell)"
+authors = ["openagentd contributors"]
+license = "Apache-2.0"
+repository = "https://github.com/lthoangg/openagentd"
+edition = "2021"
+rust-version = "1.77.2"
+
+# https://crates.io/crates/tauri-build
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+openagentd-shell-core = { path = "../../native/shell-core" }
+tauri = { version = "2", features = ["image-png", "protocol-asset", "tray-icon", "macos-private-api"] }
+tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
+# Tauri's image-png feature permits newer image releases whose MSRV exceeds ours.
+image = { version = "=0.25.10", default-features = false }
+time = "=0.3.55"
+tauri-plugin-log = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+notify-rust = "4.18.0"
+tauri-plugin-updater = "2"
+tauri-plugin-deep-link = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls-native-roots"], default-features = false }
+log = "0.4"
+anyhow = "1"
+once_cell = "1"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native", "linux-native-sync-persistent", "windows-native"] }
+url = "2"
+base64 = "0.23"
+
+[dev-dependencies]
+# Enables `tauri::test::mock_app()` used by the native unit-test suite.
+tauri = { version = "2", features = ["test"] }
+tempfile = "3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+flate2 = "1"
+tar = "0.4"
+tempfile = "3"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["signal"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    # Required for CreateJobObjectW (it takes a
+    # SECURITY_ATTRIBUTES pointer in its signature).
+    "Win32_Security",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[features]
+# this feature is used for production builds or when a dev server is not specified
+custom-protocol = ["tauri/custom-protocol"]
+
+# Thin LTO preserves cross-crate optimization while allowing parallel codegen;
+# strip drops debug symbols from the shipped executable (crash traces still
+# come from the webview/backend logs).
+[profile.release]
+lto = "thin"
+codegen-units = 16
+strip = true

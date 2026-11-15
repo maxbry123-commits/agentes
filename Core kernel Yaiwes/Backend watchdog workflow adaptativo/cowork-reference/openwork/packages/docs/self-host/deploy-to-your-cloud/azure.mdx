@@ -1,0 +1,29 @@
+---
+title: "Deploy on Azure"
+description: "Run OpenWork on Azure Kubernetes Service with Azure Database for MySQL."
+---
+
+The recommended Azure path is Helm on Azure Kubernetes Service with Azure Database for MySQL Flexible Server. Use the AKS application-routing add-on's managed NGINX Ingress controller for browser-facing HTTPS and host routing.
+
+## What Azure manages
+
+- AKS control plane, node pools, virtual networking, and managed identities
+- the managed NGINX ingress entry point and public IP
+- Azure Database for MySQL Flexible Server, encryption, backups, and failover
+- Azure DNS and certificate storage when you use those services
+
+The OpenWork chart manages Deployments, Services, ConfigMaps, Secret references, probes, the Ingress, and the database migration Job.
+
+## Azure checklist
+
+1. Confirm the subscription is enabled and register the required resource providers.
+2. Check regional vCPU quota and MySQL Flexible Server availability before creating AKS.
+3. Create AKS and MySQL in a VNet topology that permits private database traffic.
+4. Store `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `DEN_DB_ENCRYPTION_KEY` in a Kubernetes Secret.
+5. Start from the chart's `values.azure-ingress.yaml` example.
+6. Configure the ingress certificate, install the chart, and verify migrations and readiness.
+7. Point both hostnames at the ingress address and confirm trusted HTTPS.
+
+For exact Azure CLI commands, values, TLS options, migration troubleshooting, verification, and cleanup, follow the [Azure AKS operator runbook](https://github.com/different-ai/openwork/blob/dev/docs/azure-aks-helm.md).
+
+Next: [Create the first administrator](/self-host/deploy-to-your-cloud/first-administrator).

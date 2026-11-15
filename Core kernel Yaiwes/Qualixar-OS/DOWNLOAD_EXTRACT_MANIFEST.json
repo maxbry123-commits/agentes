@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 1637107,
+  "bundle_sha256": "0a34d6c2d03b3f34e991a4f9dfdb5ff0e619ba0bdd049702fd1c5ddf9fdca7da",
+  "extracted_tree": {
+    "bytes": 5573192,
+    "files": 762,
+    "sha256": "f8e62a0f2818e8acd8803b167b9f8c8e29015b8eaeccd7d62d6186009e90fd20"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 1637107,
+      "name": "Qualixar-OS.bundle.zip.part-0001",
+      "sha256": "0a34d6c2d03b3f34e991a4f9dfdb5ff0e619ba0bdd049702fd1c5ddf9fdca7da"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Qualixar-OS",
+  "source_bytes": 5573192,
+  "source_commit": "eee934b5942bfff2fa5543a39e64a78905640a0c",
+  "source_files": 762,
+  "source_ref": "HEAD",
+  "source_repo": "qualixar/qualixar-os",
+  "source_tree": {
+    "bytes": 5573192,
+    "files": 762,
+    "sha256": "f8e62a0f2818e8acd8803b167b9f8c8e29015b8eaeccd7d62d6186009e90fd20"
+  }
+}

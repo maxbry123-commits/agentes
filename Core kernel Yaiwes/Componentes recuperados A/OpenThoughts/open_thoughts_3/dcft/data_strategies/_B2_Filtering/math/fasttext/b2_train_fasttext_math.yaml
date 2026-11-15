@@ -1,0 +1,163 @@
+operators:
+- id: hf_source_bad_seed_math
+  config:
+    type: load_preexisting
+    framework_name: a1_math_lap1official_math
+- id: decontaminate_negative
+  config:
+    type: cpu_function
+    sharded: false
+    num_cpus: 32
+    function:  data_strategies._A1_Source.utils.decontaminate_fuzzy_w_ngram
+    function_config:
+      column: instruction_seed
+      eval_datasets:
+        - HuggingFaceH4/MATH-500
+        - Maxwell-Jia/AIME_2024
+        - AI-MO/aimo-validation-amc
+        - livecodebench/code_generation_lite
+        - mlfoundations-dev/AIME2025_combined
+        - cais/hle
+        - open-r1/codeforces
+        - Idavidrein/gpqa
+        - daman1209arora/jeebench
+        - mlfoundations-dev/mmlu_pro_eval_full
+        - Qwen/CodeElo
+        - open-r1/ioi
+      eval_columns:
+        - problem
+        - Problem
+        - problem
+        - question_content
+        - question
+        - question
+        - description
+        - Question
+        - question
+        - prompt
+        - description
+        - statement
+      eval_splits:
+        - test
+        - train
+        - train
+        - test
+        - train
+        - test
+        - test
+        - train
+        - test
+        - test
+        - test
+        - test
+      eval_subsets:
+        Idavidrein/gpqa: gpqa_diamond
+      similarity_threshold: 75.0
+      ngram_size: 13
+  input_ids:
+  -  hf_source_bad_seed_math
+  
+- id: hf_source_numina
+  config:
+    type: hf_source
+    dataset: AI-MO/NuminaMath-CoT
+    split: train
+- id: select_amc_aime
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: amc_aime
+  input_ids:
+    - hf_source_numina
+- id: select_olympiads
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: olympiads
+  input_ids:
+    - hf_source_numina
+- id: rename_task_column_positive
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        problem: instruction_seed
+  input_ids:
+  - select_amc_aime
+  - select_olympiads
+- id: decontaminate_positive
+  config:
+    type: cpu_function
+    sharded: false
+    num_cpus: 32
+    function:  data_strategies._A1_Source.utils.decontaminate_fuzzy_w_ngram
+    function_config:
+      column: instruction_seed
+      eval_datasets:
+        - HuggingFaceH4/MATH-500
+        - Maxwell-Jia/AIME_2024
+        - AI-MO/aimo-validation-amc
+        - livecodebench/code_generation_lite
+        - mlfoundations-dev/AIME2025_combined
+        - cais/hle
+        - open-r1/codeforces
+        - Idavidrein/gpqa
+        - daman1209arora/jeebench
+        - mlfoundations-dev/mmlu_pro_eval_full
+        - Qwen/CodeElo
+        - open-r1/ioi
+      eval_columns:
+        - problem
+        - Problem
+        - problem
+        - question_content
+        - question
+        - question
+        - description
+        - Question
+        - question
+        - prompt
+        - description
+        - statement
+      eval_splits:
+        - test
+        - train
+        - train
+        - test
+        - train
+        - test
+        - test
+        - train
+        - test
+        - test
+        - test
+        - test
+      eval_subsets:
+        Idavidrein/gpqa: gpqa_diamond
+      similarity_threshold: 75.0
+      ngram_size: 13
+  input_ids:
+  -  rename_task_column_positive
+
+- id: train_fasttext_classifier
+  config:
+    type: train_fasttext
+    text_column: instruction_seed
+    positive_input_ids:
+      - decontaminate_positive
+    negative_input_ids:
+      - decontaminate_negative
+    dim: 256
+    epoch: 3
+    lr: 0.1
+    word_ngrams: 2
+    min_count: 3
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_b2_math_pos_numina_neg_lap1official_math
+  input_ids:
+    - decontaminate_positive
+    - decontaminate_negative

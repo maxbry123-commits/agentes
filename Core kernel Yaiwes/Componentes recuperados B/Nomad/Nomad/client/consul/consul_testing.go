@@ -1,0 +1,57 @@
+// Copyright IBM Corp. 2015, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package consul
+
+import (
+	"context"
+	"encoding/hex"
+	"hash/fnv"
+
+	consulapi "github.com/hashicorp/consul/api"
+	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/nomad/nomad/structs/config"
+)
+
+type MockConsulClient struct {
+	tokens   map[string]*consulapi.ACLToken
+	Requests []JWTLoginRequest
+}
+
+func NewMockConsulClient(config *config.ConsulConfig, logger hclog.Logger) (Client, error) {
+	return &MockConsulClient{}, nil
+}
+
+// DeriveTokenWithJWT returns ACLTokens with deterministic values for testing: a
+// hash of the request JWT for the AccessorID and SecretID
+func (mc *MockConsulClient) DeriveTokenWithJWT(req JWTLoginRequest) (*consulapi.ACLToken, error) {
+	mc.Requests = append(mc.Requests, req)
+
+	if t, ok := mc.tokens[req.JWT]; ok {
+		return t, nil
+	}
+
+	hash := fnv.New128().Sum([]byte(req.JWT))
+	token := &consulapi.ACLToken{
+		AccessorID: hex.EncodeToString(hash),
+		SecretID:   hex.EncodeToString(hash),
+	}
+
+	if mc.tokens == nil {
+		mc.tokens = make(map[string]*consulapi.ACLToken)
+	}
+	mc.tokens[req.JWT] = token
+
+	return token, nil
+}
+
+func (mc *MockConsulClient) RevokeTokens(tokens []*consulapi.ACLToken) error {
+	for _, token := range tokens {
+		delete(mc.tokens, token.AccessorID)
+	}
+	return nil
+}
+
+func (mc *MockConsulClient) TokenPreflightCheck(_ context.Context, _ *consulapi.ACLToken) error {
+	return nil
+}

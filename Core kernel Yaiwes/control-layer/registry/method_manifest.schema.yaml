@@ -1,0 +1,15 @@
+# Method / Capability manifest · sin tocar kernel
+version: "1.0.0"
+required: [id, name, version, capabilities]
+properties:
+  id: { type: string }
+  name: { type: string }
+  version: { type: string }
+  capabilities: { type: array, items: string }
+  inputs: { type: array, items: string }
+  outputs: { type: array, items: string }
+  contracts: { type: array, items: string }
+  quarantine: { type: boolean, default: true }
+  tests_passed: { type: boolean, default: false }
+  entry: { type: string }
+  meta: { type: object }

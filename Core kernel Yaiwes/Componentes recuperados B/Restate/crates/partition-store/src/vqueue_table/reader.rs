@@ -1,0 +1,30 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use restate_storage_api::vqueue_table::{Options, VQueueStore};
+use restate_types::vqueues::VQueueId;
+
+use crate::PartitionDb;
+
+use super::inbox_reader::VQueueWaitingReader;
+use super::running_reader::VQueueRunningReader;
+
+impl VQueueStore for PartitionDb {
+    type RunningReader = VQueueRunningReader;
+    type InboxReader = VQueueWaitingReader;
+
+    fn new_run_reader(&self, qid: &VQueueId) -> Self::RunningReader {
+        VQueueRunningReader::new(self, qid)
+    }
+
+    fn new_inbox_reader(&self, qid: &VQueueId, opts: Options) -> Self::InboxReader {
+        VQueueWaitingReader::new(self, qid, opts)
+    }
+}

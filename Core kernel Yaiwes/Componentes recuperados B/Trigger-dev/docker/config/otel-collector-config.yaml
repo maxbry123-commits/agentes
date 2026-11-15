@@ -1,0 +1,47 @@
+# OpenTelemetry Collector configuration for local development
+# Receives OTLP metrics and traces from the webapp. Metrics are exposed in
+# Prometheus format; traces are counted by the debug exporter so you can point
+# INTERNAL_OTEL_TRACE_EXPORTER_URL at a real local endpoint instead of falling
+# back to the console span logger.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    namespace: triggerdotdev
+    const_labels:
+      source: otel_collector
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Traces are accepted and summarised rather than stored. That is enough to
+  # exercise the whole client-side export path (serialize -> HTTP -> accept),
+  # which is what a local run needs to measure. Raise to `detailed` to inspect
+  # individual spans.
+  debug:
+    verbosity: basic
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

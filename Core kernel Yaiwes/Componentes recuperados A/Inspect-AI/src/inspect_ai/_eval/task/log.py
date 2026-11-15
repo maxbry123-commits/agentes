@@ -1,0 +1,1145 @@
+import logging
+from importlib import metadata as importlib_metadata
+from importlib.metadata import Distribution
+from typing import TYPE_CHECKING, Any, cast
+
+import anyio
+from shortuuid import uuid
+
+from inspect_ai._display.core.display import TaskDisplayMetric
+from inspect_ai._eval.task.util import slice_dataset
+from inspect_ai._util.background import run_in_background
+from inspect_ai._util.constants import PKG_NAME
+from inspect_ai._util.dateutil import iso_now
+from inspect_ai._util.git import git_context, redact_url_credentials
+from inspect_ai._util.package import (
+    get_distribution_direct_url,
+    get_distribution_for_object,
+)
+from inspect_ai._util.path import cwd_relative_path
+from inspect_ai._util.registry import (
+    registry_log_name,
+    registry_lookup,
+    registry_params,
+)
+from inspect_ai.dataset import Dataset
+from inspect_ai.event._event import Event
+from inspect_ai.log import (
+    EvalConfig,
+    EvalDataset,
+    EvalError,
+    EvalPlan,
+    EvalPlanStep,
+    EvalResults,
+    EvalRevision,
+    EvalSample,
+    EvalSpec,
+    EvalStats,
+    EvalStatus,
+    HeadlineMetric,
+)
+from inspect_ai.log._log import (
+    EvalLog,
+    EvalMetricDefinition,
+    EvalSampleReductions,
+    EvalSampleSummary,
+    EvalScorer,
+    eval_config_defaults,
+)
+from inspect_ai.log._recorders import Recorder
+from inspect_ai.log._recorders.buffer import SampleBufferDatabase
+from inspect_ai.log._recorders.types import SampleEvent
+from inspect_ai.model import (
+    GenerateConfig,
+    Model,
+    ModelName,
+)
+from inspect_ai.model._model import model_usage, role_usage
+from inspect_ai.model._model_config import (
+    model_args_for_log,
+    model_roles_to_model_roles_config,
+)
+from inspect_ai.scorer._metric import MetricSpec
+from inspect_ai.scorer._scorer import ScorerSpec
+from inspect_ai.solver._constants import SOLVER_ALL_PARAMS_ATTR
+from inspect_ai.solver._plan import Plan
+from inspect_ai.solver._solver import Solver, SolverSpec
+from inspect_ai.util._sandbox.environment import SandboxEnvironmentSpec
+from inspect_ai.viewer import ViewerConfig
+
+logger = logging.getLogger(__name__)
+
+_STALE_FLUSH_INTERVAL: float = 60
+
+if TYPE_CHECKING:
+    from inspect_ai._control.eval_state import BufferConfig
+    from inspect_ai.log._config_update import ConfigUpdate
+    from inspect_ai.log._recorders.buffer.history import SampleHistory
+    from inspect_ai.log._transcript import TranscriptHistoryProvider
+
+
+def resolve_revision() -> EvalRevision | None:
+    git = git_context()
+    return (
+        EvalRevision(type="git", origin=git.origin, commit=git.commit, dirty=git.dirty)
+        if git
+        else None
+    )
+
+
+def resolve_task_distribution(task_registry_name: str | None) -> Distribution | None:
+    """The installed distribution that provides an external task.
+
+    Resolves the actual *distribution* (e.g. ``harder-tasks-judge-run``) that
+    ships the task — even when the task belongs to a namespace package whose
+    import name (e.g. ``harder_tasks``) is not itself a distribution. Returns
+    None for builtin tasks, local-file tasks, and tasks not installed from a
+    package.
+    """
+    if task_registry_name is None:
+        return None
+    task = registry_lookup("task", task_registry_name)
+    if task is None:
+        return None
+    distribution = get_distribution_for_object(task)
+    if distribution is None:
+        return None
+    # exclude inspect_ai itself (builtin tasks)
+    if distribution.name.replace("-", "_").lower() == PKG_NAME:
+        return None
+    return distribution
+
+
+def resolve_package_revision(distribution: Distribution | None) -> EvalRevision | None:
+    """Resolve the git revision of a task's installed distribution.
+
+    Reads PEP 610 ``direct_url.json`` so tasks installed from a git URL record
+    the exact commit that was checked out, even when the eval process has no
+    local git working tree (the common case for remotely-executed tasks). The
+    returned revision omits ``dirty`` — an installed package has no working tree
+    to be dirty.
+    """
+    if distribution is None:
+        return None
+    direct_url = get_distribution_direct_url(distribution)
+    if (
+        direct_url is None
+        or direct_url.vcs_info is None
+        or direct_url.vcs_info.vcs != "git"
+    ):
+        return None
+    return EvalRevision(
+        type="git",
+        # direct_url.json can carry embedded credentials when the package was
+        # installed from an authenticated git URL; redact them as git_context()
+        # does so tokens never reach the eval log.
+        origin=redact_url_credentials(direct_url.url.removeprefix("git+")),
+        commit=direct_url.vcs_info.commit_id,
+    )
+
+
+def _is_high_throughput(sample_count: int) -> bool:
+    """Detect high-throughput runs that benefit from reduced logging overhead."""
+    return sample_count >= 1000
+
+
+class TaskLogger:
+    def __init__(
+        self,
+        task_name: str,
+        task_version: int | str,
+        task_file: str | None,
+        task_registry_name: str | None,
+        task_display_name: str | None,
+        task_id: str | None,
+        eval_set_id: str | None,
+        run_id: str,
+        solver: SolverSpec | None,
+        tags: list[str] | None,
+        model: Model,
+        model_roles: dict[str, Model | list[Model]] | None,
+        dataset: Dataset,
+        scorer: list[ScorerSpec] | None,
+        metrics: list[MetricSpec | dict[str, list[MetricSpec]]]
+        | dict[str, list[MetricSpec]]
+        | None,
+        headline_metric: HeadlineMetric | None,
+        sandbox: SandboxEnvironmentSpec | None,
+        task_attribs: dict[str, Any],
+        task_args: dict[str, Any],
+        task_args_passed: dict[str, Any],
+        model_args: dict[str, Any],
+        eval_config: EvalConfig,
+        metadata: dict[str, Any] | None,
+        viewer: ViewerConfig | None,
+        recorder: Recorder,
+        header_only: bool,
+        dynamic_dataset: bool = False,
+    ) -> None:
+        packages = {
+            PKG_NAME: importlib_metadata.version(PKG_NAME),
+        }
+        task_distribution = resolve_task_distribution(task_registry_name)
+        revision = resolve_package_revision(task_distribution) or resolve_revision()
+        if task_distribution is not None:
+            packages[task_distribution.name] = task_distribution.version
+
+        # redact authentication oriented model_args
+        model_args = model_args_for_log(model_args)
+
+        # cwd_relative_path for sandbox config
+        if sandbox and isinstance(sandbox.config, str):
+            sandbox = SandboxEnvironmentSpec(
+                sandbox.type, cwd_relative_path(sandbox.config)
+            )
+
+        # ensure that the dataset has sample ids and record them
+        sample_ids = cast(
+            list[int | str],
+            [
+                sample.id
+                for sample in slice_dataset(
+                    dataset,
+                    eval_config.limit,
+                    eval_config.sample_id,
+                    dynamic=dynamic_dataset,
+                )
+            ],
+        )
+
+        # total samples accounting for slicing and epochs
+        epochs = eval_config.epochs if eval_config.epochs else 1
+        total_samples = len(sample_ids) * epochs
+
+        # high-throughput runs still get a larger flush buffer (fewer main
+        # eval-log flushes), but we no longer force `log_realtime` or
+        # `score_display` off. Realtime logging is now cheap: sample completion
+        # logs directly from resident memory instead of reading every event
+        # back out of the buffer DB (see `log_sample` in run.py), and the
+        # WAL/persistent-connection buffer DB removed the read/write contention
+        # that motivated disabling it (#3173). Score-display recompute is
+        # throttled and was measured to be negligible at high sample counts.
+        high_throughput = _is_high_throughput(total_samples)
+
+        # write defaults for unspecified config
+        for name, value in eval_config_defaults().items():
+            if getattr(eval_config, name, None) is None:
+                setattr(eval_config, name, value)
+
+        # resolve scorers
+        eval_scorers = resolve_eval_scorers(scorer)
+
+        # resolve metrics
+        eval_metrics = resolve_eval_metrics(metrics)
+
+        # create eval spec
+        self.eval = EvalSpec(
+            eval_set_id=eval_set_id,
+            run_id=run_id,
+            created=iso_now(),
+            task=f"{task_name}",
+            task_id=task_id if task_id else uuid(),
+            task_version=task_version,
+            task_file=task_file,
+            task_registry_name=task_registry_name,
+            task_display_name=task_display_name,
+            task_attribs=task_attribs,
+            task_args=task_args,
+            task_args_passed=task_args_passed,
+            solver=solver.solver if solver else None,
+            tags=tags,
+            solver_args=solver.args if solver else None,
+            solver_args_passed=solver.args_passed if solver else None,
+            model=f"{ModelName(model).api}/{model.name}",
+            model_generate_config=model.config,
+            model_base_url=model.explicit_base_url,
+            model_roles=model_roles_to_model_roles_config(model_roles),
+            dataset=EvalDataset(
+                name=dataset.name,
+                location=cwd_relative_path(dataset.location),
+                samples=len(dataset),
+                sample_ids=sample_ids,
+                shuffled=dataset.shuffled,
+            ),
+            scorers=eval_scorers,
+            metrics=eval_metrics,
+            headline_metric=headline_metric,
+            sandbox=sandbox,
+            model_args=model_args,
+            config=eval_config,
+            revision=revision,
+            packages=packages,
+            metadata=metadata,
+            viewer=viewer,
+        )
+
+        # stack recorder and location
+        self.recorder = recorder
+        self.header_only = header_only
+
+        # number of samples logged
+        self._samples_completed = 0
+
+        # size of flush buffer (how many samples we buffer before hitting storage)
+        self.flush_buffer = eval_config.log_buffer or recorder.default_log_buffer(
+            total_samples, high_throughput
+        )
+        if high_throughput and eval_config.log_buffer is None:
+            eval_config.log_buffer = self.flush_buffer
+        self.flush_pending: list[tuple[str | int, int]] = []
+        # completed samples re-logged with flush=False (a retry's reused
+        # samples): tracked so every flush path drains them, but not counted
+        # toward the flush_buffer threshold and never arming the stale-flush
+        # timer on their own (one deterministic flush is scheduled when the
+        # reuse sweep settles — see reuse_sweep_settled)
+        self.flush_quiet: list[tuple[str | int, int]] = []
+        # sticky permit for the stale-flush timer to arm with only quiet
+        # samples pending: set when a flush fails with flush_quiet non-empty,
+        # cleared when flush_quiet fully drains. Sticky state rather than a
+        # one-shot argument so the timer's own failure re-arm (and
+        # flush_samples()'s except re-arm) keep retrying a quiet-only flush.
+        self.flush_quiet_retry = False
+        self._init_stale_flush_state()
+
+        # set once log_finish() has finalized and torn down the recorder. The
+        # flush/buffer directive providers stay attached to this eval's
+        # EvalState under --ctl-server=keep (finished evals remain visible), so
+        # they must read as a finished no-op rather than reaching into the
+        # torn-down recorder.
+        self._finished = False
+
+        # set for a retry attempt until its reuse sweep settles (see
+        # hold_destination_writes); while set, no destination write happens
+        self._destination_hold = False
+
+        # sample buffer db
+        self._buffer_db: SampleBufferDatabase | None = None
+
+        # how many of the run's process-scoped ctl config updates this log
+        # has recorded (see record_inherited_config_updates)
+        self._process_updates_recorded = 0
+
+    def _init_stale_flush_state(self) -> None:
+        # `_flush_lock` serializes every path that writes the log via the
+        # recorder — the buffer-full flush and the stale-flush timer (both
+        # through `_flush_pending_samples`), the on-demand `flush_samples()`
+        # (control channel), and the teardown in `log_finish()` — so they can't
+        # race the recorder or each other's bookkeeping (the recorder has its
+        # own lock, so the writes themselves are already safe; this keeps the
+        # flushed count accurate and stops an on-demand flush from touching the
+        # recorder after log_finish has torn it down). `_flush_pending_lock`
+        # guards the `flush_pending` list itself (a short, await-free section).
+        self._flush_lock = anyio.Lock()
+        self._flush_pending_lock = anyio.Lock()
+        self._stale_flush_cancel_scope: anyio.CancelScope | None = None
+        self._stale_flush_stops: set[anyio.Event] = set()
+        self._stale_flush_generation = 0
+        self._stale_flush_interval = _STALE_FLUSH_INTERVAL
+
+    async def init(self) -> None:
+        self._bump_created_past_existing_logs()
+        self._location = await self.recorder.log_init(self.eval)
+
+        # process-scoped ctl retunes applied earlier in this run (before a
+        # retry attempt or a later eval-set child started) still govern this
+        # fresh log's eval — snapshot them so the log records the overrides
+        # it runs under (marked inherited via provenance.metadata)
+        await self.record_inherited_config_updates()
+
+        if self.eval.config.log_realtime is False:
+            return
+
+        self._buffer_db = SampleBufferDatabase(
+            location=self._location,
+            log_images=self.eval.config.log_images is not False,
+            log_shared=self.eval.config.log_shared,
+        )
+
+    async def reinit(self) -> None:
+        """Reset this logger for a retry attempt with a fresh eval entry."""
+        from inspect_ai._control.eval_state import detach_eval_live
+
+        # the superseded attempt's EvalState holds providers bound to THIS
+        # logger, which is about to be re-pointed at the new attempt
+        detach_eval_live(self.eval.eval_id)
+
+        await self._stop_stale_flush_timer()
+        self.eval = self.eval.model_copy(update=dict(eval_id=uuid(), created=iso_now()))
+        self._samples_completed = 0
+        self.flush_pending = []
+        self.flush_quiet = []
+        self.flush_quiet_retry = False
+        self._finished = False
+        # the retry attempt re-enters task_run, which re-sets the hold for
+        # its own reuse sweep when applicable
+        self._destination_hold = False
+        # the retry attempt gets a fresh log, which must re-record the run's
+        # full accumulated process-scoped updates in init() below
+        self._process_updates_recorded = 0
+        # normally log_finish() has already cleaned up the buffer db, but if
+        # the attempt failed before finishing its log (e.g. the log_start()
+        # write failed) it is still live — clean it up so the new attempt
+        # can't collide with it (the location repeats if `created` lands on
+        # the same second)
+        if self._buffer_db is not None:
+            self._buffer_db.cleanup()
+            self._buffer_db = None
+        await self.init()
+
+    def _bump_created_past_existing_logs(self) -> None:
+        """Bump `eval.created` past any existing log at the would-be path.
+
+        File recorders compute the log filename from `eval.created` (down
+        to a second), `task`, `task_id`, and `model`. Two logs that share
+        all of those collide on the filesystem; we walk `created` forward
+        until the computed path doesn't already exist.
+        """
+        log_file_path = getattr(self.recorder, "_log_file_path", None)
+        if log_file_path is None:
+            return
+        from datetime import datetime, timedelta, timezone
+
+        from inspect_ai._util.file import filesystem
+
+        max_attempts = 60
+        for _ in range(max_attempts):
+            path = log_file_path(self.eval)
+            if not filesystem(path).exists(path):
+                return
+            dt = datetime.fromisoformat(self.eval.created) + timedelta(seconds=1)
+            bumped = dt.astimezone(timezone.utc).isoformat(timespec="seconds")
+            self.eval = self.eval.model_copy(update=dict(created=bumped))
+        raise RuntimeError(
+            f"Could not find a unique log filename for task {self.eval.task!r} "
+            f"(task_id={self.eval.task_id}) after {max_attempts} attempts; "
+            f"last tried {log_file_path(self.eval)!r}."
+        )
+
+    @property
+    def location(self) -> str:
+        return self._location
+
+    @property
+    def samples_completed(self) -> int:
+        return self._samples_completed
+
+    @property
+    def buffer_db(self) -> SampleBufferDatabase | None:
+        return self._buffer_db
+
+    def hold_destination_writes(self) -> None:
+        """Defer every destination write until the reuse sweep settles.
+
+        Called by ``task_run`` immediately before ``log_start`` when this
+        attempt is a retry with a non-empty seed (an ``options.sample_source``
+        and at least one planned run). While held, ``log_start`` skips its
+        immediate flush and ``_flush_pending_samples`` is a no-op, so the
+        attempt's first destination write is the reuse-sweep settle flush —
+        which by construction contains ``start.json`` plus the complete
+        re-logged reused set. A hard kill before that write therefore leaves
+        no destination file at all: the next retry chains to the prior
+        attempt's log (reuse intact) rather than to an empty newest log that
+        would silently re-run every completed sample (and, with
+        ``retry_cleanup=True``, lose them permanently once the prior log is
+        cleaned up). Released by :meth:`reuse_sweep_settled` when the sweep
+        settles, with ``log_finish`` as the backstop for attempts that end
+        before settling.
+        """
+        self._destination_hold = True
+
+    async def log_start(self, plan: EvalPlan) -> None:
+        await self.recorder.log_start(self.eval, plan)
+        # while destination writes are held the start record stays journaled
+        # in the recorder's temp zip and rides out with the settle flush
+        if not self._destination_hold:
+            await self.recorder.flush(self.eval)
+
+    async def start_sample(self, sample: EvalSampleSummary) -> None:
+        if self._buffer_db is not None:
+            self._buffer_db.start_sample(sample)
+
+    def log_sample_event(self, id: str | int, epoch: int, event: Event) -> None:
+        # log the sample event
+        if self._buffer_db is not None:
+            self._buffer_db.log_events([SampleEvent(id=id, epoch=epoch, event=event)])
+
+    def remove_sample(self, id: str | int, epoch: int) -> None:
+        if self._buffer_db is not None:
+            self._buffer_db.remove_samples([(id, epoch)])
+
+    async def sample_summaries(self) -> list[EvalSampleSummary] | None:
+        """Live completed-sample summaries (handed to the control channel via ``register_eval``)."""
+        return await self.recorder.sample_summaries(self.eval)
+
+    async def read_sample(
+        self,
+        id: str | int,
+        epoch: int,
+        *,
+        exclude_fields: set[str] | None = None,
+    ) -> EvalSample | None:
+        """Read one full sample (recorder buffer, then on-disk log), or None."""
+        # The whole-sample counterpart to `sample_summaries`, handed to the
+        # control channel via `register_eval` so per-sample reads (error detail,
+        # event pages) source from the *same* place the samples listing does.
+        # Prefer the recorder's not-yet-flushed in-memory sample, falling back
+        # to the finalized on-disk log once it's flushed / the recorder is torn
+        # down — otherwise those reads see only the on-disk log and miss a
+        # just-completed (or reused-on-retry) sample the listing already shows.
+        buffered = await self.recorder.buffered_sample(self.eval, id, epoch)
+        if buffered is not None:
+            return buffered
+
+        from inspect_ai.log._file import read_eval_log_sample_async
+
+        # `exclude_fields` applies only here: the in-memory sample above is
+        # already resident, so returning it whole costs nothing.
+        try:
+            return await read_eval_log_sample_async(
+                self.location, id, epoch, exclude_fields=exclude_fields
+            )
+        except (IndexError, FileNotFoundError):
+            # IndexError: no such sample in the log. FileNotFoundError: the
+            # destination log doesn't exist yet (a held retry attempt before
+            # its reuse-sweep settle flush).
+            return None
+
+    def sample_events_provider(
+        self, id: str | int, epoch: int
+    ) -> "TranscriptHistoryProvider | None":
+        """History provider over the realtime buffer for one sample, or None.
+
+        The events counterpart to :meth:`sample_summaries` / :meth:`read_sample`,
+        handed to the control channel via ``register_eval``: events for a
+        streaming-completion sample (whose recorder copy is event-less — they
+        live in the buffer database) are read through the *same* buffer
+        instance this logger writes. That keeps the control layer ignorant of
+        what a buffer is (no path re-derivation, no second connection set) and
+        puts its reads under the buffer's sample read leases, which defer
+        removal while a read is open. Returns ``None`` when realtime logging
+        is off or the buffer has been torn down — callers then fall back to
+        the recorder/on-disk sample.
+        """
+        if self._buffer_db is None:
+            return None
+        from inspect_ai.log._recorders.buffer.transcript_history_provider import (
+            BufferTranscriptHistoryProvider,
+        )
+
+        return BufferTranscriptHistoryProvider(self._buffer_db, id, epoch)
+
+    async def complete_sample(
+        self, sample: EvalSample, *, flush: bool, write_through: bool = False
+    ) -> None:
+        await self.recorder.log_sample(self.eval, sample, write_through=write_through)
+        await self._finalize_sample(sample, flush=flush)
+
+    async def complete_sample_streaming(
+        self, sample: EvalSample, history: "SampleHistory", *, flush: bool
+    ) -> None:
+        await self.recorder.log_sample_streaming(self.eval, sample, history)
+        await self._finalize_sample(sample, flush=flush)
+
+    async def _finalize_sample(self, sample: EvalSample, *, flush: bool) -> None:
+        if self._buffer_db is not None:
+            self._buffer_db.complete_sample(
+                sample.summary(), sample_metadata=sample.metadata
+            )
+
+        if flush:
+            async with self._flush_pending_lock:
+                was_empty = not self.flush_pending
+                self.flush_pending.append((sample.id, sample.epoch))
+                threshold_reached = len(self.flush_pending) >= self.flush_buffer
+
+            if threshold_reached:
+                await self._stop_stale_flush_timer()
+                await self._flush_pending_samples()
+            elif was_empty:
+                await self._start_stale_flush_timer_if_needed()
+        else:
+            async with self._flush_pending_lock:
+                self.flush_quiet.append((sample.id, sample.epoch))
+
+        if sample.error is None:
+            self._samples_completed += 1
+
+    async def _flush_pending_samples(
+        self, *, stale_flush_generation: int | None = None, even_if_empty: bool = False
+    ) -> int:
+        """Flush buffered completed samples to the log; return the count written.
+
+        Shared by every flush path — the buffer-full flush, the stale-flush
+        timer, and the reuse-sweep settle flush (which ignore the return) and
+        the on-demand ``flush_samples()``. Drains ``flush_pending`` and
+        ``flush_quiet`` alike, proceeding when *either* is non-empty (so
+        ``inspect ctl task log-flush`` works when only reused samples are
+        buffered), and the returned count covers samples drained from both
+        lists. Serialized via :attr:`_flush_lock`; a no-op returning 0 once
+        the eval has finished (``log_finish`` has written everything and torn
+        the recorder down, so reaching into it would raise) or while
+        destination writes are held (see :meth:`hold_destination_writes`) —
+        nothing is drained, so the pending lists and buffer-db rows stay
+        intact for the settle flush. ``even_if_empty`` proceeds even with both lists
+        empty: the settle flush uses it to create the destination (the temp
+        zip already holds ``start.json`` plus any write-throughs) when a held
+        attempt reused nothing.
+        """
+        reschedule_stale_flush = False
+        flushed = 0
+        async with self._flush_lock:
+            if self._finished:
+                return 0
+            # checked under _flush_lock so a caller already awaiting the lock
+            # when reuse_sweep_settled releases the hold proceeds normally
+            if self._destination_hold:
+                return 0
+            async with self._flush_pending_lock:
+                pending = list(self.flush_pending)
+                quiet = list(self.flush_quiet)
+                if not even_if_empty and not pending and not quiet:
+                    return 0
+
+            try:
+                await self.recorder.flush(self.eval)
+            except BaseException:
+                # quiet samples never arm the stale timer on their own, so a
+                # failed write would otherwise leave a quiet-only state with
+                # no automatic retry: permit the timer to arm for them
+                if self.flush_quiet:
+                    self.flush_quiet_retry = True
+                raise
+            flushed = len(pending) + len(quiet)
+
+            async with self._flush_pending_lock:
+                if self._buffer_db is not None:
+                    # quiet (reused) samples never had a buffer-db row (the
+                    # reuse path doesn't call start_sample), so only live
+                    # pending samples need removal
+                    self._buffer_db.remove_samples(pending)
+
+                # Items appended during the flush are at the tail; drop the flushed prefix.
+                del self.flush_pending[: len(pending)]
+                del self.flush_quiet[: len(quiet)]
+                if not self.flush_quiet:
+                    self.flush_quiet_retry = False
+                current_generation = self._stale_flush_generation
+                reschedule_stale_flush = bool(self.flush_pending) and (
+                    stale_flush_generation is None
+                    or stale_flush_generation == current_generation
+                )
+
+        if reschedule_stale_flush:
+            await self._arm_stale_flush_timer(generation=stale_flush_generation)
+        return flushed
+
+    async def flush_samples(self) -> int:
+        """Write all buffered completed samples to the log immediately.
+
+        Completed samples normally accumulate until ``log_buffer`` of them queue
+        up (or the stale-flush timer fires) before a (possibly remote) write.
+        This forces that write now — so the samples become readable in the log
+        without waiting — and returns the number written, counting quiet
+        (retry-reused) samples as well as live completions (0 if none were
+        pending, the eval has finished, or destination writes are held while a
+        retry's reuse sweep runs — the settle flush is already scheduled and
+        will write everything shortly). Handed to the control channel via
+        ``register_eval`` so ``inspect ctl task log-flush`` can push a long-running
+        eval's results out to S3 on demand.
+        """
+        # while held this can only no-op, so return before stopping the timer:
+        # stopping it here would disarm the retry for live samples already
+        # pending without the flush that normally replaces it
+        if self._destination_hold:
+            return 0
+
+        # an on-demand flush writes everything pending, so quiesce the stale
+        # timer first (it would otherwise wake to find nothing left to do)
+        await self._stop_stale_flush_timer()
+        try:
+            return await self._flush_pending_samples()
+        except Exception:
+            # the flush failed with samples still pending; re-arm the stale-flush
+            # timer we stopped above so they're retried automatically rather than
+            # stranded until the next sample completes (mirrors the stale path's
+            # own on-failure re-arm). The error still propagates to the caller.
+            await self._arm_stale_flush_timer()
+            raise
+
+    def reuse_sweep_settled(self) -> None:
+        """The reuse sweep settled: release any destination-write hold and schedule one settle flush.
+
+        Called by ``task_run`` when every planned sample has resolved its
+        prior-attempt lookup (a no-op on runs with nothing held and nothing
+        reused — most runs). Reused samples
+        are re-logged with ``flush=False`` and neither count toward the
+        ``flush_buffer`` threshold nor arm the stale-flush timer, so without
+        this one deterministic write they would stay unflushed until an
+        unrelated trigger — on a retry whose remaining samples are
+        long-running, possibly hours or never. The settled sweep also means
+        the temp zip holds the complete reused set, so the destination-write
+        hold (see :meth:`hold_destination_writes`) is cleared here —
+        synchronously, before the background flush runs, so any flush caller
+        already awaiting ``_flush_lock`` proceeds once it gets the lock. When
+        the hold was set the flush runs even with nothing quiet pending
+        (prior log empty or unreadable, ``log_samples=False``): the forced
+        write creates the destination, restoring the "running log exists on
+        disk" property as early as possible. Without a hold it stays a no-op
+        when nothing quiet is pending (fresh eval, later dynamic-feed settle
+        cycles) or the eval has finished.
+
+        May fire during teardown (cancelled ``run_sample``s still settle the
+        sweep countdown): benign — the flush serializes with ``log_finish``
+        on ``_flush_lock`` and no-ops once ``_finished`` is set.
+        """
+        if self._finished:
+            return
+        held = self._destination_hold
+        self._destination_hold = False
+        if not held and not self.flush_quiet:
+            return
+        try:
+            run_in_background(self._quiet_settle_flush, held)
+        except Exception as ex:
+            # background spawn unavailable (e.g. torn-down task group during
+            # teardown): log_finish's own final write drains the samples
+            logger.warning(
+                "Unable to schedule reused-sample flush: %s", ex, exc_info=ex
+            )
+
+    async def _quiet_settle_flush(self, even_if_empty: bool = False) -> None:
+        try:
+            # shield the write like the stale-timer path: a teardown that
+            # cancels the background group must not abandon a half-written log
+            with anyio.CancelScope(shield=True):
+                await self._flush_pending_samples(even_if_empty=even_if_empty)
+        except Exception as ex:
+            logger.warning("Reused-sample settle flush failed: %s", ex, exc_info=ex)
+            # retry fallback: the failed flush set flush_quiet_retry, which
+            # extends the arming predicate to quiet-only pending state
+            await self._arm_stale_flush_timer()
+
+    def buffer_config(
+        self, log_buffer: int | None = None, log_shared: int | None = None
+    ) -> "BufferConfig":
+        """Get (and optionally update) this eval's sample-buffer parameters.
+
+        With both arguments ``None`` this is a pure read. ``log_buffer`` sets
+        the number of completed samples to buffer before a log write (clamped
+        to a minimum of 1); ``log_shared`` *retunes* an already-running
+        shared-log sync interval (in seconds).
+
+        Updating ``log_buffer`` changes the threshold for *future* writes only —
+        it does not flush samples already buffered under the previous threshold.
+        Lowering it therefore takes effect when the next sample finalizes and
+        crosses the new threshold; to write what's already pending now, use
+        ``inspect ctl task log-flush``. (Keeping the directive policy-only avoids coupling
+        a parameter change to a possibly-remote write.)
+
+        ``log_shared`` cannot turn shared sync on at runtime: a buffer started
+        without it has no filestore (a normal CLI run passes ``log_shared=0``),
+        so the request is rejected and reported back as ``log_shared=None``
+        ("off") rather than echoing a value that won't take effect. It's also a
+        no-op when realtime logging — and thus the buffer database — is off.
+        Returns the resulting configuration. Handed to the control channel via
+        ``register_eval`` for ``inspect ctl config``.
+        """
+        from inspect_ai._control.eval_state import BufferConfig
+
+        if log_buffer is not None:
+            self.flush_buffer = max(1, log_buffer)
+        if log_shared is not None and self._buffer_db is not None:
+            # returns False (a no-op) when this buffer has no shared sync to
+            # retune — the reported log_shared below stays None, so the rejected
+            # request isn't echoed back as if it had been applied
+            self._buffer_db.set_sync_interval(log_shared)
+        return BufferConfig(
+            log_buffer=self.flush_buffer,
+            pending=len(self.flush_pending) + len(self.flush_quiet),
+            log_shared=self._buffer_db.shared_sync_interval
+            if self._buffer_db is not None
+            else None,
+        )
+
+    async def record_inherited_config_updates(self) -> None:
+        """Record process-scoped ctl retunes this log hasn't yet captured.
+
+        A watermark (``_process_updates_recorded``) tracks how far into the
+        run's accumulated process-scoped updates this log has recorded.
+        Called at the two points that bracket the gap between "logger
+        exists" and "logger is a live fan-out target": from :meth:`init`, to
+        snapshot retunes that predate the log (a retry attempt or a later
+        eval-set child); and from ``task_run`` immediately before
+        ``register_eval``, because all of a run's initial loggers are
+        init()ed up front in ``prepare_options`` while retunes fan out only
+        to *registered* evals — without the catch-up, a task queued behind
+        ``--max-tasks`` would never record a retune applied while it waited,
+        even though the process-global override still governs it. The
+        catch-up must precede ``register_eval``: both run on the eval's
+        single event loop and ``register_eval`` is sync, so no retune can
+        land between the final watermark check here and registration (after
+        which fan-out reaches this logger directly).
+
+        Recorded copies keep their original provenance/timestamps and are
+        marked ``inherited`` via ``provenance.metadata``. Recording is
+        bookkeeping, never control: a failure degrades to a warning (and
+        advances the watermark — no retry) rather than blocking the task.
+        """
+        from inspect_ai._control.config_record import (
+            inherited_config_updates,
+            process_config_update_count,
+        )
+
+        # re-check the count after each batch: recording awaits the recorder,
+        # and a retune can land during those awaits
+        while self._process_updates_recorded < process_config_update_count():
+            updates = inherited_config_updates(self._process_updates_recorded)
+            self._process_updates_recorded += len(updates)
+            for update in updates:
+                try:
+                    await self.log_config_update(update)
+                except Exception as ex:
+                    logger.warning(
+                        "Could not record inherited config update in eval log %s: %s",
+                        self._location,
+                        ex,
+                    )
+
+    async def log_config_update(self, update: "ConfigUpdate") -> bool:
+        """Record a mid-run config change into this eval's log.
+
+        Handed to the control channel via ``register_eval`` so applied
+        ``inspect ctl config`` retunes are persisted (see
+        ``EvalLog.config_updates``). Missing ``previous`` values are filled
+        from this log's launch config before recording, so each affected log
+        reports its own honest "before". Returns ``False`` (recording
+        nothing) once ``log_finish`` has torn the recorder down — a finished
+        log's record is complete, and under ``--ctl-server=keep`` the logger
+        stays attached to the eval's state after finishing.
+
+        Serialized under ``_flush_lock`` with the other recorder-touching
+        paths so it can't interleave with a flush or the finish teardown.
+        """
+        from inspect_ai.log._config_update import fill_previous_from_launch
+
+        async with self._flush_lock:
+            if self._finished:
+                return False
+            update = fill_previous_from_launch(update, self.eval)
+            await self.recorder.log_config_update(self.eval, update)
+            return True
+
+    def update_metrics(self, metrics: list[TaskDisplayMetric]) -> None:
+        if self._buffer_db is not None:
+            self._buffer_db.update_metrics(metrics)
+
+    async def _start_stale_flush_timer_if_needed(self) -> None:
+        await self._arm_stale_flush_timer()
+
+    async def _arm_stale_flush_timer(self, *, generation: int | None = None) -> None:
+        async with self._flush_pending_lock:
+            # never arm once log_finish() has begun finalizing — it has (or is
+            # about to) clear pending and tear down, so a timer here is stale
+            if self._finished:
+                return
+            if generation is not None and generation != self._stale_flush_generation:
+                return
+
+            # quiet (reused) samples arm the timer only after a failed flush
+            # set the retry permit — the settle flush is their primary drain
+            should_start = (0 < len(self.flush_pending) < self.flush_buffer) or (
+                self.flush_quiet_retry and len(self.flush_quiet) > 0
+            )
+            already_started = self._stale_flush_cancel_scope is not None
+            if not should_start or already_started:
+                return
+
+            cancel_scope = anyio.CancelScope()
+            stopped = anyio.Event()
+            current_generation = self._stale_flush_generation
+            self._stale_flush_cancel_scope = cancel_scope
+            self._stale_flush_stops.add(stopped)
+
+        try:
+            run_in_background(
+                self._stale_flush_after_delay,
+                cancel_scope,
+                stopped,
+                current_generation,
+            )
+        except Exception:
+            # The background task never started, so its finally won't run; this
+            # is the only path that signals `stopped`. Shield so a cancellation
+            # here can't skip stopped.set() and strand a _stop_stale_flush_timer()
+            # waiter (mirrors the shielded teardown in _stale_flush_after_delay).
+            with anyio.CancelScope(shield=True):
+                async with self._flush_pending_lock:
+                    if self._stale_flush_cancel_scope is cancel_scope:
+                        self._stale_flush_cancel_scope = None
+                    self._stale_flush_stops.discard(stopped)
+                stopped.set()
+            raise
+
+    async def _stop_stale_flush_timer(self) -> None:
+        async with self._flush_pending_lock:
+            self._stale_flush_generation += 1
+            if self._stale_flush_cancel_scope is not None:
+                self._stale_flush_cancel_scope.cancel()
+                self._stale_flush_cancel_scope = None
+            stopped_events = list(self._stale_flush_stops)
+
+        for stopped in stopped_events:
+            await stopped.wait()
+
+    async def cleanup(self) -> None:
+        await self._stop_stale_flush_timer()
+        if self._buffer_db is not None:
+            self._buffer_db.cleanup()
+            self._buffer_db = None
+
+    async def _clear_stale_flush_timer(
+        self, cancel_scope: anyio.CancelScope, stopped: anyio.Event
+    ) -> None:
+        async with self._flush_pending_lock:
+            if self._stale_flush_cancel_scope is cancel_scope:
+                self._stale_flush_cancel_scope = None
+
+    async def _stale_flush_after_delay(
+        self,
+        cancel_scope: anyio.CancelScope,
+        stopped: anyio.Event,
+        generation: int,
+    ) -> None:
+        try:
+            with cancel_scope:
+                await anyio.sleep(self._stale_flush_interval)
+                await self._clear_stale_flush_timer(cancel_scope, stopped)
+                try:
+                    with anyio.CancelScope(shield=True):
+                        await self._flush_pending_samples(
+                            stale_flush_generation=generation
+                        )
+                    if self._destination_hold:
+                        # the flush no-oped under the hold, and clearing the
+                        # timer above dropped this fire's arming: re-arm so
+                        # pending samples still have a retry if the sweep never
+                        # settles (a cancelled task group can leave the
+                        # countdown short of its last settle)
+                        await self._arm_stale_flush_timer(generation=generation)
+                except Exception as ex:
+                    logger.warning("Stale eval log flush failed: %s", ex, exc_info=ex)
+                    await self._arm_stale_flush_timer(generation=generation)
+        finally:
+            # Teardown may run with the enclosing scope already cancelled. The
+            # lock acquire is a cancellation checkpoint, so without shielding it
+            # can raise and skip stopped.set() — leaving the (shielded) wait in
+            # _stop_stale_flush_timer() hung forever.
+            with anyio.CancelScope(shield=True):
+                async with self._flush_pending_lock:
+                    self._stale_flush_stops.discard(stopped)
+                stopped.set()
+
+    async def log_finish(
+        self,
+        status: EvalStatus,
+        stats: EvalStats,
+        results: EvalResults | None = None,
+        reductions: list[EvalSampleReductions] | None = None,
+        error: EvalError | None = None,
+    ) -> EvalLog:
+        # quiesce the stale-flush timer first — _stop_stale_flush_timer waits
+        # for any in-flight timer flush to complete, so it can't race the teardown
+        await self._stop_stale_flush_timer()
+
+        # Finalize under `_flush_lock` so an on-demand `flush_samples()` from the
+        # control channel can't interleave with the teardown: `recorder.log_finish`
+        # deletes this eval's tracked log, and a flush racing that would call
+        # `recorder.flush()` on the gone log (KeyError -> 500). The lock makes
+        # finish and flush mutually exclusive; the `_finished` flag set inside it
+        # makes any flush that acquires the lock afterward a no-op rather than
+        # touching the torn-down recorder.
+        async with self._flush_lock:
+            # finish and get log
+            log = await self.recorder.log_finish(
+                self.eval, status, stats, results, reductions, error, self.header_only
+            )
+
+            # every completed sample is now on disk. Mark finished and drop the
+            # pending list so the still-attached flush/buffer directives (kept
+            # visible under --ctl-server=keep) report a finished no-op / accurate
+            # empty pending rather than reporting stale pending.
+            self._finished = True
+            async with self._flush_pending_lock:
+                self.flush_pending.clear()
+                self.flush_quiet.clear()
+                self.flush_quiet_retry = False
+
+            # cleanup the events db
+            if self._buffer_db is not None:
+                self._buffer_db.cleanup()
+                self._buffer_db = None
+
+        # An on-demand flush_samples() that was mid-flush while we waited on
+        # _flush_lock above re-arms the stale-flush timer *outside* _flush_lock
+        # (see _flush_pending_samples), so it can slip in after our pre-lock stop
+        # and leave a timer armed against the now-finished eval. Now that
+        # _finished is set and pending cleared, stop once more to cancel it — and
+        # not while holding _flush_lock, since the stop awaits any in-flight
+        # timer flush, which takes that lock.
+        await self._stop_stale_flush_timer()
+
+        # return log
+        return log
+
+
+def plan_to_eval_plan(plan: Plan, config: GenerateConfig) -> EvalPlan:
+    def eval_plan_step(solver: Solver) -> EvalPlanStep:
+        return EvalPlanStep(
+            solver=registry_log_name(solver),
+            params=getattr(solver, SOLVER_ALL_PARAMS_ATTR, {}),
+            params_passed=registry_params(solver),
+        )
+
+    eval_plan = EvalPlan(
+        name=plan.name,
+        steps=[eval_plan_step(solver) for solver in plan.steps],
+        finish=eval_plan_step(plan.finish) if plan.finish else None,
+        config=config,
+    )
+    if plan.finish:
+        eval_plan.steps.append(eval_plan_step(plan.finish))
+    return eval_plan
+
+
+def collect_eval_data(stats: EvalStats) -> None:
+    from inspect_ai.log._log import ConnectionLimitChange
+    from inspect_ai.util._concurrency import adaptive_controllers
+
+    # collect stats
+    stats.completed_at = iso_now()
+    stats.model_usage = model_usage()
+    stats.role_usage = role_usage()
+
+    # capture adaptive-connections controller history. The tuple's second
+    # element is the controller's display name (model name), NOT the underlying
+    # connection_key (which often contains an api_key) — see _set_limit.
+    history: list[ConnectionLimitChange] = []
+    for controller in adaptive_controllers():
+        for ts, model, old, new, reason in controller.history:
+            history.append(
+                ConnectionLimitChange(
+                    timestamp=ts,
+                    model=model,
+                    old_limit=old,
+                    new_limit=new,
+                    reason=reason,
+                )
+            )
+    history.sort(key=lambda e: e.timestamp)
+    stats.connection_limit_history = history
+
+
+def resolve_eval_metrics(
+    metrics: list[MetricSpec | dict[str, list[MetricSpec]]]
+    | dict[str, list[MetricSpec]]
+    | None,
+) -> (
+    list[EvalMetricDefinition | dict[str, list[EvalMetricDefinition]]]
+    | dict[str, list[EvalMetricDefinition]]
+    | None
+):
+    if metrics is None:
+        return None
+    elif isinstance(metrics, list):
+        result: list[EvalMetricDefinition | dict[str, list[EvalMetricDefinition]]] = []
+        for metric_item in metrics:
+            if isinstance(metric_item, dict):
+                # It's a dict of metric groups
+                result.append(
+                    {
+                        k: [
+                            EvalMetricDefinition(name=v.metric, options=v.args)
+                            for v in metric_list
+                        ]
+                        for k, metric_list in metric_item.items()
+                    }
+                )
+            else:
+                # It's a direct MetricSpec
+                result.append(
+                    EvalMetricDefinition(
+                        name=metric_item.metric, options=metric_item.args
+                    )
+                )
+        return result
+    else:
+        return {
+            k: [
+                EvalMetricDefinition(name=v.metric, options=v.args) for v in metric_list
+            ]
+            for k, metric_list in metrics.items()
+        }
+
+
+def resolve_eval_scorers(scorers: list[ScorerSpec] | None) -> list[EvalScorer] | None:
+    if scorers is None:
+        return None
+    else:
+        results = []
+        for scorer in scorers:
+            results.append(
+                EvalScorer(
+                    name=scorer.scorer,
+                    metrics=resolve_scorer_metrics(scorer.metrics),
+                    options=scorer.args,
+                    metadata=scorer.metadata,
+                )
+            )
+        return results
+
+
+def resolve_scorer_metrics(
+    metrics: list[MetricSpec | dict[str, list[MetricSpec]]]
+    | dict[str, list[MetricSpec]]
+    | None,
+) -> (
+    list[EvalMetricDefinition | dict[str, list[EvalMetricDefinition]]]
+    | dict[str, list[EvalMetricDefinition]]
+    | None
+):
+    if metrics is None:
+        return None
+    elif isinstance(metrics, list):
+        resolved_metrics: list[
+            EvalMetricDefinition | dict[str, list[EvalMetricDefinition]]
+        ] = []
+        for metric_item in metrics:
+            if isinstance(metric_item, MetricSpec):
+                resolved_metrics.append(
+                    EvalMetricDefinition(
+                        name=metric_item.metric, options=metric_item.args
+                    )
+                )
+            elif isinstance(metric_item, dict):
+                resolved_metrics.append(
+                    {
+                        metric_group: [
+                            EvalMetricDefinition(
+                                name=metric_spec.metric, options=metric_spec.args
+                            )
+                            for metric_spec in metric_specs
+                        ]
+                        for metric_group, metric_specs in metric_item.items()
+                    }
+                )
+            else:
+                raise TypeError(f"Unexpected item in list: {metric_item}")
+        return resolved_metrics
+    else:
+        return {
+            metric_group: [
+                EvalMetricDefinition(name=metric_spec.metric, options=metric_spec.args)
+                for metric_spec in metric_specs
+            ]
+            for metric_group, metric_specs in metrics.items()
+        }

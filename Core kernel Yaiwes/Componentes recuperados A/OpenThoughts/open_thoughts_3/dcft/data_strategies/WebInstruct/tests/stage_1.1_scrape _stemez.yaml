@@ -1,0 +1,53 @@
+name: webinstruct_stage1_stemez
+operators:
+  - id: load_stemez_html
+    config:
+      type: json_source
+      file: dcft/webinstruct/scraper/data/stemez/stemez_content.json
+      num_truncate: 20_000
+
+  - id: parse_stemez_html
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.parse_html
+      function_config:
+        input_column: html
+        output_column: extracted_text
+        remove_columns: [html, timestamp]
+        cache_file: dcft/data_strategies/WebInstruct/cache/parse_stemez_html.json
+    input_ids:
+      - load_stemez_html
+
+  - id: clean_stemez_text
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.clean_dataset
+      function_config:
+        input_column: extracted_text
+        output_column: cleaned_text
+        remove_columns: [extracted_text]
+    input_ids:
+      - parse_stemez_html
+
+  - id: filter_stemez_text
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.filter_if_contains
+      function_config:
+        input_column: cleaned_text
+        phrase: "CONTENTS CHAPTER PREVIOUS NEXT PREP FIND PROBLEM"
+    input_ids:
+      - clean_stemez_text
+
+  - id: remove_stemez_text
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.remove_text
+      function_config:
+        input_column: cleaned_text
+        output_column: text
+        phrase: "CONTENTS CHAPTER PREVIOUS NEXT PREP FIND PROBLEM"
+        remove_columns: [cleaned_text]  
+    input_ids:
+      - filter_stemez_text
+

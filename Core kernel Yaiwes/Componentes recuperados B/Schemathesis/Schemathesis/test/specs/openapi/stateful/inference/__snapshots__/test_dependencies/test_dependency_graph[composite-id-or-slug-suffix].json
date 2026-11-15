@@ -1,0 +1,101 @@
+{
+  "operations": {
+    "GET /leagues": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "League",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /leagues/{league_id_or_slug}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "league_id_or_slug",
+          "resource": "League",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "League",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /leagues/{league_id_or_slug}/matches": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "league_id_or_slug",
+          "resource": "League",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Match",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "League": {
+      "fields": [
+        "id",
+        "name",
+        "slug"
+      ],
+      "types": {
+        "id": [
+          "integer"
+        ],
+        "name": [
+          "string"
+        ],
+        "slug": [
+          "string"
+        ]
+      }
+    },
+    "Match": {
+      "fields": [
+        "id",
+        "league_id"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "league_id",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "League"
+        }
+      ],
+      "types": {
+        "id": [
+          "integer"
+        ],
+        "league_id": [
+          "integer"
+        ]
+      }
+    }
+  }
+}

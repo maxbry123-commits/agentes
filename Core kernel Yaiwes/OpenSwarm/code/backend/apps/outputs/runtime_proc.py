@@ -1,0 +1,308 @@
+"""OS/process/port primitives for the per-workspace runtime: signal-based
+suspend/resume, descendant-tree kills, free-port allocation, and .env
+read/write. No asyncio runtime state lives here; AppRuntime (runtime.py) owns
+that and just calls into these."""
+
+import logging
+import os
+import re
+import signal
+import socket
+import subprocess
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# SIGTERM grace; well-behaved servers shut down under a second so 3s is enough.
+TERMINATE_GRACE_SECONDS = 3
+
+# 180s covers npm install (60-90s on typical hardware) plus the Vite bind.
+FRONTEND_BIND_TIMEOUT_SECONDS = 180
+# 80ms probe: dropping from 500ms was pure user-visible preview latency win; cheap on localhost.
+FRONTEND_BIND_POLL_INTERVAL = 0.08
+
+# 2000 lines per runtime; lets a Terminal tab opened mid-session replay context. ~few hundred KB at worst.
+LOG_BUFFER_LINES = 2000
+
+# Idle runtimes kept in LRU; trades memory for instant switch-back, beyond 1 because typical users ping-pong 2-3 apps.
+# Raised from 3 once the idle TTL landed: the cap used to be the ONLY bound on parked memory, so it
+# had to be tight; now anything unattended dies at 15 minutes regardless, so the pool can afford to
+# make instant-reopen cover a realistic handful of apps instead of the last three touched.
+MAX_IDLE_RUNTIMES = 6
+# How long a detached runtime may sit frozen in the idle pool before it is fully stopped. Frozen
+# costs 0% CPU but keeps holding memory and its port; past this nobody is coming back for it soon
+# and a fresh spawn on the next open is a fair trade for not squatting RAM indefinitely.
+IDLE_RUNTIME_TTL_S = 15 * 60.0
+
+# Cap on recent error lines the agent gets; 50 is enough for babel error + stack + a few warnings.
+RECENT_ERRORS_MAX = 50
+
+# Narrow regex for build errors (vite, babel, tsc, uvicorn); keeps routine logs out of agent context.
+ERROR_PATTERNS = re.compile(
+    r"(?:"
+    r"\[plugin:[^\]]+\]|"      # vite plugin errors
+    r"SyntaxError|"            # node / babel
+    r"Unexpected token|"       # babel / tsc parser
+    r"\berror TS\d+|"          # tsc diagnostics
+    r"ERROR\s+in\s|"           # webpack-style
+    r"Traceback \(most recent call last\)|"  # python
+    r"ModuleNotFoundError|"
+    r"ImportError|"
+    r"AttributeError:|"
+    r"Failed to compile|"
+    r"Cannot find module|"
+    r"Cannot resolve"
+    r")"
+)
+
+
+def suspend_process_tree(proc) -> None:
+    """Send SIGSTOP to a workspace's subprocess so it consumes 0% CPU
+    while sitting in the LRU idle pool. The signal is delivered to the
+    PROCESS GROUP (negative PID) when the child is a session leader,
+    so vite + uvicorn + their npm/python subchildren all pause together.
+
+    No-op on Windows (SIGSTOP has no equivalent; the `OpenProcessToken` +
+    `NtSuspendProcess` route works but isn't worth the win32 surface
+    here; idle Windows runtimes just stay running, which is the current
+    behavior). Failures here are swallowed; if the process already died
+    a stop signal is meaningless."""
+    if proc is None or os.name == "nt":
+        return
+    try:
+        if proc.returncode is not None:
+            return
+        os.kill(proc.pid, signal.SIGSTOP)
+    except (ProcessLookupError, PermissionError, OSError):
+        # Already-dead or out-of-permission; both safe to ignore.
+        pass
+
+
+def resume_process_tree(proc) -> None:
+    """SIGCONT a previously-suspended workspace process. Pair with
+    suspend_process_tree. Microsecond cost; idempotent if the process
+    was never paused."""
+    if proc is None or os.name == "nt":
+        return
+    try:
+        if proc.returncode is not None:
+            return
+        os.kill(proc.pid, signal.SIGCONT)
+    except (ProcessLookupError, PermissionError, OSError):
+        pass
+
+
+def background_priority_kwargs() -> dict:
+    """Return the kwargs that lower the spawned subprocess's OS priority
+    to a "background" level. On POSIX this is `preexec_fn=os.nice(10)`,
+    which sets the child's nice to +10 BEFORE exec (so the renice covers
+    the entire bash → vite + uvicorn process tree). On Windows it's
+    `creationflags=BELOW_NORMAL_PRIORITY_CLASS`. The OS scheduler then
+    yields workspace cycles to whichever agent or browser tab is in the
+    user's foreground, so an in-background app build doesn't starve a
+    live chat session.
+
+    We intentionally do NOT pass `start_new_session=True` here even
+    though it would defend against an errant `kill 0` inside the
+    workspace propagating into the OpenSwarm group: doing so also
+    detaches the workspace from the terminal's foreground process
+    group, so a user Ctrl+C only reaches OpenSwarm itself and the
+    cleanup path has to chase every workspace by hand. If that path
+    is even slightly slow or gets interrupted by a second Ctrl+C, the
+    workspace's uvicorn / vite leaks past shutdown and the next
+    `bash run.sh` hits Errno 48 on port 8324. The `kill 0` propagation
+    is fixed at its source in the workspace template's run.sh
+    (uses `kill_tree` on tracked PIDs, never `kill 0`)."""
+    if os.name == "nt":
+        # subprocess.BELOW_NORMAL_PRIORITY_CLASS == 0x4000
+        return {"creationflags": subprocess.BELOW_NORMAL_PRIORITY_CLASS}
+    return {"preexec_fn": lambda: os.nice(10)}
+
+
+def find_free_port() -> int:
+    """Ask the kernel for an unused localhost port. There's a tiny race
+    between this socket closing and the backend re-binding, but we hand
+    each port to exactly one runtime so no caller competes for it, and
+    the kernel won't immediately recycle a freshly-closed port anyway."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def kill_descendant_tree(pid: int, sig_name: str = "TERM") -> None:
+    """Recursively signal every descendant of `pid`, leaves-first. The
+    webapp template's run.sh installs `trap cleanup EXIT` (no TERM), so a
+    plain SIGTERM to the bash wrapper exits bash silently and leaves
+    vite/uvicorn grandchildren reparented to PID 1, squatting on the
+    workspace's ports. Walking the tree ourselves bypasses the template's
+    signal-handling habits entirely. POSIX uses `pgrep -P` to enumerate
+    direct children; Windows is covered by `taskkill /T /F` (job-object
+    walk). All failures are swallowed; missing PIDs mean the process
+    already exited, which is the desired state anyway."""
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+        except Exception:
+            pass
+        return
+    try:
+        out = subprocess.run(
+            ["pgrep", "-P", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        children = [int(p) for p in out.stdout.split() if p.strip().isdigit()]
+    except Exception:
+        children = []
+    for child in children:
+        kill_descendant_tree(child, sig_name)
+    sig = getattr(signal, f"SIG{sig_name}", signal.SIGTERM)
+    for child in children:
+        try:
+            os.kill(child, sig)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+
+
+def is_port_free(port: int) -> bool:
+    """True if nothing currently holds a TCP listener on 127.0.0.1:port.
+    Cheap kernel-probe; resolves on bind success. Used as the cross-session
+    safety net: if a prior OpenSwarm run left a ghost subprocess holding
+    the .env-persisted FRONTEND_PORT, we detect it here and reallocate
+    rather than handing run.sh a port that will EADDRINUSE."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", port))
+        return True
+    except OSError:
+        return False
+
+
+def write_env_value(env_path: str, key: str, value: str) -> None:
+    """Update KEY=VALUE in an existing `.env`, preserving every other
+    line. Creates the file if missing. Used when a persisted port collides
+    with a ghost from a prior session and we have to reallocate before
+    spawning run.sh."""
+    lines: list[str] = []
+    found = False
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, encoding="utf-8") as f:
+                lines = f.readlines()
+        except Exception:
+            lines = []
+    for i, raw in enumerate(lines):
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        k = stripped.split("=", 1)[0].strip()
+        if k == key:
+            lines[i] = f"{key}={value}\n"
+            found = True
+            break
+    if not found:
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] = lines[-1] + "\n"
+        lines.append(f"{key}={value}\n")
+    try:
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+    except Exception:
+        logger.exception("failed writing %s=%s to %s", key, value, env_path)
+
+
+def ensure_force_port_shim(workspace_path: str) -> None:
+    """Retrofit the per-instance port override into a legacy workspace's `run.sh`.
+
+    Apps scaffolded before the multi-instance patch have a run.sh that sources
+    `.env` and then pins every instance to the same FRONTEND_PORT/BACKEND_PORT,
+    so opening a SECOND instance collides on the primary's ports and its preview
+    never binds ("Starting preview" forever). This injects the exact override
+    block the current template ships (inert unless OPENSWARM_FORCE_*_PORT is set,
+    i.e. only for secondary instances), leaving the primary untouched. Idempotent;
+    mirrors Patch 1a in scripts/fetch-webapp-template.sh."""
+    run_sh = os.path.join(workspace_path, "run.sh")
+    if not os.path.isfile(run_sh):
+        return
+    try:
+        with open(run_sh, encoding="utf-8") as f:
+            lines = f.readlines()
+    except Exception:
+        return
+    if any("OPENSWARM_FORCE_FRONTEND_PORT" in ln for ln in lines):
+        return
+    block = [
+        "\n",
+        "# Per-instance port overrides: OpenSwarm passes these when the user opens a SECOND instance of the app, so it boots on fresh ports instead of colliding with the primary's .env-pinned ones.\n",
+        'if [[ -n "${OPENSWARM_FORCE_FRONTEND_PORT:-}" ]]; then\n',
+        '    export FRONTEND_PORT="$OPENSWARM_FORCE_FRONTEND_PORT"\n',
+        "fi\n",
+        'if [[ -n "${OPENSWARM_FORCE_BACKEND_PORT:-}" ]]; then\n',
+        '    export BACKEND_PORT="$OPENSWARM_FORCE_BACKEND_PORT"\n',
+        "fi\n",
+    ]
+    out: list[str] = []
+    sourced = False
+    inserted = False
+    for ln in lines:
+        out.append(ln)
+        if 'source "$ROOT_DIR/.env"' in ln:
+            sourced = True
+        elif sourced and not inserted and ln.strip() == "fi":
+            out.extend(block)
+            inserted = True
+    if not inserted:
+        logger.warning("run.sh in %s lacks a recognizable `source .env` block; secondary instances may collide on ports", workspace_path)
+        return
+    try:
+        with open(run_sh, "w", encoding="utf-8") as f:
+            f.writelines(out)
+    except Exception:
+        logger.exception("failed injecting per-instance port shim into %s", run_sh)
+
+
+def is_new_mode(workspace_path: str) -> bool:
+    """A workspace is "new-mode" (webapp-template scaffold) if it has a
+    `run.sh` at its root. Old-mode workspaces are flat `index.html`-only
+    apps that pre-date the template swap; they're served by OpenSwarm's
+    own `/api/outputs/workspace/{ws}/serve/...` FastAPI route and have an
+    optional `backend.py` we spawn directly.
+
+    Single-file probe so the check is cheap to call on every runtime
+    start, status query, and serve request."""
+    return os.path.isfile(os.path.join(workspace_path, "run.sh"))
+
+
+def read_env_value(env_path: str, key: str) -> Optional[str]:
+    """Parse one value out of a workspace's `.env` without the cost of a
+    full subprocess-source. Strips quotes + trailing comments. Returns
+    None if the file or key is missing."""
+    if not os.path.exists(env_path):
+        return None
+    try:
+        with open(env_path, encoding="utf-8") as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                if k.strip() != key:
+                    continue
+                v = v.strip()
+                # Strip an inline `# comment`. Naive; bash semantics are more permissive, but values we write don't contain `#`.
+                if "#" in v:
+                    v = v.split("#", 1)[0].rstrip()
+                if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                    v = v[1:-1]
+                return v
+    except Exception:
+        logger.exception("failed reading %s from %s", key, env_path)
+    return None

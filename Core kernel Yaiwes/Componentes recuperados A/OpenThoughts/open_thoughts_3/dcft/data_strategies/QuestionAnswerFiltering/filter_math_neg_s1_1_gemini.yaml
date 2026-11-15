@@ -1,0 +1,23 @@
+operators: 
+- id: load_preexisting
+  config:
+    type: load_preexisting
+    framework_name: herorun1_math_combine
+- id: get_question_answer_string
+  config:
+    type: function
+    function: data_strategies.QuestionAnswerFiltering.utils.get_combined_question_answer_string_openthoughts
+    function_config:
+      output_column: question_answer_string
+  input_ids:
+  - load_preexisting
+- id: classify_sharegpt
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_pos_s1_1_neg_s1_1_gemini
+    input_column: question_answer_string
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 75
+  input_ids:
+   - get_question_answer_string

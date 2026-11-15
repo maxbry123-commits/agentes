@@ -1,0 +1,42 @@
+n_attempts: 1
+timeout_multiplier: 1.0
+orchestrator:
+  type: local
+  n_concurrent_trials: 32
+  quiet: false
+  plain_output: true
+  retry:
+    max_retries: 10
+    exclude_exceptions:
+      - AgentTimeoutError
+      - ContextLengthExceededError
+    wait_multiplier: 2.0
+    min_wait_sec: 1.0
+    max_wait_sec: 90.0
+environment:
+  type: daytona
+  force_build: true
+  delete: true
+  override_cpus: 2
+  override_memory_mb: 4096
+  override_storage_mb: 4096
+  kwargs:
+    auto_snapshot: true
+verifier:
+  override_timeout_sec: 7200
+  max_timeout_sec: 7200
+agents:
+  - name: pi
+    model_name: placeholder/override-at-runtime
+    override_timeout_sec: 14400
+    max_timeout_sec: 14400
+    kwargs:
+      version: "0.73.1"
+      thinking: high
+      model_info:
+        max_input_tokens: 32768
+        max_output_tokens: 16384
+        input_cost_per_token: 0.0
+        output_cost_per_token: 0.0
+datasets: []
+tasks: []

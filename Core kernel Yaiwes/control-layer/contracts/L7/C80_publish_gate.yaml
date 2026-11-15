@@ -1,0 +1,17 @@
+# C80 — L7. B6 SALIDA4
+id: C80
+layer: L7
+name: publish_gate
+implementado: true
+critical: false
+description: "Gate de publicación research"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C80 aplica en capa L7"
+checks:
+  - publish_gate_check
+evidence:
+  type: publish_gate_marker
+  required: false

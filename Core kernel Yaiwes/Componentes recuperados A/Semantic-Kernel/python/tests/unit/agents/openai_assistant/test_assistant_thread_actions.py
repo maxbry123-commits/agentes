@@ -1,0 +1,1180 @@
+# Copyright (c) Microsoft. All rights reserved.
+
+
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from openai import AsyncOpenAI
+from openai.types.beta.assistant import Assistant
+from openai.types.beta.assistant_stream_event import (
+    ThreadMessageDelta,
+    ThreadRunRequiresAction,
+    ThreadRunStepCompleted,
+    ThreadRunStepDelta,
+)
+from openai.types.beta.code_interpreter_tool import CodeInterpreterTool
+from openai.types.beta.file_search_tool import FileSearchTool
+from openai.types.beta.function_tool import FunctionTool
+from openai.types.beta.threads import ImageFileDelta, ImageFileDeltaBlock, MessageDelta, TextDelta, TextDeltaBlock
+from openai.types.beta.threads.file_citation_annotation import FileCitation, FileCitationAnnotation
+from openai.types.beta.threads.file_citation_delta_annotation import FileCitationDeltaAnnotation
+from openai.types.beta.threads.file_path_annotation import FilePath, FilePathAnnotation
+from openai.types.beta.threads.image_file import ImageFile
+from openai.types.beta.threads.image_file_content_block import ImageFileContentBlock
+from openai.types.beta.threads.message import Message
+from openai.types.beta.threads.message_delta_event import MessageDeltaEvent
+from openai.types.beta.threads.required_action_function_tool_call import Function, RequiredActionFunctionToolCall
+from openai.types.beta.threads.run import (
+    RequiredAction,
+    RequiredActionSubmitToolOutputs,
+    Run,
+)
+from openai.types.beta.threads.run_create_params import TruncationStrategy
+from openai.types.beta.threads.runs import (
+    FunctionToolCallDelta,
+    RunStep,
+    RunStepDelta,
+    RunStepDeltaEvent,
+    ToolCallDeltaObject,
+    ToolCallsStepDetails,
+)
+from openai.types.beta.threads.runs.code_interpreter_tool_call import CodeInterpreter, CodeInterpreterToolCall
+from openai.types.beta.threads.runs.code_interpreter_tool_call_delta import CodeInterpreter as CodeInterpreterDelta
+from openai.types.beta.threads.runs.code_interpreter_tool_call_delta import CodeInterpreterToolCallDelta
+from openai.types.beta.threads.runs.function_tool_call import Function as RunsFunction
+from openai.types.beta.threads.runs.function_tool_call import FunctionToolCall
+from openai.types.beta.threads.runs.function_tool_call_delta import Function as FunctionForToolCallDelta
+from openai.types.beta.threads.runs.message_creation_step_details import MessageCreation, MessageCreationStepDetails
+from openai.types.beta.threads.runs.run_step import Usage
+from openai.types.beta.threads.text import Text
+from openai.types.beta.threads.text_content_block import TextContentBlock
+from openai.types.shared.function_definition import FunctionDefinition
+
+from semantic_kernel.agents.open_ai.assistant_thread_actions import AssistantThreadActions
+from semantic_kernel.agents.open_ai.function_action_result import FunctionActionResult
+from semantic_kernel.agents.open_ai.openai_assistant_agent import OpenAIAssistantAgent
+from semantic_kernel.agents.open_ai.run_polling_options import RunPollingOptions
+from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.file_reference_content import FileReferenceContent
+from semantic_kernel.contents.function_call_content import FunctionCallContent
+from semantic_kernel.contents.function_result_content import FunctionResultContent
+from semantic_kernel.contents.streaming_chat_message_content import StreamingChatMessageContent
+from semantic_kernel.contents.utils.author_role import AuthorRole
+from semantic_kernel.exceptions.agent_exceptions import AgentInvokeException
+from semantic_kernel.functions.kernel_arguments import KernelArguments
+from semantic_kernel.functions.kernel_function_decorator import kernel_function
+from semantic_kernel.functions.kernel_plugin import KernelPlugin
+from semantic_kernel.kernel import Kernel
+from semantic_kernel.prompt_template.kernel_prompt_template import KernelPromptTemplate
+from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
+
+
+def mock_thread_run_step_completed():
+    return ThreadRunStepCompleted(
+        data=RunStep(
+            id="step_id_2",
+            type="message_creation",
+            completed_at=int(datetime.now(timezone.utc).timestamp()),
+            created_at=int((datetime.now(timezone.utc) - timedelta(minutes=2)).timestamp()),
+            step_details=MessageCreationStepDetails(
+                type="message_creation", message_creation=MessageCreation(message_id="test")
+            ),
+            assistant_id="assistant_id",
+            object="thread.run.step",
+            run_id="run_id",
+            status="completed",
+            thread_id="thread_id",
+            usage=Usage(completion_tokens=10, prompt_tokens=5, total_tokens=15),
+        ),
+        event="thread.run.step.completed",
+    )
+
+
+def create_thread_message_delta_mock():
+    return ThreadMessageDelta(
+        data=MessageDeltaEvent(
+            id="mock_msg_id",
+            delta=MessageDelta(
+                content=[
+                    TextDeltaBlock(
+                        index=0,
+                        type="text",
+                        text=TextDelta(
+                            annotations=[
+                                FileCitationDeltaAnnotation(
+                                    index=0,
+                                    type="file_citation",
+                                    start_index=1,
+                                    end_index=3,
+                                    text="annotation",
+                                )
+                            ],
+                            value="Hello",
+                        ),
+                    ),
+                    ImageFileDeltaBlock(
+                        index=0,
+                        type="image_file",
+                        image_file=ImageFileDelta(
+                            file_id="test_file_id",
+                            detail="auto",
+                        ),
+                    ),
+                ],
+                role=None,
+            ),
+            object="thread.message.delta",
+        ),
+        event="thread.message.delta",
+    )
+
+
+def create_thread_run_step_delta_mock():
+    function = FunctionForToolCallDelta(name="math-Add", arguments="", output=None)
+    function_tool_call = FunctionToolCallDelta(
+        index=0, type="function", id="call_RcvYVzsppjjnUZcC47fAlwTW", function=function
+    )
+    code = CodeInterpreterDelta(input="import os")
+    code_tool_call = CodeInterpreterToolCallDelta(
+        index=1, type="code_interpreter", id="call_RcvYVzsppjjnUZcC47fAlwTW", code_interpreter=code
+    )
+
+    step_details = ToolCallDeltaObject(type="tool_calls", tool_calls=[function_tool_call, code_tool_call])
+    delta = RunStepDelta(step_details=step_details)
+    run_step_delta_event = RunStepDeltaEvent(
+        id="step_FXzQ44kRmoeHOPUstkEI1UL5", delta=delta, object="thread.run.step.delta"
+    )
+    return ThreadRunStepDelta(data=run_step_delta_event, event="thread.run.step.delta")
+
+
+class MockError:
+    def __init__(self, message: str):
+        self.message = message
+
+
+class MockRunData:
+    def __init__(self, id, status):
+        self.id = id
+        self.status = status
+
+
+class ErrorMockRunData(MockRunData):
+    def __init__(self, id, status, last_error=None):
+        super().__init__(id, status)
+        self.last_error = last_error
+
+
+class MockEvent:
+    def __init__(self, event, data):
+        self.event = event
+        self.data = data
+
+
+class MockAsyncIterable:
+    def __init__(self, items):
+        self.items = items.copy()
+
+    def __aiter__(self):
+        self._iter = iter(self.items)
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._iter)
+        except StopIteration:
+            raise StopAsyncIteration
+
+
+class MockStream:
+    def __init__(self, events):
+        self.events = events
+
+    async def __aenter__(self):
+        return MockAsyncIterable(self.events)
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+@pytest.fixture
+def mock_run_step_tool_call():
+    class MockToolCall:
+        def __init__(self):
+            self.type = "code_interpreter"
+            self.code_interpreter = MagicMock(input="print('Hello, world!')")
+
+    return RunStep(
+        id="step_id_1",
+        type="tool_calls",
+        completed_at=int(datetime.now(timezone.utc).timestamp()),
+        created_at=int((datetime.now(timezone.utc) - timedelta(minutes=1)).timestamp()),
+        step_details=ToolCallsStepDetails(
+            tool_calls=[
+                CodeInterpreterToolCall(  # type: ignore
+                    type="code_interpreter",
+                    id="tool_call_id",
+                    code_interpreter=CodeInterpreter(input="test code", outputs=[]),
+                ),
+                FunctionToolCall(
+                    type="function",
+                    id="tool_call_id",
+                    function=RunsFunction(arguments="{}", name="function_name", output="test output"),
+                ),
+            ],
+            type="tool_calls",
+        ),
+        assistant_id="assistant_id",
+        object="thread.run.step",
+        run_id="run_id",
+        status="completed",
+        thread_id="thread_id",
+    )
+
+
+def mock_thread_requires_action_run():
+    return ThreadRunRequiresAction(
+        data=Run(
+            id="run_00OwjJnEg2SGJy8sky7ip35P",
+            assistant_id="asst_wMMAX5F59szE7YHrCKSSgJlE",
+            cancelled_at=None,
+            completed_at=None,
+            created_at=1727798684,
+            expires_at=1727799284,
+            failed_at=None,
+            incomplete_details=None,
+            instructions="Answer questions about the menu.",
+            last_error=None,
+            max_completion_tokens=None,
+            max_prompt_tokens=None,
+            metadata={},
+            model="gpt-4o-2024-08-06",
+            object="thread.run",
+            parallel_tool_calls=True,
+            required_action=RequiredAction(
+                submit_tool_outputs=RequiredActionSubmitToolOutputs(
+                    tool_calls=[
+                        RequiredActionFunctionToolCall(
+                            id="call_OTcZMjhm7WbhFnGkrmUjs68T",
+                            function=Function(arguments="{}", name="menu-get_specials"),
+                            type="function",
+                        )
+                    ]
+                ),
+                type="submit_tool_outputs",
+            ),
+            response_format="auto",
+            started_at=1727798685,
+            status="requires_action",
+            thread_id="thread_jR4ZLlUwSrPcsLfdnGyFxi4Z",
+            tool_choice="auto",
+            tools=[
+                FunctionTool(
+                    function=FunctionDefinition(
+                        name="menu-get_item_price",
+                        description="Provides the price of the requested menu item.",
+                        parameters={
+                            "type": "object",
+                            "properties": {
+                                "menu_item": {"type": "string", "description": "The name of the menu item."}
+                            },
+                            "required": ["menu_item"],
+                        },
+                        strict=False,
+                    ),
+                    type="function",
+                ),
+                FunctionTool(
+                    function=FunctionDefinition(
+                        name="menu-get_specials",
+                        description="Provides a list of specials from the menu.",
+                        parameters={"type": "object", "properties": {}, "required": []},
+                        strict=False,
+                    ),
+                    type="function",
+                ),
+            ],
+            truncation_strategy=TruncationStrategy(type="auto", last_messages=None),
+            usage=None,
+            temperature=1.0,
+            top_p=1.0,
+            tool_resources={"code_interpreter": {"file_ids": []}},  # type: ignore
+        ),
+        event="thread.run.requires_action",
+    )
+
+
+@pytest.fixture
+def mock_thread_messages():
+    class MockMessage:
+        def __init__(self, id, role, content, assistant_id=None):
+            self.id = id
+            self.role = role
+            self.content = content
+            self.assistant_id = assistant_id
+
+    return [
+        MockMessage(
+            id="test_message_id_1",
+            role="user",
+            content=[
+                TextContentBlock(
+                    type="text",
+                    text=Text(
+                        value="Hello",
+                        annotations=[
+                            FilePathAnnotation(
+                                type="file_path",
+                                file_path=FilePath(file_id="test_file_id"),
+                                end_index=5,
+                                start_index=0,
+                                text="Hello",
+                            ),
+                            FileCitationAnnotation(
+                                type="file_citation",
+                                file_citation=FileCitation(file_id="test_file_id"),
+                                text="Hello",
+                                start_index=0,
+                                end_index=5,
+                            ),
+                        ],
+                    ),
+                )
+            ],
+        ),
+        MockMessage(
+            id="test_message_id_2",
+            role="assistant",
+            content=[
+                ImageFileContentBlock(type="image_file", image_file=ImageFile(file_id="test_file_id", detail="auto"))
+            ],
+            assistant_id="assistant_1",
+        ),
+    ]
+
+
+@pytest.fixture
+def mock_run_step_message_creation():
+    class MockMessageCreation:
+        def __init__(self):
+            self.message_id = "message_id"
+
+    class MockStepDetails:
+        def __init__(self):
+            self.message_creation = MockMessageCreation()
+
+    return RunStep(
+        id="step_id_2",
+        type="message_creation",
+        completed_at=int(datetime.now(timezone.utc).timestamp()),
+        created_at=int((datetime.now(timezone.utc) - timedelta(minutes=2)).timestamp()),
+        step_details=MessageCreationStepDetails(
+            type="message_creation", message_creation=MessageCreation(message_id="test")
+        ),
+        assistant_id="assistant_id",
+        object="thread.run.step",
+        run_id="run_id",
+        status="completed",
+        thread_id="thread_id",
+    )
+
+
+@pytest.fixture
+def mock_run_in_progress():
+    class MockRun:
+        def __init__(self):
+            self.id = "run_id"
+            self.status = "requires_action"
+            self.assistant_id = "assistant_id"
+            self.created_at = int(datetime.now(timezone.utc).timestamp())
+            self.instructions = "instructions"
+            self.model = "model"
+            self.object = "run"
+            self.thread_id = "thread_id"
+            self.tools = []
+            self.poll_count = 0
+            self.required_action = RequiredAction(
+                type="submit_tool_outputs",
+                submit_tool_outputs=RequiredActionSubmitToolOutputs(
+                    tool_calls=[
+                        RequiredActionFunctionToolCall(
+                            id="tool_call_id",
+                            type="function",
+                            function=Function(arguments="{}", name="function_name"),
+                        )
+                    ]
+                ),
+            )
+            self.last_error = None
+
+        def update_status(self):
+            self.poll_count += 1
+            if self.poll_count > 2:
+                self.status = "completed"
+
+    return MockRun()
+
+
+class SamplePlugin:
+    @kernel_function
+    def test_plugin(self, *args, **kwargs):
+        pass
+
+
+async def test_agent_thread_actions_create_message():
+    client = AsyncMock(spec=AsyncOpenAI)
+    client.beta = MagicMock()
+    client.beta.assistants = MagicMock()
+    client.beta.threads.messages = MagicMock()
+    client.beta.threads.messages.create = AsyncMock(spec=Message)
+
+    msg = ChatMessageContent(role=AuthorRole.USER, content="some content")
+    created_message = await AssistantThreadActions.create_message(client, "threadXYZ", msg)
+    assert created_message is not None
+
+
+async def test_assistant_thread_actions_invoke(
+    mock_run_step_message_creation, mock_run_step_tool_call, mock_run_in_progress, mock_thread_messages
+):
+    async def mock_poll_run_status(agent, run, thread_id, polling_options):
+        run.update_status()
+        return run
+
+    sample_prompt_template_config = PromptTemplateConfig(
+        template="template",
+    )
+
+    kernel_plugin = KernelPlugin(name="expected_plugin_name", description="expected_plugin_description")
+
+    client = AsyncMock(spec=AsyncOpenAI)
+    definition = AsyncMock(spec=Assistant)
+    definition.id = "agent123"
+    definition.name = "agentName"
+    definition.description = "desc"
+    definition.instructions = "test agent"
+    definition.tools = [FileSearchTool(type="file_search"), CodeInterpreterTool(type="code_interpreter")]
+    definition.model = "gpt-4o"
+    definition.temperature = (1.0,)
+    definition.top_p = 1.0
+    definition.metadata = {}
+
+    client.beta = MagicMock()
+    client.beta.threads = MagicMock()
+    client.beta.threads.runs = MagicMock()
+    client.beta.threads.runs.create = AsyncMock(return_value=mock_run_in_progress)
+    client.beta.threads.runs.submit_tool_outputs = AsyncMock()
+    client.beta.threads.runs.steps = MagicMock()
+    client.beta.threads.runs.steps.list = AsyncMock(
+        return_value=MagicMock(data=[mock_run_step_message_creation, mock_run_step_tool_call])
+    )
+
+    agent = OpenAIAssistantAgent(
+        client=client,
+        definition=definition,
+        arguments=KernelArguments(test="test"),
+        kernel=AsyncMock(spec=Kernel),
+        plugins=[SamplePlugin(), kernel_plugin],
+        polling_options=AsyncMock(spec=RunPollingOptions),
+        prompt_template_config=sample_prompt_template_config,
+        other_arg="test",
+    )
+
+    with (
+        patch(
+            "semantic_kernel.agents.open_ai.assistant_thread_actions.AssistantThreadActions._poll_run_status",
+            new=AsyncMock(side_effect=mock_poll_run_status),
+        ),
+        patch(
+            "semantic_kernel.agents.open_ai.assistant_thread_actions.AssistantThreadActions._retrieve_message",
+            new=AsyncMock(side_effect=AsyncMock(return_value=mock_thread_messages[0])),
+        ),
+    ):
+        async for message in AssistantThreadActions.invoke(
+            agent=agent,
+            thread_id="thread123",
+            kernel=AsyncMock(spec=Kernel),
+            additional_messages=[
+                ChatMessageContent(
+                    role=AuthorRole.USER,
+                    content="additional content",
+                    items=[FileReferenceContent(file_id="file_id", tools=["file_search"])],
+                    metadata={"sample_metadata_key": "sample_metadata_val"},
+                )
+            ],
+        ):
+            assert message is not None
+
+
+async def test_assistant_thread_actions_stream(
+    mock_thread_messages,
+):
+    events = [
+        MockEvent("thread.run.created", MockRunData(id="run_1", status="queued")),
+        MockEvent("thread.run.in_progress", MockRunData(id="run_1", status="in_progress")),
+        mock_thread_run_step_completed(),
+        MockEvent("thread.run.completed", MockRunData(id="run_1", status="completed")),
+        MockEvent(
+            "thread.run.failed", ErrorMockRunData(id="run_1", status="failed", last_error=MockError("Test error"))
+        ),
+    ]
+
+    client = AsyncMock(spec=AsyncOpenAI)
+    definition = AsyncMock(spec=Assistant)
+    definition.id = "agent123"
+    definition.name = "agentName"
+    definition.description = "desc"
+    definition.instructions = "test agent"
+    definition.tools = []
+    definition.model = "gpt-4o"
+    definition.temperature = 0.7
+    definition.top_p = 0.9
+    definition.metadata = {}
+    definition.response_format = {"type": "json_object"}
+
+    agent = OpenAIAssistantAgent(
+        client=client,
+        definition=definition,
+    )
+
+    client.beta = MagicMock()
+    client.beta.threads = MagicMock()
+    client.beta.assistants = MagicMock()
+    client.beta.threads.runs = MagicMock()
+    client.beta.threads.runs.stream = MagicMock(return_value=MockStream(events))
+    client.beta.threads.messages.retrieve = AsyncMock(side_effect=mock_thread_messages)
+
+    # Set up agent prompts
+    agent.instructions = "Base instructions"
+    agent.prompt_template = KernelPromptTemplate(
+        prompt_template_config=PromptTemplateConfig(template="Template instructions")
+    )
+
+    # Scenario A: Use only prompt template
+    messages = []
+    async for content in AssistantThreadActions.invoke_stream(
+        agent=agent, thread_id="thread_id", output_messages=messages
+    ):
+        assert content is not None
+
+
+async def test_assistant_thread_actions_stream_tool_and_text_message_ordering(mock_thread_messages):
+    events = [
+        MockEvent("thread.run.created", MockRunData(id="run_1", status="queued")),
+        MockEvent("thread.run.in_progress", MockRunData(id="run_1", status="in_progress")),
+        mock_thread_run_step_completed(),
+        MockEvent(
+            "thread.message.delta",
+            StreamingChatMessageContent(role="assistant", content="Hello", choice_index=0),
+        ),
+        MockEvent("thread.run.completed", MockRunData(id="run_1", status="completed")),
+    ]
+
+    client = AsyncMock(spec=AsyncOpenAI)
+    definition = AsyncMock(spec=Assistant)
+    definition.id = "agent123"
+    definition.name = "agentName"
+    definition.description = "desc"
+    definition.instructions = "test agent"
+    definition.tools = []
+    definition.model = "gpt-4o"
+    definition.temperature = 0.7
+    definition.top_p = 0.9
+    definition.metadata = {}
+    definition.response_format = {"type": "json_object"}
+
+    agent = OpenAIAssistantAgent(
+        client=client,
+        definition=definition,
+    )
+
+    client.beta = MagicMock()
+    client.beta.threads = MagicMock()
+    client.beta.assistants = MagicMock()
+    client.beta.threads.runs = MagicMock()
+    client.beta.threads.runs.stream = MagicMock(return_value=MockStream(events))
+    client.beta.threads.messages.retrieve = AsyncMock(side_effect=mock_thread_messages)
+
+    collected_messages = []
+    streamed_results = []
+
+    tool_call_msg = ChatMessageContent(
+        role="assistant", content="", items=[FunctionCallContent(name="ToolA", arguments="{}")]
+    )
+    tool_result_msg = ChatMessageContent(
+        role="assistant", content="", items=[FunctionResultContent(id="tool_123", name="ToolA", result="$9.99")]
+    )
+
+    async def fake_invoke_stream(*args, output_messages=None, **kwargs):
+        if output_messages is not None:
+            output_messages.append(tool_call_msg)
+            output_messages.append(tool_result_msg)
+
+        yield StreamingChatMessageContent(role="assistant", content="Hello", choice_index=0)
+
+    with patch(
+        "semantic_kernel.agents.open_ai.assistant_thread_actions.AssistantThreadActions.invoke_stream",
+        side_effect=fake_invoke_stream,
+    ):
+        async for content in AssistantThreadActions.invoke_stream(
+            agent=agent,
+            thread_id="thread_id",
+            output_messages=collected_messages,
+        ):
+            streamed_results.append(content)
+
+    assert collected_messages == [tool_call_msg, tool_result_msg]
+    assert len(streamed_results) == 1
+    assert streamed_results[0].content == "Hello"
+
+
+async def test_assistant_thread_actions_stream_run_fails(
+    mock_thread_messages,
+):
+    events = [
+        MockEvent("thread.run.failed", ErrorMockRunData(id=1, status="failed", last_error=MockError("Test error"))),
+    ]
+
+    client = AsyncMock(spec=AsyncOpenAI)
+    definition = AsyncMock(spec=Assistant)
+    definition.id = "agent123"
+    definition.name = "agentName"
+    definition.description = "desc"
+    definition.instructions = "test agent"
+    definition.tools = []
+    definition.model = "gpt-4o"
+    definition.temperature = 0.7
+    definition.top_p = 0.9
+    definition.metadata = {}
+    definition.response_format = {"type": "json_object"}
+
+    agent = OpenAIAssistantAgent(
+        client=client,
+        definition=definition,
+    )
+
+    client.beta = MagicMock()
+    client.beta.threads = MagicMock()
+    client.beta.assistants = MagicMock()
+    client.beta.threads.runs = MagicMock()
+    client.beta.threads.runs.stream = MagicMock(return_value=MockStream(events))
+    client.beta.threads.messages.retrieve = AsyncMock(side_effect=mock_thread_messages)
+
+    # Set up agent prompts
+    agent.instructions = "Base instructions"
+    agent.prompt_template = KernelPromptTemplate(
+        prompt_template_config=PromptTemplateConfig(template="Template instructions")
+    )
+
+    # Scenario A: Use only prompt template
+    messages = []
+    with pytest.raises(AgentInvokeException):
+        async for _ in AssistantThreadActions.invoke_stream(
+            agent=agent, thread_id="thread_id", output_messages=messages
+        ):
+            pass
+
+
+async def test_assistant_thread_actions_stream_with_instructions(
+    mock_thread_messages,
+):
+    events = [
+        MockEvent("thread.run.created", MockRunData(id="run_1", status="queued")),
+        MockEvent("thread.run.in_progress", MockRunData(id="run_1", status="in_progress")),
+        create_thread_message_delta_mock(),
+        create_thread_run_step_delta_mock(),
+        mock_thread_requires_action_run(),
+        mock_thread_run_step_completed(),
+        MockEvent("thread.run.completed", MockRunData(id="run_1", status="completed")),
+    ]
+
+    client = AsyncMock(spec=AsyncOpenAI)
+    definition = AsyncMock(spec=Assistant)
+    definition.id = "agent123"
+    definition.name = "agentName"
+    definition.description = "desc"
+    definition.instructions = "test agent"
+    definition.tools = []
+    definition.model = "gpt-4o"
+    definition.temperature = 0.7
+    definition.top_p = 0.9
+    definition.metadata = {}
+    definition.response_format = {"type": "json_object"}
+
+    agent = OpenAIAssistantAgent(
+        client=client,
+        definition=definition,
+    )
+
+    client.beta = MagicMock()
+    client.beta.threads = MagicMock()
+    client.beta.assistants = MagicMock()
+    client.beta.threads.runs = MagicMock()
+    client.beta.threads.runs.stream = MagicMock(return_value=MockStream(events))
+    client.beta.threads.messages.retrieve = AsyncMock(side_effect=mock_thread_messages)
+
+    # Set up agent prompts
+    agent.instructions = "Base instructions"
+    agent.prompt_template = KernelPromptTemplate(
+        prompt_template_config=PromptTemplateConfig(template="Template instructions")
+    )
+
+    # Scenario A: Use only prompt template
+    messages = []
+    async for content in AssistantThreadActions.invoke_stream(
+        agent=agent, thread_id="thread_id", output_messages=messages
+    ):
+        assert content is not None
+
+    assert len(messages) > 0, "Expected messages to be populated during the stream."
+    client.beta.threads.runs.stream.assert_called_once_with(
+        assistant_id=agent.id,
+        thread_id="thread_id",
+        instructions="Template instructions",
+        tools=[],
+        temperature=0.7,
+        top_p=0.9,
+        model="gpt-4o",
+        metadata={},
+    )
+
+    client.beta.threads.runs.stream.reset_mock()
+
+    # Scenario B: Use prompt template with additional instructions
+    messages = []
+    async for content in AssistantThreadActions.invoke_stream(
+        agent=agent,
+        thread_id="thread_id",
+        output_messages=messages,
+        additional_instructions="My additional instructions",
+    ):
+        assert content is not None
+
+    assert len(messages) > 0, "Expected messages to be populated during the stream."
+    client.beta.threads.runs.stream.assert_called_once_with(
+        assistant_id=agent.id,
+        thread_id="thread_id",
+        instructions="Template instructions\n\nMy additional instructions",
+        tools=[],
+        temperature=0.7,
+        top_p=0.9,
+        model="gpt-4o",
+        metadata={},
+    )
+
+    client.beta.threads.runs.stream.reset_mock()
+
+
+async def test_poll_loop_exits_on_status_change():
+    AssistantThreadActions.polling_status = {"in_progress"}  # type: ignore
+
+    polling_interval = timedelta(seconds=0.01)
+    dummy_polling_options = MagicMock()
+    dummy_polling_options.get_polling_interval = lambda count: polling_interval
+
+    run_id = "run_123"
+    initial_run = MagicMock()
+    initial_run.id = run_id
+
+    polling_options = RunPollingOptions()
+
+    run_in_progress = MagicMock()
+    run_in_progress.id = run_id
+    run_in_progress.status = "in_progress"
+
+    run_completed = MagicMock()
+    run_completed.id = run_id
+    run_completed.status = "completed"
+
+    dummy_agent = MagicMock()
+    dummy_agent.polling_options = dummy_polling_options
+    dummy_agent.client.beta.threads.runs.retrieve = AsyncMock(side_effect=[run_in_progress, run_completed])
+
+    thread_id = "thread_123"
+
+    result_run = await AssistantThreadActions._poll_loop(dummy_agent, initial_run, thread_id, polling_options)
+
+    assert result_run.status == "completed"
+
+
+async def test_handle_streaming_requires_action_returns_result():
+    dummy_run = MagicMock()
+    dummy_run.id = "dummy_run_id"
+    dummy_function_steps = {"step1": MagicMock()}
+    dummy_fccs = {"fcc_key": "fcc_value"}
+    dummy_function_call_streaming_content = MagicMock()
+    dummy_function_result_streaming_content = MagicMock()
+    dummy_tool_outputs = {"output": "value"}
+    dummy_kernel = MagicMock()
+    dummy_agent_name = "TestAgent"
+    dummy_args = {}
+    with (
+        patch(
+            "semantic_kernel.agents.open_ai.assistant_thread_actions.get_function_call_contents",
+            return_value=dummy_fccs,
+        ),
+        patch(
+            "semantic_kernel.agents.open_ai.assistant_thread_actions.generate_function_call_streaming_content",
+            return_value=dummy_function_call_streaming_content,
+        ),
+        patch(
+            "semantic_kernel.agents.open_ai.assistant_thread_actions.merge_streaming_function_results",
+            return_value=dummy_function_result_streaming_content,
+        ),
+        patch.object(AssistantThreadActions, "_invoke_function_calls", new=AsyncMock(return_value=[None])),
+        patch.object(AssistantThreadActions, "_format_tool_outputs", return_value=dummy_tool_outputs),
+    ):
+        result = await AssistantThreadActions._handle_streaming_requires_action(
+            dummy_agent_name,
+            dummy_kernel,
+            dummy_run,
+            dummy_function_steps,  # type: ignore
+            dummy_args,
+        )
+        assert result is not None
+        assert isinstance(result, FunctionActionResult)
+        assert result.function_call_streaming_content == dummy_function_call_streaming_content
+        assert result.function_result_streaming_content == dummy_function_result_streaming_content
+        assert result.tool_outputs == dummy_tool_outputs
+
+
+async def test_handle_streaming_requires_action_returns_none():
+    dummy_run = MagicMock()
+    dummy_run.id = "dummy_run_id"
+    dummy_function_steps = {"step1": MagicMock()}
+    dummy_kernel = MagicMock()
+    dummy_agent_name = "TestAgent"
+    dummy_args = {}
+    with patch("semantic_kernel.agents.open_ai.assistant_thread_actions.get_function_call_contents", return_value=None):
+        result = await AssistantThreadActions._handle_streaming_requires_action(
+            dummy_agent_name,
+            dummy_kernel,
+            dummy_run,
+            dummy_function_steps,  # type: ignore
+            dummy_args,
+        )
+        assert result is None
+
+
+# region Security tests for tools override and function_choice_behavior
+
+
+async def test_validate_function_choice_behavior_rejects_required():
+    """Required FCB is not supported for agent invocations."""
+    with pytest.raises(AgentInvokeException, match="not supported"):
+        AssistantThreadActions._validate_function_choice_behavior(FunctionChoiceBehavior.Required())
+
+
+async def test_validate_function_choice_behavior_accepts_auto():
+    """Auto FCB should be accepted without error."""
+    AssistantThreadActions._validate_function_choice_behavior(FunctionChoiceBehavior.Auto())
+
+
+async def test_validate_function_choice_behavior_rejects_none_invoke():
+    """NoneInvoke FCB is not supported for agent invocations."""
+    with pytest.raises(AgentInvokeException, match="not supported"):
+        AssistantThreadActions._validate_function_choice_behavior(FunctionChoiceBehavior.NoneInvoke())
+
+
+async def test_validate_function_choice_behavior_accepts_none():
+    """None (no FCB) should be accepted."""
+    AssistantThreadActions._validate_function_choice_behavior(None)
+
+
+async def test_validate_function_choice_behavior_rejects_auto_invoke_false():
+    """Auto with auto_invoke=False is not supported for agent invocations."""
+    with pytest.raises(AgentInvokeException, match="auto_invoke"):
+        AssistantThreadActions._validate_function_choice_behavior(FunctionChoiceBehavior.Auto(auto_invoke=False))
+
+
+async def test_validate_function_choice_behavior_rejects_empty_filters():
+    """Empty filters dict should be rejected."""
+    fcb = FunctionChoiceBehavior.Auto()
+    fcb.filters = {}
+    with pytest.raises(AgentInvokeException, match="must not be empty"):
+        AssistantThreadActions._validate_function_choice_behavior(fcb)
+
+
+async def test_validate_function_choice_behavior_rejects_unknown_filter_keys():
+    """Unknown filter keys should be rejected."""
+    fcb = FunctionChoiceBehavior.Auto()
+    # Bypass Pydantic validation to simulate a mistyped key reaching the validator
+    object.__setattr__(fcb, "filters", {"include_functions": ["foo"]})
+    with pytest.raises(AgentInvokeException, match="Unknown filter key"):
+        AssistantThreadActions._validate_function_choice_behavior(fcb)
+
+
+async def test_validate_function_choice_behavior_accepts_valid_filters():
+    """Valid filter keys should be accepted."""
+    AssistantThreadActions._validate_function_choice_behavior(
+        FunctionChoiceBehavior.Auto(filters={"included_functions": ["plugin-func"]})
+    )
+
+
+async def test_get_tools_with_tools_override():
+    """When tools_override is provided, it should replace agent.definition.tools."""
+    agent = MagicMock(spec=OpenAIAssistantAgent)
+    agent.definition = MagicMock()
+    agent.definition.tools = [CodeInterpreterTool(type="code_interpreter")]
+    agent.kernel = MagicMock(spec=Kernel)
+
+    kernel = MagicMock(spec=Kernel)
+    kernel.get_full_list_of_function_metadata.return_value = []
+
+    # Override with file_search only
+    override_tools = [FileSearchTool(type="file_search")]
+    tools = AssistantThreadActions._get_tools(agent=agent, kernel=kernel, tools_override=override_tools)
+    # Should contain file_search from override, not code_interpreter from agent
+    tool_types = [t.get("type") if isinstance(t, dict) else None for t in tools]
+    assert "file_search" in tool_types
+    # Agent's code_interpreter should NOT be in the result
+    assert "code_interpreter" not in tool_types
+
+
+async def test_get_tools_with_fcb_filters():
+    """When function_choice_behavior has filters, only matching functions should be included."""
+    agent = MagicMock(spec=OpenAIAssistantAgent)
+    agent.definition = MagicMock()
+    agent.definition.tools = []
+    agent.kernel = MagicMock(spec=Kernel)
+
+    kernel = MagicMock(spec=Kernel)
+
+    mock_metadata = MagicMock()
+    mock_metadata.fully_qualified_name = "Plugin-AllowedFunc"
+    mock_metadata.name = "AllowedFunc"
+    mock_metadata.plugin_name = "Plugin"
+    mock_metadata.description = "An allowed function"
+    mock_metadata.parameters = []
+    mock_metadata.is_prompt = False
+    mock_metadata.return_parameter = MagicMock()
+    mock_metadata.return_parameter.description = ""
+    mock_metadata.return_parameter.type_ = "str"
+    mock_metadata.additional_properties = {}
+
+    kernel.get_list_of_function_metadata.return_value = [mock_metadata]
+
+    fcb = FunctionChoiceBehavior.Auto(filters={"included_functions": ["Plugin-AllowedFunc"]})
+    AssistantThreadActions._get_tools(agent=agent, kernel=kernel, function_choice_behavior=fcb)
+    kernel.get_list_of_function_metadata.assert_called_once_with(fcb.filters)
+
+
+async def test_get_tools_with_fcb_disable_kernel_functions():
+    """When enable_kernel_functions=False, no kernel functions should be included."""
+    agent = MagicMock(spec=OpenAIAssistantAgent)
+    agent.definition = MagicMock()
+    agent.definition.tools = []
+    agent.kernel = MagicMock(spec=Kernel)
+
+    kernel = MagicMock(spec=Kernel)
+
+    fcb = FunctionChoiceBehavior.Auto(enable_kernel_functions=False)
+    AssistantThreadActions._get_tools(agent=agent, kernel=kernel, function_choice_behavior=fcb)
+    kernel.get_full_list_of_function_metadata.assert_not_called()
+    kernel.get_list_of_function_metadata.assert_not_called()
+
+
+async def test_invoke_function_calls_passes_function_behavior():
+    """_invoke_function_calls should pass function_behavior to kernel.invoke_function_call."""
+    mock_kernel = AsyncMock(spec=Kernel)
+    mock_kernel.invoke_function_call.return_value = None
+
+    fcc = FunctionCallContent(name="Plugin-Func", arguments={}, id="call1")
+    from semantic_kernel.contents.chat_history import ChatHistory
+
+    chat_history = ChatHistory()
+    fcb = FunctionChoiceBehavior.Auto(filters={"included_functions": ["Plugin-Func"]})
+
+    await AssistantThreadActions._invoke_function_calls(
+        kernel=mock_kernel,
+        fccs=[fcc],
+        chat_history=chat_history,
+        arguments=KernelArguments(),
+        function_choice_behavior=fcb,
+    )
+
+    mock_kernel.invoke_function_call.assert_awaited_once()
+    call_kwargs = mock_kernel.invoke_function_call.call_args
+    assert call_kwargs.kwargs.get("function_behavior") is fcb
+
+
+async def test_invoke_function_calls_passes_disabled_kernel_functions():
+    """_invoke_function_calls should pass enable_kernel_functions=False FCB to kernel."""
+    mock_kernel = AsyncMock(spec=Kernel)
+    mock_kernel.invoke_function_call.return_value = None
+
+    fcc = FunctionCallContent(name="Plugin-Func", arguments={}, id="call1")
+    from semantic_kernel.contents.chat_history import ChatHistory
+
+    chat_history = ChatHistory()
+    fcb = FunctionChoiceBehavior.Auto(enable_kernel_functions=False)
+
+    await AssistantThreadActions._invoke_function_calls(
+        kernel=mock_kernel,
+        fccs=[fcc],
+        chat_history=chat_history,
+        arguments=KernelArguments(),
+        function_choice_behavior=fcb,
+    )
+
+    mock_kernel.invoke_function_call.assert_awaited_once()
+    call_kwargs = mock_kernel.invoke_function_call.call_args
+    passed_behavior = call_kwargs.kwargs.get("function_behavior")
+    assert passed_behavior is fcb
+    assert not passed_behavior.enable_kernel_functions
+
+
+async def test_get_tools_uses_passed_kernel_not_agent_kernel():
+    """_get_tools should use the passed kernel parameter, not agent.kernel."""
+    agent = MagicMock(spec=OpenAIAssistantAgent)
+    agent.definition = MagicMock()
+    agent.definition.tools = []
+    agent.kernel = MagicMock(spec=Kernel)
+    agent.kernel.get_full_list_of_function_metadata.return_value = ["should_not_be_used"]
+
+    kernel = MagicMock(spec=Kernel)
+    kernel.get_full_list_of_function_metadata.return_value = []
+
+    AssistantThreadActions._get_tools(agent=agent, kernel=kernel)
+    # Should call the passed kernel, not agent.kernel
+    kernel.get_full_list_of_function_metadata.assert_called_once()
+    agent.kernel.get_full_list_of_function_metadata.assert_not_called()
+
+
+async def test_invoke_function_calls_blocks_disallowed_function():
+    """A real Kernel should block a function call not in the FCB allowlist.
+
+    This verifies that the enforcement in kernel.invoke_function_call actually
+    rejects a disallowed function name when filters are provided, rather than
+    only asserting that the kwarg is forwarded.
+    """
+    from semantic_kernel.contents.chat_history import ChatHistory
+    from semantic_kernel.functions.kernel_function_from_method import KernelFunctionFromMethod
+
+    @kernel_function
+    def allowed_func() -> str:
+        return "allowed"
+
+    @kernel_function
+    def disallowed_func() -> str:
+        return "disallowed"
+
+    kernel = Kernel()
+    kernel.add_plugin(
+        KernelPlugin(
+            name="Plugin",
+            functions=[
+                KernelFunctionFromMethod(method=allowed_func, plugin_name="Plugin"),
+                KernelFunctionFromMethod(method=disallowed_func, plugin_name="Plugin"),
+            ],
+        )
+    )
+
+    fcb = FunctionChoiceBehavior.Auto(filters={"included_functions": ["Plugin-allowed_func"]})
+
+    # Call a function NOT in the allowlist
+    fcc = FunctionCallContent(
+        name="Plugin-disallowed_func",
+        plugin_name="Plugin",
+        function_name="disallowed_func",
+        arguments={},
+        id="call1",
+    )
+    chat_history = ChatHistory()
+
+    result = await kernel.invoke_function_call(
+        function_call=fcc,
+        chat_history=chat_history,
+        function_behavior=fcb,
+    )
+    # invoke_function_call catches the FunctionExecutionException and returns None,
+    # adding an error message to chat_history instead of raising.
+    assert result is None
+    assert len(chat_history.messages) == 1
+    result_item = chat_history.messages[0].items[0]
+    assert "not part of the provided tools" in str(result_item.result)
+
+
+async def test_invoke_function_calls_allows_permitted_function():
+    """A real Kernel should allow a function call that IS in the FCB allowlist."""
+    from semantic_kernel.contents.chat_history import ChatHistory
+    from semantic_kernel.functions.kernel_function_from_method import KernelFunctionFromMethod
+
+    @kernel_function
+    def allowed_func() -> str:
+        return "ok"
+
+    @kernel_function
+    def other_func() -> str:
+        return "other"
+
+    kernel = Kernel()
+    kernel.add_plugin(
+        KernelPlugin(
+            name="Plugin",
+            functions=[
+                KernelFunctionFromMethod(method=allowed_func, plugin_name="Plugin"),
+                KernelFunctionFromMethod(method=other_func, plugin_name="Plugin"),
+            ],
+        )
+    )
+
+    fcb = FunctionChoiceBehavior.Auto(filters={"included_functions": ["Plugin-allowed_func"]})
+
+    fcc = FunctionCallContent(
+        name="Plugin-allowed_func",
+        plugin_name="Plugin",
+        function_name="allowed_func",
+        arguments={},
+        id="call1",
+    )
+    chat_history = ChatHistory()
+
+    await kernel.invoke_function_call(
+        function_call=fcc,
+        chat_history=chat_history,
+        function_behavior=fcb,
+    )
+    # Should succeed — the function result should be in chat_history
+    assert len(chat_history.messages) == 1
+    result_item = chat_history.messages[0].items[0]
+    assert "ok" in str(result_item.result)
+
+
+async def test_invoke_raises_for_non_auto_fcb():
+    """Calling AssistantThreadActions.invoke() with a non-Auto FCB should raise before any API call."""
+    agent = MagicMock(spec=OpenAIAssistantAgent)
+    agent.definition = MagicMock()
+    agent.definition.tools = []
+    agent.kernel = Kernel()
+    agent.format_instructions = AsyncMock(return_value="")
+
+    with pytest.raises(AgentInvokeException, match="not supported"):
+        async for _ in AssistantThreadActions.invoke(
+            agent=agent,
+            thread_id="thread123",
+            kernel=Kernel(),
+            function_choice_behavior=FunctionChoiceBehavior.Required(),
+        ):
+            pass
+
+
+async def test_invoke_stream_raises_for_non_auto_fcb():
+    """Calling AssistantThreadActions.invoke_stream() with a non-Auto FCB should raise before any API call."""
+    agent = MagicMock(spec=OpenAIAssistantAgent)
+    agent.definition = MagicMock()
+    agent.definition.tools = []
+    agent.kernel = Kernel()
+    agent.format_instructions = AsyncMock(return_value="")
+
+    with pytest.raises(AgentInvokeException, match="not supported"):
+        async for _ in AssistantThreadActions.invoke_stream(
+            agent=agent,
+            thread_id="thread123",
+            kernel=Kernel(),
+            function_choice_behavior=FunctionChoiceBehavior.NoneInvoke(),
+        ):
+            pass
+
+
+# endregion

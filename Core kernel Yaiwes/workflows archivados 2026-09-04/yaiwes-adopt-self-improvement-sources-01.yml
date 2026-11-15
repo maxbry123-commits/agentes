@@ -1,0 +1,113 @@
+name: YAIWES adopt self-improvement sources 01
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-adopt-self-improvement-sources-01.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: agentes-yaiwes-adopt-self-improvement-sources-01
+  cancel-in-progress: false
+
+jobs:
+  acquire-verify-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - name: Sparse-copy approved sources at fixed commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow"
+          STAGE="$RUNNER_TEMP/yaiwes-source-stage"
+          mkdir -p "$STAGE"
+
+          acquire() {
+            name="$1"; url="$2"; commit="$3"; destination="$4"; license="$5"; shift 5
+            repo="$STAGE/$name-repo"; out="$STAGE/$name-out"
+            git clone --filter=blob:none --no-checkout "$url" "$repo"
+            git -C "$repo" sparse-checkout init --cone
+            git -C "$repo" sparse-checkout set "$@"
+            git -C "$repo" checkout --detach "$commit"
+            test "$(git -C "$repo" rev-parse HEAD)" = "$commit"
+            mkdir -p "$out"
+            for selected in "$@"; do
+              test -e "$repo/$selected" || { echo "SELECTED_PATH_GAP $name $selected"; exit 41; }
+              mkdir -p "$out/$(dirname "$selected")"
+              cp -a "$repo/$selected" "$out/$selected"
+            done
+            for f in LICENSE LICENSE.md LICENSE.txt; do
+              test -f "$repo/$f" && cp -a "$repo/$f" "$out/$f"
+            done
+            printf '%s\n' "$url" > "$out/SOURCE_URL.txt"
+            printf '%s\n' "$commit" > "$out/SOURCE_COMMIT.txt"
+            printf '%s\n' "$license" > "$out/SOURCE_LICENSE.txt"
+            (cd "$out" && find . -type f ! -name SOURCE_SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SOURCE_SHA256SUMS.txt)
+            (cd "$out" && sha256sum -c SOURCE_SHA256SUMS.txt)
+            if test -e "$destination"; then
+              diff -qr "$out" "$destination" >/dev/null || { echo "COLLISION $destination"; exit 31; }
+            else
+              mkdir -p "$(dirname "$destination")"
+              cp -a "$out" "$destination"
+            fi
+          }
+
+          acquire sia https://github.com/hexo-ai/sia.git 7fd04d07bd2f47a110115674432b73622ebf7455             "$ROOT/feedback-improvement/vendor/sia" MIT             sia docs/configuration.md docs/evaluator_design.md tests/test_generation_loop.py pyproject.toml README.md LICENSE
+
+          acquire memos https://github.com/MemTensor/MemOS.git 28dfb4e7d3adad1c93fd5574675f913921367d36             "$ROOT/continuous-memory/vendor/memos" Apache-2.0             apps/memos-local-plugin/core/feedback apps/memos-local-plugin/core/pipeline             apps/memos-local-plugin/core/retrieval apps/memos-local-plugin/docs/MANUAL_E2E_TESTING.md             README.md LICENSE
+
+          acquire agenvoy https://github.com/agenvoy/Agenvoy.git 71d0f828dedde8949d6a22184f74642f4fcc5541             "$ROOT/tool-forge/vendor/agenvoy" Apache-2.0             internal/runtime/mcp internal/runtime/scheduler.go internal/tools/scheduler             internal/filesystem/path.go doc/architecture.md README.md LICENSE
+
+      - name: Record architecture-only Meta reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/research-references/hyperagents-meta"
+          mkdir -p "$D"
+          if test -e "$D/REFERENCE.json"; then exit 0; fi
+          cat > "$D/REFERENCE.json" <<'JSON'
+          {
+            "name": "HyperAgents",
+            "source": "https://github.com/facebookresearch/HyperAgents",
+            "commit": "59a68f672dfb92c74aeb7e61535d776fb36e172d",
+            "paper": "https://arxiv.org/abs/2603.19461",
+            "license": "CC-BY-NC-SA-4.0",
+            "status": "REFERENCE_ONLY_NOT_EXECUTABLE",
+            "reason": "Non-commercial and share-alike terms require separate Director/legal approval before code adoption."
+          }
+          JSON
+
+      - name: Verify provenance selected files and no duplicate source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow"
+          for d in "$ROOT/feedback-improvement/vendor/sia" "$ROOT/continuous-memory/vendor/memos" "$ROOT/tool-forge/vendor/agenvoy"; do
+            test -s "$d/SOURCE_URL.txt"
+            test -s "$d/SOURCE_COMMIT.txt"
+            test -s "$d/SOURCE_LICENSE.txt"
+            (cd "$d" && sha256sum -c SOURCE_SHA256SUMS.txt)
+          done
+          test "$(find "$ROOT" -path '*/SOURCE_URL.txt' -exec cat {} \; | sort | uniq -d | wc -l)" -eq 0
+
+      - name: Commit through one writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow
+          git diff --cached --quiet && exit 0
+          git commit -m 'feat(yaiwes): adopt verified self-improvement source modules'
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            git push origin HEAD:main && exit 0
+            sleep $((attempt*5))
+          done
+          exit 1

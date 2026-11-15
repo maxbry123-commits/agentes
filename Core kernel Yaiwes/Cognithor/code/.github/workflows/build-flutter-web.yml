@@ -1,0 +1,55 @@
+name: Build Flutter Web UI
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Flutter Web Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Get dependencies
+        run: |
+          cd flutter_app
+          flutter pub get
+
+      - name: Build web release
+        run: |
+          cd flutter_app
+          flutter build web --release
+
+      - name: Package web build
+        run: |
+          cd flutter_app/build
+          tar czf ../../cognithor-flutter-web.tar.gz web/
+
+      - name: Upload to Release (tag push)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: cognithor-flutter-web.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to latest Release (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName')
+          # Delete old asset if exists
+          gh release delete-asset "$TAG" cognithor-flutter-web.tar.gz --yes 2>/dev/null || true
+          gh release upload "$TAG" cognithor-flutter-web.tar.gz --clobber

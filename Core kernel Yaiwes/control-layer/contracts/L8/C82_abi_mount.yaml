@@ -1,0 +1,27 @@
+# C82 — L8 ABI. B7 SALIDA4 + Enchufe v2
+id: C82
+layer: L8
+name: abi_mount
+implementado: true
+critical: true
+description: "Montaje ABI extensión kernel"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C82 obligatorio para MOUNT_EXTENSION"
+  - "abi_version + mount_mode + load_priority requeridos"
+  - "llm_control DENY por defecto en montaje"
+checks:
+  - abi_mount_check
+evidence:
+  type: abi_mount_marker
+  required: true
+links:
+  enchufe: ficha.v2.json
+  fields:
+    - abi_version
+    - extension_type
+    - kernel_min
+    - mount_mode
+    - load_priority

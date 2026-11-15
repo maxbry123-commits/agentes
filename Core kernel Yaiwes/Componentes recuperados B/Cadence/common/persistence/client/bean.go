@@ -1,0 +1,545 @@
+// Copyright (c) 2019 Uber Technologies, Inc.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
+//go:generate mockgen -package $GOPACKAGE -source $GOFILE -destination bean_mock.go
+
+package client
+
+import (
+	"sync"
+
+	"github.com/uber/cadence/common/config"
+	es "github.com/uber/cadence/common/elasticsearch"
+	"github.com/uber/cadence/common/messaging"
+	"github.com/uber/cadence/common/metrics"
+	"github.com/uber/cadence/common/persistence"
+	"github.com/uber/cadence/common/pinot"
+	"github.com/uber/cadence/common/service"
+)
+
+type (
+	// Bean in an collection of persistence manager
+	Bean interface {
+		Close()
+
+		GetDomainManager() persistence.DomainManager
+		SetDomainManager(persistence.DomainManager)
+
+		GetDomainAuditManager() persistence.DomainAuditManager
+		SetDomainAuditManager(persistence.DomainAuditManager)
+
+		GetSemaphoreMetadataManager() persistence.SemaphoreMetadataManager
+		SetSemaphoreMetadataManager(persistence.SemaphoreMetadataManager)
+
+		GetSemaphoreTokenManager() persistence.SemaphoreTokenManager
+		SetSemaphoreTokenManager(persistence.SemaphoreTokenManager)
+
+		GetSemaphoreTaskManager() persistence.SemaphoreTaskManager
+		SetSemaphoreTaskManager(persistence.SemaphoreTaskManager)
+
+		GetTaskManager() persistence.TaskManager
+		SetTaskManager(persistence.TaskManager)
+
+		GetVisibilityManager() persistence.VisibilityManager
+		SetVisibilityManager(persistence.VisibilityManager)
+
+		GetDomainReplicationQueueManager() persistence.QueueManager
+		SetDomainReplicationQueueManager(persistence.QueueManager)
+
+		GetShardManager() persistence.ShardManager
+		SetShardManager(persistence.ShardManager)
+
+		GetHistoryManager() persistence.HistoryManager
+		SetHistoryManager(persistence.HistoryManager)
+
+		GetExecutionManager() persistence.ExecutionManager
+		SetExecutionManager(persistence.ExecutionManager)
+
+		GetConfigStoreManager() persistence.ConfigStoreManager
+		SetConfigStoreManager(persistence.ConfigStoreManager)
+
+		GetHistoryTaskDLQManager() persistence.HistoryTaskDLQManager
+		SetHistoryTaskDLQManager(persistence.HistoryTaskDLQManager)
+	}
+
+	// BeanImpl stores persistence managers
+	BeanImpl struct {
+		domainManager                 persistence.DomainManager
+		domainAuditManager            persistence.DomainAuditManager
+		semaphoreMetadataManager      persistence.SemaphoreMetadataManager
+		semaphoreTokenManager         persistence.SemaphoreTokenManager
+		semaphoreTaskManager          persistence.SemaphoreTaskManager
+		taskManager                   persistence.TaskManager
+		visibilityManager             persistence.VisibilityManager
+		domainReplicationQueueManager persistence.QueueManager
+		shardManager                  persistence.ShardManager
+		historyManager                persistence.HistoryManager
+		configStoreManager            persistence.ConfigStoreManager
+		historyTaskDLQManager         persistence.HistoryTaskDLQManager
+		// factory is retained only so Close() can tear down the underlying
+		// datastores (see Factory.Close()). The execution manager itself is
+		// constructed eagerly in NewBeanFromFactory, not lazily via factory.
+		factory Factory
+
+		sync.RWMutex
+		executionManager persistence.ExecutionManager
+	}
+
+	// Params contains dependencies for persistence
+	Params struct {
+		PersistenceConfig config.Persistence
+		MetricsClient     metrics.Client
+		MessagingClient   messaging.Client
+		ESClient          es.GenericClient
+		ESConfig          *config.ElasticSearchConfig
+		PinotConfig       *config.PinotVisibilityConfig
+		PinotClient       pinot.GenericClient
+		OSClient          es.GenericClient
+		OSConfig          *config.ElasticSearchConfig
+	}
+)
+
+// NewBeanFromFactory crate a new store bean using factory
+func NewBeanFromFactory(
+	factory Factory,
+	params *Params,
+	serviceConfig *service.Config,
+) (Bean, error) {
+
+	metadataMgr, err := factory.NewDomainManager()
+	if err != nil {
+		return nil, err
+	}
+
+	domainAuditMgr, err := factory.NewDomainAuditManager()
+	if err != nil {
+		return nil, err
+	}
+
+	semaphoreMetadataMgr, err := factory.NewSemaphoreMetadataManager()
+	if err != nil {
+		return nil, err
+	}
+
+	semaphoreTokenMgr, err := factory.NewSemaphoreTokenManager()
+	if err != nil {
+		return nil, err
+	}
+
+	semaphoreTaskMgr, err := factory.NewSemaphoreTaskManager()
+	if err != nil {
+		return nil, err
+	}
+
+	taskMgr, err := factory.NewTaskManager()
+	if err != nil {
+		return nil, err
+	}
+
+	visibilityMgr, err := factory.NewVisibilityManager(params, serviceConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	domainReplicationQueue, err := factory.NewDomainReplicationQueueManager()
+	if err != nil {
+		return nil, err
+	}
+
+	shardMgr, err := factory.NewShardManager()
+	if err != nil {
+		return nil, err
+	}
+
+	historyMgr, err := factory.NewHistoryManager()
+	if err != nil {
+		return nil, err
+	}
+
+	configStoreMgr, err := factory.NewConfigStoreManager()
+	if err != nil {
+		return nil, err
+	}
+
+	historyTaskDLQMgr, err := factory.NewHistoryTaskDLQManager()
+	if err != nil {
+		return nil, err
+	}
+
+	// The execution manager is now a host-level singleton, so build it
+	// eagerly here just like every other manager instead of lazily via a
+	// dedicated factory.
+	executionMgr, err := factory.NewExecutionManager()
+	if err != nil {
+		return nil, err
+	}
+
+	bean := NewBean(
+		metadataMgr,
+		domainAuditMgr,
+		semaphoreMetadataMgr,
+		semaphoreTokenMgr,
+		semaphoreTaskMgr,
+		taskMgr,
+		visibilityMgr,
+		domainReplicationQueue,
+		shardMgr,
+		historyMgr,
+		configStoreMgr,
+		historyTaskDLQMgr,
+		executionMgr,
+	)
+	// retained solely for Close(); see BeanImpl.factory doc comment.
+	bean.factory = factory
+	return bean, nil
+}
+
+// NewBean create a new store bean
+func NewBean(
+	domainManager persistence.DomainManager,
+	domainAuditManager persistence.DomainAuditManager,
+	semaphoreMetadataManager persistence.SemaphoreMetadataManager,
+	semaphoreTokenManager persistence.SemaphoreTokenManager,
+	semaphoreTaskManager persistence.SemaphoreTaskManager,
+	taskManager persistence.TaskManager,
+	visibilityManager persistence.VisibilityManager,
+	domainReplicationQueueManager persistence.QueueManager,
+	shardManager persistence.ShardManager,
+	historyManager persistence.HistoryManager,
+	configStoreManager persistence.ConfigStoreManager,
+	historyTaskDLQManager persistence.HistoryTaskDLQManager,
+	executionManager persistence.ExecutionManager,
+) *BeanImpl {
+	return &BeanImpl{
+		domainManager:                 domainManager,
+		domainAuditManager:            domainAuditManager,
+		semaphoreMetadataManager:      semaphoreMetadataManager,
+		semaphoreTokenManager:         semaphoreTokenManager,
+		semaphoreTaskManager:          semaphoreTaskManager,
+		taskManager:                   taskManager,
+		visibilityManager:             visibilityManager,
+		domainReplicationQueueManager: domainReplicationQueueManager,
+		shardManager:                  shardManager,
+		historyManager:                historyManager,
+		configStoreManager:            configStoreManager,
+		historyTaskDLQManager:         historyTaskDLQManager,
+		executionManager:              executionManager,
+	}
+}
+
+// GetDomainManager get DomainManager
+func (s *BeanImpl) GetDomainManager() persistence.DomainManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.domainManager
+}
+
+// SetMetadataManager set DomainManager
+func (s *BeanImpl) SetDomainManager(
+	domainManager persistence.DomainManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.domainManager = domainManager
+}
+
+// GetDomainAuditManager get DomainAuditManager
+func (s *BeanImpl) GetDomainAuditManager() persistence.DomainAuditManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.domainAuditManager
+}
+
+// SetDomainAuditManager set DomainAuditManager
+func (s *BeanImpl) SetDomainAuditManager(
+	domainAuditManager persistence.DomainAuditManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.domainAuditManager = domainAuditManager
+}
+
+// GetSemaphoreMetadataManager get SemaphoreMetadataManager
+func (s *BeanImpl) GetSemaphoreMetadataManager() persistence.SemaphoreMetadataManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.semaphoreMetadataManager
+}
+
+// SetSemaphoreMetadataManager set SemaphoreMetadataManager
+func (s *BeanImpl) SetSemaphoreMetadataManager(
+	semaphoreMetadataManager persistence.SemaphoreMetadataManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.semaphoreMetadataManager = semaphoreMetadataManager
+}
+
+// GetSemaphoreTokenManager get SemaphoreTokenManager
+func (s *BeanImpl) GetSemaphoreTokenManager() persistence.SemaphoreTokenManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.semaphoreTokenManager
+}
+
+// SetSemaphoreTokenManager set SemaphoreTokenManager
+func (s *BeanImpl) SetSemaphoreTokenManager(
+	semaphoreTokenManager persistence.SemaphoreTokenManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.semaphoreTokenManager = semaphoreTokenManager
+}
+
+// GetSemaphoreTaskManager get SemaphoreTaskManager
+func (s *BeanImpl) GetSemaphoreTaskManager() persistence.SemaphoreTaskManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.semaphoreTaskManager
+}
+
+// SetSemaphoreTaskManager set SemaphoreTaskManager
+func (s *BeanImpl) SetSemaphoreTaskManager(
+	semaphoreTaskManager persistence.SemaphoreTaskManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.semaphoreTaskManager = semaphoreTaskManager
+}
+
+// GetTaskManager get TaskManager
+func (s *BeanImpl) GetTaskManager() persistence.TaskManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.taskManager
+}
+
+// SetTaskManager set TaskManager
+func (s *BeanImpl) SetTaskManager(
+	taskManager persistence.TaskManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.taskManager = taskManager
+}
+
+// GetVisibilityManager get VisibilityManager
+func (s *BeanImpl) GetVisibilityManager() persistence.VisibilityManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.visibilityManager
+}
+
+// SetVisibilityManager set VisibilityManager
+func (s *BeanImpl) SetVisibilityManager(
+	visibilityManager persistence.VisibilityManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.visibilityManager = visibilityManager
+}
+
+// GetDomainReplicationQueueManager gets domain replication QueueManager
+func (s *BeanImpl) GetDomainReplicationQueueManager() persistence.QueueManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.domainReplicationQueueManager
+}
+
+// SetDomainReplicationQueueManager sets domain replication QueueManager
+func (s *BeanImpl) SetDomainReplicationQueueManager(
+	domainReplicationQueueManager persistence.QueueManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.domainReplicationQueueManager = domainReplicationQueueManager
+}
+
+// GetShardManager get ShardManager
+func (s *BeanImpl) GetShardManager() persistence.ShardManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.shardManager
+}
+
+// SetShardManager set ShardManager
+func (s *BeanImpl) SetShardManager(
+	shardManager persistence.ShardManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.shardManager = shardManager
+}
+
+// GetHistoryManager get HistoryManager
+func (s *BeanImpl) GetHistoryManager() persistence.HistoryManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.historyManager
+}
+
+// SetHistoryManager set HistoryManager
+func (s *BeanImpl) SetHistoryManager(
+	historyManager persistence.HistoryManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.historyManager = historyManager
+}
+
+// GetExecutionManager get ExecutionManager
+func (s *BeanImpl) GetExecutionManager() persistence.ExecutionManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.executionManager
+}
+
+// SetExecutionManager set ExecutionManager
+func (s *BeanImpl) SetExecutionManager(
+	executionManager persistence.ExecutionManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.executionManager = executionManager
+}
+
+// GetConfigStoreManager gets ConfigStoreManager
+func (s *BeanImpl) GetConfigStoreManager() persistence.ConfigStoreManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.configStoreManager
+}
+
+// GetConfigStoreManager gets ConfigStoreManager
+func (s *BeanImpl) SetConfigStoreManager(
+	configStoreManager persistence.ConfigStoreManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.configStoreManager = configStoreManager
+}
+
+// GetHistoryTaskDLQManager gets HistoryTaskDLQManager
+func (s *BeanImpl) GetHistoryTaskDLQManager() persistence.HistoryTaskDLQManager {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.historyTaskDLQManager
+}
+
+// SetHistoryTaskDLQManager sets HistoryTaskDLQManager
+func (s *BeanImpl) SetHistoryTaskDLQManager(
+	historyTaskDLQManager persistence.HistoryTaskDLQManager,
+) {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.historyTaskDLQManager = historyTaskDLQManager
+}
+
+// Close cleanup connections
+func (s *BeanImpl) Close() {
+
+	s.Lock()
+	defer s.Unlock()
+
+	s.domainManager.Close()
+	if s.domainAuditManager != nil {
+		s.domainAuditManager.Close()
+	}
+	if s.semaphoreMetadataManager != nil {
+		s.semaphoreMetadataManager.Close()
+	}
+	if s.semaphoreTokenManager != nil {
+		s.semaphoreTokenManager.Close()
+	}
+	if s.semaphoreTaskManager != nil {
+		s.semaphoreTaskManager.Close()
+	}
+	s.taskManager.Close()
+	if s.visibilityManager != nil {
+		// visibilityManager can be nil
+		s.visibilityManager.Close()
+	}
+	s.domainReplicationQueueManager.Close()
+	s.shardManager.Close()
+	s.historyManager.Close()
+	if s.factory != nil {
+		s.factory.Close()
+	}
+	s.configStoreManager.Close()
+	if s.executionManager != nil {
+		s.executionManager.Close()
+	}
+
+	if s.historyTaskDLQManager != nil {
+		s.historyTaskDLQManager.Close()
+	}
+}

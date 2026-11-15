@@ -1,0 +1,137 @@
+import {
+    type AutocompleteProps,
+    type AutocompleteRenderOptionState,
+    Checkbox,
+    styled,
+} from '@mui/material';
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
+import CheckBoxIcon from '@mui/icons-material/CheckBox';
+import type { ReactNode } from 'react';
+import type { IRole } from 'interfaces/role';
+import { RoleDescription } from '../RoleDescription/RoleDescription.tsx';
+import { ConditionallyRender } from '../ConditionallyRender/ConditionallyRender.tsx';
+import { AutocompleteField } from '../AutocompleteField/AutocompleteField';
+
+const StyledRoleOption = styled('div')(({ theme }) => ({
+    paddingTop: theme.spacing(0.75),
+    display: 'flex',
+    flexDirection: 'column',
+    '& > span:last-of-type': {
+        fontSize: theme.fontSizes.smallerBody,
+        color: theme.palette.text.secondary,
+    },
+}));
+
+interface IMultipleRoleSelectProps
+    extends Partial<
+        Omit<AutocompleteProps<IRole, true, false, false>, 'renderInput'>
+    > {
+    roles: IRole[];
+    value: IRole[];
+    setValue: (role: IRole[]) => void;
+    required?: boolean;
+    label?: string;
+    description?: ReactNode;
+}
+
+function sortItems<T extends { name: string; type: string }>(items: T[]): T[] {
+    return items.sort((a, b) => {
+        if (a.type !== b.type) {
+            return a.type === 'project' ? -1 : 1;
+        }
+
+        if (a.type === 'custom') {
+            return a.name.localeCompare(b.name);
+        }
+
+        return 0;
+    });
+}
+
+const StyledListItem = styled('li')(({ theme }) => ({
+    display: 'flex',
+    gap: theme.spacing(0.5),
+}));
+
+export const MultipleRoleSelect = ({
+    roles,
+    value,
+    setValue,
+    required,
+    label = 'Role',
+    description,
+    slotProps,
+    ...rest
+}: IMultipleRoleSelectProps) => {
+    const renderRoleOption = (
+        props: React.HTMLAttributes<HTMLLIElement>,
+        option: IRole,
+        state: AutocompleteRenderOptionState,
+    ) => (
+        <StyledListItem {...props} key={option.id}>
+            <Checkbox
+                icon={<CheckBoxOutlineBlankIcon fontSize='small' />}
+                checkedIcon={<CheckBoxIcon fontSize='small' />}
+                checked={state.selected}
+            />
+            <StyledRoleOption>
+                <span>{option.name}</span>
+                <span>{option.description}</span>
+            </StyledRoleOption>
+        </StyledListItem>
+    );
+
+    const sortedRoles = sortItems(roles);
+
+    return (
+        <>
+            <AutocompleteField
+                label={label}
+                description={description}
+                required={required}
+                slotProps={{
+                    paper: {
+                        sx: {
+                            '& .MuiAutocomplete-listbox': {
+                                '& .MuiAutocomplete-option': {
+                                    paddingLeft: (theme) => theme.spacing(0.5),
+                                    alignItems: 'flex-start',
+                                },
+                            },
+                        },
+                    },
+                    ...slotProps,
+                }}
+                multiple
+                disableCloseOnSelect
+                openOnFocus
+                size='large'
+                value={value}
+                groupBy={(option) => {
+                    return option.type === 'project'
+                        ? 'Predefined project roles'
+                        : 'Custom project roles';
+                }}
+                onChange={(_, roles) => setValue(roles)}
+                options={sortedRoles}
+                renderOption={renderRoleOption}
+                getOptionLabel={(option) => option.name}
+                {...rest}
+            />
+            <ConditionallyRender
+                condition={value.length > 0}
+                show={() => (
+                    <>
+                        {value.map(({ id }) => (
+                            <RoleDescription
+                                key={id}
+                                sx={{ marginTop: 1 }}
+                                roleId={id}
+                            />
+                        ))}
+                    </>
+                )}
+            />
+        </>
+    );
+};

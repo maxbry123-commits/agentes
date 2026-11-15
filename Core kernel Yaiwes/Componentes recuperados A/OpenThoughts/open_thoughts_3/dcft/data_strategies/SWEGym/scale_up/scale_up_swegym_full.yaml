@@ -1,0 +1,102 @@
+operators:
+- id: load_hf_dataset
+  config:
+    type: load_preexisting
+    framework_name: scale_up_swegym
+- id: small_subset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1000
+  input_ids:
+  - load_hf_dataset
+- id: load_hf_dataset_2
+  config:
+    type: load_preexisting
+    framework_name: scale_up_swegym
+- id: get_unique_code_sources
+  config:
+    type: function
+    function: data_strategies.SWEGym.utils.get_unique_code_sources
+  input_ids:  
+  - small_subset
+- id: get_files_for_repo
+  config:
+    type: function
+    function: data_strategies.SWEGym.utils.get_files_for_repo
+    function_config:
+      repo_column: repo
+  input_ids:
+  - get_unique_code_sources
+- id: compute_relevant_context
+  config:
+    type: generic_resource_function
+    sharded: true
+    num_shards: 1_000
+    memory: 300
+    function: data_strategies.SWEGym.utils.compute_relevant_context
+    input_dataset_map:
+      dataset: load_hf_dataset_2
+      dataset_with_code_files: get_files_for_repo
+  input_ids:
+  - load_hf_dataset_2
+  - get_files_for_repo
+- id: bm25k
+  config:
+    type: generic_resource_function
+    sharded: true
+    num_shards: 1_000
+    memory: 300
+    num_cpus: 32
+    function: data_strategies.SWEGym.utils.bm25k
+    function_config:
+      num_docs: 3
+  input_ids:
+  - compute_relevant_context
+# - id: annotate_r1_distill_70b
+#   config:
+#     type: completions
+#     map: deepseek_reasoner
+#     map_config:
+#       input_problem_column: final_prompt
+#     model: deepseek-reasoner
+#     batch: False
+#     temperature: 1.0
+#     backend: openai
+#     max_retries: 2
+#     require_all_responses: false
+#     backend_params:
+#       max_requests_per_minute: 1_000
+#       max_tokens_per_minute: 1_000_000_000
+#       api_key: API_KEY
+#       base_url: "https://api.deepseek.com/"
+#       invalid_finish_reasons: ['content_filter']
+#   input_ids:
+#     - bm25k
+# - id: convert_reasoning_trace_to_final
+#   config:
+#     type: function
+#     function: data_strategies.commons.convert_reasoning_trace_to_final
+#     function_config:
+#       reasoning_column: reasoning
+#       solution_column: deepseek_solution
+#       output_column: final_reasoning_trace
+#   input_ids:
+#   - annotate_r1_distill_70b
+# - id: add_patch_tags
+#   config:
+#     type: function
+#     function: data_strategies.SWEGym.utils.add_patch_tags
+#   input_ids:
+#   - convert_reasoning_trace_to_final
+# - id: convert_to_sharegpt
+#   config:
+#     type: function
+#     function: data_strategies.commons.convert_instruction_response_to_sharegpt
+#     function_config:
+#       input_instruction_column: final_prompt
+#       input_response_column: final_reasoning_trace
+#       output_sharegpt_column: conversations
+#   input_ids:
+#   - add_patch_tags

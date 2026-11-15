@@ -1,0 +1,828 @@
+---
+id: getting-started
+title: DeepEval 5-min Quickstart
+sidebar_label: Human 5-min Quickstart
+languages: [python, typescript]
+---
+
+import { ASSETS } from "@site/src/assets";
+import { Bot, FileSearch, MessagesSquare } from "lucide-react";
+
+This quickstart takes you from installing DeepEval to your first passing eval in a few
+minutes. You'll create a small test case, choose a metric, and run it with
+<Term py="deepeval test run" ts="npx deepeval test run"/>.
+
+By the end of this quickstart, you should be able to:
+
+- Run your first local eval with a test case, metric, and <Term py="deepeval test run" ts="npx deepeval test run"/>.
+- Evaluate an AI agent's complete trajectory and diagnose its internal components with tracing.
+- Know where to go next for datasets, integrations, and the Confident AI
+  platform.
+
+New to DeepEval? Checkout the [introduction](/docs/introduction) to learn more about this framework.
+
+:::tip[Prefer to have your coding agent do this for you?]
+This page walks you through setting up DeepEval **by hand**. If you'd rather install a skill in **Cursor, Claude Code, Codex, Windsurf**, or any other AI coding tool — and have your coding agent write the test suite, run <Term py="deepeval test run" ts="npx deepeval test run"/>, and iterate on failures for you — start at the **[5-min Vibe Coder Quickstart →](/docs/vibe-coder-quickstart)** instead.
+:::
+
+## Installation
+
+<Switch>
+
+<Case id="python">
+
+In a newly created virtual environment, run:
+
+```bash
+pip install -U deepeval
+```
+
+`deepeval` plugs into Pytest, so `deepeval test run` collects and runs your eval files the same way `pytest` would.
+
+</Case>
+
+<Case id="typescript">
+
+In your project, run:
+
+```bash
+npm install --save-dev deepeval
+```
+
+The package ships a `deepeval` binary, so every command below runs through `npx`. `deepeval` plugs into [Vitest](https://vitest.dev), so `npx deepeval test run` collects and runs your eval files the same way `vitest` would.
+
+</Case>
+
+</Switch>
+
+`deepeval` runs evaluations locally on your environment. To keep your testing reports in a centralized place on the cloud, use [Confident AI](https://www.confident-ai.com), an AI quality platform with observability, evals, and monitoring that DeepEval integrates with natively:
+
+<Switch>
+
+<Case id="python">
+
+```bash
+deepeval login
+```
+
+</Case>
+
+<Case id="typescript">
+
+```bash
+npx deepeval login
+```
+
+</Case>
+
+</Switch>
+
+Your browser handles authentication only. After you sign in or create an
+account, return to the terminal to enter your name and organization, confirm
+the prefilled first-project name, or select one of your existing projects.
+DeepEval creates and saves a dedicated project API key automatically. For CI
+or other non-interactive environments, pass an existing key with
+<Term py="deepeval login --api-key ..." ts="npx deepeval login --api-key ..."/>.
+
+<details>
+
+<summary>Configure Environment Variables</summary>
+
+DeepEval autoloads environment files (at import time)
+
+- **Precedence:** existing process env -> `.env.local` -> `.env`
+- **Opt-out:** set `DEEPEVAL_DISABLE_DOTENV=1`
+
+More information on `env` settings can be [found here.](/docs/evaluation-flags-and-configs#environment-flags)
+
+```bash
+# quickstart
+cp .env.example .env.local
+# then edit .env.local (ignored by git)
+```
+
+</details>
+
+:::note
+Confident AI is free and allows you to keep all evaluation results on the cloud. Sign up [here.](https://app.confident-ai.com)
+:::
+
+## Create Your First Test Run
+
+Create a test file to run your first **end-to-end evaluation**.
+
+<Tabs items={["Single-Turn", "Multi-Turn"]}>
+<Tab value="Single-Turn">
+
+An [LLM test case](/docs/evaluation-test-cases#llm-test-case) in `deepeval` represents a **single unit of LLM app interaction**, and contains mandatory fields such as the `input` and <Term py="actual_output" ts="actualOutput"/> (LLM generated output), and optional ones like <Term py="expected_output" ts="expectedOutput"/>.
+
+<ImageDisplayer src={ASSETS.llmTestCase} alt="LLM Test Case" />
+
+Run <Term py="touch test_example.py" ts="touch example.test.ts"/> in your terminal and paste in the following code:
+
+<Switch>
+
+<Case id="python">
+
+```python title="test_example.py"
+from deepeval import assert_test
+from deepeval.test_case import LLMTestCase, SingleTurnParams
+from deepeval.metrics import GEval
+
+def test_correctness():
+    correctness_metric = GEval(
+        name="Correctness",
+        criteria="Determine if the 'actual output' is correct based on the 'expected output'.",
+        evaluation_params=[SingleTurnParams.ACTUAL_OUTPUT, SingleTurnParams.EXPECTED_OUTPUT],
+        threshold=0.5
+    )
+    test_case = LLMTestCase(
+        input="I have a persistent cough and fever. Should I be worried?",
+        # Replace this with the actual output from your LLM application
+        actual_output="A persistent cough and fever could be a viral infection or something more serious. See a doctor if symptoms worsen or don't improve in a few days.",
+        expected_output="A persistent cough and fever could indicate a range of illnesses, from a mild viral infection to more serious conditions like pneumonia or COVID-19. You should seek medical attention if your symptoms worsen, persist for more than a few days, or are accompanied by difficulty breathing, chest pain, or other concerning signs."
+    )
+    assert_test(test_case, [correctness_metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="example.test.ts"
+import { it, expect } from "vitest";
+import { LLMTestCase, SingleTurnParams } from "deepeval/test-case";
+import { GEval } from "deepeval/metrics";
+import "deepeval/vitest";
+
+it("gives medically sound advice", async () => {
+  const correctnessMetric = new GEval({
+    name: "Correctness",
+    criteria:
+      "Determine if the 'actual output' is correct based on the 'expected output'.",
+    evaluationParams: [
+      SingleTurnParams.ACTUAL_OUTPUT,
+      SingleTurnParams.EXPECTED_OUTPUT,
+    ],
+    threshold: 0.5,
+  });
+  const testCase = new LLMTestCase({
+    input: "I have a persistent cough and fever. Should I be worried?",
+    // Replace this with the actual output from your LLM application
+    actualOutput:
+      "A persistent cough and fever could be a viral infection or something more serious. See a doctor if symptoms worsen or don't improve in a few days.",
+    expectedOutput:
+      "A persistent cough and fever could indicate a range of illnesses, from a mild viral infection to more serious conditions like pneumonia or COVID-19. You should seek medical attention if your symptoms worsen, persist for more than a few days, or are accompanied by difficulty breathing, chest pain, or other concerning signs.",
+  });
+  await expect(testCase).toPass([correctnessMetric]);
+});
+```
+
+Importing `deepeval/vitest` registers the `toPass()` matcher. `npx deepeval test run` injects it for you, so the import only matters when you run the same file with `vitest` directly.
+
+</Case>
+
+</Switch>
+
+Then, run <Term py="deepeval test run" ts="npx deepeval test run"/> from the root directory of your project to evaluate your LLM app **end-to-end**:
+
+<Switch>
+
+<Case id="python">
+
+```bash
+deepeval test run test_example.py
+```
+
+</Case>
+
+<Case id="typescript">
+
+```bash
+npx deepeval test run example.test.ts
+```
+
+</Case>
+
+</Switch>
+
+Congratulations! Your test case should have passed ✅ Let's breakdown what happened.
+
+- The variable `input` mimics a user input, and <Term py="actual_output" ts="actualOutput"/> is a placeholder for what your application's supposed to output based on this input.
+- The variable <Term py="expected_output" ts="expectedOutput"/> represents the ideal answer for a given `input`, and [`GEval`](/docs/metrics-llm-evals) is a research-backed metric provided by `deepeval` for you to evaluate your LLM output's on any custom metric with human-like accuracy.
+- In this example, the metric `criteria` is correctness of the <Term py="actual_output" ts="actualOutput"/> based on the provided <Term py="expected_output" ts="expectedOutput"/>, but not all metrics require an <Term py="expected_output" ts="expectedOutput"/>.
+- All metric scores range from 0 - 1, which the <Term py="threshold=0.5" ts="threshold: 0.5"/> threshold ultimately determines if your test have passed or not.
+
+If you run more than one test run, you will be able to **catch regressions** by comparing test cases side-by-side. This is also made easier if you're using `deepeval` alongside Confident AI ([see below](/docs/getting-started#save-results) for video demo).
+
+</Tab>
+<Tab value="Multi-Turn">
+
+A [conversational test case](/docs/evaluation-multiturn-test-cases#conversational-test-case) in `deepeval` represents a **multi-turn interaction with your LLM app**, and contains information such as the actual conversation that took place in the format of `turn`s, and optionally the scenario of which a conversation happened.
+
+<ImageDisplayer
+  src={ASSETS.conversationalTestCase}
+  alt="Conversational Test Case"
+/>
+
+Run <Term py="touch test_example.py" ts="touch example.test.ts"/> in your terminal and paste in the following code:
+
+<Switch>
+
+<Case id="python">
+
+```python title="test_example.py"
+from deepeval import assert_test
+from deepeval.test_case import Turn, ConversationalTestCase
+from deepeval.metrics import ConversationalGEval
+
+def test_professionalism():
+    professionalism_metric = ConversationalGEval(
+        name="Professionalism",
+        criteria="Determine whether the assistant has acted professionally based on the content.",
+        threshold=0.5
+    )
+    test_case = ConversationalTestCase(
+        turns=[
+            Turn(role="user", content="What is DeepEval?"),
+            Turn(role="assistant", content="DeepEval is an open-source LLM eval package.")
+        ]
+    )
+    assert_test(test_case, [professionalism_metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="example.test.ts"
+import { it, expect } from "vitest";
+import {
+  ConversationalTestCase,
+  MultiTurnParams,
+  Turn,
+} from "deepeval/test-case";
+import { ConversationalGEval } from "deepeval/metrics";
+import "deepeval/vitest";
+
+it("stays professional across the conversation", async () => {
+  const professionalismMetric = new ConversationalGEval({
+    name: "Professionalism",
+    criteria:
+      "Determine whether the assistant has acted professionally based on the content.",
+    evaluationParams: [MultiTurnParams.CONTENT],
+    threshold: 0.5,
+  });
+  const testCase = new ConversationalTestCase({
+    turns: [
+      new Turn({ role: "user", content: "What is DeepEval?" }),
+      new Turn({
+        role: "assistant",
+        content: "DeepEval is an open-source LLM eval package.",
+      }),
+    ],
+  });
+  await expect(testCase).toPass([professionalismMetric]);
+});
+```
+
+</Case>
+
+</Switch>
+
+Then, run <Term py="deepeval test run" ts="npx deepeval test run"/> from the root directory of your project to evaluate your LLM app **end-to-end**:
+
+<Switch>
+
+<Case id="python">
+
+```bash
+deepeval test run test_example.py
+```
+
+</Case>
+
+<Case id="typescript">
+
+```bash
+npx deepeval test run example.test.ts
+```
+
+</Case>
+
+</Switch>
+
+🎉 Congratulations! Your test case should have passed ✅ Let's breakdown what happened.
+
+- The variable `role` distinguishes between the end user and your LLM application, and `content` contains either the user’s input or the LLM’s output.
+- In this example, the `criteria` metric evaluates the professionalism of the sequence of `content`.
+- All metric scores range from 0 - 1, which the <Term py="threshold=0.5" ts="threshold: 0.5"/> threshold ultimately determines if your test have passed or not.
+
+If you run more than one test run, you will be able to **catch regressions** by comparing test cases side-by-side. This is also made easier if you're using `deepeval` alongside Confident AI ([see below](/docs/getting-started#save-results) for video demo).
+
+</Tab>
+</Tabs>
+
+:::info
+
+Since almost all `deepeval` metrics including `GEval` are LLM-as-a-Judge metrics, you'll need to set your `OPENAI_API_KEY` as an env variable. You can also customize the model used for evals:
+
+<Switch>
+
+<Case id="python">
+
+```python
+correctness_metric = GEval(..., model="o1")
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+const correctnessMetric = new GEval({
+  // ...
+  model: "o1",
+});
+```
+
+</Case>
+
+</Switch>
+
+DeepEval also integrates with these model providers: [Ollama](https://deepeval.com/integrations/models/ollama), [Azure OpenAI](https://deepeval.com/integrations/models/azure-openai), [Anthropic](https://deepeval.com/integrations/models/anthropic), [Gemini](https://deepeval.com/integrations/models/gemini), etc.
+
+To use **ANY** custom LLM of your choice, [check out this part of the
+docs](/guides/guides-using-custom-llms).
+
+<details>
+
+<summary>Evaluations getting "stuck"?</summary>
+
+Most likely your evaluation LLM is failing and this might be due to rate limits or insufficient quotas.
+
+<Switch>
+
+<Case id="python">
+
+By default, `deepeval` retries **transient** LLM errors once (2 attempts total):
+
+- **Retried:** network/timeout errors and **5xx** server errors.
+- **Rate limits (429):** retried unless the provider marks them non-retryable
+  (for OpenAI, `insufficient_quota` is treated as non-retryable).
+- **Backoff:** exponential with jitter (initial **1s**, base **2**, jitter **2s**, cap **5s**).
+
+You can tune these via environment flags (no code changes). See [environment variables](/docs/environment-variables) for details.
+
+</Case>
+
+<Case id="typescript">
+
+`deepeval` doesn't add its own retry layer around LLM calls — retries are handled by each provider's SDK, so configure them on the client you pass in:
+
+```typescript
+import OpenAI from "openai";
+
+const client = new OpenAI({ maxRetries: 5 });
+```
+
+See [environment variables](/docs/environment-variables) for the rest of the knobs.
+
+</Case>
+
+</Switch>
+
+</details>
+
+:::
+
+### Save Results
+
+It is recommended that you push your test runs to Confident AI — an AI quality platform `deepeval` integrates with natively for observability, evals, and monitoring.
+
+<Tabs items={["Confident AI", "Locally in JSON"]}>
+<Tab value="Confident AI">
+
+Confident AI is an AI quality platform with observability, evals, and monitoring that `deepeval` integrates with natively, and helps you build the best LLM evals pipeline.
+
+Run <Term py="deepeval view" ts="npx deepeval view"/> to view your newly ran test run on the platform:
+
+<Switch>
+
+<Case id="python">
+
+```bash
+deepeval view
+```
+
+</Case>
+
+<Case id="typescript">
+
+```bash
+npx deepeval view
+```
+
+</Case>
+
+</Switch>
+
+The <Term py="deepeval view" ts="npx deepeval view"/> command requires that the test run that you ran above has been successfully cached locally. If something errors, simply run a new test run after logging in with <Term py="deepeval login" ts="npx deepeval login"/>:
+
+<Switch>
+
+<Case id="python">
+
+```bash
+deepeval login
+```
+
+</Case>
+
+<Case id="typescript">
+
+```bash
+npx deepeval login
+```
+
+</Case>
+
+</Switch>
+
+Once that's set up, Confident AI will **generate testing reports and automate regression testing** whenever you run a test run to evaluate your LLM application inside any environment, at any scale, anywhere.
+
+<VideoDisplayer
+  src={ASSETS.evaluationOverview}
+  confidentUrl="/docs/getting-started/setup"
+  label="Watch full guide on Confident AI"
+  description="A complete walkthrough of running and analyzing your first evals."
+/>
+
+**Once you've run more than one test run**, you'll be able to use the [regression testing page](https://www.confident-ai.com/docs/llm-evaluation/dashboards/ab-regression-testing) shown near the end of the video. Green rows indicate that your LLM has shown improvement on specific test cases, whereas red rows highlight areas of regression.
+
+</Tab>
+<Tab value="Locally in JSON">
+
+Simply set the `DEEPEVAL_RESULTS_FOLDER` environment variable to your relative path of choice.
+
+```bash
+# linux
+export DEEPEVAL_RESULTS_FOLDER="./data"
+
+# or windows
+set DEEPEVAL_RESULTS_FOLDER=.\data
+```
+
+</Tab>
+</Tabs>
+
+<span id="evals-with-llm-tracing" />
+
+## Evaluate an AI Agent
+
+AI agents often take many steps before producing a result. To evaluate whether an agent completed its task and how it got there, first instrument it with [LLM tracing](/docs/evaluation-llm-tracing), then score its complete trajectory.
+
+<Steps>
+<Step>
+
+### Build Dataset
+
+Create a small dataset of representative tasks for your agent:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.dataset import EvaluationDataset, Golden
+
+dataset = EvaluationDataset(goldens=[Golden(input="Plan a three-day trip to Paris")])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { EvaluationDataset, Golden } from "deepeval/dataset";
+
+const dataset = new EvaluationDataset({
+  goldens: [new Golden({ input: "Plan a three-day trip to Paris" })],
+});
+```
+
+</Case>
+
+</Switch>
+
+</Step>
+<Step>
+
+### Instrument and Evaluate Trajectory
+
+Each example instruments the agent, captures one complete trace per golden, and applies `TaskCompletionMetric` to the full trajectory.
+
+<Switch>
+
+<Case id="python">
+
+Pick your stack below, paste the snippet, and run it. Every integration ships an **Async** sample (the default — runs goldens concurrently) and a **Sync** sample (one golden at a time, useful for debugging or rate-limited providers):
+
+</Case>
+
+<Case id="typescript">
+
+Paste the snippet below and run it — goldens are evaluated concurrently as your app produces their traces:
+
+</Case>
+
+</Switch>
+
+<include cwd>snippets/evaluation/end-to-end-agent-framework-tabs.mdx</include>
+
+Then run the file:
+
+<Switch>
+
+<Case id="python">
+
+```bash
+python main.py
+```
+
+</Case>
+
+<Case id="typescript">
+
+```bash
+npx tsx main.ts
+```
+
+</Case>
+
+</Switch>
+
+🎉 Congratulations! Your eval should have run ✅ A quick recap of what happened:
+
+- <Term py="evals_iterator()" ts="evalsIterator()"/> looped through your dataset, capturing one trace per golden.
+- <Switch><Case id="python">Your integration's adapter (or `@observe`) created spans</Case><Case id="typescript">Your integration (or `observe`)</Case></Switch> recorded the agent's internal steps.
+- `TaskCompletionMetric` analyzed the complete ordered trace after the agent finished.
+- DeepEval aggregated everything into one test run.
+
+</Step>
+<Step>
+
+### Evaluate Individual Components
+
+Trajectory-based evaluation tells you whether the complete path was effective. [Component-level evaluation](/docs/evaluation-component-level-llm-evals) uses the same trace to score one span at a time, helping you identify which planner, retriever, tool call, LLM generation, or sub-agent caused a failure.
+
+<ImageDisplayer src={ASSETS.componentLevelEvals} alt="component-level metrics attached to individual spans within an agent trace" />
+
+Once your agent is traced, attach component metrics only to the spans you need to diagnose. Trajectory and component scores can run together in the same test run. See the [component-level guide](/docs/evaluation-component-level-llm-evals) for stack-specific examples, sub-agent evaluation, retriever scoring, and span customization.
+
+</Step>
+</Steps>
+
+To run the trajectory eval inside your test suite, invoke the traced agent from the assertion and pass the trajectory metric. Any component metrics attached to its spans run during the same test:
+
+<Switch>
+
+<Case id="python">
+
+```python title="test_agent.py"
+from deepeval.metrics import TaskCompletionMetric
+from deepeval.dataset import Golden
+from deepeval import assert_test
+from agent import my_agent
+import pytest
+
+goldens = [Golden(input="Plan a three-day trip to Paris")]
+
+@pytest.mark.parametrize("golden", goldens)
+def test_agent(golden: Golden):
+    my_agent(golden.input)
+    assert_test(golden=golden, metrics=[TaskCompletionMetric()])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="agent.test.ts"
+import { TaskCompletionMetric } from "deepeval/metrics";
+import { Golden } from "deepeval/dataset";
+import { myAgent } from "./agent";
+import { expect, it } from "vitest";
+import "deepeval/vitest";
+
+const goldens = [new Golden({ input: "Plan a three-day trip to Paris" })];
+
+it.each(goldens)("completes the agent trajectory #%$", async (golden) => {
+  await expect(golden).toPass([new TaskCompletionMetric()], {
+    task: (g) => myAgent(g.input),
+  });
+});
+```
+
+</Case>
+
+</Switch>
+
+Either way, run it with <Term py="deepeval test run" ts="npx deepeval test run"/> like any other test file.
+
+:::tip
+Every <Term py="evals_iterator()" ts="evalsIterator()"/> run is snapshotted to disk, so you can open it in a trace-tree TUI — with trajectory scores, per-span scores, and metric reasons — by running bare <Term py="deepeval inspect" ts="npx deepeval inspect"/>. See the [`deepeval inspect` reference](/docs/command-line-interface#inspect) for full details.
+
+<ImageDisplayer
+  src={ASSETS.deepevalTuiInspect}
+  alt="deepeval inspect TUI showing a trace tree with per-span scores and metric reasons"
+/>
+
+:::
+
+## DeepEval for Online Evals
+
+When you do LLM tracing using `deepeval`, you can automatically run online evals to monitor **traces, spans, and threads (conversations) in production**.
+
+You'll need to use Confident AI to provide the necessary backend infrastructure and dashboard for this.
+
+Simply get an [API key from Confident AI](https://app.confident-ai.com) and set it in the CLI:
+
+```bash
+CONFIDENT_API_KEY="confident_us..."
+```
+
+Then add a "metric collection" to your trace:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.tracing import observe, update_current_trace
+
+@observe()
+def ai_agent(input: str) -> str:
+    output = "Your AI agent output"
+    update_current_trace(metric_collection="My Online Evals",)
+    return output
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { observe, updateCurrentTrace } from "deepeval/tracing";
+
+const aiAgent = observe({
+  type: "agent",
+  fn: async (input: string): Promise<string> => {
+    const output = "Your AI agent output";
+    updateCurrentTrace({ metricCollection: "My Online Evals" });
+    return output;
+  },
+});
+```
+
+</Case>
+
+</Switch>
+
+✅ Done. All invocations of your AI agent will now have online evals ran on it.
+
+:::tip
+To learn more on what a "metric collection" is, and how to pair observability with online evals, checkout the [docs on Confident AI.](https://www.confident-ai.com/docs/llm-tracing/quickstart)
+:::
+
+`deepeval`'s LLM tracing implementation is **non-instrusive**, meaning it will not affect any part of your code.
+
+<Tabs items={["Trace-Level Evals in Prod", "Span (component-level) Evals in Prod", "Thread (conversation) Evals in Prod"]}>
+<Tab value="Trace-Level Evals in Prod">
+
+Trace-level evals can score the observable result with [end-to-end evaluation](/docs/evaluation-end-to-end-llm-evals) or analyze an agent's complete internal path with [trajectory-based evaluation](/docs/evaluation-trajectory-based-llm-evals).
+
+<VideoDisplayer
+  src={ASSETS.tracingTraces}
+  confidentUrl="/docs/llm-tracing/introduction"
+  label="Trace-level evals in production"
+  description="Score complete results or agent trajectories on live traffic."
+/>
+
+</Tab>
+<Tab value="Span (component-level) Evals in Prod">
+
+Spans make up a trace and evals on spans represents [component-level evaluations](/docs/evaluation-component-level-llm-evals), where individual components in your LLM app are being evaluated.
+
+<VideoDisplayer
+  src={ASSETS.tracingSpans}
+  confidentUrl="/docs/llm-tracing/introduction"
+  label="Span-level evals in production"
+  description="Evaluate individual components like tool calls and retrievals inside each trace."
+/>
+
+</Tab>
+<Tab value="Thread (conversation) Evals in Prod">
+
+Threads are made up of **one or more traces**, and represents a multi-turn interaction to be evaluated.
+
+<VideoDisplayer
+  src={ASSETS.tracingThreads}
+  confidentUrl="/docs/llm-tracing/introduction"
+  label="Thread (conversation) evals in production"
+  description="Group traces into threads to evaluate whole conversations."
+/>
+
+</Tab>
+</Tabs>
+
+## Framework Integrations
+
+Already building with an agent framework? DeepEval integrations capture its traces and spans so the same metrics can evaluate complete trajectories and individual components with minimal instrumentation.
+
+Here are a few examples available for your selected SDK:
+
+<include cwd>snippets/integrations/framework-integration-card-examples.mdx</include>
+
+[Browse all framework integrations →](/integrations)
+
+## Next Steps
+
+- Learn the core concepts if you want to build a repeatable eval suite:
+
+  - [Test cases](/docs/evaluation-test-cases)
+  - [Metrics](/docs/metrics-introduction)
+  - [Datasets](/docs/evaluation-datasets)
+
+- Follow a use-case quickstart if you want a path tailored to your system:
+
+  - [AI agents](/docs/getting-started-agents)
+  - [RAG](/docs/getting-started-rag)
+  - [Chatbots](/docs/getting-started-chatbots)
+
+- Explore other workflows when you're ready to go beyond a single eval:
+
+  - [Generate synthetic data](/docs/synthesizer-introduction)
+  - [Simulate conversations](/docs/conversation-simulator)
+  - [Use integrations](/integrations) with LangChain, LangGraph, OpenAI, CrewAI, and more
+
+If your team needs shared reports, regression analysis, or production monitoring,
+DeepEval integrates natively with [Confident AI](https://www.confident-ai.com/docs).
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "Why did my eval get stuck?",
+      answer:
+        "Most LLM-as-a-judge metrics call an evaluation model. If the provider is rate-limited, out of quota, or slow to respond, the eval may appear stuck. Check your model provider key, quota, and network access.",
+    },
+    {
+      question: "Do I need Confident AI for this quickstart?",
+      answer: (
+        <>
+          No. DeepEval runs locally. Confident AI is optional and useful when
+          you want shared reports, regression tracking, observability, or
+          production monitoring.
+        </>
+      ),
+    },
+    {
+      question: "Where should I put this test file?",
+      answer: (
+        <>
+          Put it anywhere your test runner can discover it, usually alongside
+          your app or in a <code>tests/</code> folder. Then run{" "}
+          <Term
+            py="deepeval test run path/to/test_file.py"
+            ts="npx deepeval test run path/to/file.test.ts"
+          />
+          .
+        </>
+      ),
+    },
+    {
+      question: "Can I use a model other than OpenAI?",
+      answer:
+        "Yes. DeepEval supports multiple model providers and custom/local models for evaluation. OpenAI is only the quickest default path for many examples.",
+    },
+    {
+      question: "What should I read after this?",
+      answer: (
+        <>
+          If you're evaluating an agent, start with tracing. If you're building
+          a repeatable eval suite, start with datasets and metrics.
+        </>
+      ),
+    },
+  ]}
+/>
+
+<Only id="python">
+
+## Full Example
+
+You can find the full example [here on our Github](https://github.com/confident-ai/deepeval/blob/main/examples/getting_started/test_example.py).
+
+</Only>

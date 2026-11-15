@@ -1,0 +1,23 @@
+# Read the Docs configuration file
+# See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
+
+version: 2
+
+formats:
+  - htmlzip
+  - epub
+  # - pdf  # busted by latex crash on unicode U+030A combining ring above, in text() docs
+
+build:
+   os: ubuntu-22.04
+   tools:
+      python: "3.14"
+      rust: "latest"
+   jobs:
+      post_install:
+         - python -m pip install -e ./hypothesis[all]
+python:
+   install:
+      - requirements: requirements/tools.txt
+sphinx:
+   configuration: hypothesis/docs/conf.py

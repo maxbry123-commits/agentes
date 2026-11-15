@@ -1,0 +1,71 @@
+# Licensed under the Apache License, Version 2.0 (see LICENSE).
+"""Type signatures for DSL primitives (spec §7.4).
+
+Phase 1 uses string type tags rather than Python types to keep signatures
+JSON-serialisable for the catalog and for cache keys. Allowed type tags:
+
+    Grid, Color, Mask, Object, ObjectSet, Int, Bool, Predicate, Lambda,
+    AlignMode, SortKey
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+ALLOWED_TYPES: frozenset[str] = frozenset(
+    {
+        "Grid",
+        "Color",
+        "Mask",
+        "Object",
+        "ObjectSet",
+        "Int",
+        "Bool",
+        "Predicate",
+        "Lambda",
+        "AlignMode",
+        "SortKey",
+        # Sprint-22 — String-DSL family. ``String`` is the carrier for
+        # all str-based synthesis tasks (FlashFill-style normalisation,
+        # extraction, formatting). ``StringList`` is the result of
+        # ``split`` and the input to ``join``. Both stay disjoint from
+        # the grid type-tags so a Grid task and a String task never
+        # cross-pollinate during enumerative search (type-filter
+        # rejects all type-mismatched compositions).
+        "String",
+        "StringList",
+        # Sprint-22 PR#4 — List/Sequence-DSL family. ``IntList`` is the
+        # carrier for list-of-int synthesis tasks (sum / max / min /
+        # length / sort / reverse). It is structurally disjoint from
+        # ``StringList`` so the type-filter cleanly routes a list-of-
+        # ints input through the int-list primitives without a Python
+        # ``isinstance(int, str)`` accident.
+        "IntList",
+    }
+)
+
+
+@dataclass(frozen=True)
+class Signature:
+    """Static input/output type signature of a primitive.
+
+    Phase 1 explicitly forbids generics and parametric types. ``inputs``
+    and ``output`` are tuples / strings of type tags from
+    :data:`ALLOWED_TYPES`.
+    """
+
+    inputs: tuple[str, ...]
+    output: str
+
+    def __post_init__(self) -> None:
+        for t in (*self.inputs, self.output):
+            if t not in ALLOWED_TYPES:
+                raise ValueError(f"Unknown type tag {t!r}; allowed: {sorted(ALLOWED_TYPES)}")
+
+    def matches(self, args: tuple[str, ...]) -> bool:
+        """Return True iff ``args`` satisfies the input signature."""
+        return self.inputs == args
+
+    @property
+    def arity(self) -> int:
+        return len(self.inputs)

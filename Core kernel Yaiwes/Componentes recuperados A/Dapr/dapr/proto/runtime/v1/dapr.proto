@@ -1,0 +1,293 @@
+/*
+Copyright 2021 The Dapr Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+syntax = "proto3";
+
+package dapr.proto.runtime.v1;
+
+import "google/protobuf/empty.proto";
+
+import "dapr/proto/common/v1/common.proto";
+import "dapr/proto/runtime/v1/actors.proto";
+import "dapr/proto/runtime/v1/pubsub.proto";
+import "dapr/proto/runtime/v1/invoke.proto";
+import "dapr/proto/runtime/v1/state.proto";
+import "dapr/proto/runtime/v1/binding.proto";
+import "dapr/proto/runtime/v1/secret.proto";
+import "dapr/proto/runtime/v1/metadata.proto";
+import "dapr/proto/runtime/v1/configuration.proto";
+import "dapr/proto/runtime/v1/lock.proto";
+import "dapr/proto/runtime/v1/crypto.proto";
+import "dapr/proto/runtime/v1/workflow.proto";
+import "dapr/proto/runtime/v1/jobs.proto";
+import "dapr/proto/runtime/v1/ai.proto";
+
+option csharp_namespace = "Dapr.Client.Autogen.Grpc.v1";
+option java_outer_classname = "DaprProtos";
+option java_package = "io.dapr.v1";
+option go_package = "github.com/dapr/dapr/pkg/proto/runtime/v1;runtime";
+
+// Dapr service provides APIs to user application to access Dapr building blocks.
+service Dapr {
+  // Invokes a method on a remote Dapr app.
+  // Deprecated: Use proxy mode service invocation instead.
+  rpc InvokeService(InvokeServiceRequest) returns (common.v1.InvokeResponse) {}
+
+  // Gets the state for a specific key.
+  rpc GetState(GetStateRequest) returns (GetStateResponse) {}
+
+  // Gets a bulk of state items for a list of keys
+  rpc GetBulkState(GetBulkStateRequest) returns (GetBulkStateResponse) {}
+
+  // Saves the state for a specific key.
+  rpc SaveState(SaveStateRequest) returns (google.protobuf.Empty) {}
+
+  // Queries the state.
+  rpc QueryStateAlpha1(QueryStateRequest) returns (QueryStateResponse) {}
+
+  // Deletes the state for a specific key.
+  rpc DeleteState(DeleteStateRequest) returns (google.protobuf.Empty) {}
+
+  // Deletes a bulk of state items for a list of keys
+  rpc DeleteBulkState(DeleteBulkStateRequest) returns (google.protobuf.Empty) {}
+
+  // Executes transactions for a specified store
+  rpc ExecuteStateTransaction(ExecuteStateTransactionRequest) returns (google.protobuf.Empty) {}
+
+  // Publishes events to the specific topic.
+  rpc PublishEvent(PublishEventRequest) returns (google.protobuf.Empty) {}
+
+  // Deprecated: Bulk Publishes multiple events to the specified topic.
+  rpc BulkPublishEventAlpha1(BulkPublishRequest) returns (BulkPublishResponse) {
+    option deprecated = true;
+  }
+
+  // Bulk Publishes multiple events to the specified topic.
+  rpc BulkPublishEvent(BulkPublishRequest) returns (BulkPublishResponse) {}
+
+  // SubscribeTopicEventsAlpha1 subscribes to a PubSub topic and receives topic
+  // events from it.
+  rpc SubscribeTopicEventsAlpha1(stream SubscribeTopicEventsRequestAlpha1) returns (stream SubscribeTopicEventsResponseAlpha1) {}
+
+  // Invokes binding data to specific output bindings
+  rpc InvokeBinding(InvokeBindingRequest) returns (InvokeBindingResponse) {}
+
+  // Gets secrets from secret stores.
+  rpc GetSecret(GetSecretRequest) returns (GetSecretResponse) {}
+
+  // Gets a bulk of secrets
+  rpc GetBulkSecret(GetBulkSecretRequest) returns (GetBulkSecretResponse) {}
+
+  // Register an actor timer.
+  rpc RegisterActorTimer(RegisterActorTimerRequest) returns (google.protobuf.Empty) {}
+
+  // Unregister an actor timer.
+  rpc UnregisterActorTimer(UnregisterActorTimerRequest) returns (google.protobuf.Empty) {}
+
+  // Register an actor reminder.
+  rpc RegisterActorReminder(RegisterActorReminderRequest) returns (google.protobuf.Empty) {}
+
+  // Unregister an actor reminder.
+  rpc UnregisterActorReminder(UnregisterActorReminderRequest) returns (google.protobuf.Empty) {}
+
+  rpc UnregisterActorRemindersByType(UnregisterActorRemindersByTypeRequest) returns (UnregisterActorRemindersByTypeResponse) {}
+
+  rpc ListActorReminders(ListActorRemindersRequest) returns (ListActorRemindersResponse) {}
+
+  // Gets the state for a specific actor.
+  rpc GetActorState(GetActorStateRequest) returns (GetActorStateResponse) {}
+
+  // Gets an actor reminder.
+  rpc GetActorReminder(GetActorReminderRequest) returns (GetActorReminderResponse) {}
+
+  // Executes state transactions for a specified actor
+  rpc ExecuteActorStateTransaction(ExecuteActorStateTransactionRequest) returns (google.protobuf.Empty) {}
+
+  // InvokeActor calls a method on an actor.
+  rpc InvokeActor (InvokeActorRequest) returns (InvokeActorResponse) {}
+
+  // SubscribeActorEventsAlpha1 is the app-initiated stream over which an
+  // actor host receives invocation, reminder, timer, and deactivation
+  // callbacks from Dapr. The first message the app sends must be a
+  // SubscribeActorEventsRequestInitialAlpha1 registering the actor types
+  // it hosts. Apps using this RPC do not need to expose a server port for
+  // actor callbacks.
+  rpc SubscribeActorEventsAlpha1(stream SubscribeActorEventsRequestAlpha1) returns (stream SubscribeActorEventsResponseAlpha1) {}
+
+  // GetConfiguration gets configuration from configuration store.
+  rpc GetConfigurationAlpha1(GetConfigurationRequest) returns (GetConfigurationResponse) {}
+
+  // GetConfiguration gets configuration from configuration store.
+  rpc GetConfiguration(GetConfigurationRequest) returns (GetConfigurationResponse) {}
+
+  // SubscribeConfiguration gets configuration from configuration store and subscribe the updates event by grpc stream
+  rpc SubscribeConfigurationAlpha1(SubscribeConfigurationRequest) returns (stream SubscribeConfigurationResponse) {}
+
+  // SubscribeConfiguration gets configuration from configuration store and subscribe the updates event by grpc stream
+  rpc SubscribeConfiguration(SubscribeConfigurationRequest) returns (stream SubscribeConfigurationResponse) {}
+
+  // UnSubscribeConfiguration unsubscribe the subscription of configuration
+  rpc UnsubscribeConfigurationAlpha1(UnsubscribeConfigurationRequest) returns (UnsubscribeConfigurationResponse) {}
+
+  // UnSubscribeConfiguration unsubscribe the subscription of configuration
+  rpc UnsubscribeConfiguration(UnsubscribeConfigurationRequest) returns (UnsubscribeConfigurationResponse) {}
+
+  // TryLockAlpha1 tries to get a lock with an expiry.
+  rpc TryLockAlpha1(TryLockRequest)returns (TryLockResponse) {}
+
+  // UnlockAlpha1 unlocks a lock.
+  rpc UnlockAlpha1(UnlockRequest)returns (UnlockResponse) {}
+
+  // EncryptAlpha1 encrypts a message using the Dapr encryption scheme and a key stored in the vault.
+  rpc EncryptAlpha1(stream EncryptRequest) returns (stream EncryptResponse);
+
+  // DecryptAlpha1 decrypts a message using the Dapr encryption scheme and a key stored in the vault.
+  rpc DecryptAlpha1(stream DecryptRequest) returns (stream DecryptResponse);
+
+  // Gets metadata of the sidecar
+  rpc GetMetadata (GetMetadataRequest) returns (GetMetadataResponse) {}
+
+  // Sets value in extended metadata of the sidecar
+  rpc SetMetadata (SetMetadataRequest) returns (google.protobuf.Empty) {}
+
+  // SubtleGetKeyAlpha1 returns the public part of an asymmetric key stored in the vault.
+  rpc SubtleGetKeyAlpha1(SubtleGetKeyRequest) returns (SubtleGetKeyResponse);
+
+  // SubtleEncryptAlpha1 encrypts a small message using a key stored in the vault.
+  rpc SubtleEncryptAlpha1(SubtleEncryptRequest) returns (SubtleEncryptResponse);
+
+  // SubtleDecryptAlpha1 decrypts a small message using a key stored in the vault.
+  rpc SubtleDecryptAlpha1(SubtleDecryptRequest) returns (SubtleDecryptResponse);
+
+  // SubtleWrapKeyAlpha1 wraps a key using a key stored in the vault.
+  rpc SubtleWrapKeyAlpha1(SubtleWrapKeyRequest) returns (SubtleWrapKeyResponse);
+
+  // SubtleUnwrapKeyAlpha1 unwraps a key using a key stored in the vault.
+  rpc SubtleUnwrapKeyAlpha1(SubtleUnwrapKeyRequest) returns (SubtleUnwrapKeyResponse);
+
+  // SubtleSignAlpha1 signs a message using a key stored in the vault.
+  rpc SubtleSignAlpha1(SubtleSignRequest) returns (SubtleSignResponse);
+
+  // SubtleVerifyAlpha1 verifies the signature of a message using a key stored in the vault.
+  rpc SubtleVerifyAlpha1(SubtleVerifyRequest) returns (SubtleVerifyResponse);
+
+  // Starts a new instance of a workflow
+  rpc StartWorkflowAlpha1 (StartWorkflowRequest) returns (StartWorkflowResponse) {
+    option deprecated = true;
+  }
+
+  // Gets details about a started workflow instance
+  rpc GetWorkflowAlpha1 (GetWorkflowRequest) returns (GetWorkflowResponse) {
+    option deprecated = true;
+  }
+
+  // Purge Workflow
+  rpc PurgeWorkflowAlpha1 (PurgeWorkflowRequest) returns (google.protobuf.Empty) {
+    option deprecated = true;
+  }
+
+  // Terminates a running workflow instance
+  rpc TerminateWorkflowAlpha1 (TerminateWorkflowRequest) returns (google.protobuf.Empty) {
+    option deprecated = true;
+  }
+
+  // Pauses a running workflow instance
+  rpc PauseWorkflowAlpha1 (PauseWorkflowRequest) returns (google.protobuf.Empty) {
+    option deprecated = true;
+  }
+
+  // Resumes a paused workflow instance
+  rpc ResumeWorkflowAlpha1 (ResumeWorkflowRequest) returns (google.protobuf.Empty) {
+    option deprecated = true;
+  }
+
+  // Raise an event to a running workflow instance
+  rpc RaiseEventWorkflowAlpha1 (RaiseEventWorkflowRequest) returns (google.protobuf.Empty) {
+    option deprecated = true;
+  }
+
+  // Starts a new instance of a workflow
+  rpc StartWorkflowBeta1 (StartWorkflowRequest) returns (StartWorkflowResponse) {}
+
+  // Gets details about a started workflow instance
+  rpc GetWorkflowBeta1 (GetWorkflowRequest) returns (GetWorkflowResponse) {}
+
+  // Purge Workflow
+  rpc PurgeWorkflowBeta1 (PurgeWorkflowRequest) returns (google.protobuf.Empty) {}
+
+  // Terminates a running workflow instance
+  rpc TerminateWorkflowBeta1 (TerminateWorkflowRequest) returns (google.protobuf.Empty) {}
+
+  // Pauses a running workflow instance
+  rpc PauseWorkflowBeta1 (PauseWorkflowRequest) returns (google.protobuf.Empty) {}
+
+  // Resumes a paused workflow instance
+  rpc ResumeWorkflowBeta1 (ResumeWorkflowRequest) returns (google.protobuf.Empty) {}
+
+  // Raise an event to a running workflow instance
+  rpc RaiseEventWorkflowBeta1 (RaiseEventWorkflowRequest) returns (google.protobuf.Empty) {}
+
+  // Shutdown the sidecar
+  rpc Shutdown (ShutdownRequest) returns (google.protobuf.Empty) {}
+
+  // Deprecated: Create and schedule a job
+  rpc ScheduleJobAlpha1(ScheduleJobRequest) returns (ScheduleJobResponse) {
+    option deprecated = true;
+  }
+
+  // Create and schedule a job
+  rpc ScheduleJob(ScheduleJobRequest) returns (ScheduleJobResponse) {}
+
+  // Deprecated: Gets a scheduled job
+  rpc GetJobAlpha1(GetJobRequest) returns (GetJobResponse) {
+    option deprecated = true;
+  }
+
+  // Gets a scheduled job
+  rpc GetJob(GetJobRequest) returns (GetJobResponse) {}
+
+  // Deprecated: Delete a job
+  rpc DeleteJobAlpha1(DeleteJobRequest) returns (DeleteJobResponse) {
+    option deprecated = true;
+  }
+
+  // Delete a job
+  rpc DeleteJob(DeleteJobRequest) returns (DeleteJobResponse) {}
+
+  // Deprecated: Delete jobs by name prefix
+  rpc DeleteJobsByPrefixAlpha1(DeleteJobsByPrefixRequestAlpha1) returns (DeleteJobsByPrefixResponseAlpha1) {
+    option deprecated = true;
+  }
+
+  // Delete jobs by name prefix
+  rpc DeleteJobsByPrefix(DeleteJobsByPrefixRequest) returns (DeleteJobsByPrefixResponse) {}
+
+  // Deprecated: List all jobs
+  rpc ListJobsAlpha1(ListJobsRequestAlpha1) returns (ListJobsResponseAlpha1) {
+    option deprecated = true;
+  }
+
+  // List all jobs
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse) {}
+
+  // Converse with a LLM service
+  rpc ConverseAlpha1(ConversationRequest) returns (ConversationResponse) {}
+
+  // Converse with a LLM service via alpha2 api
+  rpc ConverseAlpha2(ConversationRequestAlpha2) returns (ConversationResponseAlpha2) {}
+}
+
+// ShutdownRequest is the request for Shutdown.
+message ShutdownRequest {
+  // Empty
+}

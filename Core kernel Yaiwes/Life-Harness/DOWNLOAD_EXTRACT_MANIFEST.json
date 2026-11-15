@@ -1,0 +1,47 @@
+{
+  "archive_bytes": 200016641,
+  "archive_sha256": "c091c32c9eded82e442ad388bf48b66ed9bbef273cb159ab6c9ae4207d8efd4b",
+  "extracted_tree": {
+    "bytes": 554831206,
+    "files": 3057,
+    "sha256": "5a2c53d047d952f61760c53d526bf6f79a655c3e3b4954092926a6ed1bca62d7"
+  },
+  "extraction_verified": true,
+  "lfs_pointer_count": 0,
+  "lfs_pointers_preserved": [],
+  "motor1": {
+    "archive": "/tmp/yaiwes-normalized-gap-gk0mswes/Life-Harness.zip",
+    "batch_size": 100,
+    "extracted_verified": 3057,
+    "failed": 0,
+    "pending": 0,
+    "schema": "yaiwes.frontend.extract-only.v1",
+    "state_file": "/tmp/yaiwes-normalized-gap-gk0mswes/motor1-state.json",
+    "total_members": 3057,
+    "tree": {
+      "bytes": 554831206,
+      "files": 3057,
+      "sha256": "5a2c53d047d952f61760c53d526bf6f79a655c3e3b4954092926a6ed1bca62d7"
+    },
+    "verdict": "VERIFIED_CLOSED"
+  },
+  "motor1_blob": "a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500",
+  "normalization_policy": "materialize_in_repo_symlink_targets_before_zip",
+  "normalizations": [
+    {
+      "action": "materialized_in_repo_target",
+      "path": "TauBench/web/leaderboard/public/task-data/domains",
+      "target": "../../../../data/tau2/domains"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.kernel.normalized-download-extract/v1",
+  "slug": "Life-Harness",
+  "source_commit": "d29aeed80a046e858a5f7c52b8267c41d164ad59",
+  "source_repo": "Tianshi-Xu/Life-Harness",
+  "source_tree": {
+    "bytes": 554831206,
+    "files": 3057,
+    "sha256": "5a2c53d047d952f61760c53d526bf6f79a655c3e3b4954092926a6ed1bca62d7"
+  }
+}

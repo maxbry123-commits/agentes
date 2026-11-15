@@ -1,0 +1,17 @@
+# C76 — L7. B6 SALIDA4
+id: C76
+layer: L7
+name: dataset_pin
+implementado: true
+critical: false
+description: "Pin de dataset"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C76 aplica en capa L7"
+checks:
+  - dataset_pin_check
+evidence:
+  type: dataset_pin_marker
+  required: false

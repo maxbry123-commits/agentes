@@ -1,0 +1,17 @@
+# C65 — L7. B6 SALIDA4
+id: C65
+layer: L7
+name: health_probe
+implementado: true
+critical: false
+description: "Health probes"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C65 aplica en capa L7"
+checks:
+  - health_probe_check
+evidence:
+  type: health_probe_marker
+  required: false

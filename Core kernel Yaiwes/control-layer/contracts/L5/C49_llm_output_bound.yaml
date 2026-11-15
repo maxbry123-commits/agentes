@@ -1,0 +1,18 @@
+# C49 — L5. B4 SALIDA4
+id: C49
+layer: L5
+name: llm_output_bound
+implementado: true
+critical: false
+description: "Límites de salida LLM"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C49 aplica en capa L5"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - llm_output_bound_check
+evidence:
+  type: llm_output_bound_marker
+  required: false

@@ -1,0 +1,94 @@
+{
+  "uuid": "3bcec29abee58b2ebd2d12c8df0e1df0",
+  "baseSpans": [],
+  "agentSpans": [
+    {
+      "uuid": "8153b6980b2e8515",
+      "name": "simple_agent",
+      "status": "SUCCESS",
+      "type": "agent",
+      "startTime": "2026-06-01T16:36:25.596Z",
+      "endTime": "2026-06-01T16:36:26.582Z",
+      "input": [
+        {
+          "role": "user",
+          "content": "Say hello in exactly three words."
+        }
+      ],
+      "output": "Hello there, friend!",
+      "integration": "PydanticAI",
+      "availableTools": [],
+      "agentHandoffs": []
+    }
+  ],
+  "llmSpans": [
+    {
+      "uuid": "2d7a3f5d57dea4b4",
+      "name": "chat gpt-4o-mini",
+      "status": "SUCCESS",
+      "type": "llm",
+      "parentUuid": "8153b6980b2e8515",
+      "startTime": "2026-06-01T16:36:25.600Z",
+      "endTime": "2026-06-01T16:36:26.580Z",
+      "input": [
+        {
+          "role": "system",
+          "content": "Be concise, reply with one short sentence only."
+        },
+        {
+          "role": "user",
+          "content": "Say hello in exactly three words."
+        },
+        {
+          "role": "Model Request Parameters",
+          "content": {
+            "function_tools": [],
+            "native_tools": [],
+            "output_mode": "text",
+            "output_object": null,
+            "output_tools": [],
+            "prompted_output_template": null,
+            "allow_text_output": true,
+            "allow_image_output": false,
+            "instruction_parts": null,
+            "thinking": null
+          }
+        }
+      ],
+      "output": [
+        {
+          "role": "assistant",
+          "content": "Hello there, friend!"
+        }
+      ],
+      "integration": "PydanticAI",
+      "model": "gpt-4o-mini",
+      "provider": "OpenAI",
+      "inputTokenCount": 28.0,
+      "outputTokenCount": 5.0
+    }
+  ],
+  "retrieverSpans": [],
+  "toolSpans": [],
+  "startTime": "2026-06-01T16:36:25.596Z",
+  "endTime": "2026-06-01T16:36:26.582Z",
+  "name": "pydanticai-simple-test",
+  "metadata": {
+    "test_type": "simple"
+  },
+  "tags": [
+    "pydanticai",
+    "simple"
+  ],
+  "environment": "development",
+  "threadId": "simple-123",
+  "userId": "test-user",
+  "input": [
+    {
+      "role": "user",
+      "content": "Say hello in exactly three words."
+    }
+  ],
+  "output": "Hello there, friend!",
+  "status": "SUCCESS"
+}

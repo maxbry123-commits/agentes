@@ -1,0 +1,33 @@
+{
+  "operations": {
+    "GET /data": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DataRecord",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "DataRecord": {
+      "fields": [
+        "id",
+        "value"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ],
+        "value": [
+          "string"
+        ]
+      }
+    }
+  }
+}

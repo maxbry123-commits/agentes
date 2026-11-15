@@ -1,0 +1,770 @@
+"""Test suite for inspect_ai.util._concurrency module.
+
+Tests the public interface of concurrency control functionality including
+the concurrency context manager, status display, and initialization.
+"""
+
+import contextlib
+import time
+from collections.abc import AsyncIterator, Callable, Iterable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from typing import Any, cast
+
+import anyio
+import pytest
+
+from inspect_ai.util._concurrency import (
+    ConcurrencySemaphore,
+    concurrency,
+    concurrency_status_display,
+    get_or_create_semaphore,
+    init_concurrency,
+)
+
+# get_or_create_sem Tests
+
+
+@pytest.mark.anyio
+async def test_get_or_create_sem_creates_new_semaphore() -> None:
+    """Test that get_or_create_sem creates a new semaphore on first call."""
+    init_concurrency()
+
+    sem = await get_or_create_semaphore("test-resource", 5, None, True)
+
+    assert sem.name == "test-resource"
+    assert sem.concurrency == 5
+    assert sem.visible is True
+    assert sem.value == 5  # All slots available
+
+
+@pytest.mark.anyio
+async def test_get_or_create_sem_returns_existing_semaphore() -> None:
+    """Test that get_or_create_sem returns the same semaphore for the same key."""
+    init_concurrency()
+
+    sem1 = await get_or_create_semaphore("test-resource", 3, None, True)
+    sem2 = await get_or_create_semaphore("test-resource", 3, None, True)
+
+    assert sem1 is sem2
+
+
+@pytest.mark.anyio
+async def test_get_or_create_sem_respects_explicit_key() -> None:
+    """Test that get_or_create_sem uses explicit key parameter when provided."""
+    init_concurrency()
+
+    # Same name, different keys should create different semaphores
+    sem1 = await get_or_create_semaphore("display-name", 2, "key-1", True)
+    sem2 = await get_or_create_semaphore("display-name", 3, "key-2", True)
+
+    assert sem1 is not sem2
+    assert sem1.name == "display-name"
+    assert sem2.name == "display-name"
+    assert sem1.concurrency == 2
+    assert sem2.concurrency == 3
+
+
+@pytest.mark.anyio
+async def test_get_or_create_sem_key_defaults_to_name() -> None:
+    """Test that key defaults to name when key is None."""
+    init_concurrency()
+
+    # Both calls use name as key
+    sem1 = await get_or_create_semaphore("test-resource", 4, None, True)
+    sem2 = await get_or_create_semaphore("test-resource", 4, "test-resource", True)
+
+    assert sem1 is sem2
+
+
+@pytest.mark.anyio
+async def test_get_or_create_sem_visibility() -> None:
+    """Test that get_or_create_sem properly sets visibility flag."""
+    init_concurrency()
+
+    sem_visible = await get_or_create_semaphore("visible-resource", 1, None, True)
+    sem_hidden = await get_or_create_semaphore("hidden-resource", 1, None, False)
+
+    assert sem_visible.visible is True
+    assert sem_hidden.visible is False
+
+
+@pytest.mark.anyio
+async def test_get_or_create_sem_semaphore_is_usable() -> None:
+    """Test that semaphore returned by get_or_create_sem is functional."""
+    init_concurrency()
+
+    sem = await get_or_create_semaphore("test-resource", 2, None, True)
+
+    # Use the semaphore
+    async with sem.semaphore:
+        assert sem.value == 1  # One slot taken
+
+        async with sem.semaphore:
+            assert sem.value == 0  # Both slots taken
+
+    assert sem.value == 2  # Both slots released
+
+
+@pytest.mark.anyio
+async def test_legacy_registry_without_adaptive_argument() -> None:
+    """Static/default calls remain compatible with pre-adaptive custom registries."""
+
+    class LegacySemaphore:
+        def __init__(self, name: str, concurrency: int, visible: bool) -> None:
+            self.name = name
+            self.concurrency = concurrency
+            self.visible = visible
+            self._sem = anyio.Semaphore(concurrency)
+            self.semaphore: contextlib.AbstractAsyncContextManager[Any] = self._sem
+
+        @property
+        def value(self) -> int:
+            return self._sem.value
+
+        @property
+        def in_use(self) -> int:
+            return self.concurrency - self._sem.value
+
+    class LegacyRegistry:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, int, str | None, bool]] = []
+
+        async def get_or_create(
+            self,
+            name: str,
+            concurrency: int,
+            key: str | None,
+            visible: bool,
+        ) -> ConcurrencySemaphore:
+            self.calls.append((name, concurrency, key, visible))
+            return LegacySemaphore(name, concurrency, visible)
+
+        def values(self) -> Iterable[ConcurrencySemaphore]:
+            return []
+
+    registry = LegacyRegistry()
+    init_concurrency(cast(Any, registry))
+    try:
+        sem = await get_or_create_semaphore("legacy-resource", 2, None, True)
+        assert sem.name == "legacy-resource"
+
+        async with concurrency("legacy-context", 1):
+            pass
+
+        assert registry.calls == [
+            ("legacy-resource", 2, None, True),
+            ("legacy-context", 1, "legacy-context", True),
+        ]
+    finally:
+        init_concurrency()
+
+
+# Basic Concurrency Control Tests
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "limit,num_tasks,expected_max",
+    [
+        (1, 5, 1),  # Serialization
+        (2, 4, 2),  # Limit of 2
+        (3, 5, 3),  # Limit of 3
+        (100, 10, 10),  # High limit
+    ],
+)
+async def test_concurrency_limits(
+    limit: int, num_tasks: int, expected_max: int
+) -> None:
+    """Test that concurrency limits are properly enforced."""
+    init_concurrency()
+    max_concurrent = 0
+    entered_count = 0
+    barrier = anyio.Event()
+
+    async def task() -> None:
+        nonlocal max_concurrent, entered_count
+        async with concurrency("test-resource", limit):
+            status = concurrency_status_display()
+            max_concurrent = max(max_concurrent, status["test-resource"][0])
+            entered_count += 1
+            # If we're at the expected max, release all waiting tasks
+            if entered_count >= expected_max:
+                barrier.set()
+            # Wait for barrier to ensure tasks stay concurrent long enough
+            await barrier.wait()
+
+    async with anyio.create_task_group() as tg:
+        for _ in range(num_tasks):
+            tg.start_soon(task)
+
+    assert max_concurrent == expected_max
+
+
+# Semaphore Reuse Tests
+
+
+@pytest.mark.anyio
+async def test_semaphore_reuse_same_key() -> None:
+    """Test that same name/key reuses the same semaphore."""
+    init_concurrency()
+
+    # Nested contexts with same name should share semaphore
+    async with concurrency("test-resource", 2):
+        status1 = concurrency_status_display()
+        assert status1["test-resource"] == (1, 2)
+
+        async with concurrency("test-resource", 2):
+            status2 = concurrency_status_display()
+            assert status2["test-resource"] == (2, 2)  # Both active
+
+
+@pytest.mark.anyio
+async def test_semaphore_isolation() -> None:
+    """Test that different names/keys create separate semaphores."""
+    init_concurrency()
+
+    # Different names create independent semaphores
+    async with concurrency("resource-a", 1):
+        async with concurrency("resource-b", 1):
+            status = concurrency_status_display()
+            assert status["resource-a"] == (1, 1)
+            assert status["resource-b"] == (1, 1)
+
+    # Explicit keys create independent semaphores
+    init_concurrency()
+    async with concurrency("name-1", 1, key="key-1"):
+        async with concurrency("name-2", 1, key="key-2"):
+            status = concurrency_status_display()
+            assert "name-1" in status
+            assert "name-2" in status
+
+
+# Status Display Tests
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("visible", [True, False])
+async def test_status_display_visibility(visible: bool) -> None:
+    """Test that visibility flag controls whether resource appears in status."""
+    init_concurrency()
+
+    async with concurrency("test-resource", 1, visible=visible):
+        status = concurrency_status_display()
+        if visible:
+            assert "test-resource" in status
+            assert status["test-resource"] == (1, 1)
+        else:
+            assert "test-resource" not in status
+
+
+@pytest.mark.anyio
+async def test_status_display_prefix_shortening_single() -> None:
+    """Test that model prefix is shortened when there's only one with that prefix."""
+    init_concurrency()
+
+    async with concurrency("openai/gpt-4o", 1):
+        status = concurrency_status_display()
+        assert "openai" in status
+        assert status["openai"] == (1, 1)
+
+
+@pytest.mark.anyio
+async def test_status_display_prefix_shortening_multiple() -> None:
+    """Test that full names are kept when multiple models share a prefix."""
+    init_concurrency()
+
+    async with concurrency("openai/gpt-4o", 1):
+        async with concurrency("openai/gpt-3.5", 1):
+            status = concurrency_status_display()
+            assert "openai/gpt-4o" in status
+            assert "openai/gpt-3.5" in status
+
+
+@pytest.mark.anyio
+async def test_status_display_concurrent_updates() -> None:
+    """Test that status display reflects concurrent task execution."""
+    init_concurrency()
+    status_snapshots: list[tuple[int, int]] = []
+    entered_count = 0
+    barrier = anyio.Event()
+
+    async def task() -> None:
+        nonlocal entered_count
+        async with concurrency("test-resource", 3):
+            status = concurrency_status_display()
+            status_snapshots.append(status["test-resource"])
+            entered_count += 1
+            # Once all 3 tasks have entered, release them
+            if entered_count >= 3:
+                barrier.set()
+            await barrier.wait()
+
+    async with anyio.create_task_group() as tg:
+        for _ in range(3):
+            tg.start_soon(task)
+
+    # Verify status was tracking correctly
+    active_counts = [s[0] for s in status_snapshots]
+    assert max(active_counts) <= 3
+    assert all(s[1] == 3 for s in status_snapshots)  # Total always 3
+
+
+# Context Manager Behavior Tests
+
+
+@pytest.mark.anyio
+async def test_context_manager_exception_handling() -> None:
+    """Test that exceptions properly release semaphore slots."""
+    init_concurrency()
+
+    # Exception should release semaphore
+    with pytest.raises(RuntimeError):
+        async with concurrency("test-resource", 1):
+            raise RuntimeError("Test error")
+
+    # Verify semaphore was released by acquiring it again
+    async with concurrency("test-resource", 1):
+        status = concurrency_status_display()
+        assert status["test-resource"] == (1, 1)
+
+
+@pytest.mark.anyio
+async def test_nested_contexts() -> None:
+    """Test nested context behavior with same and different resources."""
+    init_concurrency()
+
+    # Nested contexts with different resources
+    async with concurrency("outer-resource", 2):
+        async with concurrency("inner-resource", 3):
+            status = concurrency_status_display()
+            assert status["outer-resource"] == (1, 2)
+            assert status["inner-resource"] == (1, 3)
+
+    # Nested contexts with same resource
+    init_concurrency()
+    async with concurrency("test-resource", 5):
+        async with concurrency("test-resource", 5):
+            status = concurrency_status_display()
+            assert status["test-resource"] == (2, 5)
+
+
+@pytest.mark.anyio
+async def test_concurrent_context_usage() -> None:
+    """Test multiple tasks concurrently using the same context."""
+    init_concurrency()
+    results: list[tuple[int, int]] = []
+    entered_count = 0
+    barrier = anyio.Event()
+
+    async def task() -> None:
+        nonlocal entered_count
+        async with concurrency("test-resource", 3):
+            status = concurrency_status_display()
+            results.append(status["test-resource"])
+            entered_count += 1
+            # Once 3 tasks have entered (the limit), release all
+            if entered_count >= 3:
+                barrier.set()
+            await barrier.wait()
+
+    async with anyio.create_task_group() as tg:
+        for _ in range(5):
+            tg.start_soon(task)
+
+    # All tasks should complete
+    assert len(results) == 5
+    # Should have seen varying active counts
+    active_counts = [r[0] for r in results]
+    assert len(set(active_counts)) > 1
+
+
+# Initialization Tests
+
+
+@pytest.mark.anyio
+async def test_init_concurrency() -> None:
+    """Test that init_concurrency clears and allows recreation of semaphores."""
+    init_concurrency()
+
+    # Create some semaphores
+    async with concurrency("resource-1", 2):
+        pass
+    async with concurrency("resource-2", 3):
+        pass
+
+    # Should see them in status (persist after exit)
+    status_before = concurrency_status_display()
+    assert len(status_before) >= 2
+
+    # init_concurrency() should clear everything
+    init_concurrency()
+    status_after = concurrency_status_display()
+    assert len(status_after) == 0
+
+    # Should be able to recreate with different limit
+    async with concurrency("resource-1", 5):
+        status = concurrency_status_display()
+        assert status["resource-1"] == (1, 5)
+
+
+# Edge Cases and Stress Tests
+
+
+@pytest.mark.anyio
+async def test_rapid_concurrent_access_multiple_resources() -> None:
+    """Test rapid concurrent access across multiple independent resources."""
+    init_concurrency()
+    completion_count = {"a": 0, "b": 0}
+
+    async def task_a() -> None:
+        async with concurrency("resource-a", 5):
+            completion_count["a"] += 1
+
+    async def task_b() -> None:
+        async with concurrency("resource-b", 3):
+            completion_count["b"] += 1
+
+    async with anyio.create_task_group() as tg:
+        for _ in range(20):
+            tg.start_soon(task_a)
+        for _ in range(15):
+            tg.start_soon(task_b)
+
+    assert completion_count["a"] == 20
+    assert completion_count["b"] == 15
+
+
+@pytest.mark.anyio
+async def test_long_running_task_holds_slot() -> None:
+    """Test that tasks properly hold their slots while executing."""
+    init_concurrency()
+    task_holding = anyio.Event()
+    check_done = anyio.Event()
+
+    async def holding_task() -> None:
+        async with concurrency("test-resource", 1):
+            # Signal that we're holding the slot
+            task_holding.set()
+            # Wait until checker has verified
+            await check_done.wait()
+
+    async def checker() -> tuple[int, int]:
+        # Wait for task to acquire slot
+        await task_holding.wait()
+        # Check status while task is holding
+        status = concurrency_status_display()
+        result = status.get("test-resource", (0, 0))
+        # Signal task can release
+        check_done.set()
+        return result
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(holding_task)
+        result = await checker()
+
+    # Task should have been holding the slot when we checked
+    assert result == (1, 1)
+
+
+# Waiting Time Tests
+
+
+@pytest.mark.anyio
+async def test_concurrent_waits_not_double_counted() -> None:
+    """Test that overlapping waits only count wall-clock time once."""
+    from inspect_ai._util.working import (
+        init_sample_working_time,
+        sample_waiting_time,
+    )
+
+    init_concurrency()
+    init_sample_working_time(time.monotonic())
+
+    async def wait_task() -> None:
+        async with concurrency("test-resource", 1):
+            await anyio.sleep(0.05)  # Hold semaphore briefly
+
+    # Start 3 tasks that will serialize on the semaphore (limit=1)
+    start = time.monotonic()
+    async with anyio.create_task_group() as tg:
+        for _ in range(3):
+            tg.start_soon(wait_task)
+    elapsed = time.monotonic() - start
+
+    waiting_time = sample_waiting_time()
+
+    # Waiting time should be roughly equal to elapsed time minus the work time
+    # (3 x 0.05s = 0.15s of work). If waits were double-counted, waiting_time
+    # would be much larger than elapsed.
+    assert waiting_time < elapsed
+    # Should have some waiting time (2 tasks had to wait)
+    assert waiting_time > 0.05
+
+
+# ResizableLimiter / resizable ConcurrencySemaphore tests
+
+
+@pytest.mark.anyio
+async def test_resizable_limiter_basics() -> None:
+    """ResizableLimiter reports its limit and can be resized live."""
+    from inspect_ai.util._concurrency import ResizableLimiter
+
+    limiter = ResizableLimiter(5)
+    assert limiter.limit == 5
+    assert limiter.in_use == 0
+    assert limiter.available == 5
+
+    limiter.limit = 8
+    assert limiter.limit == 8
+    assert limiter.available == 8
+
+
+@pytest.mark.anyio
+async def test_resizable_limiter_tracks_in_use() -> None:
+    """Entering the limiter borrows a slot; leaving returns it."""
+    from inspect_ai.util._concurrency import ResizableLimiter
+
+    limiter = ResizableLimiter(3)
+    async with limiter:
+        assert limiter.in_use == 1
+        assert limiter.available == 2
+    assert limiter.in_use == 0
+
+
+@asynccontextmanager
+async def _two_holders(
+    acquire: Callable[[], AbstractAsyncContextManager[Any]],
+) -> AsyncIterator[None]:
+    """Park two tasks inside ``acquire()`` and yield while both hold slots.
+
+    A single task can't borrow the same CapacityLimiter twice, so
+    shrink-below-in-use tests need two real holder tasks; this owns that
+    scaffolding (entry rendezvous, task group, release on exit).
+    """
+    both_in = anyio.Event()
+    release = anyio.Event()
+    entered = 0
+
+    async def holder() -> None:
+        nonlocal entered
+        async with acquire():
+            entered += 1
+            if entered == 2:
+                both_in.set()
+            await release.wait()
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(holder)
+        tg.start_soon(holder)
+        await both_in.wait()
+        try:
+            yield
+        finally:
+            release.set()
+
+
+@pytest.mark.anyio
+async def test_resizable_limiter_lower_below_in_use_clamps_available() -> None:
+    """Lowering below the in-use count never preempts; available clamps to 0."""
+    from inspect_ai.util._concurrency import ResizableLimiter
+
+    limiter = ResizableLimiter(3)
+    async with _two_holders(lambda: limiter):
+        assert limiter.in_use == 2
+        # lower below in-use — the two holders keep running (never preempted)
+        limiter.limit = 1
+        assert limiter.limit == 1
+        assert limiter.available == 0  # clamped, not negative
+
+
+@pytest.mark.anyio
+async def test_resizable_semaphore_in_use_exact_below_limit() -> None:
+    """`ResizableSemaphore.in_use` stays exact once the limit drops below in-use.
+
+    The `concurrency - value` derivation the status display uses would report
+    `concurrency` here (because `value` clamps to 0); `in_use` reads the
+    limiter's borrowed count directly and stays exact.
+    """
+    from inspect_ai.util._concurrency import ResizableSemaphore
+
+    sem = ResizableSemaphore("docker", 3, True)
+    async with _two_holders(lambda: sem.semaphore):
+        assert sem.in_use == 2
+        # lower below in-use: value clamps to 0 (so concurrency - value == limit),
+        # but in_use stays the true borrowed count
+        sem.concurrency = 1
+        assert sem.value == 0
+        assert sem.concurrency - sem.value == 1  # the misleading derivation
+        assert sem.in_use == 2  # exact
+
+
+@pytest.mark.anyio
+async def test_status_display_exact_in_use_after_shrink() -> None:
+    """The status footer shows true in-flight after a limit drops below in-use.
+
+    Regression: `concurrency_status_display` derived in-use as
+    `concurrency - value`, which reports `concurrency` once a ctl retune (or
+    an adaptive rate-limit cut) shrinks the limit below the in-flight count —
+    e.g. the footer showed "docker 1/1" while 2 sandboxes were actually
+    running. It now reads the exact borrowed count where available.
+    """
+    from inspect_ai.util._concurrency import (
+        ConcurrencySemaphore,
+        ResizableSemaphore,
+        concurrency,
+        concurrency_status_display,
+        init_concurrency,
+    )
+
+    init_concurrency()
+    captured: ConcurrencySemaphore | None = None
+
+    @asynccontextmanager
+    async def acquire() -> AsyncIterator[None]:
+        nonlocal captured
+        async with concurrency("docker", 3, "sandboxes/docker", resizable=True) as sem:
+            captured = sem
+            yield
+
+    async with _two_holders(acquire):
+        assert concurrency_status_display()["docker"] == (2, 3)
+        # shrink below in-use (what a ctl limits --max-sandboxes retune does)
+        assert isinstance(captured, ResizableSemaphore)
+        captured.concurrency = 1
+        assert concurrency_status_display()["docker"] == (2, 1)  # was (1, 1)
+
+
+@pytest.mark.anyio
+async def test_resizable_limiter_rejects_non_positive() -> None:
+    from inspect_ai.util._concurrency import ResizableLimiter
+
+    limiter = ResizableLimiter(2)
+    with pytest.raises(ValueError):
+        limiter.limit = 0
+
+
+@pytest.mark.anyio
+async def test_resizable_limiter_same_task_nested_acquire() -> None:
+    """One task may hold several slots at once (anyio.Semaphore semantics).
+
+    The limiter acquires on behalf of a fresh borrower token per entry;
+    acquiring the backing CapacityLimiter directly would raise on the second
+    same-task acquire, breaking nested `concurrency()` contexts for the same
+    key (see test_nested_contexts).
+    """
+    from inspect_ai.util._concurrency import ResizableLimiter
+
+    limiter = ResizableLimiter(2)
+    async with limiter:
+        assert limiter.in_use == 1
+        async with limiter:
+            assert limiter.in_use == 2
+        assert limiter.in_use == 1
+    assert limiter.in_use == 0
+
+
+@pytest.mark.anyio
+async def test_resizable_limiter_unpaired_exit_is_diagnosable() -> None:
+    """An exit whose context never entered raises a descriptive error.
+
+    The borrower stack is a ContextVar, so an enter in one task is invisible
+    to an exit in another — that misuse should name the contract rather than
+    surface as a bare IndexError on an empty tuple.
+    """
+    from inspect_ai.util._concurrency import ResizableLimiter
+
+    limiter = ResizableLimiter(2)
+    with pytest.raises(RuntimeError, match="never entered"):
+        await limiter.__aexit__(None, None, None)
+
+
+@pytest.mark.anyio
+async def test_registry_static_semaphores_resizable_by_default() -> None:
+    """Static registry entries are resizable without an explicit opt-in.
+
+    This is what lets `inspect ctl config --key NAME LIMIT` retune limits
+    that tools and user code register by name without their creator passing
+    `resizable=True`.
+    """
+    from inspect_ai.util._concurrency import ResizableSemaphore
+
+    init_concurrency()
+    sem = await get_or_create_semaphore("google_web_search", 10, None, True)
+    assert isinstance(sem, ResizableSemaphore)
+
+    sem.concurrency = 3
+    assert sem.concurrency == 3
+    assert sem.value == 3
+
+    # nested same-task use still counts like the semaphore it replaced
+    async with concurrency("google_web_search", 10):
+        async with concurrency("google_web_search", 10):
+            assert sem.in_use == 2
+
+
+@pytest.mark.anyio
+async def test_concurrency_semaphores_raw_registry_view() -> None:
+    """concurrency_semaphores() lists every entry by exact registered name."""
+    from inspect_ai.util._concurrency import concurrency_semaphores
+
+    init_concurrency()
+    # visible=False entries and un-shortened names are included (unlike the
+    # status display) — the control channel addresses by exact name
+    async with concurrency("openai/gpt-4o", 2):
+        async with concurrency("hidden-injection", 1, visible=False):
+            names = {sem.name for sem in concurrency_semaphores()}
+            assert names == {"openai/gpt-4o", "hidden-injection"}
+
+
+@pytest.mark.anyio
+async def test_resizable_semaphore_via_registry() -> None:
+    """`resizable=True` yields a ResizableSemaphore whose limit is settable live."""
+    from inspect_ai.util._concurrency import ResizableSemaphore
+
+    init_concurrency()
+    sem = await get_or_create_semaphore(
+        "docker", 4, "sandboxes/docker", True, resizable=True
+    )
+    assert isinstance(sem, ResizableSemaphore)
+    assert sem.concurrency == 4
+    assert sem.value == 4
+
+    sem.concurrency = 9
+    assert sem.concurrency == 9
+    assert sem.value == 9
+
+    # same key coalesces onto the first instance
+    again = await get_or_create_semaphore(
+        "docker", 4, "sandboxes/docker", True, resizable=True
+    )
+    assert again is sem
+
+
+@pytest.mark.anyio
+async def test_sandbox_limiter_registry_and_reset() -> None:
+    """register_sandbox_limiter tracks resizable sandbox semaphores; a run reset clears them."""
+    from inspect_ai.util._concurrency import (
+        ResizableSemaphore,
+        register_sandbox_limiter,
+        sandbox_limiters,
+    )
+
+    init_concurrency()
+    assert sandbox_limiters() == {}
+
+    sem = ResizableSemaphore("docker", 4, True)
+    register_sandbox_limiter("docker", sem)
+    assert sandbox_limiters() == {"docker": sem}
+
+    # a non-resizable semaphore is not tracked (the default registry now backs
+    # every static entry with a ResizableSemaphore, so build a fixed one
+    # directly — the shape a custom registry could still hand out)
+    from inspect_ai.util._concurrency import _create_anyio_semaphore
+
+    plain = _create_anyio_semaphore("k8s", 2, True)
+    register_sandbox_limiter("k8s", plain)
+    assert "k8s" not in sandbox_limiters()
+
+    # a fresh run clears the tracked limiters
+    init_concurrency()
+    assert sandbox_limiters() == {}

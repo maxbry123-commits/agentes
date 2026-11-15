@@ -1,0 +1,53 @@
+#ifndef SEARCH_ALGORITHMS_ITERATED_SEARCH_H
+#define SEARCH_ALGORITHMS_ITERATED_SEARCH_H
+
+#include "../component.h"
+#include "../search_algorithm.h"
+
+#include <memory>
+#include <vector>
+
+namespace iterated_search {
+class IteratedSearch : public SearchAlgorithm {
+    using TIComponent = components::TaskIndependentComponentBase;
+    using TSComponent = components::TaskSpecificComponent;
+
+    std::vector<std::shared_ptr<TaskIndependentSearchAlgorithm>>
+        task_independent_searches;
+    bool pass_bound;
+    bool repeat_last_phase;
+    bool continue_on_solve;
+
+    int phase;
+    bool last_phase_found_solution;
+    int best_bound;
+    bool iterated_found_solution;
+
+    std::vector<std::shared_ptr<TSComponent>> retained_components;
+
+    SearchStatus best_status;
+    void update_best_status(
+        const std::shared_ptr<SearchAlgorithm> &task_specific_search);
+    void update_retention_set();
+    std::shared_ptr<SearchAlgorithm> bind_search(int search_index);
+    std::shared_ptr<SearchAlgorithm> bind_current_search();
+    SearchStatus step_return_value();
+
+    virtual SearchStatus step() override;
+
+public:
+    IteratedSearch(
+        const std::shared_ptr<AbstractTask> &task,
+        const std::vector<std::shared_ptr<TaskIndependentSearchAlgorithm>>
+            &algorithm_configs,
+        bool pass_bound, bool repeat_last, bool continue_on_solve,
+        OperatorCost cost_type, int bound, double max_time,
+        const std::string &description, utils::Verbosity verbosity);
+
+    virtual void save_plan_if_necessary() override;
+    virtual void print_statistics() const override;
+    virtual bool is_complete_within_bound() const override;
+};
+}
+
+#endif

@@ -1,0 +1,96 @@
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { API_BASE } from '@/shared/config';
+
+const SKILLS_API = `${API_BASE}/skills`;
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+  file_path: string;
+  command: string;
+  /** Platform-shipped skill; UI hides delete, backend DELETE returns 409. Content still editable. */
+  built_in?: boolean;
+  /** Provenance for registry-installed skills (used for update detection). Empty for user-created skills. */
+  source?: string;
+  folder?: string;
+  version?: string;
+  /** Folder skill with files beyond SKILL.md; the detail page offers a file picker for those. */
+  has_supporting_files?: boolean;
+  /** Detail-page toggle: disabled skills stay installed but leave the agent's skill list. */
+  enabled?: boolean;
+  /** SKILL.md mtime (epoch seconds); the settings table's Last updated column. */
+  updated_at?: number;
+}
+
+interface SkillsState {
+  items: Record<string, Skill>;
+  loading: boolean;
+  loaded: boolean;
+}
+
+const initialState: SkillsState = { items: {}, loading: false, loaded: false };
+
+export const fetchSkills = createAsyncThunk(
+  'skills/fetch',
+  async () => {
+    const res = await fetch(`${SKILLS_API}/list`);
+    const data = await res.json();
+    return data.skills as Skill[];
+  },
+  { condition: (_, { getState }) => !(getState() as { skills: SkillsState }).skills.loading },
+);
+
+export const createSkill = createAsyncThunk(
+  'skills/create',
+  async (body: { name: string; description?: string; content: string; command?: string }) => {
+    const res = await fetch(`${SKILLS_API}/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    return data.skill as Skill;
+  }
+);
+
+export const updateSkill = createAsyncThunk(
+  'skills/update',
+  async ({ id, ...updates }: Partial<Skill> & { id: string }) => {
+    const res = await fetch(`${SKILLS_API}/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    const data = await res.json();
+    return data.skill as Skill;
+  }
+);
+
+export const deleteSkill = createAsyncThunk('skills/delete', async (id: string) => {
+  await fetch(`${SKILLS_API}/${id}`, { method: 'DELETE' });
+  return id;
+});
+
+const skillsSlice = createSlice({
+  name: 'skills',
+  initialState,
+  reducers: {},
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchSkills.pending, (state) => { state.loading = true; })
+      .addCase(fetchSkills.fulfilled, (state, action) => {
+        state.loading = false;
+        state.loaded = true;
+        state.items = {};
+        for (const s of action.payload) state.items[s.id] = s;
+      })
+      .addCase(fetchSkills.rejected, (state) => { state.loading = false; state.loaded = true; })
+      .addCase(createSkill.fulfilled, (state, action) => { state.items[action.payload.id] = action.payload; })
+      .addCase(updateSkill.fulfilled, (state, action) => { state.items[action.payload.id] = action.payload; })
+      .addCase(deleteSkill.fulfilled, (state, action) => { delete state.items[action.payload]; });
+  },
+});
+
+export default skillsSlice.reducer;

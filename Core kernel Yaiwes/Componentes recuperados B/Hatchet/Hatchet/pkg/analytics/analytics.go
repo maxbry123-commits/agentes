@@ -1,0 +1,202 @@
+package analytics
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+)
+
+type Resource string
+
+const (
+	User     Resource = "user"
+	Invite   Resource = "user-invite"
+	Tenant   Resource = "tenant"
+	Token    Resource = "api-token"
+	Workflow Resource = "workflow"
+
+	Event       Resource = "event"
+	WorkflowRun Resource = "workflow-run"
+	TaskRun     Resource = "task-run"
+	DurableTask Resource = "durable-task"
+	Worker      Resource = "worker"
+	RateLimit   Resource = "rate-limit"
+	Webhook     Resource = "webhook"
+	Log         Resource = "log"
+	StreamEvent Resource = "stream-event"
+	OtelSpan    Resource = "otel-span"
+)
+
+type Action string
+
+const (
+	Create Action = "create"
+	Revoke Action = "revoke"
+	Accept Action = "accept"
+	Reject Action = "reject"
+
+	Login     Action = "login"
+	Delete    Action = "delete"
+	Cancel    Action = "cancel"
+	Replay    Action = "replay"
+	List      Action = "list"
+	Get       Action = "get"
+	Register  Action = "register"
+	Subscribe Action = "subscribe"
+	Listen    Action = "listen"
+	Release   Action = "release"
+	Refresh   Action = "refresh"
+	Send      Action = "send"
+	Evict     Action = "evict"
+	Restore   Action = "restore"
+	Branch    Action = "branch"
+	Memo      Action = "memo"
+	WaitFor   Action = "wait-for"
+	Connect   Action = "connect"
+)
+
+type Properties map[string]interface{}
+
+type Source string
+
+const (
+	SourceUI   Source = "ui"
+	SourceAPI  Source = "api"
+	SourceGRPC Source = "grpc"
+	SourceCLI  Source = "cli"
+)
+
+type contextKey string
+
+const (
+	APITokenIDKey     = contextKey("api_token_id")
+	TenantIDKey       = contextKey("tenant_id")
+	OrganizationIDKey = contextKey("organization_id")
+	AccountIDKey      = contextKey("account_id")
+	UserIDKey         = contextKey("user_id")
+	SourceKey         = contextKey("source")
+
+	SourceMetadataKey = "x-hatchet-source"
+
+	// CLIVersionMetadataKey and CLICommandMetadataKey carry CLI build and
+	// subcommand details alongside SourceMetadataKey. They are advisory: a client
+	// can set them to anything, so treat the values as reporting detail rather
+	// than as anything to branch on.
+	CLIVersionMetadataKey = "x-hatchet-cli-version"
+	CLICommandMetadataKey = "x-hatchet-cli-command"
+)
+
+type Analytics interface {
+	Enqueue(ctx context.Context, resource Resource, action Action, resourceId string, properties Properties)
+	Count(ctx context.Context, resource Resource, action Action, props ...Properties)
+	Identify(userId uuid.UUID, properties Properties)
+	Tenant(tenantId uuid.UUID, data Properties)
+	Group(groupType string, groupKey string, data Properties)
+	IsFeatureEnabled(ctx context.Context, flagKey string, tenantID uuid.UUID, isEnabledIfNoPosthog bool) (bool, error)
+	Close() error
+}
+
+func TokenIDFromContext(ctx context.Context) *uuid.UUID {
+	if id, ok := ctx.Value(APITokenIDKey).(uuid.UUID); ok && id != uuid.Nil {
+		return &id
+	}
+	return nil
+}
+
+func TenantIDFromContext(ctx context.Context) *uuid.UUID {
+	if id, ok := ctx.Value(TenantIDKey).(uuid.UUID); ok && id != uuid.Nil {
+		return &id
+	}
+	return nil
+}
+
+func OrganizationIDFromContext(ctx context.Context) *uuid.UUID {
+	if id, ok := ctx.Value(OrganizationIDKey).(uuid.UUID); ok && id != uuid.Nil {
+		return &id
+	}
+	return nil
+}
+
+// AccountIDFromContext returns the account an event belongs to, if one was set.
+// An account groups the users, organizations and tenants of a single customer.
+// Unlike a tenant or token it is not an actor, so it never contributes a
+// distinct id — see DistinctID.
+func AccountIDFromContext(ctx context.Context) *uuid.UUID {
+	if id, ok := ctx.Value(AccountIDKey).(uuid.UUID); ok && id != uuid.Nil {
+		return &id
+	}
+	return nil
+}
+
+func UserIDFromContext(ctx context.Context) *uuid.UUID {
+	if id, ok := ctx.Value(UserIDKey).(uuid.UUID); ok && id != uuid.Nil {
+		return &id
+	}
+	return nil
+}
+
+func SourceFromContext(ctx context.Context) Source {
+	if s, ok := ctx.Value(SourceKey).(Source); ok {
+		return s
+	}
+	return ""
+}
+
+func DistinctID(userID *uuid.UUID, tokenID *uuid.UUID, tenantID *uuid.UUID) string {
+	if userID != nil {
+		return "$user_" + userID.String()
+	}
+	if tokenID != nil {
+		return "$token_" + tokenID.String()
+	}
+	if tenantID != nil {
+		return "$tenant_" + tenantID.String()
+	}
+	return ""
+}
+
+// Props builds a property map from variadic key-value pairs, keeping all
+// non-nil values regardless of type. Keys must be strings; non-string keys
+// are skipped. Nil values are omitted.
+func Props(kvs ...interface{}) Properties {
+	if len(kvs) == 0 || len(kvs)%2 != 0 {
+		return nil
+	}
+
+	var m Properties
+	for i := 0; i < len(kvs); i += 2 {
+		k, ok := kvs[i].(string)
+		if !ok {
+			continue
+		}
+		v := kvs[i+1] // #nosec G602 -- len(kvs) is validated even above, i+1 is always in range
+		if v == nil {
+			continue
+		}
+		if m == nil {
+			m = make(Properties, len(kvs)/2)
+		}
+		m[k] = v
+	}
+	return m
+}
+
+type NoOpAnalytics struct{}
+
+func (a NoOpAnalytics) Enqueue(ctx context.Context, resource Resource, action Action, resourceId string, properties Properties) {
+}
+
+func (a NoOpAnalytics) Count(ctx context.Context, resource Resource, action Action, props ...Properties) {
+}
+
+func (a NoOpAnalytics) Identify(userId uuid.UUID, properties Properties) {}
+
+func (a NoOpAnalytics) Tenant(tenantId uuid.UUID, data Properties) {}
+
+func (a NoOpAnalytics) Group(groupType string, groupKey string, data Properties) {}
+
+func (a NoOpAnalytics) IsFeatureEnabled(_ context.Context, _ string, _ uuid.UUID, isEnabledIfNoPosthog bool) (bool, error) {
+	return isEnabledIfNoPosthog, nil
+}
+
+func (a NoOpAnalytics) Close() error { return nil }

@@ -1,0 +1,86 @@
+
+job_name: default-eval-job
+jobs_dir: trace_jobs
+n_attempts: 3
+timeout_multiplier: 16.0
+debug: false
+orchestrator:
+  type: local
+  n_concurrent_trials: 8
+  quiet: false
+  plain_output: true
+  adaptive_concurrency:
+    enabled: false
+    algorithm: gradient2
+    min_limit: null
+    max_limit: null
+    metrics_endpoint: null
+    metrics_timeout_sec: 10.0
+    poll_interval_sec: 120.0
+    window_size: 5
+    queue_p95_drop_threshold: null
+    algorithm_kwargs: {}
+  retry:
+    max_retries: 10
+    include_exceptions: null
+    exclude_exceptions:
+    - AgentTimeoutError
+    - AgentEnvironmentTimeoutError
+    - VerifierTimeoutError
+    - RewardFileNotFoundError
+    - RewardFileEmptyError
+    - VerifierOutputParseError
+    - SandboxBuildFailedError
+    - VerifierRuntimeError
+    - SummarizationTimeoutError
+    - ContextLengthExceededError
+    wait_multiplier: 2.0
+    min_wait_sec: 1.0
+    max_wait_sec: 90.0
+  kwargs: {}
+environment:
+  type: daytona
+  force_build: true
+  delete: true
+  override_cpus: 2
+  override_memory_mb: 8192
+  override_storage_mb: 8192
+  kwargs:
+    auto_snapshot: true
+verifier:
+  override_timeout_sec: null
+  max_timeout_sec: 14400
+  disable: false
+agents:
+- name: opencode
+  import_path: null
+  model_name: vllm/override-at-runtime
+  max_timeout_sec: null
+  override_setup_timeout_sec: 600
+  kwargs:
+    # opencode auto-summarizes when the session approaches ``limit.context`` (the
+    # value the harbor max_tokens fix writes = max_input - max_output - margin).
+    # During that summary turn these -Thinking- opencode-SFT models emit a tool
+    # call, which opencode fatally rejects ("Tool call not allowed while generating
+    # summary: write") -> NonZeroAgentExit -> reward 0. This is opencode's DEFAULT
+    # summarization (NOT the compaction config block — removing that changed nothing;
+    # sparse 8/8 + densemixer still crashed with opencode_config:{}). Two levers:
+    #   1) max_output_tokens 16384 -> 4096 makes limit.context large (~27648, the
+    #      SAME crash-free regime the DATAGEN/tasktrove opencode path runs in via the
+    #      harbor fallback) so a normal trial never reaches the summarization window.
+    #   2) compaction.auto:false as an explicit belt (opencode may honor it to skip
+    #      the summary turn entirely).
+    opencode_config:
+      compaction:
+        auto: false
+    model_info:
+      max_input_tokens: 32768
+      max_output_tokens: 4096
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+    trajectory_config:
+      raw_content: false
+      linear_history: true
+datasets:
+- path: /replace/with/tasks/path
+tasks: []

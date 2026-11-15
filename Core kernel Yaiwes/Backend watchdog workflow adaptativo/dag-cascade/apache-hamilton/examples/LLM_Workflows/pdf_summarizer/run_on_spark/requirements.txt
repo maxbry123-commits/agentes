@@ -1,0 +1,8 @@
+apache-hamilton[visualization]
+openai
+PyPDF2
+pyspark
+tenacity
+tiktoken
+tqdm
+# dagworks-sdk>=0.0.14 # uncomment to use DAGWorks driver.

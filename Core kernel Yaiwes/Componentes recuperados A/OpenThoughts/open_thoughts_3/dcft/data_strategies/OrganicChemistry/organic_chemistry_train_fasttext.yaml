@@ -1,0 +1,18 @@
+operators:
+  - id: sample_dclm_refined_web_shards
+    config:
+      type: dclm_refinedweb_source
+      num_shards: 128
+      seed: 42
+      s3_bucket: commoncrawl
+      s3_prefix: contrib/datacomp/DCLM-refinedweb/
+  - id: classify_wikipedia
+    config:
+      type: fasttext
+      num_cpus: 32
+      hf_repo_id: mlfoundations-dev/organic_chemistry_fasttext
+      input_column: text
+      target_label: "__label__QA_doc"
+      top_percentage_ranking: .01
+    input_ids:
+    - sample_dclm_refined_web_shards

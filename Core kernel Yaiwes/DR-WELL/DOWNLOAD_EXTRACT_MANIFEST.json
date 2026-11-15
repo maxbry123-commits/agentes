@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 3730673,
+  "bundle_sha256": "83704b0c1ab8035dbeb499b32400305bccdadda72cfda64b782ff6e28206f5d7",
+  "extracted_tree": {
+    "bytes": 5791052,
+    "files": 119,
+    "sha256": "af52d089973e4cf52aa3a32dddf18c3ad9c19a7d0427caaef9873432e6e6b307"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 3730673,
+      "name": "DR-WELL.bundle.zip.part-0001",
+      "sha256": "83704b0c1ab8035dbeb499b32400305bccdadda72cfda64b782ff6e28206f5d7"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "DR-WELL",
+  "source_bytes": 5791052,
+  "source_commit": "aece9ea3d71ef5a7b8214c90def12ead28f2cfea",
+  "source_files": 119,
+  "source_ref": "HEAD",
+  "source_repo": "HappyEureka/dr-well",
+  "source_tree": {
+    "bytes": 5791052,
+    "files": 119,
+    "sha256": "af52d089973e4cf52aa3a32dddf18c3ad9c19a7d0427caaef9873432e6e6b307"
+  }
+}

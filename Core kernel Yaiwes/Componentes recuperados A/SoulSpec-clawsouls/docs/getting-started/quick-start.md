@@ -1,0 +1,119 @@
+---
+sidebar_position: 1
+title: Quick Start
+description: Get up and running with Soul Spec in 5 minutes.
+---
+
+# Quick Start
+
+Get a persona running on your AI agent in under 5 minutes.
+
+## Option 1: Install a Community Soul
+
+Browse souls at [clawsouls.ai/souls](https://clawsouls.ai/souls), then:
+
+```bash
+# Install the CLI
+npm install -g clawsouls
+
+# Install and activate in one command
+clawsouls install clawsouls/surgical-coder --use claude-code
+
+# That's it! Restart your editor.
+```
+
+The `--use` flag writes directly to your project directory — no OpenClaw required. Supported platforms: `claude-code`, `cursor`, `windsurf`, `openclaw`.
+
+## Option 2: Create Your Own
+
+```bash
+# Text agent (default)
+clawsouls init my-agent
+
+# Robot agent
+clawsouls init my-robot --env embodied
+
+# Hybrid agent
+clawsouls init my-hybrid --env hybrid
+```
+
+### Virtual Agent Scaffold (default)
+
+```bash
+clawsouls init my-agent
+cd my-agent
+```
+
+```
+my-agent/
+├── soul.json       # Metadata (specVersion: "0.5")
+├── SOUL.md         # Personality & tone
+├── IDENTITY.md     # Name, role, traits
+├── AGENTS.md       # Workflow rules
+├── HEARTBEAT.md    # Periodic behavior
+└── README.md       # Description
+```
+
+### Embodied Agent Scaffold
+
+```bash
+clawsouls init my-robot --env embodied
+cd my-robot
+```
+
+```
+my-robot/
+├── soul.json       # Metadata with environment, safety.laws, hardwareConstraints
+├── SOUL.md         # Personality & safety behavioral rules
+├── IDENTITY.md     # Name, role, physical traits
+├── AGENTS.md       # Workflow rules
+├── HEARTBEAT.md    # Periodic behavior
+└── README.md       # Description
+```
+
+The embodied scaffold includes `safety.laws` (hierarchical safety rules), `hardwareConstraints`, and `safety.physical` in `soul.json`. Per the **Dual Declaration Requirement** (v0.5.2), safety laws are also pre-populated in `SOUL.md` as behavioral rules.
+
+Edit the files to define your agent's personality, then:
+
+```bash
+# Validate
+clawsouls validate
+
+# Security scan
+clawsouls soulscan
+
+# Publish to the registry
+clawsouls login <your-token>
+clawsouls publish .
+```
+
+## Export to Other Frameworks
+
+Soul Spec works with any SOUL.md-compatible tool:
+
+```bash
+# Claude Code / Claude Cowork
+clawsouls export claude-md --dir ./my-agent -o ./project/CLAUDE.md
+
+# Cursor
+clawsouls export cursorrules --dir ./my-agent -o ./project/.cursorrules
+
+# Windsurf
+clawsouls export windsurfrules --dir ./my-agent -o ./project/.windsurfrules
+```
+
+## Use the MCP Server
+
+For Claude Desktop and other MCP-compatible tools:
+
+```bash
+claude mcp add soul-spec -- npx -y soul-spec-mcp
+```
+
+Then just say: *"Apply the surgical-coder persona"* — no files to manage.
+
+## Next Steps
+
+- [Installation](/docs/getting-started/installation) — Detailed CLI setup
+- [Your First Soul](/docs/getting-started/your-first-soul) — Step-by-step soul creation
+- [Framework Guides](/docs/guides/openclaw) — Platform-specific setup

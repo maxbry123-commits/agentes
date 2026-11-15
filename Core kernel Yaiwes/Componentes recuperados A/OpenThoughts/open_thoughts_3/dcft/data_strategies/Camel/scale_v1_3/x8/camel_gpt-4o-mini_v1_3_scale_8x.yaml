@@ -1,0 +1,23 @@
+operators:
+- id: load_camel_math
+  config:
+    type: load_preexisting
+    framework_name: camel_math_gpt-4o-mini_8x
+
+- id: load_camel_chemistry
+  config:
+    type: load_preexisting
+    framework_name: camel_chemistry_gpt-4o-mini_8x
+
+- id: load_camel_biology
+  config:
+    type: load_preexisting
+    framework_name: camel_biology_gpt-4o-mini_8x
+
+- id: mix
+  input_ids:
+    - load_camel_math
+    - load_camel_chemistry
+    - load_camel_biology
+  config:
+    type: mix

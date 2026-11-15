@@ -1,0 +1,32 @@
+[package]
+name = "hypothesis-native"
+version = "6.167.1"
+edition = "2021"
+rust-version = "1.91"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = "0.29.2"
+
+[features]
+abi3 = ["pyo3/abi3-py310"]
+# see eg https://labs.quansight.org/blog/python-abi-abi3t
+abi3t = ["pyo3/abi3t-py315"]
+
+[dev-dependencies]
+half = "2"
+rand = "0.9"
+
+[profile.release]
+# we may want to revisit these settings as we move more of hypothesis
+# into rust and see what our actual compile and run times look like.
+lto = "fat"
+codegen-units = 1
+# strip = false is the default. We may want to flip this to true at
+# some point, trading off smaller binaries for worse debugging. I
+# don't want to do this until we're finished with the transition,
+# and maybe not even then.
+strip = false

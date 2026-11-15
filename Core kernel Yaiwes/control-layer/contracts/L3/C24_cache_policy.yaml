@@ -1,0 +1,18 @@
+# C24 — L3. B2 SALIDA4
+id: C24
+layer: L3
+name: cache_policy
+implementado: true
+critical: false
+description: "Política de caché determinista"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C24 aplica en capa L3"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - cache_policy_check
+evidence:
+  type: cache_policy_marker
+  required: false

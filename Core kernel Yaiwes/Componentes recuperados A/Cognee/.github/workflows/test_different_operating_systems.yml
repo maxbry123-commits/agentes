@@ -1,0 +1,274 @@
+name: Tests to run on different Operating Systems
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        required: false
+        type: string
+        default: '["3.10.x", "3.12.x", "3.13.x"]'
+      os:
+        required: false
+        type: string
+        default: '["ubuntu-22.04", "macos-15", "windows-latest"]'
+      extra-dependencies:
+        # Space-separated package extras for the unit-test job (e.g. "postgres").
+        # Driver-dependent tests importorskip when their extra is absent.
+        required: false
+        type: string
+        default: ''
+    secrets:
+      LLM_PROVIDER:
+        required: true
+      LLM_MODEL:
+        required: true
+      LLM_ENDPOINT:
+        required: true
+      LLM_API_KEY:
+        required: true
+      LLM_ARGS:
+        required: false
+      LLM_API_VERSION:
+        required: true
+      EMBEDDING_PROVIDER:
+        required: true
+      EMBEDDING_MODEL:
+        required: true
+      EMBEDDING_API_KEY:
+        required: true
+
+env:
+  RUNTIME__LOG_LEVEL: ERROR
+  ENV: 'dev'
+
+jobs:
+  run-unit-tests:
+    name: Unit tests ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+        os: ${{ fromJSON(inputs.os) }}
+      fail-fast: false
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Cognee Setup
+        uses: ./.github/actions/cognee_setup
+        with:
+          python-version: ${{ matrix.python-version }}
+          extra-dependencies: ${{ inputs.extra-dependencies }}
+
+      - name: Drop Git for Windows usr\bin from PATH
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          # Same guard the delete-test jobs already carry. Without it this job
+          # hangs: the step runs under Git for Windows' bash, so its usr\bin
+          # OpenSSL DLLs shadow the ones native extensions load, and the import
+          # deadlocks. pytest then never emits a single line -- --timeout only
+          # covers test execution, so it never engages -- and the job sits until
+          # the 60-minute ceiling cancels it. Observed on 3 of 12 recent runs.
+          $kept = $env:PATH -split ';' | Where-Object { $_ -notmatch 'Git\\usr\\bin' }
+          $dropped = ($env:PATH -split ';').Count - $kept.Count
+          "PATH=$($kept -join ';')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Dropped $dropped PATH entry/entries matching Git\usr\bin"
+
+      - name: Run unit tests
+        shell: bash
+        run: uv run pytest cognee/tests/unit/ --timeout=300 --timeout-method=thread
+        env:
+          # Unbuffered + faulthandler so a wedged interpreter leaves evidence
+          # instead of a 60-minute silent cancel.
+          PYTHONUNBUFFERED: 1
+          PYTHONFAULTHANDLER: 1
+          PYTHONUTF8: 1
+          LLM_PROVIDER: openai
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          LLM_ENDPOINT: ${{ secrets.LLM_ENDPOINT }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_ARGS: ${{ secrets.LLM_ARGS }}
+          LLM_API_VERSION: ${{ secrets.LLM_API_VERSION }}
+
+          EMBEDDING_PROVIDER: openai
+          EMBEDDING_DIMENSIONS: 300
+          EMBEDDING_MODEL: ${{ secrets.EMBEDDING_MODEL }}
+          EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
+
+  run-library-test:
+    name: Library test ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+        os: ${{ fromJSON(inputs.os) }}
+      fail-fast: false
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Cognee Setup
+        uses: ./.github/actions/cognee_setup
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Drop Git for Windows usr\bin from PATH
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          # Same guard the delete-test jobs already carry. Without it this job
+          # hangs: the step runs under Git for Windows' bash, so its usr\bin
+          # OpenSSL DLLs shadow the ones native extensions load, and the import
+          # deadlocks. pytest then never emits a single line -- --timeout only
+          # covers test execution, so it never engages -- and the job sits until
+          # the 60-minute ceiling cancels it. Observed on 3 of 12 recent runs.
+          $kept = $env:PATH -split ';' | Where-Object { $_ -notmatch 'Git\\usr\\bin' }
+          $dropped = ($env:PATH -split ';').Count - $kept.Count
+          "PATH=$($kept -join ';')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Dropped $dropped PATH entry/entries matching Git\usr\bin"
+
+      - name: Run default basic pipeline
+        shell: bash
+        env:
+          PYTHONUNBUFFERED: 1
+          PYTHONFAULTHANDLER: 1
+          PYTHONUTF8: 1
+          LLM_PROVIDER: openai
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          LLM_ENDPOINT: ${{ secrets.LLM_ENDPOINT }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_ARGS: ${{ secrets.LLM_ARGS }}
+          LLM_API_VERSION: ${{ secrets.LLM_API_VERSION }}
+
+          EMBEDDING_PROVIDER: openai
+          EMBEDDING_DIMENSIONS: 300
+          EMBEDDING_MODEL: ${{ secrets.EMBEDDING_MODEL }}
+          EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
+        run: uv run python ./cognee/tests/test_library.py
+
+  run-build-test:
+    name: Build test ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+        os: ${{ fromJSON(inputs.os) }}
+      fail-fast: false
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Cognee Setup
+        uses: ./.github/actions/cognee_setup
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build with uv
+        shell: bash
+        run: uv build
+
+      - name: Install Package
+        if: ${{ !contains(matrix.os, 'windows-latest') }}
+        run: |
+          cd dist
+          pip install *.whl
+
+  run-soft-deletion-test:
+    name: Soft Delete test ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+        os: ${{ fromJSON(inputs.os) }}
+      fail-fast: false
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Cognee Setup
+        uses: ./.github/actions/cognee_setup
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Drop Git for Windows usr\bin from PATH
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          # Git for Windows ships OpenSSL DLLs in usr\bin that shadow the ones
+          # ladybug loads. The previous version of this step edited PATH in bash
+          # and called `export`, which dies with the step and never reached the
+          # test below; $GITHUB_ENV is what carries an edited PATH forward.
+          $kept = $env:PATH -split ';' | Where-Object { $_ -notmatch 'Git\\usr\\bin' }
+          $dropped = ($env:PATH -split ';').Count - $kept.Count
+          "PATH=$($kept -join ';')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Dropped $dropped PATH entry/entries matching Git\usr\bin"
+
+      - name: Run Soft Deletion Tests
+        env:
+          ENV: 'dev'
+          LLM_API_KEY: ${{ secrets.OPENAI_API_KEY }} # Test needs OpenAI endpoint to handle multimedia
+          LLM_ARGS: ${{ secrets.LLM_ARGS }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          EMBEDDING_DIMENSIONS: 300
+          EMBEDDING_MODEL: ${{ secrets.EMBEDDING_MODEL }}
+          EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
+        run: uv run python ./cognee/tests/test_delete_default_graph.py
+
+  run-hard-deletion-test:
+    name: Custom Graph Delete test ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+        os: ${{ fromJSON(inputs.os) }}
+      fail-fast: false
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Cognee Setup
+        uses: ./.github/actions/cognee_setup
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Drop Git for Windows usr\bin from PATH
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          # Same guard as the Soft Delete job: Git for Windows ships OpenSSL
+          # DLLs in usr\bin that shadow the ones ladybug loads. This job runs
+          # the sibling delete test and never had the guard at all.
+          $kept = $env:PATH -split ';' | Where-Object { $_ -notmatch 'Git\\usr\\bin' }
+          $dropped = ($env:PATH -split ';').Count - $kept.Count
+          "PATH=$($kept -join ';')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Dropped $dropped PATH entry/entries matching Git\usr\bin"
+
+      - name: Run Custom Graph Deletion Test
+        env:
+          ENV: 'dev'
+          LLM_API_KEY: ${{ secrets.OPENAI_API_KEY }} # Test needs OpenAI endpoint to handle multimedia
+          LLM_ARGS: ${{ secrets.LLM_ARGS }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          EMBEDDING_DIMENSIONS: 300
+          EMBEDDING_MODEL: ${{ secrets.EMBEDDING_MODEL }}
+          EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
+        run: uv run python ./cognee/tests/test_delete_custom_graph.py

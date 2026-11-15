@@ -1,0 +1,1134 @@
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import Box from '@mui/material/Box';
+import Fade from '@mui/material/Fade';
+import Typography from '@mui/material/Typography';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded';
+import KeyboardArrowUpRounded from '@mui/icons-material/KeyboardArrowUpRounded';
+import { Output, SERVE_BASE, updateOutput } from '@/shared/state/outputsSlice';
+import { setViewCardPosition, setViewDocked, setViewCardSize, setActiveViewCardId, recordClosedCard, addViewCard, toggleMinimizeCard, activateViewCardPreview } from '@/shared/state/dashboardLayoutSlice';
+import { removeViewCardCleanly } from '@/shared/viewTeardown';
+import { saveMinimizedShot } from '../desktop/minimizedShots';
+import { requestAppSlot, releaseAppSlot, subscribeAppBudget } from '@/shared/appWebviewBudget';
+import { expandSession } from '@/shared/state/agentsSlice';
+import WindowControls from './WindowControls';
+import { openCardContextMenu, isNativeMenuTarget } from '../desktop/openCardContextMenu';
+import { viewCardMenuRows } from './viewCardMenuRows';
+import MoreHorizRoundedIcon from '@mui/icons-material/MoreHorizRounded';
+import type { CardMenuRow } from '../desktop/openCardContextMenu';
+import { useDragEndBackstops } from '../hooks/interaction/useDragEndBackstops';
+import { useTiledCard } from './useTiledCard';
+import { useCardTiling } from './useCardTiling';
+import { useAppDispatch, useAppSelector } from '@/shared/hooks';
+import { API_BASE, getAuthToken } from '@/shared/config';
+import { useClaudeTokens } from '@/shared/styles/ThemeContext';
+import ViewPreview, { ViewPreviewHandle } from '@/app/pages/Views/ViewPreview';
+import TerminalPanel, { TerminalLine } from '@/app/pages/Views/TerminalPanel';
+import AppCodePanel from '@/app/pages/Views/AppCodePanel';
+import HistoryPanel from '@/app/pages/Views/HistoryPanel';
+import ShareButton from '@/app/components/share/ShareButton';
+import ShareModal from '@/app/components/share/ShareModal';
+import { getDefault } from '@/shared/inputSchemaDefaults';
+import { useOverlayScrollPassthrough } from '../hooks/interaction/useOverlayScrollPassthrough';
+import {
+  useRuntimePreviewUrl,
+  pickPreviewUrl,
+  RuntimeLogLine,
+} from '@/shared/hooks/useRuntimePreviewUrl';
+import { postAppConsoleLine, terminalLineFromStream } from '@/shared/appTerminal';
+
+type AppCardView = 'preview' | 'code' | 'terminal' | 'history';
+
+const TERMINAL_BUFFER_CAP = 5000;
+
+type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+
+const EDGE_THICKNESS = 6;
+const CORNER_SIZE = 14;
+const MIN_W = 320;
+const MIN_H = 200;
+
+// App-card preview suspend: a live Vite webview is the heaviest thing on the canvas, and unlike browser
+// cards these never suspended, so 4 reveal apps + a zoomed-out canvas all ran live = jank. A built app
+// has no login/scroll state worth keeping, so we just unmount the webview when the card is off-screen or
+// too small to read, and remount (reload) on return. Asymmetric: resume instantly, suspend after a beat
+// so panning past a card doesn't reload it.
+const isElectron = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
+const APP_PREVIEW_MIN_PX = 260;   // below this on-screen width the live page is indistinguishable from a still
+const APP_PREVIEW_MARGIN_PX = 400; // resume once the card is within this of the viewport
+const APP_SUSPEND_SETTLE_MS = 1200;
+
+const CURSOR_MAP: Record<ResizeDir, string> = {
+  n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
+  nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
+};
+
+const HANDLE_DEFS: { dir: ResizeDir; sx: Record<string, any> }[] = [
+  { dir: 'n',  sx: { top: -EDGE_THICKNESS / 2, left: CORNER_SIZE, right: CORNER_SIZE, height: EDGE_THICKNESS } },
+  { dir: 's',  sx: { bottom: -EDGE_THICKNESS / 2, left: CORNER_SIZE, right: CORNER_SIZE, height: EDGE_THICKNESS } },
+  { dir: 'w',  sx: { left: -EDGE_THICKNESS / 2, top: CORNER_SIZE, bottom: CORNER_SIZE, width: EDGE_THICKNESS } },
+  { dir: 'e',  sx: { right: -EDGE_THICKNESS / 2, top: CORNER_SIZE, bottom: CORNER_SIZE, width: EDGE_THICKNESS } },
+  { dir: 'nw', sx: { top: -EDGE_THICKNESS / 2, left: -EDGE_THICKNESS / 2, width: CORNER_SIZE, height: CORNER_SIZE } },
+  { dir: 'ne', sx: { top: -EDGE_THICKNESS / 2, right: -EDGE_THICKNESS / 2, width: CORNER_SIZE, height: CORNER_SIZE } },
+  { dir: 'sw', sx: { bottom: -EDGE_THICKNESS / 2, left: -EDGE_THICKNESS / 2, width: CORNER_SIZE, height: CORNER_SIZE } },
+  { dir: 'se', sx: { bottom: -EDGE_THICKNESS / 2, right: -EDGE_THICKNESS / 2, width: CORNER_SIZE, height: CORNER_SIZE } },
+];
+
+interface Props {
+  output: Output;
+  // Record key in dashboardLayout.viewCards (output.id for the primary, `${output.id}#N` for extras); every layout/selection dispatch keys by this.
+  cardKey?: string;
+  // Which independent instance of the app this card runs; each instance gets its own runtime + ports.
+  instance?: number;
+  cardX: number;
+  cardY: number;
+  cardWidth: number;
+  cardHeight: number;
+  getCanvasState: () => { panX: number; panY: number; zoom: number };
+  cmdHeld?: boolean;
+  isSelected?: boolean;
+  isHighlighted?: boolean;
+  multiDragActive?: boolean;
+  onCardSelect?: (id: string, type: 'agent' | 'view', shiftKey: boolean) => void;
+  onDragStart?: (id: string, type: 'agent' | 'view') => void;
+  onDragMove?: (dx: number, dy: number, mouseX?: number, mouseY?: number) => void;
+  onDragEnd?: (dx: number, dy: number, didDrag: boolean) => void;
+  cardZOrder?: number;
+  onDoubleClick?: (id: string, type: 'agent' | 'view' | 'browser') => void;
+  onBringToFront?: (id: string, type: 'agent' | 'view' | 'browser') => void;
+}
+
+// The app card's loading state while its runtime spins up. One soft pulse, calm copy, and an honest hint only after 9s, a freshly-imported app installs its deps on first open, which is the slow case worth explaining instead of leaving the user staring at a dead screen.
+const BootingBody: React.FC = () => {
+  const c = useClaudeTokens();
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 9000);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <Box
+      sx={{
+        width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 1.25, px: 3, textAlign: 'center',
+      }}
+    >
+      <Box
+        sx={{
+          width: 7, height: 7, borderRadius: '50%', bgcolor: c.accent.primary,
+          animation: 'osBootPulse 1.4s ease-in-out infinite',
+          '@keyframes osBootPulse': {
+            '0%, 100%': { opacity: 0.35, transform: 'scale(0.8)' },
+            '50%': { opacity: 1, transform: 'scale(1)' },
+          },
+        }}
+      />
+      <Typography sx={{ fontSize: '0.875rem', color: c.text.muted }}>Starting preview</Typography>
+      <Fade in={slow} timeout={400} unmountOnExit>
+        <Typography sx={{ fontSize: '0.75rem', color: c.text.ghost, maxWidth: 240 }}>
+          First run sets the app up, this can take a moment.
+        </Typography>
+      </Fade>
+    </Box>
+  );
+};
+
+const DashboardViewCard: React.FC<Props> = ({
+  output, cardKey: cardKeyProp, instance = 1, cardX, cardY, cardWidth, cardHeight, getCanvasState, cmdHeld = false,
+  isSelected = false, isHighlighted = false, multiDragActive = false, onCardSelect, onDragStart, onDragMove, onDragEnd,
+  cardZOrder = 0, onDoubleClick, onBringToFront,
+}) => {
+  const cardKey = cardKeyProp ?? output.id;
+  const c = useClaudeTokens();
+  const dispatch = useAppDispatch();
+  const scrollOverlayRef = useOverlayScrollPassthrough(isSelected);
+  const previewRef = useRef<ViewPreviewHandle>(null);
+  const activeViewCardId = useAppSelector((s) => s.dashboardLayout.activeViewCardId);
+  // Agent-driving glow, same treatment as browser cards: an AppAgent session carries browser_id "app:<output_id>", which keys glowingBrowserCards.
+  const appGlow = useAppSelector((s) => s.dashboardLayout.glowingBrowserCards[`app:${cardKeyProp ?? output.id}`]);
+  const showAgentGlow = !!appGlow && !appGlow.fading;
+  const interactive = activeViewCardId === cardKey;
+  const commitCardPosition = useCallback((x: number, y: number) => {
+    dispatch(setViewCardPosition({ outputId: cardKey, x, y }));
+  }, [dispatch, cardKey]);
+  const tiling = useCardTiling({ cardId: cardKey, getCanvasState, commitPosition: commitCardPosition });
+  const tileZone = tiling.zone;
+  const isMinimized = useAppSelector((s) => !!s.dashboardLayout.minimizedCards[cardKey]);
+  // Reveal-born apps stay a light "click to open" card until the first click, so the onboarding curtain
+  // lifts instantly instead of behind an in-frame live Vite boot. The click (selecting it) clears the flag.
+  const previewDeferred = useAppSelector((s) => !!s.dashboardLayout.viewCards[cardKey]?.preview_deferred);
+  useEffect(() => {
+    if (previewDeferred && (isSelected || interactive)) dispatch(activateViewCardPreview(cardKey));
+  }, [previewDeferred, isSelected, interactive, cardKey, dispatch]);
+  const isTiled = !!tileZone;
+  const isFullscreen = tileZone === 'fullscreen';
+
+  // ---- In-chat dock (mirrors BrowserCard): while docked to an expanded chat, overlay its slot rect.
+  const dockedTo = useAppSelector((state) => state.dashboardLayout.viewCards[cardKey]?.docked_to ?? null);
+  const dockParentCard = useAppSelector((state) => (dockedTo ? state.dashboardLayout.cards[dockedTo] ?? null : null));
+  const dockParentExpanded = useAppSelector((state) => (dockedTo ? state.agents.expandedSessionIds.includes(dockedTo) : false));
+  const dockParentTiled = useAppSelector((state) => (dockedTo ? state.dashboardLayout.tiledCards[dockedTo] : undefined));
+  const [dockRect, setDockRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const dockRootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!dockedTo || !dockParentCard || !dockParentExpanded) { setDockRect(null); return undefined; }
+    const measure = (): void => {
+      const slot = document.querySelector(`[data-browser-slot="${dockedTo}"]`);
+      const layer = dockRootRef.current?.parentElement;
+      if (!slot || !layer) { setDockRect(null); return; }
+      const z = getCanvasState().zoom || 1;
+      const lr = layer.getBoundingClientRect();
+      const sr = slot.getBoundingClientRect();
+      setDockRect({ x: (sr.left - lr.left) / z, y: (sr.top - lr.top) / z, w: sr.width / z, h: sr.height / z });
+    };
+    measure();
+    const slot = document.querySelector(`[data-browser-slot="${dockedTo}"]`);
+    const ro = new ResizeObserver(measure);
+    if (slot) ro.observe(slot);
+    if (slot?.parentElement) ro.observe(slot.parentElement);
+    window.addEventListener('resize', measure);
+    // A RO only fires on slot RESIZE; the chat tiling/untiling MOVES the slot without resizing the
+    // window, so re-measure on camera writes + settle timers or the docked card lags behind.
+    window.addEventListener('openswarm:canvas-pan-changed', measure);
+    document.addEventListener('visibilitychange', measure);
+    const timers = [60, 250, 700].map((ms) => window.setTimeout(measure, ms));
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('openswarm:canvas-pan-changed', measure);
+      document.removeEventListener('visibilitychange', measure);
+      timers.forEach((tm) => window.clearTimeout(tm));
+    };
+  }, [dockedTo, dockParentExpanded, dockParentTiled, dockParentCard?.x, dockParentCard?.y, dockParentCard?.width, dockParentCard?.height, getCanvasState, dockParentCard]);
+  const dockParentZOverride = useAppSelector((state) => (dockedTo ? state.dashboardLayout.zOrders[dockedTo] : undefined));
+  const dockParentZ = dockParentZOverride ?? dockParentCard?.zOrder ?? 0;
+  const zOverride = useAppSelector((state) => state.dashboardLayout.zOrders[cardKey]);
+
+  // Keep the live preview mounted only when the user can actually see/use this app card. Always live
+  // when it's being interacted with, driven by an agent, tiled, or selected; otherwise gated on being
+  // on-screen at a readable size. A suspended card shows its last frame (or a calm placeholder).
+  const alwaysLive = interactive || isSelected || isFullscreen || !!tileZone || showAgentGlow;
+  const [previewLive, setPreviewLive] = useState(!previewDeferred);
+  const [suspendSnapshot, setSuspendSnapshot] = useState<string | null>(null);
+  const previewLiveRef = useRef(!previewDeferred);
+  const suspendTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    const evaluate = (): void => {
+      let want: boolean;
+      if (isMinimized) {
+        want = false; // parked in the rail as a still, so a live renderer behind it is pure waste
+      } else if (previewDeferred) {
+        want = false; // reveal-parked: never boot until the first click clears the defer
+      } else if (alwaysLive) {
+        // Actively used (selected, interacting, agent-driven, tiled, fullscreen): pinned, never capped.
+        if (isElectron) requestAppSlot(cardKey, 0, true);
+        want = true;
+      } else {
+        const now = getCanvasState();
+        const vpEl = document.querySelector('[data-canvas-viewport]');
+        const vpW = vpEl ? (vpEl as HTMLElement).clientWidth : window.innerWidth;
+        const vpH = vpEl ? (vpEl as HTMLElement).clientHeight : window.innerHeight;
+        let onscreen: boolean;
+        if (cardWidth * now.zoom < APP_PREVIEW_MIN_PX) {
+          onscreen = false;
+        } else {
+          const m = APP_PREVIEW_MARGIN_PX / now.zoom;
+          const vx = -now.panX / now.zoom - m;
+          const vy = -now.panY / now.zoom - m;
+          const vw = vpW / now.zoom + 2 * m;
+          const vh = vpH / now.zoom + 2 * m;
+          onscreen = cardX < vx + vw && cardX + cardWidth > vx && cardY < vy + vh && cardY + cardHeight > vy;
+        }
+        if (!onscreen || !isElectron) {
+          want = onscreen; // non-Electron previews are cheap iframes, no renderer to cap
+        } else {
+          // On-screen but passive: go live only if the hard cap has a slot; closest-to-center wins it.
+          const cx = (-now.panX + vpW / 2) / now.zoom;
+          const cy = (-now.panY + vpH / 2) / now.zoom;
+          const ddx = cardX + cardWidth / 2 - cx;
+          const ddy = cardY + cardHeight / 2 - cy;
+          want = requestAppSlot(cardKey, ddx * ddx + ddy * ddy, false);
+        }
+      }
+      if (!want) releaseAppSlot(cardKey);
+      if (want === previewLiveRef.current) return;
+      if (want) {
+        if (suspendTimerRef.current) { clearTimeout(suspendTimerRef.current); suspendTimerRef.current = null; }
+        previewLiveRef.current = true;
+        setSuspendSnapshot(null);
+        setPreviewLive(true);
+      } else if (isMinimized || previewDeferred) {
+        // Parked (minimize already froze its own frame) or never booted: drop it now, no settle beat.
+        if (suspendTimerRef.current) { clearTimeout(suspendTimerRef.current); suspendTimerRef.current = null; }
+        previewLiveRef.current = false;
+        setPreviewLive(false);
+      } else if (!suspendTimerRef.current) {
+        suspendTimerRef.current = window.setTimeout(() => {
+          suspendTimerRef.current = null;
+          // Grab the last frame BEFORE unmounting so the parked card shows the app, not a blank box.
+          void (async () => {
+            try { const snap = await previewRef.current?.capture?.(); if (snap) setSuspendSnapshot(snap); } catch { /* no frame = calm placeholder */ }
+            previewLiveRef.current = false;
+            setPreviewLive(false);
+          })();
+        }, APP_SUSPEND_SETTLE_MS);
+      }
+    };
+    evaluate();
+    const unsubBudget = subscribeAppBudget(evaluate); // an eviction or a freed slot re-runs this card's decision
+    window.addEventListener('openswarm:canvas-pan-changed', evaluate);
+    window.addEventListener('resize', evaluate);
+    return () => {
+      unsubBudget();
+      window.removeEventListener('openswarm:canvas-pan-changed', evaluate);
+      window.removeEventListener('resize', evaluate);
+      if (suspendTimerRef.current) { clearTimeout(suspendTimerRef.current); suspendTimerRef.current = null; }
+    };
+  }, [alwaysLive, previewDeferred, isMinimized, cardX, cardY, cardWidth, cardHeight, getCanvasState, cardKey]);
+
+  // Free the cap slot on unmount (card deleted, dashboard switch) so a slot is never leaked.
+  useEffect(() => () => releaseAppSlot(cardKey), [cardKey]);
+
+  // Deselecting the card exits interact mode (click anywhere else on canvas).
+  useEffect(() => {
+    if (!isSelected && interactive) dispatch(setActiveViewCardId(null));
+  }, [isSelected, interactive, dispatch]);
+
+  // Escape exits interact mode.
+  useEffect(() => {
+    if (!interactive) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') dispatch(setActiveViewCardId(null));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [interactive, dispatch]);
+
+  const [inputData] = useState<Record<string, any>>(() => getDefault(output.input_schema));
+  const [backendResult] = useState<Record<string, any> | null>(null);
+
+  // Preview/Code/Terminal switcher; only new-mode (workspace-backed) apps have code + terminal to show.
+  const [activeView, setActiveView] = useState<AppCardView>('preview');
+  const hasWorkspace = !!output.workspace_id;
+  // Chevron rolls the whole header away so an immersive app fills the card; hovering the top edge peeks it back.
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const [headerPeek, setHeaderPeek] = useState(false);
+  const showControls = !headerCollapsed || headerPeek;
+  const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([]);
+  const terminalLineIdRef = useRef(0);
+  // Fed by the runtime logs WS (which replays its ring buffer on connect); frontend console lines arrive on the same socket via the console-log beacon echo.
+  const handleRuntimeLog = useCallback((line: RuntimeLogLine) => {
+    // The render-health beacons arrive HERE in practice, not on the webview console channel:
+    // vite-plugin-terminal owns the page console in app workspaces, so console.error rides the
+    // vite terminal into this runtime stream (live-verified 2026-08-08; the ipc path stays as belt).
+    if (line.text.includes('[openswarm:app-error]')) setPreviewBroken(true);
+    else if (line.text.includes('[openswarm:app-ready]')) setPreviewBroken(false);
+    const fields = terminalLineFromStream(line.stream, line.text);
+    setTerminalLines((prev) => {
+      const next = prev.concat({ id: ++terminalLineIdRef.current, ...fields });
+      return next.length > TERMINAL_BUFFER_CAP ? next.slice(next.length - TERMINAL_BUFFER_CAP) : next;
+    });
+  }, []);
+
+  // Reload the preview when the session finishes a turn: React holds the ErrorBoundary's snag page until a reload, so without this the user keeps seeing the old error even after the agent fixed it. The overlay lingers through the reload (finishing) so the stale page never flashes.
+  const linkedStatus = useAppSelector(
+    (s) => (output.session_id ? s.agents.sessions[output.session_id]?.status : undefined),
+  );
+  const [finishing, setFinishing] = useState(false);
+  // True only after the app itself reported a render failure (the [openswarm:app-error] beacon);
+  // cleared by app-ready or a turn-end reload. This is what gates the Building overlay now.
+  const [previewBroken, setPreviewBroken] = useState(false);
+  const wasBuildingRef = useRef(false);
+  const finishTimerRef = useRef<number | null>(null);
+  // Whether this turn changed deps (needs a Vite restart, not just a soft reload). Held in a ref so the reload effect stays keyed on the status transition alone.
+  const depsChanged = useAppSelector(
+    (s) => (output.session_id ? !!s.agents.sessions[output.session_id]?.app_deps_changed : false),
+  );
+  const depsChangedRef = useRef(false);
+  useEffect(() => { depsChangedRef.current = depsChanged; }, [depsChanged]);
+  useEffect(() => {
+    const building = linkedStatus === 'running' || linkedStatus === 'waiting_approval';
+    if (wasBuildingRef.current && !building) {
+      const wsId = output.workspace_id;
+      if (depsChangedRef.current && wsId) {
+        // Deps changed this turn: a soft reload can't pick up new packages, so restart the Vite runtime first, then reload.
+        void (async () => {
+          try {
+            const tok = getAuthToken();
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (tok) headers.Authorization = `Bearer ${tok}`;
+            await fetch(`${API_BASE}/outputs/workspace/${wsId}/runtime/restart?instance=${instance}`, { method: 'POST', headers });
+          } catch { /* failures surface via the runtime log WS */ }
+          previewRef.current?.reload();
+        })();
+      } else {
+        previewRef.current?.reload();
+      }
+      setFinishing(true);
+      // The turn is over and the preview is reloading fresh; a broken flag from mid-edit must not
+      // outlive the edit (this staleness is exactly what wedged cards on "Building..." forever).
+      setPreviewBroken(false);
+      if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
+      finishTimerRef.current = window.setTimeout(() => setFinishing(false), 1200);
+    }
+    wasBuildingRef.current = building;
+  }, [linkedStatus]);
+  useEffect(() => () => {
+    if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
+  }, []);
+  const agentBusy = linkedStatus === 'running'
+    || linkedStatus === 'waiting_approval' || finishing;
+  // Building only ever covers a frontend that actually THREW while the agent works (Eric's call,
+  // ENG-206): a healthy app just renders through the edit, and agent activity alone can never
+  // curtain an app again (the old status-only gate wedged cards on "Building..." forever).
+  const showBuildingOverlay = agentBusy && previewBroken;
+
+  const DRAG_THRESHOLD = 3;
+  const dragState = useRef<{ startX: number; startY: number; origX: number; origY: number; startPanX: number; startPanY: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [localDragPos, setLocalDragPos] = useState<{ x: number; y: number } | null>(null);
+  const didDrag = useRef(false);
+  const justDraggedRef = useRef(false);
+  const lastPointerRef = useRef<{ clientX: number; clientY: number }>({ clientX: 0, clientY: 0 });
+
+
+  const handleDragPointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    // Fullscreen has no drag (macOS rule); same guard as AgentCard/BrowserCard.
+    if (tiling.zone === 'fullscreen') return;
+    e.preventDefault();
+    e.stopPropagation();
+    const cs = getCanvasState();
+    const popped = tiling.untileForDrag(e.clientX, e.clientY, cardWidth);
+    dragState.current = {
+      startX: e.clientX, startY: e.clientY,
+      origX: popped?.x ?? dockRect?.x ?? cardX, origY: popped?.y ?? dockRect?.y ?? cardY,
+      startPanX: cs.panX, startPanY: cs.panY,
+    };
+    if (popped) setLocalDragPos(popped);
+    lastPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+    didDrag.current = false;
+    setIsDragging(true);
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+    onDragStart?.(cardKey, 'view');
+  }, [cardX, cardY, cardWidth, onDragStart, cardKey, getCanvasState, tiling, dockRect]);
+
+  const recomputeDragPos = useCallback(() => {
+    const ds = dragState.current;
+    if (!ds || !didDrag.current) return;
+    const { clientX, clientY } = lastPointerRef.current;
+    const rawDx = clientX - ds.startX;
+    const rawDy = clientY - ds.startY;
+    const cs = getCanvasState();
+    const z = cs.zoom;
+    const panDx = (cs.panX - ds.startPanX) / z;
+    const panDy = (cs.panY - ds.startPanY) / z;
+    const dx = rawDx / z - panDx;
+    const dy = rawDy / z - panDy;
+    setLocalDragPos({ x: ds.origX + dx, y: ds.origY + dy });
+    onDragMove?.(dx, dy, clientX, clientY);
+  }, [onDragMove, getCanvasState]);
+
+  // Edge-pan/wheel-zoom moves the camera without a React commit; the pan-changed event is the live signal to re-pin the card to the cursor.
+  useEffect(() => {
+    if (!isDragging) return;
+    const onPanChange = () => {
+      if (didDrag.current) recomputeDragPos();
+    };
+    window.addEventListener('openswarm:canvas-pan-changed', onPanChange);
+    return () => window.removeEventListener('openswarm:canvas-pan-changed', onPanChange);
+  }, [isDragging, recomputeDragPos]);
+
+  const handleDragPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragState.current) return;
+    const rawDx = e.clientX - dragState.current.startX;
+    const rawDy = e.clientY - dragState.current.startY;
+    if (!didDrag.current && Math.sqrt(rawDx * rawDx + rawDy * rawDy) < DRAG_THRESHOLD) return;
+    didDrag.current = true;
+    lastPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+    recomputeDragPos();
+  }, [recomputeDragPos]);
+
+  const finalizeDrag = useCallback((clientX: number, clientY: number, shiftKey: boolean) => {
+    if (!dragState.current) return;
+    const cs = getCanvasState();
+    const z = cs.zoom;
+    const panDx = (cs.panX - dragState.current.startPanX) / z;
+    const panDy = (cs.panY - dragState.current.startPanY) / z;
+    const dx = (clientX - dragState.current.startX) / z - panDx;
+    const dy = (clientY - dragState.current.startY) / z - panDy;
+    if (didDrag.current) {
+      let finalX = dragState.current.origX + dx;
+      let finalY = dragState.current.origY + dy;
+      // Snap to 24px grid; Shift bypasses.
+      if (!shiftKey) {
+        finalX = Math.round(finalX / 24) * 24;
+        finalY = Math.round(finalY / 24) * 24;
+      }
+      const { clientX: hx, clientY: hy } = lastPointerRef.current;
+      const under = document.elementsFromPoint(hx, hy);
+      const slotHit = under.map((el) => (el as HTMLElement).closest?.('[data-browser-slot]') as HTMLElement | null).find(Boolean);
+      const chatHit = under.map((el) => (el as HTMLElement).closest?.('[data-select-type="agent-card"]') as HTMLElement | null).find(Boolean);
+      const dockTarget = slotHit?.getAttribute('data-browser-slot') || chatHit?.getAttribute('data-select-id') || null;
+      if (dockTarget) {
+        dispatch(setViewDocked({ cardKey, dockedTo: dockTarget }));
+        // Same as BrowserCard: docking into a collapsed pill must open the chat, not vanish the app.
+        dispatch(expandSession(dockTarget));
+      } else if (dockedTo) {
+        dispatch(setViewDocked({ cardKey, dockedTo: null }));
+      }
+      dispatch(setViewCardPosition({
+        outputId: cardKey,
+        x: finalX,
+        y: finalY,
+      }));
+      justDraggedRef.current = true;
+      requestAnimationFrame(() => { justDraggedRef.current = false; });
+    }
+    onDragEnd?.(dx, dy, didDrag.current);
+    dragState.current = null;
+    didDrag.current = false;
+    setLocalDragPos(null);
+    setIsDragging(false);
+  }, [dispatch, cardKey, onDragEnd, getCanvasState, dockedTo]);
+
+  const handleDragPointerUp = useCallback((e: React.PointerEvent) => {
+    if (!dragState.current) return;
+    finalizeDrag(e.clientX, e.clientY, e.shiftKey);
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* capture already gone */ }
+  }, [finalizeDrag]);
+
+  const abortDrag = useCallback(() => {
+    if (!dragState.current) return;
+    finalizeDrag(lastPointerRef.current.clientX, lastPointerRef.current.clientY, true);
+  }, [finalizeDrag]);
+  useDragEndBackstops(isDragging, finalizeDrag, abortDrag);
+
+  const resizeRef = useRef<{
+    dir: ResizeDir; startX: number; startY: number;
+    origX: number; origY: number; origW: number; origH: number;
+  } | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
+  const [localResize, setLocalResize] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  const handleResizeDown = useCallback(
+    (dir: ResizeDir) => (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const popped = tiling.untileForResize();
+      if (popped) setLocalResize(popped);
+      resizeRef.current = {
+        dir, startX: e.clientX, startY: e.clientY,
+        origX: popped?.x ?? cardX, origY: popped?.y ?? cardY, origW: popped?.w ?? cardWidth, origH: popped?.h ?? cardHeight,
+      };
+      setIsResizing(true);
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [cardX, cardY, cardWidth, cardHeight, tiling],
+  );
+
+  const computeResize = useCallback(
+    (e: React.PointerEvent) => {
+      if (!resizeRef.current) return null;
+      const { dir, startX, startY, origX, origY, origW, origH } = resizeRef.current;
+      const zoom = getCanvasState().zoom;
+      const dx = (e.clientX - startX) / zoom;
+      const dy = (e.clientY - startY) / zoom;
+      let newX = origX, newY = origY, newW = origW, newH = origH;
+      if (dir.includes('e')) newW = origW + dx;
+      if (dir.includes('w')) { newW = origW - dx; newX = origX + dx; }
+      if (dir.includes('s')) newH = origH + dy;
+      if (dir.includes('n')) { newH = origH - dy; newY = origY + dy; }
+      if (newW < MIN_W) { if (dir.includes('w')) newX = origX + origW - MIN_W; newW = MIN_W; }
+      if (newH < MIN_H) { if (dir.includes('n')) newY = origY + origH - MIN_H; newH = MIN_H; }
+      return { x: newX, y: newY, w: newW, h: newH };
+    },
+    [getCanvasState],
+  );
+
+  const handleResizeMove = useCallback(
+    (e: React.PointerEvent) => {
+      const result = computeResize(e);
+      if (result) setLocalResize(result);
+    },
+    [computeResize],
+  );
+
+  const handleResizeUp = useCallback((e: React.PointerEvent) => {
+    if (!resizeRef.current) return;
+    const result = computeResize(e);
+    if (result) {
+      dispatch(setViewCardPosition({ outputId: cardKey, x: result.x, y: result.y }));
+      dispatch(setViewCardSize({ outputId: cardKey, width: result.w, height: result.h }));
+    }
+    resizeRef.current = null;
+    setLocalResize(null);
+    setIsResizing(false);
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  }, [computeResize, dispatch, cardKey]);
+
+  const handleRemove = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    dispatch(recordClosedCard({ kind: 'view', id: cardKey }));
+    void removeViewCardCleanly(cardKey, dispatch);
+  };
+  // Freeze the app's last frame first so the rail tile shows the real app, then park the card.
+  const onMinimize = useCallback(() => {
+    let parked = false;
+    const park = (): void => { if (parked) return; parked = true; dispatch(toggleMinimizeCard({ cardId: cardKey })); };
+    // capturePage can hang forever on a guest that stopped painting (Electron 42); the timer guarantees the park.
+    window.setTimeout(park, 250);
+    void (async () => {
+      try {
+        const snap = await previewRef.current?.capture?.();
+        if (snap) saveMinimizedShot(cardKey, snap);
+      } catch { /* no frame, the tile falls back to the app's stored thumbnail */ }
+      park();
+    })();
+  }, [dispatch, cardKey]);
+  const onTile = tiling.applyZone;
+
+  // Spawn ANOTHER independent instance of this app (own runtime + ports); the reducer picks the next #N and the lifecycle hook fits + highlights it.
+  const handleOpenAnother = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    dispatch(addViewCard({ outputId: output.id, newInstance: true }));
+  };
+
+  const [shareOpen, setShareOpen] = useState(false);
+  const handleHardReload = useCallback(async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const wsId = output.workspace_id;
+    if (wsId) {
+      try {
+        const tok = getAuthToken();
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (tok) headers.Authorization = `Bearer ${tok}`;
+        const res = await fetch(`${API_BASE}/outputs/workspace/${wsId}/runtime/restart?instance=${instance}`, {
+          method: 'POST',
+          headers,
+        });
+        // Restart no-ops when the registry lost the runtime (backend bounced); the user is asking
+        // for a working app, so fall through to a fresh start instead of reloading a dead port.
+        const status = (await res.json().catch(() => null)) as { running?: boolean } | null;
+        if (status && status.running === false) {
+          await fetch(`${API_BASE}/outputs/workspace/${wsId}/runtime/start?instance=${instance}`, {
+            method: 'POST',
+            headers,
+          });
+        }
+      } catch { /* failures surface via the runtime log WS */ }
+    }
+    previewRef.current?.reload();
+  }, [output.workspace_id, instance]);
+
+  // In Terminal view a soft webview reload is invisible (the terminal is what you're looking at), so the refresh button always hard-reloads there.
+  const handleRefresh = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (activeView === 'terminal' && output.workspace_id) {
+      void handleHardReload(e);
+      return;
+    }
+    previewRef.current?.reload();
+  };
+
+  const displayX = localResize?.x ?? localDragPos?.x ?? cardX;
+  const displayY = localResize?.y ?? localDragPos?.y ?? cardY;
+  const displayW = localResize?.w ?? cardWidth;
+  const displayH = localResize?.h ?? cardHeight;
+  const noTransition = isDragging || isResizing || (isSelected && multiDragActive);
+  // Drag via a compositor transform, not left/top: an app card's webview surface shimmers back and forth while edge-panning otherwise (the transform and the late left/top relayout desync a frame). Same fix as BrowserCard.
+  const dragging = isDragging && !!localDragPos && !localResize;
+  const dragTx = dragging ? displayX - cardX : 0;
+  const dragTy = dragging ? displayY - cardY : 0;
+
+  const dockActive = !!dockRect && !dragging && !localResize && !isTiled && !isMinimized;
+  const tiledSize = useTiledCard({ cardId: cardKey, zone: tileZone, active: !isMinimized, originX: displayX, originY: displayY, getCamera: getCanvasState });
+
+  // The old 8-icon header cluster, demoted behind one kebab: view switcher, new window, toolbar
+  // collapse, then the same rows the card's right-click menu carries.
+  const headerKebabRows = (): CardMenuRow[] => ([
+    ...(hasWorkspace ? [
+      ...([['preview', 'Preview'], ['code', 'Code'], ['terminal', 'Terminal'], ['history', 'History']] as const).map(([view, label]) => ({
+        label: activeView === view ? `${label}   ✓` : label,
+        onClick: () => setActiveView(view),
+      })),
+      { kind: 'separator' as const },
+      { label: 'Open another window', onClick: () => dispatch(addViewCard({ outputId: output.id, newInstance: true })) },
+    ] : []),
+    { label: headerCollapsed ? 'Show toolbar' : 'Hide toolbar', onClick: () => { setHeaderPeek(false); setHeaderCollapsed((v) => !v); } },
+    { kind: 'separator' as const },
+    ...viewCardMenuRows({
+      output, cardKey, dispatch, tileZone, isMinimized,
+      card: { x: cardX, y: cardY, width: cardWidth, height: cardHeight },
+      onTile,
+      onMinimize: () => (isMinimized ? dispatch(toggleMinimizeCard({ cardId: cardKey })) : onMinimize()),
+      onReload: () => previewRef.current?.reload(),
+      onHardReload: () => { void handleHardReload(); },
+      onShare: () => setShareOpen(true),
+      onClose: () => handleRemove(),
+    }),
+  ]);
+
+  return (
+    <Box
+      ref={dockRootRef}
+      data-select-type="view-card"
+      data-select-id={cardKey}
+      data-keepalive-hidden={isMinimized ? '1' : undefined}
+      onContextMenu={(e: React.MouseEvent) => { if (isNativeMenuTarget(e)) return; openCardContextMenu(e, {
+        rename: { value: output.name, onCommit: (name) => { void dispatch(updateOutput({ id: output.id, name })); } },
+        items: viewCardMenuRows({
+          output, cardKey, dispatch, tileZone, isMinimized,
+          card: { x: cardX, y: cardY, width: cardWidth, height: cardHeight },
+          onTile,
+          onMinimize: () => (isMinimized ? dispatch(toggleMinimizeCard({ cardId: cardKey })) : onMinimize()),
+          onReload: () => previewRef.current?.reload(),
+          onHardReload: () => { void handleHardReload(); },
+          onShare: () => setShareOpen(true),
+          onClose: () => handleRemove(),
+        }),
+      }); }}
+      data-select-meta={JSON.stringify({ name: output.name, description: output.description, path: output.workspace_path })}
+      className="osw-card"
+      onPointerDownCapture={() => onBringToFront?.(cardKey, 'view')}
+      onClick={(e: React.MouseEvent) => {
+        if (justDraggedRef.current) return;
+        onCardSelect?.(cardKey, 'view', e.shiftKey);
+      }}
+      onDoubleClick={(e: React.MouseEvent) => {
+        e.stopPropagation();
+        onDoubleClick?.(cardKey, 'view');
+      }}
+      sx={{
+        position: 'absolute',
+        // contain + willChange: own compositor layer so paint stays scoped (see AgentCard for full rationale).
+        contain: 'layout style',
+        willChange: 'transform',
+        // Minimized apps live in the right-edge rail, so the card itself parks off-canvas at full size
+        // (same trick as browser cards) and restores to exactly the geometry it left.
+        pointerEvents: isMinimized ? 'none' : undefined,
+        left: isMinimized ? -100000 : (dockActive ? dockRect!.x : (dragging ? cardX : displayX)),
+        top: isMinimized ? -100000 : (dragging ? cardY : displayY),
+        width: tiledSize ? tiledSize.width : displayW,
+        height: tiledSize ? tiledSize.height : displayH,
+        transform: tiledSize ? undefined : (dragging ? `translate3d(${dragTx}px, ${dragTy}px, 0)` : undefined),
+        transformOrigin: tiledSize ? '0 0' : undefined,
+        borderRadius: isFullscreen ? '12px' : `${c.radius.lg}px`,
+        border: isHighlighted
+          ? `2px solid ${c.accent.primary}`
+          : showAgentGlow
+            ? `2px solid ${c.accent.primary}`
+            : interactive
+              ? `2px solid ${c.accent.primary}`
+              : isSelected ? '2px solid #3b82f6' : `1px solid ${c.border.medium}`,
+        bgcolor: c.bg.surface,
+        boxShadow: isHighlighted
+          ? `0 0 0 3px ${c.accent.primary}50, 0 0 20px ${c.accent.primary}35, 0 0 40px ${c.accent.primary}15`
+          : showAgentGlow
+            ? `0 0 0 2px ${c.accent.primary}40, 0 0 18px ${c.accent.primary}30, 0 0 40px ${c.accent.primary}15, inset 0 0 30px ${c.accent.primary}25`
+            : isDragging || isResizing
+              ? c.shadow.lg
+              : isSelected
+                ? `0 0 0 1px #3b82f6, ${c.shadow.md}`
+                : c.shadow.md,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        zIndex: isTiled ? 999990 : (isDragging || isResizing) ? 999999 : dockActive ? (dockParentTiled ? 999991 : dockParentZ + 1) : (zOverride ?? cardZOrder),
+        transition: noTransition ? 'none' : 'box-shadow 0.4s ease, border 0.3s ease',
+        '&:hover .resize-handle': { opacity: 1 },
+        ...(isHighlighted && {
+          animation: 'card-highlight-pulse 2s ease-out forwards',
+          '@keyframes card-highlight-pulse': {
+            '0%': {
+              boxShadow: `0 0 0 3px ${c.accent.primary}70, 0 0 24px ${c.accent.primary}50, 0 0 48px ${c.accent.primary}25`,
+            },
+            '25%': {
+              boxShadow: `0 0 0 4px ${c.accent.primary}55, 0 0 30px ${c.accent.primary}40, 0 0 56px ${c.accent.primary}20`,
+            },
+            '50%': {
+              boxShadow: `0 0 0 3px ${c.accent.primary}45, 0 0 22px ${c.accent.primary}30, 0 0 44px ${c.accent.primary}15`,
+            },
+            '75%': {
+              boxShadow: `0 0 0 2px ${c.accent.primary}25, 0 0 14px ${c.accent.primary}18, 0 0 28px ${c.accent.primary}08`,
+            },
+            '100%': {
+              boxShadow: c.shadow.md,
+            },
+          },
+        }),
+      }}
+    >
+      {/* No full-card overlay: it blocked pointer events to the live app. Drag uses the header (zIndex 16); ref kept as a no-op for useOverlayScrollPassthrough. */}
+      <Box
+        ref={scrollOverlayRef}
+        sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}
+      />
+
+      {/* When collapsed, a thin invisible strip at the very top peeks the header back on hover (fullscreen-video pattern). */}
+      {headerCollapsed && (
+        <Box
+          onPointerEnter={() => setHeaderPeek(true)}
+          sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 16, zIndex: 15 }}
+        />
+      )}
+
+      {/* Header */}
+      <Box
+        onPointerDown={handleDragPointerDown}
+        onPointerMove={handleDragPointerMove}
+        onPointerUp={handleDragPointerUp}
+        onPointerCancel={abortDrag}
+        onLostPointerCapture={abortDrag}
+        onPointerEnter={() => { if (headerCollapsed) setHeaderPeek(true); }}
+        onPointerLeave={() => setHeaderPeek(false)}
+        sx={{
+          position: headerCollapsed ? 'absolute' : 'relative',
+          top: headerCollapsed ? 0 : undefined,
+          left: headerCollapsed ? 0 : undefined,
+          right: headerCollapsed ? 0 : undefined,
+          transform: headerCollapsed && !headerPeek ? 'translateY(-110%)' : 'translateY(0)',
+          transition: 'transform 0.18s ease',
+          zIndex: 16,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.75,
+          px: 1,
+          py: 0.25,
+          // Homogenized with the card body: same surface, no separator, the content just starts (Eric's call; the dark fullscreen flip felt like a foreign strip).
+          bgcolor: c.bg.surface,
+          cursor: isDragging ? 'grabbing' : 'grab',
+          flexShrink: 0,
+          minHeight: 28,
+          userSelect: 'none',
+        }}
+      >
+        <Box onPointerDown={(e) => e.stopPropagation()} sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, mr: 0.25 }}>
+          <WindowControls onClose={() => handleRemove()} onMinimize={onMinimize} onTile={onTile} tiled={!!tileZone} />
+        </Box>
+        <Box sx={{ flex: 1 }} />
+
+        {showControls && (
+          <>
+            <Tooltip
+              title={activeView === 'terminal' ? 'Hard reload (restart runtime + reload app)' : 'Reload preview; right-click for Hard Reload'}
+              placement="top"
+            >
+              <IconButton
+                size="small"
+                onClick={handleRefresh}
+                onContextMenu={(e) => {
+                  if (!output.workspace_id) { e.preventDefault(); e.stopPropagation(); return; }
+                  openCardContextMenu(e, {
+                    items: [{ label: 'Reset and hard reload', onClick: () => { void handleHardReload(); } }],
+                  });
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                sx={{ color: c.text.muted, p: 0.5, '&:hover': { color: c.text.primary } }}
+              >
+                <RefreshIcon sx={{ fontSize: 15 }} />
+              </IconButton>
+            </Tooltip>
+            <Box onPointerDown={(e) => e.stopPropagation()} sx={{ display: 'flex', flexShrink: 0 }}>
+              <ShareButton target={{ kind: 'app', id: output.id, name: output.name }} size="small" iconFontSize={14} />
+            </Box>
+          </>
+        )}
+
+        {isFullscreen && (
+          <Box
+            role="button"
+            onClick={(e) => { e.stopPropagation(); onTile('restore'); }}
+            onPointerDown={(e) => e.stopPropagation()}
+            sx={{ flexShrink: 0, fontSize: '0.6875rem', fontWeight: 600, color: c.text.secondary, bgcolor: `${c.text.primary}0d`, borderRadius: 999, px: 1.25, py: 0.35, cursor: 'pointer', '&:hover': { bgcolor: `${c.text.primary}1a`, color: c.text.primary } }}
+          >
+            Exit full screen
+          </Box>
+        )}
+
+        {/* Everything demoted from the old 8-icon cluster lives here: view switcher, new window, toolbar collapse, and the card menu. */}
+        <Tooltip title="More" placement="top">
+          <IconButton
+            size="small"
+            onClick={(e) => { e.stopPropagation(); openCardContextMenu(e, { items: headerKebabRows() }); }}
+            onPointerDown={(e) => e.stopPropagation()}
+            sx={{ color: c.text.ghost, p: 0.5, '&:hover': { color: c.text.primary } }}
+          >
+            <MoreHorizRoundedIcon sx={{ fontSize: 17 }} />
+          </IconButton>
+        </Tooltip>
+      </Box>
+
+      {/* Preview body */}
+      <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        {cmdHeld && !isSelected && (
+          <Box sx={{ position: 'absolute', inset: 0, zIndex: 12 }} />
+        )}
+        <DashboardOutputPreview
+          previewRef={previewRef}
+          output={output}
+          cardKey={cardKey}
+          instance={instance}
+          inputData={inputData}
+          backendResult={backendResult}
+          interactive={interactive}
+          previewLive={previewLive}
+          previewDeferred={previewDeferred}
+          suspendSnapshot={suspendSnapshot}
+          onAppClicked={() => { dispatch(setActiveViewCardId(cardKey)); onBringToFront?.(cardKey, 'view'); }}
+          onRuntimeLog={handleRuntimeLog}
+          onRenderHealth={setPreviewBroken}
+        />
+        {/* Code/Terminal overlay the always-mounted preview instead of replacing it: unmounting the webview kills the app's live state and forces a reload on switch-back. */}
+        {output.workspace_id && activeView !== 'preview' && (
+          <Box sx={{ position: 'absolute', inset: 0, zIndex: 13, bgcolor: c.bg.surface }}>
+            {activeView === 'terminal' ? (
+              <TerminalPanel lines={terminalLines} />
+            ) : activeView === 'history' ? (
+              <Box sx={{ height: '100%', overflow: 'auto' }}>
+                <HistoryPanel
+                  outputId={output.id}
+                  isAgentActive={agentBusy}
+                  onRestored={() => previewRef.current?.reload()}
+                />
+              </Box>
+            ) : (
+              <AppCodePanel workspaceId={output.workspace_id} onFileSaved={() => previewRef.current?.reload()} />
+            )}
+          </Box>
+        )}
+        <BuildingOverlay show={showBuildingOverlay && activeView === 'preview'} />
+      </Box>
+
+      {/* Resize handles */}
+      {!isMinimized && HANDLE_DEFS.map(({ dir, sx }) => (
+        <Box
+          key={dir}
+          className="resize-handle"
+          onPointerDown={handleResizeDown(dir)}
+          onPointerMove={handleResizeMove}
+          onPointerUp={handleResizeUp}
+          sx={{
+            position: 'absolute',
+            cursor: CURSOR_MAP[dir],
+            opacity: 0,
+            zIndex: 10,
+            ...sx,
+          }}
+        />
+      ))}
+
+      {shareOpen && <ShareModal target={{ kind: 'app', id: output.id, name: output.name }} open onClose={() => setShareOpen(false)} />}
+    </Box>
+  );
+};
+
+export default React.memo(DashboardViewCard);
+
+// Calm overlay shown ONLY when the app's frontend actually threw while its agent is editing it, so the user sees "Building..." instead of an error iframe. A healthy app renders straight through the edit. Fades in/out.
+const BuildingOverlay: React.FC<{ show: boolean }> = ({ show }) => {
+  const c = useClaudeTokens();
+  return (
+    <Fade in={show} timeout={{ enter: 200, exit: 220 }} unmountOnExit>
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 11,
+          bgcolor: c.bg.surface,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 1.25,
+          // Block pointer events to the iframe behind so user can't click into the half-built app.
+          pointerEvents: 'auto',
+        }}
+      >
+        <Box
+          sx={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            bgcolor: c.accent.primary,
+            animation: 'view-card-building-pulse 1.2s ease-in-out infinite',
+            '@keyframes view-card-building-pulse': {
+              '0%, 100%': { opacity: 0.35, transform: 'scale(0.85)' },
+              '50%': { opacity: 1, transform: 'scale(1)' },
+            },
+          }}
+        />
+        <Typography sx={{ color: c.text.secondary, fontSize: '0.875rem', fontWeight: 500 }}>
+          Building…
+        </Typography>
+      </Box>
+    </Fade>
+  );
+};
+
+// Old-mode outputs render the legacy serve URL; new-mode webapp_template outputs attach to a runtime and point the webview at Vite once frontend_url arrives.
+const DashboardOutputPreview: React.FC<{
+  previewRef: React.Ref<ViewPreviewHandle>;
+  output: Output;
+  cardKey?: string;
+  instance?: number;
+  inputData: Record<string, any>;
+  backendResult: any;
+  interactive: boolean;
+  previewLive: boolean;
+  previewDeferred: boolean;
+  suspendSnapshot: string | null;
+  onAppClicked: () => void;
+  onRuntimeLog?: (line: RuntimeLogLine) => void;
+  onRenderHealth?: (broken: boolean) => void;
+}> = ({ previewRef, output, cardKey, instance = 1, inputData, backendResult, interactive, previewLive, previewDeferred, suspendSnapshot, onAppClicked, onRuntimeLog, onRenderHealth }) => {
+  const tokens = useClaudeTokens();
+  const dispatch = useAppDispatch();
+  const workspaceId = output.workspace_id ?? null;
+  const { frontendUrl, isNewMode, isHydrating } = useRuntimePreviewUrl({
+    workspaceId,
+    enabled: !!workspaceId,
+    onLog: onRuntimeLog,
+    instance,
+  });
+  const { url, isBooting } = pickPreviewUrl({
+    workspaceId,
+    legacyUrl: `${SERVE_BASE}/${output.id}/serve/index.html`,
+    frontendUrl,
+    isNewMode,
+  });
+
+  // Declared above every early-return below so React's hook order stays stable; moving it below would trigger "Rendered more hooks than during the previous render."
+  const handleConsoleMessage = useCallback((level: string, text: string) => {
+    if (!text || !workspaceId) return;
+    const tok = getAuthToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+    if (text.includes('[openswarm:app-ready]')) {
+      onRenderHealth?.(false);
+      fetch(`${API_BASE}/outputs/workspace/${workspaceId}/runtime/report-ready?instance=${instance}`, {
+        method: 'POST', headers,
+      }).catch(() => {});
+      return;
+    }
+    // Fold console output into the runtime terminal stream (card Terminal view + agent-readable terminal.log).
+    postAppConsoleLine(workspaceId, level, text, instance);
+    if (level !== 'error' || !text.includes('[openswarm:app-error]')) return;
+    onRenderHealth?.(true);
+    const idx = text.indexOf('[openswarm:app-error]');
+    const tail = text.slice(idx + '[openswarm:app-error]'.length).trim();
+    const firstNewline = tail.indexOf('\n');
+    const message = firstNewline >= 0 ? tail.slice(0, firstNewline).trim() : tail;
+    const componentStack = firstNewline >= 0 ? tail.slice(firstNewline + 1).trim() : '';
+    fetch(`${API_BASE}/outputs/workspace/${workspaceId}/runtime/report-error?instance=${instance}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ message, componentStack }),
+    }).catch(() => {});
+  }, [workspaceId, instance, onRenderHealth]);
+
+  // An orphaned record (files deleted on disk) used to render the raw 404 JSON inside the card, or spin on "Starting preview" forever; probe once instead.
+  const [filesMissing, setFilesMissing] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const tok = getAuthToken();
+    const headers: Record<string, string> = tok ? { Authorization: `Bearer ${tok}` } : {};
+    const probe = workspaceId
+      ? `${API_BASE}/outputs/workspace/${workspaceId}`
+      : `${SERVE_BASE}/${output.id}/serve/index.html`;
+    fetch(probe, { headers })
+      .then((r) => {
+        if (!cancelled && r.status === 404) setFilesMissing(true);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [workspaceId, output.id]);
+
+  if (filesMissing) {
+    return (
+      <Box
+        sx={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 1.5,
+          px: 2,
+          textAlign: 'center',
+        }}
+      >
+        <Typography sx={{ color: tokens.text.secondary, fontSize: '0.875rem' }}>
+          This app's files are missing.
+        </Typography>
+        <Typography
+          onClick={() => void removeViewCardCleanly(cardKey ?? output.id, dispatch)}
+          sx={{
+            color: tokens.accent.primary,
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            '&:hover': { textDecoration: 'underline' },
+          }}
+        >
+          Remove card
+        </Typography>
+      </Box>
+    );
+  }
+
+  // Blank body during hydration so warm runtimes don't flash "Starting preview..."
+  if (isHydrating && !frontendUrl) {
+    return <Box sx={{ width: '100%', height: '100%' }} />;
+  }
+
+  if (isBooting) {
+    return <BootingBody />;
+  }
+
+  // Parked: show the last frame (or a placeholder) instead of a live webview, so a zoomed-out canvas of
+  // apps doesn't run every Vite preview at once, and the reveal curtain lifts without an in-frame boot.
+  if (!previewLive) {
+    // Reveal-deferred: an inviting "built for you, click to open" card (no snapshot yet, never booted).
+    if (previewDeferred) {
+      return (
+        <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1.25, bgcolor: tokens.bg.surface, cursor: 'pointer' }}>
+          <Box sx={{ width: 44, height: 44, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: `${tokens.accent.primary}1F`, color: tokens.accent.primary }}>
+            <VisibilityRoundedIcon sx={{ fontSize: 22 }} />
+          </Box>
+          <Typography sx={{ color: tokens.text.primary, fontSize: '0.875rem', fontWeight: 600 }}>{output.name || 'Your app'}</Typography>
+          <Typography sx={{ color: tokens.text.muted, fontSize: '0.75rem' }}>Built for you, click to open</Typography>
+        </Box>
+      );
+    }
+    return (
+      <Box sx={{ width: '100%', height: '100%', position: 'relative', bgcolor: tokens.bg.surface, overflow: 'hidden' }}>
+        {suspendSnapshot ? (
+          <Box component="img" src={suspendSnapshot} alt="" sx={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top left', display: 'block', filter: 'saturate(0.9)' }} />
+        ) : (
+          <Box sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Typography sx={{ color: tokens.text.ghost, fontSize: '0.8125rem' }}>{output.name || 'App'}</Typography>
+          </Box>
+        )}
+      </Box>
+    );
+  }
+
+  return (
+    <ViewPreview
+      ref={previewRef}
+      registryId={cardKey ?? output.id}
+      serveUrl={url}
+      frontendCode={output.files?.['index.html'] ?? ''}
+      inputData={inputData}
+      backendResult={backendResult}
+      onConsoleMessage={handleConsoleMessage}
+      interactive={interactive}
+      onAppClicked={onAppClicked}
+      agentBrowserId={instance > 1 ? `app:${output.id}#${instance}` : `app:${output.id}`}
+    />
+  );
+};

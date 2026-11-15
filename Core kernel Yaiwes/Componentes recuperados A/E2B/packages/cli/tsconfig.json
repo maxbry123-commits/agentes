@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "allowJs": true,
+    "declaration": true,
+    "declarationMap": true,
+    "moduleResolution": "bundler",
+    "sourceMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "preserveSymlinks": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowSyntheticDefaultImports": true,
+    "rootDirs": ["src"],
+    "paths": {
+      "src": ["./src/index.ts"],
+      "src/*": ["./src/*"],
+      "e2b": ["../js-sdk/src"]
+    }
+  },
+  "exclude": ["dist", "node_modules"]
+}

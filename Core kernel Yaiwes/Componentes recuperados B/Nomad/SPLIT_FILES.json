@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "Nomad",
+    "path": "drivers/qemu/test-resources/linux-0.2.img",
+    "chunks_dir": "Nomad/drivers/qemu/test-resources/linux-0.2.img.chunks",
+    "bytes": 20971520,
+    "chunk_bytes": 8388608
+  }
+]

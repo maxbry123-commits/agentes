@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 5166460,
+  "bundle_sha256": "12df85136abe93e1468fbec84c2f12ca80e293667d7f5d8b8dc9eb313781b60e",
+  "extracted_tree": {
+    "bytes": 13467152,
+    "files": 1815,
+    "sha256": "d05e4b0e363032f09773b6be2cb8285b98695897a06ca08ea2eda0c91d47211a"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 5166460,
+      "name": "Provability-Fabric.bundle.zip.part-0001",
+      "sha256": "12df85136abe93e1468fbec84c2f12ca80e293667d7f5d8b8dc9eb313781b60e"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Provability-Fabric",
+  "source_bytes": 13467152,
+  "source_commit": "eab8d8cc53121ead5d040fd4abaa144b96a70eac",
+  "source_files": 1815,
+  "source_ref": "HEAD",
+  "source_repo": "SentinelOps-CI/provability-fabric",
+  "source_tree": {
+    "bytes": 13467152,
+    "files": 1815,
+    "sha256": "d05e4b0e363032f09773b6be2cb8285b98695897a06ca08ea2eda0c91d47211a"
+  }
+}

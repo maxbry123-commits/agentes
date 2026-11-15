@@ -1,0 +1,8 @@
+Exit code: 0
+---
+Stdout:
+Schemathesis dev
+━━━━━━━━━━━━━━━━
+
+
+ ⚡  Loading interrupted after 0.00s while loading from http://127.0.0.1/openapi.json

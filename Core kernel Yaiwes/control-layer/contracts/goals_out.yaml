@@ -1,0 +1,23 @@
+# 10 Goals de salida · obligatorios para cerrar misión
+version: "1.0.0"
+goals_out:
+  - id: O01_objetivo_cumplido
+    required: true
+  - id: O02_arquitectura_cumplida
+    required: false
+  - id: O03_codigo_validado
+    required: false
+  - id: O04_tests
+    required: false
+  - id: O05_seguridad
+    required: true
+  - id: O06_documentacion
+    required: false
+  - id: O07_git
+    required: false
+  - id: O08_deployment
+    required: false
+  - id: O09_evidencia
+    required: true
+  - id: O10_aprobacion_final
+    required: true

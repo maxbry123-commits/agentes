@@ -1,0 +1,62 @@
+[
+  [
+    "200",
+    "#/paths/~1leagues/get",
+    {
+      "GetLeague": {
+        "operationRef": "#/paths/~1leagues~1{league_id_or_slug}/get",
+        "parameters": {
+          "path.league_id_or_slug": "$response.body#/*/id"
+        },
+        "x-schemathesis": {
+          "is_inferred": true
+        }
+      }
+    }
+  ],
+  [
+    "200",
+    "#/paths/~1leagues/get",
+    {
+      "GetLeague": {
+        "operationRef": "#/paths/~1leagues~1{league_id_or_slug}~1matches/get",
+        "parameters": {
+          "path.league_id_or_slug": "$response.body#/*/id"
+        },
+        "x-schemathesis": {
+          "is_inferred": true
+        }
+      }
+    }
+  ],
+  [
+    "200",
+    "#/paths/~1leagues~1{league_id_or_slug}/get",
+    {
+      "GetLeague": {
+        "operationRef": "#/paths/~1leagues~1{league_id_or_slug}~1matches/get",
+        "parameters": {
+          "path.league_id_or_slug": "$response.body#/id"
+        },
+        "x-schemathesis": {
+          "is_inferred": true
+        }
+      }
+    }
+  ],
+  [
+    "200",
+    "#/paths/~1leagues~1{league_id_or_slug}~1matches/get",
+    {
+      "GetLeague": {
+        "operationRef": "#/paths/~1leagues~1{league_id_or_slug}/get",
+        "parameters": {
+          "path.league_id_or_slug": "$response.body#/*/league_id"
+        },
+        "x-schemathesis": {
+          "is_inferred": true
+        }
+      }
+    }
+  ]
+]

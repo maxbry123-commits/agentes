@@ -1,0 +1,458 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use const_str::concat;
+
+/// Application name
+/// Default value: RustFS
+/// Environment variable: RUSTFS_APP_NAME
+pub const APP_NAME: &str = "RustFS";
+/// Application version
+/// Default value: 1.0.0
+/// Environment variable: RUSTFS_VERSION
+pub const VERSION: &str = "1.0.0";
+
+/// Default configuration logger level
+/// Default value: error
+/// Environment variable: RUSTFS_OBS_LOGGER_LEVEL
+pub const DEFAULT_LOG_LEVEL: &str = "error";
+
+/// Default configuration use stdout
+/// Default value: false
+pub const USE_STDOUT: bool = false;
+
+/// Default configuration sample ratio
+/// Default value: 1.0
+pub const SAMPLE_RATIO: f64 = 1.0;
+/// Default configuration meter interval
+/// Default value: 30
+pub const METER_INTERVAL: u64 = 30;
+
+/// Default configuration service version
+/// Default value: 1.0.0
+/// Environment variable: RUSTFS_OBS_SERVICE_VERSION
+/// Uses the same value as VERSION constant
+pub const SERVICE_VERSION: &str = "1.0.0";
+
+/// Default configuration environment
+/// Default value: production
+pub const ENVIRONMENT: &str = "production";
+
+/// Default console enable
+/// This is the default value for the console server.
+/// It is used to enable or disable the console server.
+/// Default value: true
+/// Environment variable: RUSTFS_CONSOLE_ENABLE
+/// Command line argument: --console-enable
+/// Example: RUSTFS_CONSOLE_ENABLE=true
+/// Example: --console-enable true
+pub const DEFAULT_CONSOLE_ENABLE: bool = true;
+
+/// Default OBS configuration endpoint
+/// Environment variable: DEFAULT_OBS_ENDPOINT
+/// Command line argument: --obs-endpoint
+/// Example: DEFAULT_OBS_ENDPOINT="http://localost:4318"
+/// Example: --obs-endpoint http://localost:4318
+pub const DEFAULT_OBS_ENDPOINT: &str = "";
+
+/// Default TLS key for rustfs
+/// This is the default key for TLS.
+pub const RUSTFS_TLS_KEY: &str = "rustfs_key.pem";
+
+/// Default TLS cert for rustfs
+/// This is the default cert for TLS.
+pub const RUSTFS_TLS_CERT: &str = "rustfs_cert.pem";
+
+/// Default public certificate filename for rustfs
+/// This is the default public certificate filename for rustfs.
+/// It is used to store the public certificate of the application.
+/// Default value: public.crt
+pub const RUSTFS_PUBLIC_CERT: &str = "public.crt";
+
+/// Default CA certificate filename for rustfs
+/// This is the default CA certificate filename for rustfs.
+/// It is used to store the CA certificate of the application.
+/// Default value: ca.crt
+pub const RUSTFS_CA_CERT: &str = "ca.crt";
+
+/// Default HTTP prefix for rustfs
+/// This is the default HTTP prefix for rustfs.
+/// It is used to identify HTTP URLs.
+/// Default value: http://
+pub const RUSTFS_HTTP_PREFIX: &str = "http://";
+
+/// Default HTTPS prefix for rustfs
+/// This is the default HTTPS prefix for rustfs.
+/// It is used to identify HTTPS URLs.
+/// Default value: https://
+pub const RUSTFS_HTTPS_PREFIX: &str = "https://";
+
+/// Default documentation URL for rustfs
+/// This is the default documentation URL for rustfs.
+/// It is used to provide the documentation of the application.
+/// Default value: https://docs.rustfs.com
+pub const RUSTFS_DOCS_URL: &str = "https://docs.rustfs.com";
+
+/// Default GitHub URL for rustfs
+/// This is the default GitHub URL for rustfs.
+/// It is used to provide the source code of the application.
+/// Default value: https://github.com/rustfs/rustfs
+pub const RUSTFS_GITHUB_URL: &str = "https://github.com/rustfs/rustfs";
+
+/// Default license for rustfs
+/// This is the default license for rustfs.
+/// It is used to provide the license of the application.
+/// Default value: Apache-2.0
+pub const RUSTFS_LICENSE: &str = "Apache-2.0";
+
+/// Default license URL for rustfs
+/// This is the default license URL for rustfs.
+/// It is used to provide the license URL of the application.
+/// Default value: https://www.apache.org/licenses/LICENSE-2.0
+pub const RUSTFS_LICENSE_URL: &str = "https://www.apache.org/licenses/LICENSE-2.0";
+
+/// Environment variable for rustfs address
+/// This is the environment variable for rustfs address.
+/// It is used to bind the server to a specific address.
+/// Example: RUSTFS_ADDRESS=":9000"
+pub const ENV_RUSTFS_ADDRESS: &str = "RUSTFS_ADDRESS";
+
+/// Environment variable for server volumes.
+pub const ENV_RUSTFS_VOLUMES: &str = "RUSTFS_VOLUMES";
+
+/// Environment variable identifying this server's host in distributed endpoint
+/// lists without relying on DNS locality discovery.
+pub const ENV_LOCAL_ENDPOINT_HOST: &str = "RUSTFS_LOCAL_ENDPOINT_HOST";
+
+/// Environment variable to explicitly bypass local physical disk independence checks.
+pub const ENV_UNSAFE_BYPASS_DISK_CHECK: &str = "RUSTFS_UNSAFE_BYPASS_DISK_CHECK";
+
+/// Compatibility alias used by legacy MinIO CI pipelines.
+///
+/// RustFS keeps this alias for backward compatibility only. Prefer
+/// `ENV_UNSAFE_BYPASS_DISK_CHECK` for explicit bypass control.
+pub const ENV_MINIO_CI: &str = "MINIO_CI";
+
+/// Default flag value for bypassing local physical disk independence checks.
+pub const DEFAULT_UNSAFE_BYPASS_DISK_CHECK: bool = false;
+
+/// Environment variable selecting how startup waits for DNS/topology
+/// convergence in multi-node setups. One of `auto` (default), `orchestrated`,
+/// `bounded`, or `fail-fast`.
+///
+/// - `orchestrated`: wait effectively indefinitely for recoverable DNS/topology
+///   errors so the process stays Running (readiness stays false) instead of
+///   exiting and triggering a Kubernetes pod restart loop.
+/// - `bounded`: wait for a finite window (see
+///   `ENV_STARTUP_TOPOLOGY_WAIT_TIMEOUT`) then fail with an actionable error.
+/// - `fail-fast`: fail on the first non-transient resolution error (CI/local).
+/// - `auto`: distributed URL endpoints use orchestrated on Kubernetes and
+///   bounded otherwise; local path endpoints use fail-fast (no DNS to await).
+pub const ENV_STARTUP_TOPOLOGY_WAIT_MODE: &str = "RUSTFS_STARTUP_TOPOLOGY_WAIT_MODE";
+
+/// Environment variable bounding how long startup waits for topology/DNS
+/// convergence before failing in `bounded` mode. Accepts durations such as
+/// `3m`, `90s`, `500ms`, or a bare number of seconds.
+pub const ENV_STARTUP_TOPOLOGY_WAIT_TIMEOUT: &str = "RUSTFS_STARTUP_TOPOLOGY_WAIT_TIMEOUT";
+
+/// Environment variable capping the per-attempt backoff delay while retrying
+/// startup topology/DNS convergence. Accepts durations such as `8s`.
+pub const ENV_STARTUP_TOPOLOGY_RETRY_MAX_DELAY: &str = "RUSTFS_STARTUP_TOPOLOGY_RETRY_MAX_DELAY";
+
+/// Environment variable injected into every Kubernetes pod; its presence marks
+/// an orchestrated deployment for startup topology auto-detection.
+pub const ENV_KUBERNETES_SERVICE_HOST: &str = "KUBERNETES_SERVICE_HOST";
+
+/// Default bounded-mode wait window (seconds) for non-Kubernetes distributed
+/// deployments before startup topology convergence is declared failed.
+pub const DEFAULT_STARTUP_TOPOLOGY_WAIT_TIMEOUT_SECS: u64 = 180;
+
+/// Default per-attempt backoff cap (seconds) while retrying startup
+/// topology/DNS convergence.
+pub const DEFAULT_STARTUP_TOPOLOGY_RETRY_MAX_DELAY_SECS: u64 = 8;
+
+/// Environment variable for server access key.
+pub const ENV_RUSTFS_ACCESS_KEY: &str = "RUSTFS_ACCESS_KEY";
+
+/// Environment variable for server access key file.
+pub const ENV_RUSTFS_ACCESS_KEY_FILE: &str = "RUSTFS_ACCESS_KEY_FILE";
+
+/// Environment variable for server secret key.
+pub const ENV_RUSTFS_SECRET_KEY: &str = "RUSTFS_SECRET_KEY";
+
+/// Environment variable for server secret key file.
+pub const ENV_RUSTFS_SECRET_KEY_FILE: &str = "RUSTFS_SECRET_KEY_FILE";
+
+/// Environment variable controlling startup behavior when unsupported filesystem types are detected.
+///
+/// Accepted values:
+/// - "warn" (default): log a warning and continue startup
+/// - "fail": abort startup with an error
+pub const ENV_RUSTFS_UNSUPPORTED_FS_POLICY: &str = "RUSTFS_UNSUPPORTED_FS_POLICY";
+pub const RUSTFS_UNSUPPORTED_FS_POLICY_WARN: &str = "warn";
+pub const RUSTFS_UNSUPPORTED_FS_POLICY_FAIL: &str = "fail";
+pub const DEFAULT_RUSTFS_UNSUPPORTED_FS_POLICY: &str = RUSTFS_UNSUPPORTED_FS_POLICY_WARN;
+
+/// Environment variable for server OBS endpoint.
+pub const ENV_RUSTFS_OBS_ENDPOINT: &str = "RUSTFS_OBS_ENDPOINT";
+
+/// Environment variable for console server enable.
+pub const ENV_RUSTFS_CONSOLE_ENABLE: &str = "RUSTFS_CONSOLE_ENABLE";
+
+/// Environment variable for console server address.
+pub const ENV_RUSTFS_CONSOLE_ADDRESS: &str = "RUSTFS_CONSOLE_ADDRESS";
+
+/// Public browser entrypoint used to build OIDC callback and console redirects.
+///
+/// This should be the externally reachable scheme and authority, without a path.
+/// Example: `RUSTFS_BROWSER_REDIRECT_URL=https://console.example.com`.
+pub const ENV_RUSTFS_BROWSER_REDIRECT_URL: &str = "RUSTFS_BROWSER_REDIRECT_URL";
+
+/// Environment variable for server tls path.
+pub const ENV_RUSTFS_TLS_PATH: &str = "RUSTFS_TLS_PATH";
+
+/// Environment variable for server KMS enable.
+pub const ENV_RUSTFS_KMS_ENABLE: &str = "RUSTFS_KMS_ENABLE";
+
+/// Default KMS enable for server-side encryption
+/// This is the default value for enabling KMS encryption for server-side encryption.
+/// Default value: false
+pub const DEFAULT_KMS_ENABLE: bool = false;
+
+/// Environment variable enabling per-key KMS authorization on the SSE-KMS data path.
+///
+/// When enabled, an SSE-KMS write additionally requires `kms:GenerateDataKey` and an
+/// SSE-KMS read additionally requires `kms:Decrypt` on the resolved key, evaluated as
+/// the requesting identity. SSE-S3 and SSE-C are unaffected.
+pub const ENV_RUSTFS_KMS_ENFORCE_SSE_KEY_POLICY: &str = "RUSTFS_KMS_ENFORCE_SSE_KEY_POLICY";
+
+/// Default per-key KMS authorization mode for the SSE-KMS data path.
+///
+/// Off for now so deployments whose identity policies only grant s3 actions keep
+/// working; the default flips to on in a later release.
+pub const DEFAULT_KMS_ENFORCE_SSE_KEY_POLICY: bool = false;
+
+/// Environment variable for server KMS backend.
+pub const ENV_RUSTFS_KMS_BACKEND: &str = "RUSTFS_KMS_BACKEND";
+
+/// Environment variable for Vault Transit mount path.
+pub const ENV_RUSTFS_KMS_VAULT_MOUNT_PATH: &str = "RUSTFS_KMS_VAULT_MOUNT_PATH";
+
+/// Default KMS backend for server-side encryption
+/// This is the default KMS backend for server-side encryption.
+/// Default value: local
+pub const DEFAULT_KMS_BACKEND: &str = "local";
+
+/// Environment variable for selecting the buffer profile used for adaptive buffer sizing.
+pub const ENV_RUSTFS_BUFFER_PROFILE: &str = "RUSTFS_BUFFER_PROFILE";
+
+/// Default buffer profile for adaptive buffer sizing
+/// This is the default buffer profile for adaptive buffer sizing.
+/// It is used to identify the workload profile for adaptive buffer sizing.
+/// Default value: GeneralPurpose
+pub const DEFAULT_BUFFER_PROFILE: &str = "GeneralPurpose";
+
+/// Default value for the server TLS path if `ENV_RUSTFS_TLS_PATH` is not set.
+pub const DEFAULT_RUSTFS_TLS_PATH: &str = "";
+
+/// Default port for rustfs
+/// This is the default port for rustfs.
+/// This is used to bind the server to a specific port.
+pub const DEFAULT_PORT: u16 = 9000;
+
+/// Default address for rustfs
+/// This is the default address for rustfs.
+pub const DEFAULT_ADDRESS: &str = concat!(":", DEFAULT_PORT);
+
+/// Default port for rustfs console
+/// This is the default port for rustfs console.
+pub const DEFAULT_CONSOLE_PORT: u16 = 9001;
+
+/// Default address for rustfs console
+/// This is the default address for rustfs console.
+/// This is used to bind the console server to a specific address.
+/// Default value: :9001
+pub const DEFAULT_CONSOLE_ADDRESS: &str = concat!(":", DEFAULT_CONSOLE_PORT);
+
+/// Default region for rustfs
+/// This is the default region for rustfs.
+/// It is used to identify the region of the application.
+/// Default value: us-east-1
+pub const RUSTFS_REGION: &str = "us-east-1";
+
+/// Environment variable for server region.
+pub const ENV_RUSTFS_REGION: &str = "RUSTFS_REGION";
+
+/// Environment variable for server license.
+pub const ENV_RUSTFS_LICENSE: &str = "RUSTFS_LICENSE";
+
+/// Environment variable for the RSA public key used to verify server licenses.
+pub const ENV_RUSTFS_LICENSE_PUBLIC_KEY: &str = "RUSTFS_LICENSE_PUBLIC_KEY";
+
+/// Default log filename for rustfs
+/// This is the default log filename for rustfs.
+/// It is used to store the logs of the application.
+/// Default value: rustfs.log
+/// Environment variable: RUSTFS_OBS_LOG_FILENAME
+pub const DEFAULT_LOG_FILENAME: &str = "rustfs";
+
+/// Default OBS log filename for rustfs
+/// This is the default log filename for OBS.
+/// It is used to store the logs of the application.
+/// Default value: rustfs.log
+pub const DEFAULT_OBS_LOG_FILENAME: &str = concat!(DEFAULT_LOG_FILENAME, ".log");
+
+/// Default log directory for rustfs
+/// This is the default log directory for rustfs.
+/// It is used to store the logs of the application.
+/// Default value: logs
+/// Environment variable: RUSTFS_LOG_DIRECTORY
+pub const DEFAULT_LOG_DIR: &str = "logs";
+
+/// Default log rotation size mb for rustfs
+/// This is the default log rotation size for rustfs.
+/// It is used to rotate the logs of the application.
+/// Default value: 100 MB
+/// Environment variable: RUSTFS_OBS_LOG_ROTATION_SIZE_MB
+pub const DEFAULT_LOG_ROTATION_SIZE_MB: u64 = 100;
+
+/// Default log rotation time for rustfs
+/// This is the default log rotation time for rustfs.
+/// It is used to rotate the logs of the application.
+/// Default value: hour, eg: daily,hourly,minutely
+/// Environment variable: RUSTFS_OBS_LOG_ROTATION_TIME
+pub const DEFAULT_LOG_ROTATION_TIME: &str = "hourly";
+
+/// Default log keep files for rustfs
+/// This is the default log keep files for rustfs.
+/// It is used to keep the logs of the application.
+/// Default value: 30
+/// Environment variable: RUSTFS_OBS_LOG_KEEP_FILES
+pub const DEFAULT_LOG_KEEP_FILES: usize = 30;
+
+/// Default trace export enabled
+/// It is used to enable or disable exporting traces
+/// Default value: true
+/// Environment variable: RUSTFS_OBS_TRACES_EXPORT_ENABLED
+pub const DEFAULT_OBS_TRACES_EXPORT_ENABLED: bool = true;
+
+/// Default metrics export enabled
+/// It is used to enable or disable exporting metrics
+/// Default value: true
+/// Environment variable: RUSTFS_OBS_METRICS_EXPORT_ENABLED
+pub const DEFAULT_OBS_METRICS_EXPORT_ENABLED: bool = true;
+
+/// Default detailed PUT stage metrics enabled
+/// Default value: false
+/// Environment variable: RUSTFS_OBS_PUT_STAGE_METRICS_ENABLED
+pub const DEFAULT_OBS_PUT_STAGE_METRICS_ENABLED: bool = false;
+
+/// Default logs export enabled
+/// It is used to enable or disable exporting logs
+/// Default value: true
+/// Environment variable: RUSTFS_OBS_LOGS_EXPORT_ENABLED
+pub const DEFAULT_OBS_LOGS_EXPORT_ENABLED: bool = true;
+
+/// Default profiling export enabled
+/// It is used to enable or disable exporting profiles
+/// Default value: true
+/// Environment variable: RUSTFS_OBS_PROFILING_EXPORT_ENABLED
+pub const DEFAULT_OBS_PROFILING_EXPORT_ENABLED: bool = true;
+
+/// Default log local logging enabled for rustfs
+/// This is the default log local logging enabled for rustfs.
+/// It is used to enable or disable local logging of the application.
+/// Default value: false
+/// Environment variable: RUSTFS_OBS_LOG_STDOUT_ENABLED
+pub const DEFAULT_OBS_LOG_STDOUT_ENABLED: bool = false;
+
+/// Constant representing 1 Kibibyte (1024 bytes)
+/// Default value: 1024
+pub const KI_B: usize = 1024;
+/// Constant representing 1 Mebibyte (1024 * 1024 bytes)
+/// Default value: 1048576
+pub const MI_B: usize = 1024 * KI_B;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_const_str_concat_functionality() {
+        // Test const_str::concat macro functionality
+        let expected_address = format!(":{DEFAULT_PORT}");
+        assert_eq!(DEFAULT_ADDRESS, expected_address);
+
+        let expected_console_address = format!(":{DEFAULT_CONSOLE_PORT}");
+        assert_eq!(DEFAULT_CONSOLE_ADDRESS, expected_console_address);
+    }
+
+    #[test]
+    fn test_string_constants_validity() {
+        // Test validity of string constants
+        let string_constants = [
+            APP_NAME,
+            VERSION,
+            DEFAULT_LOG_LEVEL,
+            SERVICE_VERSION,
+            ENVIRONMENT,
+            RUSTFS_TLS_KEY,
+            RUSTFS_TLS_CERT,
+            DEFAULT_ADDRESS,
+            DEFAULT_CONSOLE_ADDRESS,
+            ENV_RUSTFS_BROWSER_REDIRECT_URL,
+        ];
+
+        for constant in &string_constants {
+            assert!(!constant.is_empty(), "String constant should not be empty: {constant}");
+            assert!(!constant.starts_with(' '), "String constant should not start with space: {constant}");
+            assert!(!constant.ends_with(' '), "String constant should not end with space: {constant}");
+        }
+    }
+
+    #[test]
+    fn test_numeric_constants_validity() {
+        // Test validity of numeric constants
+        assert!(SAMPLE_RATIO.is_finite(), "Sample ratio should be finite");
+        assert!(!SAMPLE_RATIO.is_nan(), "Sample ratio should not be NaN");
+
+        // All these are const values, so range checks are redundant
+        // assert!(METER_INTERVAL < u64::MAX, "Meter interval should be reasonable");
+        // assert!(MAX_CONNECTIONS < usize::MAX, "Max connections should be reasonable");
+        // assert!(DEFAULT_TIMEOUT_MS < u64::MAX, "Timeout should be reasonable");
+
+        // These are const non-zero values, so zero checks are redundant
+        assert_ne!(DEFAULT_PORT, 0, "Default port should not be zero");
+        assert_ne!(DEFAULT_CONSOLE_PORT, 0, "Console port should not be zero");
+    }
+
+    #[test]
+    fn test_configuration_consistency() {
+        // Test configuration consistency
+
+        // Version consistency
+        assert_eq!(VERSION, SERVICE_VERSION, "Application version should match service version");
+
+        // Port conflict check
+        let ports = [DEFAULT_PORT, DEFAULT_CONSOLE_PORT];
+        let mut unique_ports = std::collections::HashSet::new();
+        for port in &ports {
+            assert!(unique_ports.insert(port), "Port {port} is duplicated");
+        }
+
+        // Address format consistency
+        assert_eq!(DEFAULT_ADDRESS, format!(":{DEFAULT_PORT}"));
+        assert_eq!(DEFAULT_CONSOLE_ADDRESS, format!(":{DEFAULT_CONSOLE_PORT}"));
+    }
+}

@@ -1,0 +1,218 @@
+import {
+    ActivityLogItem,
+    HumanizedChange,
+    defaultDescriber,
+    userNameForLogItem,
+} from 'lib/components/ActivityLog/humanizeActivity'
+import { Link } from 'lib/lemon-ui/Link'
+import { urls } from 'scenes/urls'
+
+const nameOrLinkToWorkflow = (id?: string | null, name?: string | null): string | JSX.Element => {
+    const displayName = name || '(empty string)'
+    return id ? <Link to={urls.workflow(id, 'workflow')}>{displayName}</Link> : displayName
+}
+
+type ArrayChangeItem = { id?: string; key?: string; name?: string; label?: string }
+
+// Activity-log values are only diffable per item when they really are arrays. `actions` is masked
+// server-side (the graph can carry secret function inputs), so those entries hold the string
+// 'masked' rather than a list. Returns null for anything undiffable, so callers can fall back.
+function asItemArray(value: unknown): ArrayChangeItem[] | null {
+    if (value == null) {
+        return []
+    }
+    return Array.isArray(value) ? (value as ArrayChangeItem[]) : null
+}
+
+function processArrayChanges<T extends ArrayChangeItem>(
+    itemsBefore: T[],
+    itemsAfter: T[],
+    getId: (item: T) => string,
+    getName: (item: T) => string,
+    itemType: 'action' | 'variable'
+): JSX.Element[] {
+    const beforeMap = new Map(itemsBefore.map((item) => [getId(item), item]))
+    const afterMap = new Map(itemsAfter.map((item) => [getId(item), item]))
+    const changes: JSX.Element[] = []
+
+    // Find added items
+    for (const item of itemsAfter) {
+        const id = getId(item)
+        if (id && !beforeMap.has(id)) {
+            changes.push(
+                <>
+                    added {itemType} {getName(item)}
+                </>
+            )
+        }
+    }
+
+    // Find removed items
+    for (const item of itemsBefore) {
+        const id = getId(item)
+        if (id && !afterMap.has(id)) {
+            changes.push(
+                <>
+                    deleted {itemType} {getName(item)}
+                </>
+            )
+        }
+    }
+
+    // Find modified items (same id but different content)
+    for (const item of itemsAfter) {
+        const id = getId(item)
+        if (id) {
+            const beforeItem = beforeMap.get(id)
+            if (beforeItem && JSON.stringify(beforeItem) !== JSON.stringify(item)) {
+                changes.push(
+                    <>
+                        updated {itemType} {getName(item)}
+                    </>
+                )
+            }
+        }
+    }
+
+    return changes
+}
+
+export function workflowActivityDescriber(logItem: ActivityLogItem, asNotification?: boolean): HumanizedChange {
+    if (logItem.scope != 'HogFlow') {
+        console.error('Workflow describer received a non-HogFlow activity')
+        return { description: null }
+    }
+
+    const objectNoun = 'workflow'
+
+    if (logItem.activity == 'created') {
+        return {
+            description: (
+                <>
+                    <strong className="ph-no-capture">{userNameForLogItem(logItem)}</strong> created the {objectNoun}:{' '}
+                    {nameOrLinkToWorkflow(logItem?.item_id, logItem?.detail.name)}
+                </>
+            ),
+        }
+    }
+
+    if (logItem.activity == 'deleted') {
+        return {
+            description: (
+                <>
+                    <strong className="ph-no-capture">{userNameForLogItem(logItem)}</strong> deleted the {objectNoun}:{' '}
+                    {logItem.detail.name}
+                </>
+            ),
+        }
+    }
+
+    if (logItem.activity == 'revision_restored') {
+        return {
+            description: (
+                <>
+                    <strong className="ph-no-capture">{userNameForLogItem(logItem)}</strong> restored a past version
+                    into the staged draft of the {objectNoun}:{' '}
+                    {nameOrLinkToWorkflow(logItem?.item_id, logItem?.detail.name)}
+                </>
+            ),
+        }
+    }
+
+    if (logItem.activity == 'draft_discarded') {
+        return {
+            description: (
+                <>
+                    <strong className="ph-no-capture">{userNameForLogItem(logItem)}</strong> discarded the staged draft
+                    of the {objectNoun}: {nameOrLinkToWorkflow(logItem?.item_id, logItem?.detail.name)}
+                </>
+            ),
+        }
+    }
+
+    if (logItem.activity == 'updated' || logItem.activity == 'published') {
+        const verb = logItem.activity == 'published' ? 'published' : 'updated'
+        const changes: JSX.Element[] = []
+        for (const change of logItem.detail.changes ?? []) {
+            switch (change.field) {
+                case 'name': {
+                    changes.push(
+                        <>
+                            renamed from <strong>{String(change.before)}</strong> to{' '}
+                            <strong>{String(change.after)}</strong>
+                        </>
+                    )
+                    break
+                }
+                case 'description': {
+                    changes.push(<>updated description</>)
+                    break
+                }
+                case 'status': {
+                    const statusChange = change.after === 'active' ? 'enabled' : 'disabled'
+                    changes.push(<>{`${statusChange} the ${objectNoun}`}</>)
+                    break
+                }
+                case 'actions': {
+                    const actionsBefore = asItemArray(change.before)
+                    const actionsAfter = asItemArray(change.after)
+                    if (!actionsBefore || !actionsAfter) {
+                        changes.push(<>updated {change.field}</>)
+                        break
+                    }
+                    changes.push(
+                        ...processArrayChanges(
+                            actionsBefore,
+                            actionsAfter,
+                            (a) => a.id || '',
+                            (a) => a.name || a.id || 'unnamed',
+                            'action'
+                        )
+                    )
+                    break
+                }
+                case 'variables': {
+                    const variablesBefore = asItemArray(change.before)
+                    const variablesAfter = asItemArray(change.after)
+                    if (!variablesBefore || !variablesAfter) {
+                        changes.push(<>updated {change.field}</>)
+                        break
+                    }
+                    changes.push(
+                        ...processArrayChanges(
+                            variablesBefore,
+                            variablesAfter,
+                            (v) => v.key || '',
+                            (v) => v.key || v.label || 'unnamed',
+                            'variable'
+                        )
+                    )
+                    break
+                }
+                case 'trigger':
+                case 'edges': {
+                    changes.push(<>updated {change.field}</>)
+                    break
+                }
+                default:
+                    changes.push(<>updated {change.field}</>)
+            }
+        }
+        const name = userNameForLogItem(logItem)
+        const workflowName = nameOrLinkToWorkflow(logItem?.item_id, logItem?.detail.name)
+
+        return {
+            description: (
+                <div>
+                    <strong className="ph-no-capture">{name}</strong> {verb} the {objectNoun}: {workflowName}
+                    <ul className="ml-5 list-disc">
+                        {changes.map((c, i) => (
+                            <li key={i}>{c}</li>
+                        ))}
+                    </ul>
+                </div>
+            ),
+        }
+    }
+    return defaultDescriber(logItem, asNotification, nameOrLinkToWorkflow(logItem?.item_id, logItem?.detail.name))
+}

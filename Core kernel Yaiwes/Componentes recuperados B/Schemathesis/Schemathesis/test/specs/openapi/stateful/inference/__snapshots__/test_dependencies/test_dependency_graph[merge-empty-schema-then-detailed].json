@@ -1,0 +1,91 @@
+{
+  "operations": {
+    "GET /directories/{id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "id",
+          "resource": "Directory",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Directory",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /files/{id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "id",
+          "resource": "File",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "File",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /oauth2/1/files/{id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "id",
+          "resource": "File",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "File",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Directory": {
+      "fields": [],
+      "types": {}
+    },
+    "File": {
+      "fields": [
+        "details",
+        "id",
+        "metadata"
+      ],
+      "types": {
+        "details": [
+          "object"
+        ],
+        "id": [
+          "integer"
+        ],
+        "metadata": [
+          "string"
+        ]
+      }
+    }
+  }
+}

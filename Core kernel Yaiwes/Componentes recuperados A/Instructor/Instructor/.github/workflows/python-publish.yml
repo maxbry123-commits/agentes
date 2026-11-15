@@ -1,0 +1,56 @@
+name: Upload Python Package
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish attached release artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          # Publishing runs with a long-lived registry credential. Avoid
+          # restoring a cache populated by less-privileged workflows.
+          enable-cache: false
+          python-version: "3.11"
+      - name: Download tested release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          mkdir -p dist
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.whl' \
+            --pattern '*.tar.gz' \
+            --dir dist
+      - name: Validate tag, metadata, and distributions
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="${TAG#v}"
+          test "$TAG" = "v$VERSION"
+          python scripts/prepare_release.py \
+            --expected-version "$VERSION" \
+            --output /tmp/release-notes.md
+          uvx --from twine==7.0.0 twine check dist/*
+      - name: Publish exact release artifacts to PyPI
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: uv publish dist/*

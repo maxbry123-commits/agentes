@@ -1,0 +1,69 @@
+# Also skipping this one
+operators:
+- id: load_airoboros_topics
+  config:
+    type: load_preexisting
+    framework_name: airoboros_topics_gpt-4o-mini
+
+- id: create_topics_strings
+  config:
+    type: function
+    function: data_strategies.Airoboros.utils.create_topics_strings_dataset
+    function_config:
+      input_topic_column: topic
+      output_topics_str_column: topics
+      n_topics_per_string: 10 # this matches batch size in the config (10)
+      n_strings: 100 # TODO change this based on the yeild for the category
+      target_name: instruction
+  input_ids:
+    - load_airoboros_topics
+
+- id: args_dataset
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      language: English
+      batch_size: 5
+  input_ids:
+    - create_topics_strings
+
+- id: generate_general_instructions
+  config:
+    type: completions
+    map: counterfactual_contextual_instructions 
+    map_config:
+      user_message: |
+        FACTS should contain a list of {{batch_size}} paragraphs, each with at least 3-4 sentences, in which exist factual statements about famous or influential people or historical people or events, etc. and add source url with the source of the original, correct fact, after each fact.
+
+        COUNTER should rewrite the {{batch_size}} factual paragraphs to be incorrect, and include a couple additional related sentences (don't include the source url).
+
+        QUESTIONS should contain a list of of simple questions about the facts. Make sure the question is something that both the actual fact or the counter fact could be used in generating an answer, targeting one of the values that differ between the actual fact and fake fact. Don't answer the questions.
+
+        Be sure to keep the counter facts and questions in the same order as the original facts.
+
+        The output should be in {{language}}.
+      output_column: instruction
+    model: gpt-4o-mini
+    temperature: 0.7
+    top_p: 0.5
+    presence_penalty: 2.0
+  input_ids:
+    - args_dataset
+
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns: 
+        - language
+        - topic_avoidance
+        - flesch
+        - batch_size
+        - topics
+  input_ids:
+    - generate_general_instructions
+
+# TARGET COUNT is 300 after dedup
+# Has a special response prompt

@@ -1,0 +1,57 @@
+name: wia_dcft_fasttext_stage_1_2
+operators:
+#  - id: load_fasttext_train
+#    config:
+#      type: load_preexisting
+#      framework_name: wi_generate_fasttext_training
+  - id: load_positives
+    config:
+      type: hf_source
+      dataset: reinhardh/wi_generate_fasttext_training
+      split: train
+      columns: 
+        - text
+
+  - id: load_negatives
+    config:
+      type: json_source
+      directory: /data/horse/ws/rehe951g-p_finetuning/DCLM-baseline-subset
+      num_truncate: 6055
+
+  - id: clean_positives
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.clean_dataset
+      function_config:
+        input_column: text
+        output_column: cleaned_text
+    input_ids:
+      - load_positives
+
+  - id: clean_negatives
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.clean_dataset
+      function_config:
+        input_column: text
+        output_column: cleaned_text
+    input_ids:
+      - load_negatives
+
+  - id: train_fasttext_classifier
+    config:
+      type: train_fasttext
+      text_column: cleaned_text
+      positive_input_ids:
+        - clean_positives
+      negative_input_ids:
+        - clean_negatives
+      dim: 256
+      epoch: 40
+      lr: 0.1
+      word_ngrams: 3
+      min_count: 3
+      hf_repo_id: reinhardh/wia_dcft_fasttext_stage_1_2
+    input_ids:
+      - clean_positives
+      - clean_negatives

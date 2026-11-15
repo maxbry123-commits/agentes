@@ -1,0 +1,171 @@
+package io.kestra.core.models.tasks;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
+
+import org.slf4j.event.Level;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.assets.AssetsDeclaration;
+import io.kestra.core.models.executions.TaskRun;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.retrys.AbstractRetry;
+import io.kestra.core.runners.RunContext;
+import io.kestra.plugin.core.flow.WorkingDirectory;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.annotation.Nullable;
+import org.hibernate.validator.constraints.time.DurationMin;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
+import static io.kestra.core.utils.Rethrow.throwFunction;
+
+@SuperBuilder(toBuilder = true)
+@Getter
+@NoArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_DEFAULT)
+@Plugin
+abstract public class Task implements TaskInterface {
+    @Size(max = 256, message = "Task id must be at most 256 characters")
+    protected String id;
+
+    protected String type;
+
+    @PluginProperty(hidden = true, group = "advanced")
+    protected String version;
+
+    @PluginProperty(hidden = true, group = "advanced")
+    private String description;
+
+    // implementation = Object.class prevents the Micronaut OpenAPI annotation processor from following
+    // the @JsonSubTypes on AbstractRetry, which causes a PostponeToNextRoundException at compile time
+    // due to the Micronaut constraint validators on the concrete retry subtypes (Constant, Exponential, Random).
+    @Schema(title = "Retry", description = "Retry policy applied when the task fails.", implementation = Object.class)
+    @Valid
+    @PluginProperty(hidden = true, group = "reliability")
+    protected AbstractRetry retry;
+
+    @PluginProperty(hidden = true, group = "execution")
+    protected Property<@DurationMin(millis = 1, message = "must be a positive duration") Duration> timeout;
+
+    @Builder.Default
+    @PluginProperty(hidden = true, group = "execution")
+    protected Boolean disabled = false;
+
+    @Valid
+    @PluginProperty(hidden = true, group = "execution")
+    @Schema(description = "Routing requirements (tags + fallback) for this task.")
+    private WorkerSelector workerSelector;
+
+    @PluginProperty(hidden = true, group = "advanced")
+    @Schema(
+        description = "Identifiers of `enforcement: REFERENCE` governance policies to attach to this task and everything nested under it (Enterprise Edition; ignored in the open-source edition)."
+    )
+    private List<String> policyRefs;
+
+    @PluginProperty(hidden = true, group = "logging")
+    private Level logLevel;
+
+    @Builder.Default
+    @PluginProperty(hidden = true, group = "reliability")
+    private boolean allowFailure = false;
+
+    @Builder.Default
+    @PluginProperty(hidden = true, group = "logging")
+    private boolean logToFile = false;
+
+    @Builder.Default
+    @PluginProperty(hidden = true, group = "reliability", dynamic = true)
+    private String runIf = "true";
+
+    @Builder.Default
+    @PluginProperty(hidden = true, group = "reliability")
+    private boolean allowWarning = false;
+
+    @PluginProperty(hidden = true, group = "advanced")
+    @Valid
+    private Cache taskCache;
+
+    @PluginProperty(hidden = true, group = "advanced")
+    @Valid
+    @Nullable
+    private AssetsDeclaration assets;
+
+    public Optional<Task> findById(String id) {
+        if (this.getId().equals(id)) {
+            return Optional.of(this);
+        }
+
+        if (this.isFlowable()) {
+            Optional<Task> childs = ((FlowableTask<?>) this).allChildTasks()
+                .stream()
+                .map(t -> t.findById(id))
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .findFirst();
+
+            if (childs.isPresent()) {
+                return childs;
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    public Optional<Task> findById(String id, RunContext runContext, TaskRun taskRun) throws IllegalVariableEvaluationException {
+        if (this.getId().equals(id)) {
+            return Optional.of(this);
+        }
+
+        if (this.isFlowable()) {
+            Optional<Task> childs = ((FlowableTask<?>) this).childTasks(runContext, taskRun)
+                .stream()
+                .map(throwFunction(resolvedTask -> resolvedTask.getTask().findById(id, runContext, taskRun)))
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .findFirst();
+
+            if (childs.isPresent()) {
+                return childs;
+            }
+        }
+
+        if (this.isFlowable() && ((FlowableTask<?>) this).getErrors() != null) {
+            Optional<Task> errorChilds = ((FlowableTask<?>) this).getErrors()
+                .stream()
+                .map(throwFunction(task -> task.findById(id, runContext, taskRun)))
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .findFirst();
+
+            if (errorChilds.isPresent()) {
+                return errorChilds;
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    @JsonIgnore
+    public boolean isFlowable() {
+        return this instanceof FlowableTask;
+    }
+
+    @JsonIgnore
+    public boolean isSendToWorkerTask() {
+        return !(this instanceof FlowableTask) || this instanceof WorkingDirectory;
+    }
+
+}

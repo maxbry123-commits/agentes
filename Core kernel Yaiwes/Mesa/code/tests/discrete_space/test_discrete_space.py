@@ -1,0 +1,1621 @@
+"""Test cell spaces."""
+
+import copy
+import pickle
+import random
+import random as stdlib_random
+import sys
+
+import networkx as nx
+import numpy as np
+import pytest
+
+from mesa import Model
+from mesa.discrete_space import (
+    Cell,
+    CellAgent,
+    CellCollection,
+    FixedAgent,
+    Grid2DMovingAgent,
+    HexGrid,
+    HexGridMovingAgent,
+    Network,
+    OrthogonalMooreGrid,
+    OrthogonalVonNeumannGrid,
+    VoronoiGrid,
+)
+from mesa.discrete_space.voronoi import round_float
+from mesa.exceptions import (
+    AgentMissingException,
+    CellFullException,
+    CellMissingException,
+    ConnectionMissingException,
+    SpaceException,
+)
+
+
+def test_orthogonal_grid_neumann():
+    """Test orthogonal grid with von Neumann neighborhood."""
+    width = 10
+    height = 10
+    grid = OrthogonalVonNeumannGrid(
+        (width, height), torus=False, capacity=None, random=random.Random(42)
+    )
+
+    with pytest.raises(AttributeError):
+        cell = grid.cell_klass(1)
+        cell.a = 5  # because of __slots__ this should not be possible
+
+    assert len(grid._cells) == width * height
+
+    # von neumann neighborhood, torus false, top left corner
+    assert len(grid._cells[(0, 0)].connections.values()) == 2
+    for connection in grid._cells[(0, 0)].connections.values():
+        assert connection.coordinate in {(0, 1), (1, 0)}
+
+    # von neumann neighborhood, torus false, top right corner
+    for connection in grid._cells[(0, width - 1)].connections.values():
+        assert connection.coordinate in {(0, width - 2), (1, width - 1)}
+
+    # von neumann neighborhood, torus false, bottom left corner
+    for connection in grid._cells[(height - 1, 0)].connections.values():
+        assert connection.coordinate in {(height - 1, 1), (height - 2, 0)}
+
+    # von neumann neighborhood, torus false, bottom right corner
+    for connection in grid._cells[(height - 1, width - 1)].connections.values():
+        assert connection.coordinate in {
+            (height - 1, width - 2),
+            (height - 2, width - 1),
+        }
+
+    # von neumann neighborhood middle of grid
+    assert len(grid._cells[(5, 5)].connections.values()) == 4
+    for connection in grid._cells[(5, 5)].connections.values():
+        assert connection.coordinate in {(4, 5), (5, 4), (5, 6), (6, 5)}
+
+    # von neumann neighborhood, torus True, top corner
+    grid = OrthogonalVonNeumannGrid(
+        (width, height), torus=True, capacity=None, random=random.Random(42)
+    )
+    assert len(grid._cells[(0, 0)].connections.values()) == 4
+    for connection in grid._cells[(0, 0)].connections.values():
+        assert connection.coordinate in {(0, 1), (1, 0), (0, 9), (9, 0)}
+
+    # von neumann neighborhood, torus True, top right corner
+    for connection in grid._cells[(0, width - 1)].connections.values():
+        assert connection.coordinate in {(0, 8), (0, 0), (1, 9), (9, 9)}
+
+    # von neumann neighborhood, torus True, bottom left corner
+    for connection in grid._cells[(9, 0)].connections.values():
+        assert connection.coordinate in {(9, 1), (9, 9), (0, 0), (8, 0)}
+
+    # von neumann neighborhood, torus True, bottom right corner
+    for connection in grid._cells[(9, 9)].connections.values():
+        assert connection.coordinate in {(9, 0), (9, 8), (8, 9), (0, 9)}
+
+
+def test_orthogonal_grid_neumann_3d():
+    """Test 3D orthogonal grid with von Neumann neighborhood."""
+    width = 10
+    height = 10
+    depth = 10
+    grid = OrthogonalVonNeumannGrid(
+        (width, height, depth), torus=False, capacity=None, random=random.Random(42)
+    )
+
+    assert len(grid._cells) == width * height * depth
+
+    # von neumann neighborhood, torus false, top left corner
+    assert len(grid._cells[(0, 0, 0)].connections.values()) == 3
+    for connection in grid._cells[(0, 0, 0)].connections.values():
+        assert connection.coordinate in {(0, 0, 1), (0, 1, 0), (1, 0, 0)}
+
+    # von neumann neighborhood, torus false, top right corner
+    for connection in grid._cells[(0, width - 1, 0)].connections.values():
+        assert connection.coordinate in {
+            (0, width - 1, 1),
+            (0, width - 2, 0),
+            (1, width - 1, 0),
+        }
+
+    # von neumann neighborhood, torus false, bottom left corner
+    for connection in grid._cells[(height - 1, 0, 0)].connections.values():
+        assert connection.coordinate in {
+            (height - 1, 0, 1),
+            (height - 1, 1, 0),
+            (height - 2, 0, 0),
+        }
+
+    # von neumann neighborhood, torus false, bottom right corner
+    for connection in grid._cells[(height - 1, width - 1, 0)].connections.values():
+        assert connection.coordinate in {
+            (height - 1, width - 1, 1),
+            (height - 1, width - 2, 0),
+            (height - 2, width - 1, 0),
+        }
+
+    # von neumann neighborhood middle of grid
+    assert len(grid._cells[(5, 5, 5)].connections.values()) == 6
+    for connection in grid._cells[(5, 5, 5)].connections.values():
+        assert connection.coordinate in {
+            (4, 5, 5),
+            (5, 4, 5),
+            (5, 5, 4),
+            (5, 5, 6),
+            (5, 6, 5),
+            (6, 5, 5),
+        }
+
+    # von neumann neighborhood, torus True, top corner
+    grid = OrthogonalVonNeumannGrid(
+        (width, height, depth), torus=True, capacity=None, random=random.Random(42)
+    )
+    assert len(grid._cells[(0, 0, 0)].connections.values()) == 6
+    for connection in grid._cells[(0, 0, 0)].connections.values():
+        assert connection.coordinate in {
+            (0, 0, 1),
+            (0, 1, 0),
+            (1, 0, 0),
+            (0, 0, 9),
+            (0, 9, 0),
+            (9, 0, 0),
+        }
+
+
+def test_orthogonal_grid_moore():
+    """Test orthogonal grid with Moore neighborhood."""
+    width = 10
+    height = 10
+
+    # Moore neighborhood, torus false, top corner
+    grid = OrthogonalMooreGrid(
+        (width, height), torus=False, capacity=None, random=random.Random(42)
+    )
+    assert len(grid._cells[(0, 0)].connections.values()) == 3
+    for connection in grid._cells[(0, 0)].connections.values():
+        assert connection.coordinate in {(0, 1), (1, 0), (1, 1)}
+
+    # Moore neighborhood middle of grid
+    assert len(grid._cells[(5, 5)].connections.values()) == 8
+    for connection in grid._cells[(5, 5)].connections.values():
+        # fmt: off
+        assert connection.coordinate in {(4, 4), (4, 5), (4, 6),
+                                         (5, 4), (5, 6),
+                                         (6, 4), (6, 5), (6, 6)}
+        # fmt: on
+
+    # Moore neighborhood, torus True, top corner
+    grid = OrthogonalMooreGrid(
+        [10, 10], torus=True, capacity=None, random=random.Random(42)
+    )
+    assert len(grid._cells[(0, 0)].connections.values()) == 8
+    for connection in grid._cells[(0, 0)].connections.values():
+        # fmt: off
+        assert connection.coordinate in {(9, 9), (9, 0), (9, 1),
+                                         (0, 9), (0, 1),
+                                         (1, 9), (1, 0), (1, 1)}
+        # fmt: on
+
+
+def test_orthogonal_grid_moore_3d():
+    """Test 3D orthogonal grid with Moore neighborhood."""
+    width = 10
+    height = 10
+    depth = 10
+
+    # Moore neighborhood, torus false, top corner
+    grid = OrthogonalMooreGrid(
+        (width, height, depth), torus=False, capacity=None, random=random.Random(42)
+    )
+    assert len(grid._cells[(0, 0, 0)].connections.values()) == 7
+    for connection in grid._cells[(0, 0, 0)].connections.values():
+        assert connection.coordinate in {
+            (0, 0, 1),
+            (0, 1, 0),
+            (0, 1, 1),
+            (1, 0, 0),
+            (1, 0, 1),
+            (1, 1, 0),
+            (1, 1, 1),
+        }
+
+    # Moore neighborhood middle of grid
+    assert len(grid._cells[(5, 5, 5)].connections.values()) == 26
+    for connection in grid._cells[(5, 5, 5)].connections.values():
+        # fmt: off
+        assert connection.coordinate in {(4, 4, 4), (4, 4, 5), (4, 4, 6), (4, 5, 4), (4, 5, 5), (4, 5, 6), (4, 6, 4),
+                                         (4, 6, 5), (4, 6, 6),
+                                         (5, 4, 4), (5, 4, 5), (5, 4, 6), (5, 5, 4), (5, 5, 6), (5, 6, 4), (5, 6, 5),
+                                         (5, 6, 6),
+                                         (6, 4, 4), (6, 4, 5), (6, 4, 6), (6, 5, 4), (6, 5, 5), (6, 5, 6), (6, 6, 4),
+                                         (6, 6, 5), (6, 6, 6)}
+        # fmt: on
+
+    # Moore neighborhood, torus True, top corner
+    grid = OrthogonalMooreGrid(
+        (width, height, depth), torus=True, capacity=None, random=random.Random(42)
+    )
+    assert len(grid._cells[(0, 0, 0)].connections.values()) == 26
+    for connection in grid._cells[(0, 0, 0)].connections.values():
+        # fmt: off
+        assert connection.coordinate in {(9, 9, 9), (9, 9, 0), (9, 9, 1), (9, 0, 9), (9, 0, 0), (9, 0, 1), (9, 1, 9),
+                                         (9, 1, 0), (9, 1, 1),
+                                         (0, 9, 9), (0, 9, 0), (0, 9, 1), (0, 0, 9), (0, 0, 1), (0, 1, 9), (0, 1, 0),
+                                         (0, 1, 1),
+                                         (1, 9, 9), (1, 9, 0), (1, 9, 1), (1, 0, 9), (1, 0, 0), (1, 0, 1), (1, 1, 9),
+                                         (1, 1, 0), (1, 1, 1)}
+        # fmt: on
+
+
+def test_orthogonal_grid_moore_4d():
+    """Test 4D orthogonal grid with Moore neighborhood."""
+    width = 10
+    height = 10
+    depth = 10
+    time = 10
+
+    # Moore neighborhood, torus false, top corner
+    grid = OrthogonalMooreGrid(
+        (width, height, depth, time),
+        torus=False,
+        capacity=None,
+        random=random.Random(42),
+    )
+    assert len(grid._cells[(0, 0, 0, 0)].connections.values()) == 15
+    for connection in grid._cells[(0, 0, 0, 0)].connections.values():
+        assert connection.coordinate in {
+            (0, 0, 0, 1),
+            (0, 0, 1, 0),
+            (0, 0, 1, 1),
+            (0, 1, 0, 0),
+            (0, 1, 0, 1),
+            (0, 1, 1, 0),
+            (0, 1, 1, 1),
+            (1, 0, 0, 0),
+            (1, 0, 0, 1),
+            (1, 0, 1, 0),
+            (1, 0, 1, 1),
+            (1, 1, 0, 0),
+            (1, 1, 0, 1),
+            (1, 1, 1, 0),
+            (1, 1, 1, 1),
+        }
+
+    # Moore neighborhood middle of grid
+    assert len(grid._cells[(5, 5, 5, 5)].connections.values()) == 80
+    for connection in grid._cells[(5, 5, 5, 5)].connections.values():
+        # fmt: off
+        assert connection.coordinate in {(4, 4, 4, 4), (4, 4, 4, 5), (4, 4, 4, 6), (4, 4, 5, 4), (4, 4, 5, 5),
+                                         (4, 4, 5, 6), (4, 4, 6, 4), (4, 4, 6, 5), (4, 4, 6, 6),
+                                         (4, 5, 4, 4), (4, 5, 4, 5), (4, 5, 4, 6), (4, 5, 5, 4), (4, 5, 5, 5),
+                                         (4, 5, 5, 6), (4, 5, 6, 4), (4, 5, 6, 5), (4, 5, 6, 6),
+                                         (4, 6, 4, 4), (4, 6, 4, 5), (4, 6, 4, 6), (4, 6, 5, 4), (4, 6, 5, 5),
+                                         (4, 6, 5, 6), (4, 6, 6, 4), (4, 6, 6, 5), (4, 6, 6, 6),
+                                         (5, 4, 4, 4), (5, 4, 4, 5), (5, 4, 4, 6), (5, 4, 5, 4), (5, 4, 5, 5),
+                                         (5, 4, 5, 6), (5, 4, 6, 4), (5, 4, 6, 5), (5, 4, 6, 6),
+                                         (5, 5, 4, 4), (5, 5, 4, 5), (5, 5, 4, 6), (5, 5, 5, 4), (5, 5, 5, 6),
+                                         (5, 5, 6, 4), (5, 5, 6, 5), (5, 5, 6, 6),
+                                         (5, 6, 4, 4), (5, 6, 4, 5), (5, 6, 4, 6), (5, 6, 5, 4), (5, 6, 5, 5),
+                                         (5, 6, 5, 6), (5, 6, 6, 4), (5, 6, 6, 5), (5, 6, 6, 6),
+                                         (6, 4, 4, 4), (6, 4, 4, 5), (6, 4, 4, 6), (6, 4, 5, 4), (6, 4, 5, 5),
+                                         (6, 4, 5, 6), (6, 4, 6, 4), (6, 4, 6, 5), (6, 4, 6, 6),
+                                         (6, 5, 4, 4), (6, 5, 4, 5), (6, 5, 4, 6), (6, 5, 5, 4), (6, 5, 5, 5),
+                                         (6, 5, 5, 6), (6, 5, 6, 4), (6, 5, 6, 5), (6, 5, 6, 6),
+                                         (6, 6, 4, 4), (6, 6, 4, 5), (6, 6, 4, 6), (6, 6, 5, 4), (6, 6, 5, 5),
+                                         (6, 6, 5, 6), (6, 6, 6, 4), (6, 6, 6, 5), (6, 6, 6, 6)}
+        # fmt: on
+
+
+def test_orthogonal_grid_moore_1d():
+    """Test 1D orthogonal grid with Moore neighborhood."""
+    width = 10
+
+    # Moore neighborhood, torus false, left edge
+    grid = OrthogonalMooreGrid(
+        (width,), torus=False, capacity=None, random=random.Random(42)
+    )
+    assert len(grid._cells[(0,)].connections.values()) == 1
+    for connection in grid._cells[(0,)].connections.values():
+        assert connection.coordinate in {(1,)}
+
+    # Moore neighborhood middle of grid
+    assert len(grid._cells[(5,)].connections.values()) == 2
+    for connection in grid._cells[(5,)].connections.values():
+        assert connection.coordinate in {(4,), (6,)}
+
+    # Moore neighborhood, torus True, left edge
+    grid = OrthogonalMooreGrid(
+        (width,), torus=True, capacity=None, random=random.Random(42)
+    )
+    assert len(grid._cells[(0,)].connections.values()) == 2
+    for connection in grid._cells[(0,)].connections.values():
+        assert connection.coordinate in {(1,), (9,)}
+
+
+def test_dynamic_modifications_to_space():
+    """Test dynamic modifications to DiscreteSpace."""
+    grid = OrthogonalMooreGrid(
+        (5, 5), torus=False, capacity=1, random=random.Random(42)
+    )
+
+    cells = grid._cells
+
+    # test remove_connection
+    cell1 = cells[(2, 0)]
+    cell2 = cells[(3, 0)]
+    grid.remove_connection(cell1, cell2)
+
+    assert cell2 not in cell1.neighborhood
+    assert cell1 not in cell2.neighborhood
+
+    # test add connection
+    grid.add_connection(cell1, cell2)
+    assert cell1 in cell2.neighborhood
+    assert cell2 in cell1.neighborhood
+
+    # test remove cell
+    neighbors = cell1.neighborhood
+    grid.remove_cell(cell1)
+    for neighbor in neighbors:
+        assert cell1 not in neighbor.neighborhood
+
+    # test add_cells
+    grid.add_cell(cell1)
+    for neighbor in neighbors:
+        grid.add_connection(cell1, neighbor)
+
+    for neighbor in neighbors:
+        assert cell1 in neighbor.neighborhood
+
+
+def test_cell_neighborhood():
+    """Test neighborhood method of cell in different GridSpaces."""
+    # orthogonal grid
+
+    ## von Neumann
+    width = 10
+    height = 10
+    grid = OrthogonalVonNeumannGrid(
+        (width, height), torus=False, capacity=None, random=random.Random(42)
+    )
+    for radius, n in zip(range(1, 4), [2, 5, 9]):
+        if radius == 1:
+            neighborhood = grid._cells[(0, 0)].neighborhood
+        else:
+            neighborhood = grid._cells[(0, 0)].get_neighborhood(radius=radius)
+        assert len(neighborhood) == n
+
+    ## Moore
+    width = 10
+    height = 10
+    grid = OrthogonalMooreGrid(
+        (width, height), torus=False, capacity=None, random=random.Random(42)
+    )
+    for radius, n in zip(range(1, 4), [3, 8, 15]):
+        if radius == 1:
+            neighborhood = grid._cells[(0, 0)].neighborhood
+        else:
+            neighborhood = grid._cells[(0, 0)].get_neighborhood(radius=radius)
+        assert len(neighborhood) == n
+
+    with pytest.raises(ValueError):
+        grid._cells[(0, 0)].get_neighborhood(radius=0)
+
+    # hexgrid
+    width = 10
+    height = 10
+    grid = HexGrid(
+        (width, height), torus=False, capacity=None, random=random.Random(42)
+    )
+    for radius, n in zip(range(1, 4), [3, 7, 13]):
+        if radius == 1:
+            neighborhood = grid._cells[(0, 0)].neighborhood
+        else:
+            neighborhood = grid._cells[(0, 0)].get_neighborhood(radius=radius)
+        assert len(neighborhood) == n
+
+    width = 10
+    height = 10
+    grid = HexGrid(
+        (width, height), torus=False, capacity=None, random=random.Random(42)
+    )
+    for radius, n in zip(range(1, 4), [4, 10, 17]):
+        if radius == 1:
+            neighborhood = grid._cells[(1, 0)].neighborhood
+        else:
+            neighborhood = grid._cells[(1, 0)].get_neighborhood(radius=radius)
+        assert len(neighborhood) == n
+
+    # networkgrid
+
+
+def test_hexgrid():
+    """Test HexGrid."""
+    width = 10
+    height = 10
+
+    grid = HexGrid((width, height), torus=False, random=random.Random(42))
+    assert len(grid._cells) == width * height
+
+    # first row
+    assert len(grid._cells[(0, 0)].connections.values()) == 3
+    for connection in grid._cells[(0, 0)].connections.values():
+        assert connection.coordinate in {(0, 1), (1, 0), (1, 1)}
+
+    # second row
+    assert len(grid._cells[(1, 0)].connections.values()) == 4
+    for connection in grid._cells[(1, 0)].connections.values():
+        # fmt: off
+        assert connection.coordinate in {   (1, 1), (2, 1),
+                                         (0, 0),    (2, 0),}
+        # fmt: on
+
+    # middle odd row
+    assert len(grid._cells[(5, 5)].connections.values()) == 6
+    for connection in grid._cells[(5, 5)].connections.values():
+        # fmt: off
+        assert connection.coordinate in {  (4, 4), (5, 4),
+                                         (4, 5), (6, 5),
+                                         (4, 6), (5, 6)}
+
+        # fmt: on
+
+    # middle even row
+    assert len(grid._cells[(4, 4)].connections.values()) == 6
+    for connection in grid._cells[(4, 4)].connections.values():
+        # fmt: off
+        assert connection.coordinate in {(4, 3), (5, 3),
+                                         (3, 4), (5, 4),
+                                         (4, 5), (5, 5)}
+
+        # fmt: on
+
+    grid = HexGrid((width, height), torus=True, random=random.Random(42))
+    assert len(grid._cells) == width * height
+
+    # first row
+    assert len(grid._cells[(0, 0)].connections.values()) == 6
+    for connection in grid._cells[(0, 0)].connections.values():
+        # fmt: off
+        assert connection.coordinate in {(0, 9), (1, 9),
+                                         (9, 0), (1, 0),
+                                         (0, 1), (1, 1)}
+
+        # fmt: on
+
+
+def test_networkgrid():
+    """Test NetworkGrid."""
+    n = 10
+    m = 20
+    rng = 42
+    G = nx.gnm_random_graph(n, m, seed=rng)  # noqa: N806
+    grid = Network(G, random=random.Random(42))
+
+    assert len(grid._cells) == n
+
+    for i, cell in grid._cells.items():
+        for connection in cell.connections.values():
+            assert connection.coordinate in G.neighbors(i)
+
+    pickle.loads(pickle.dumps(grid))  # noqa: S301
+
+    cell = Cell(10, random=random.Random(42))  # n = 10, so 10 + 1
+    grid.add_cell(cell)
+    grid.add_connection(cell, grid._cells[0])
+    assert cell in grid._cells[0].neighborhood
+    assert grid._cells[0] in cell.neighborhood
+
+    grid.remove_connection(cell, grid._cells[0])
+    assert cell not in grid._cells[0].neighborhood
+    assert grid._cells[0] not in cell.neighborhood
+
+    cell = Cell(10, random=random.Random(42))  # n = 10, so 10 + 1
+    grid.add_cell(cell)
+    grid.add_connection(cell, grid._cells[0])
+    grid.remove_cell(cell)  # this also removes all connections
+    assert cell not in grid._cells[0].neighborhood
+    assert grid._cells[0] not in cell.neighborhood
+
+
+def test_voronoigrid():
+    """Test VoronoiGrid."""
+    # Index 0: [0, 1]
+    # Index 1: [1, 3]
+    # Index 2: [1.1, 1]
+    # Index 3: [1, 1]
+    points = [[0, 1], [1, 3], [1.1, 1], [1, 1]]
+
+    grid = VoronoiGrid(points, random=random.Random(42))
+
+    assert len(grid._cells) == len(points)
+
+    # Check cell neighborhood
+    assert len(grid._cells[0].connections.values()) == 2
+    for connection in grid._cells[0].connections.values():
+        assert connection.coordinate in [1, 3]
+
+    with pytest.raises(ValueError):
+        VoronoiGrid(points, capacity="str", random=random.Random(42))
+
+    with pytest.raises(ValueError):
+        VoronoiGrid((1, 1), random=random.Random(42))
+
+    with pytest.raises(ValueError):
+        VoronoiGrid([[0, 1], [0, 1, 1]], random=random.Random(42))
+
+
+def test_empties_space():
+    """Test empties method for Discrete Spaces."""
+    n = 10
+    m = 20
+    rng = 42
+    G = nx.gnm_random_graph(n, m, seed=rng)  # noqa: N806
+    grid = Network(G, random=random.Random(42))
+
+    assert len(grid.empties) == n
+
+    model = Model()
+    agents = []
+    for i in range(8):
+        agent = CellAgent(model)
+        grid._cells[i].add_agent(agent)
+        agents.append(agent)
+
+    assert len(grid.empties) == n - 8
+
+    # Remove an agent and verify empties count updates
+    grid._cells[0].remove_agent(agents[0])
+    assert len(grid.empties) == n - 7
+
+
+def test_cell_missing_exception():
+    """Test that CellMissingException is raised when accessing non-existent cells."""
+    grid = OrthogonalMooreGrid((10, 10), torus=False, random=random.Random(42))
+
+    with pytest.raises(
+        CellMissingException, match=r"Cell at coordinate \(100, 100\) does not exist"
+    ):
+        _ = grid[(100, 100)]
+
+    with pytest.raises(
+        CellMissingException, match=r"Cell at coordinate \(5, 15\) does not exist"
+    ):
+        _ = grid[(5, 15)]
+
+    with pytest.raises(
+        CellMissingException, match=r"Cell at coordinate \(-1, 0\) does not exist"
+    ):
+        _ = grid[(-1, 0)]
+
+
+def test_grid_validate_parameters():
+    """Test that OrthogonalMooreGrid raises standard exceptions for invalid parameters."""
+    with pytest.raises(
+        ValueError, match="Dimensions must be a list of positive integers"
+    ):
+        OrthogonalMooreGrid((0,), torus=False, random=random.Random(42))
+
+    with pytest.raises(
+        ValueError, match="Dimensions must be a list of positive integers"
+    ):
+        OrthogonalMooreGrid((-1, 5), torus=False, random=random.Random(42))
+
+    with pytest.raises(
+        ValueError, match="Dimensions must be a list of positive integers"
+    ):
+        OrthogonalMooreGrid(("a", 5), torus=False, random=random.Random(42))
+
+    with pytest.raises(TypeError, match="Torus must be a boolean"):
+        OrthogonalMooreGrid((5, 5), torus="true", random=random.Random(42))
+
+    with pytest.raises(TypeError, match="Capacity must be a number or None"):
+        OrthogonalMooreGrid((5, 5), capacity="invalid", random=random.Random(42))
+
+
+def test_agents_property():
+    """Test agents property for Discrete Spaces."""
+    n = 10
+    m = 20
+    rng = 42
+    G = nx.gnm_random_graph(n, m, seed=rng)  # noqa: N806
+    grid = Network(G, random=random.Random(42))
+
+    model = Model()
+    for i in range(8):
+        grid._cells[i].add_agent(CellAgent(model))
+
+    cell = grid.select_random_empty_cell()
+    assert cell.coordinate in {8, 9}
+
+    assert len(grid.agents) == 8
+
+    for i, j in enumerate(sorted(grid.agents.get("unique_id"))):
+        assert (i + 1) == j  # unique_id starts from 1
+
+
+def test_cell():
+    """Test Cell class."""
+    cell1 = Cell((1,), capacity=None, random=random.Random())
+    cell2 = Cell((2,), capacity=None, random=random.Random())
+
+    # connect
+    cell1.connect(cell2)
+    assert cell2 in cell1.connections.values()
+
+    # disconnect
+    cell1.disconnect(cell2)
+    assert cell2 not in cell1.connections.values()
+
+    # remove cell not in connections
+    with pytest.raises(ConnectionMissingException):
+        cell1.disconnect(cell2)
+
+    # add_agent
+    model = Model()
+    agent = CellAgent(model)
+
+    cell1.add_agent(agent)
+    assert agent in cell1.agents
+
+    # remove_agent
+    cell1.remove_agent(agent)
+    assert agent not in cell1.agents
+
+    with pytest.raises(AgentMissingException):
+        cell1.remove_agent(agent)
+
+    cell1 = Cell((1,), capacity=1, random=random.Random())
+    cell1.add_agent(CellAgent(model))
+    assert cell1.is_full
+
+    with pytest.raises(CellFullException):
+        cell1.add_agent(CellAgent(model))
+
+    # Test capacity=0 (no agents allowed)
+    cell_zero = Cell((1,), capacity=0, random=random.Random())
+    with pytest.raises(CellFullException):
+        cell_zero.add_agent(CellAgent(model))
+
+
+def test_cell_empty_attribute_initialized():
+    """A freshly created Cell exposes `empty` without first adding/removing an agent.
+
+    Cells that are not grid cells (e.g. those in Network and VoronoiGrid) have no
+    `empty` property layer overriding the attribute, so reading `cell.empty` must
+    work straight after construction. Regression test for the uninitialized
+    `_empty` slot which raised AttributeError.
+    """
+    model = Model()
+    cell = Cell((0,), capacity=None, random=random.Random())
+
+    # readable immediately after construction, and consistent with is_empty
+    assert cell.empty is True
+    assert cell.empty == cell.is_empty
+
+    # tracks agent occupancy
+    agent = CellAgent(model)
+    cell.add_agent(agent)
+    assert cell.empty is False
+
+    cell.remove_agent(agent)
+    assert cell.empty is True
+
+
+def test_cell_deepcopy():
+    """Verify that Cell deepcopy correctly handles circular references via coordinates."""
+    rng = random.Random(42)
+    c1 = Cell(coordinate=(0, 0), random=rng)
+    c2 = Cell(coordinate=(0, 1), random=rng)
+    c1.connect(c2)
+
+    # Perform standalone deepcopy
+    c1_copy = copy.deepcopy(c1)
+
+    # In standalone Cell copy, connections are stored as coordinates (to break recursion)
+    assert c1_copy.connections[(0, 1)] == (0, 1)
+
+    # Now verify it works within a Space (relinking happens)
+    grid = OrthogonalMooreGrid((2, 2), random=rng)
+    grid_copy = copy.deepcopy(grid)
+
+    cell = grid_copy[(0, 0)]
+    # In a grid, the key to a neighbor is the offset.
+    # From (0,0), the cell at (0,1) is at offset (0, 1)
+    neighbor = cell.connections[(0, 1)]
+    assert isinstance(neighbor, Cell)
+    assert neighbor.coordinate == (0, 1)
+
+    # From (0,1), the cell at (0,0) is at offset (0, -1)
+    assert neighbor.connections[(0, -1)] is cell
+
+
+def test_cell_is_full_with_none_capacity():
+    """Ensure a cell with unlimited capacity is never considered full regardless of agent count."""
+    cell = Cell((0, 0), capacity=None)
+    assert cell.is_full is False
+
+    model = Model()
+    for _ in range(100):
+        agent = CellAgent(model)
+        agent._mesa_cell = cell
+        cell._agents.append(agent)
+
+    assert cell.is_full is False
+
+
+def test_cell_is_full_with_finite_capacity():
+    """Verify a cell reports full only after reaching its defined finite capacity."""
+    cell = Cell((0, 0), capacity=3)
+    model = Model()
+
+    assert cell.is_full is False
+
+    cell.add_agent(CellAgent(model))
+    assert cell.is_full is False
+
+    cell.add_agent(CellAgent(model))
+    assert cell.is_full is False
+
+    cell.add_agent(CellAgent(model))
+    assert cell.is_full is True
+
+
+def test_is_empty_no_list_copy():
+    """Verify is_empty checks len() directly without copying the agents list."""
+    model = Model()
+    cell = Cell((0, 0), capacity=None)
+
+    # Add agents and store reference to internal list
+    for _ in range(10):
+        cell.add_agent(CellAgent(model))
+
+    internal_list = cell._agents
+
+    # Calling is_empty should not replace _agents with a copy
+    _ = cell.is_empty
+    assert cell._agents is internal_list
+
+    # Same for is_full
+    _ = cell.is_full
+    assert cell._agents is internal_list
+
+    # But .agents property SHOULD return a copy
+    agents_copy = cell.agents
+    assert agents_copy is not internal_list
+
+
+def test_cell_collection():
+    """Test CellCollection."""
+    cell1 = Cell((1,), capacity=None, random=random.Random())
+
+    collection = CellCollection({cell1: cell1.agents}, random=random.Random())
+    assert len(collection) == 1
+    assert cell1 in collection
+
+    rng = random.Random()
+    n = 10
+    collection = CellCollection([Cell((i,), random=rng) for i in range(n)], random=rng)
+    assert len(collection) == n
+
+    cell = collection.select_random_cell()
+    assert cell in collection
+
+    cells = collection.cells
+    assert len(cells) == n
+
+    agents = collection.agents
+    assert len(list(agents)) == 0
+
+    cells = collection.cells
+    model = Model()
+    cells[0].add_agent(CellAgent(model))
+    cells[3].add_agent(CellAgent(model))
+    cells[7].add_agent(CellAgent(model))
+    agents = collection.agents
+    assert len(list(agents)) == 3
+
+    agent = collection.select_random_agent()
+    assert agent in set(collection.agents)
+
+    agents = collection[cells[0]]
+    assert agents == cells[0].agents
+
+    cell = collection.select(at_most=1)
+    assert len(cell) == 1
+
+    cells = collection.select(at_most=2)
+    assert len(cells) == 2
+
+    cells = collection.select(at_most=0.5)
+    assert len(cells) == 5
+
+    cells = collection.select()
+    assert len(cells) == len(collection)
+
+
+def test_empty_cell_collection():
+    """Test that CellCollection properly handles empty collections."""
+    rng = random.Random(42)
+
+    # Test initializing with empty collection
+    collection = CellCollection([], random=rng)
+    assert len(collection) == 0
+    assert collection._capacity is None
+    assert list(collection.cells) == []
+    assert list(collection.agents) == []
+
+    # Test selecting from empty collection
+    selected = collection.select(lambda cell: True)
+    assert len(selected) == 0
+    assert selected._capacity is None
+
+    # Test filtering to empty collection
+    n = 10
+    full_collection = CellCollection(
+        [Cell((i,), random=rng) for i in range(n)], random=rng
+    )
+    assert len(full_collection) == n
+
+    # Filter to empty collection
+    empty_result = full_collection.select(lambda cell: False)
+    assert len(empty_result) == 0
+    assert empty_result._capacity is None
+
+    # Test at_most with empty collection
+    at_most_result = full_collection.select(lambda cell: False, at_most=5)
+    assert len(at_most_result) == 0
+    assert at_most_result._capacity is None
+
+
+### Property Layer tests
+def test_property_layer_integration():
+    """Test integration of Property Layer with DiscreteSpace and Cell."""
+    dimensions = (10, 10)
+    grid = OrthogonalMooreGrid(dimensions, torus=False, random=random.Random(42))
+
+    grid.create_property_layer("elevation", default_value=0.0)
+    assert "elevation" in grid.property_layers
+    assert len(grid.property_layers) == 2
+
+    # Test accessing Property Layer from a cell
+    cell = grid._cells[(0, 0)]
+    assert hasattr(cell, "elevation")
+    assert cell.elevation == 0.0
+
+    # Test setting property_layer value for a cell
+    cell.elevation = 100
+    assert cell.elevation == 100
+
+    cell.elevation += 50
+    assert cell.elevation == 150
+
+    cell.elevation = np.add(cell.elevation, 50)
+    assert cell.elevation == 200
+
+    with pytest.raises(ValueError):
+        grid.create_property_layer("capacity", 1, dtype=int)
+
+    with pytest.raises(ValueError):
+        grid.add_property_layer("test", np.array([1, 2]))
+    assert "test" not in grid.property_layers
+
+    with pytest.raises(KeyError):
+        grid.remove_property_layer("foobar")
+
+    with pytest.raises(ValueError):
+        grid._attach_property_layer("elevation", np.array([0, 0]))
+
+    assert grid.elevation is grid.property_layers["elevation"]
+    grid.elevation[3, 4] = 99.0
+    assert grid._cells[(3, 4)].elevation == 99.0
+
+    grid.remove_property_layer("elevation")
+    assert "elevation" not in grid.property_layers
+    assert not hasattr(cell, "elevation")
+
+    # Test name conflict raises ValueError
+    with pytest.raises(ValueError):
+        grid.create_property_layer("width")
+
+
+def test_copy_pickle_with_property_layers():
+    """Test deepcopy and pickle with dynamically created GridClass."""
+    dimensions = (10, 10)
+    grid = OrthogonalMooreGrid(dimensions, torus=False, random=random.Random(42))
+
+    grid2 = copy.deepcopy(grid)
+    assert grid2._cells[(0, 0)].empty
+    grid2._cells[(0, 0)].empty = False
+    assert grid2._cells[(0, 0)].empty == grid2.property_layers["empty"][0, 0]
+
+    grid = OrthogonalMooreGrid(dimensions, torus=False, random=random.Random(42))
+    dump = pickle.dumps(grid)
+    grid2 = pickle.loads(dump)  # noqa: S301
+    assert grid2._cells[(0, 0)].empty
+    grid2._cells[(0, 0)].empty = False
+    assert grid2._cells[(0, 0)].empty == grid2.property_layers["empty"][0, 0]
+
+
+def test_read_only_property_layer_survives_pickle_and_deepcopy():
+    """A read-only property layer must stay read-only after pickling/deepcopy.
+
+    Previously Grid.__setstate__ rebuilt every property layer with a setter,
+    silently dropping the read_only restriction on the round trip.
+    """
+    grid = OrthogonalMooreGrid((3, 3), torus=False, random=random.Random(42))
+    grid.create_property_layer("protected", default_value=0.0, read_only=True)
+    grid.create_property_layer("sugar", default_value=1.0, read_only=False)
+
+    for label, restored in [
+        ("deepcopy", copy.deepcopy(grid)),
+        ("pickle", pickle.loads(pickle.dumps(grid))),  # noqa: S301
+    ]:
+        cell = restored._cells[(0, 0)]
+        # read-only layer must still reject writes
+        with pytest.raises(AttributeError):
+            cell.protected = 99.0
+        # read-write layer must still accept writes
+        cell.sugar = 5.0
+        assert cell.sugar == 5.0, label
+
+
+def test_multiple_property_layers():
+    """Test initialization of DiscreteSpace with Property Layers."""
+    dimensions = (5, 5)
+    grid = OrthogonalMooreGrid(dimensions, torus=False, random=random.Random(42))
+
+    grid.create_property_layer("elevation", default_value=0.0)
+    grid.create_property_layer("temperature", default_value=20.0)
+    assert "elevation" in grid.property_layers
+    assert "temperature" in grid.property_layers
+    assert len(grid.property_layers) == 3  # empty + elevation + temperature
+
+    grid.property_layers["elevation"][:] += 10
+    grid.property_layers["temperature"][:] += 5
+
+    for cell in grid.all_cells:
+        assert cell.elevation == 10
+        assert cell.temperature == 25
+
+
+def test_get_neighborhood_mask():
+    """Test get_neighborhood_mask."""
+    dimensions = (5, 5)
+    grid = OrthogonalMooreGrid(dimensions, torus=False, random=random.Random(42))
+    grid.create_property_layer("elevation", default_value=0.0)
+
+    grid.get_neighborhood_mask((2, 2))
+
+    mask = grid.get_neighborhood_mask((2, 2))
+    for cell in grid._cells[(2, 2)].connections.values():
+        assert mask[cell.coordinate]
+    assert mask[grid._cells[(2, 2)].coordinate]
+
+    mask = grid.get_neighborhood_mask((2, 2), include_center=False)
+    for cell in grid._cells[(2, 2)].connections.values():
+        assert mask[cell.coordinate]
+    assert not mask[grid._cells[(2, 2)].coordinate]
+
+
+def test_cell_agent():  # noqa: D103
+    cell1 = Cell((1,), capacity=None, random=random.Random())
+    cell2 = Cell((2,), capacity=None, random=random.Random())
+
+    # connect
+    # add_agent
+    model = Model()
+    agent = CellAgent(model)
+
+    agent.cell = cell1
+    assert agent in cell1.agents
+
+    agent.cell = None
+    assert agent not in cell1.agents
+
+    agent.cell = cell2
+    assert agent not in cell1.agents
+    assert agent in cell2.agents
+
+    agent.cell = cell1
+    assert agent in cell1.agents
+    assert agent not in cell2.agents
+
+    agent.remove()
+    assert agent not in model._all_agents
+    assert agent not in cell1.agents
+    assert agent not in cell2.agents
+
+    model = Model()
+    agent = CellAgent(model)
+    agent.cell = cell1
+    agent.move_to(cell2)
+    assert agent not in cell1.agents
+    assert agent in cell2.agents
+
+
+def test_cell_assignment_atomic_on_capacity_failure():
+    """Ensure cell assignment remains atomic if capacity is exceeded."""
+    model = Model()
+
+    cell = Cell((0,), capacity=1, random=random.Random())
+
+    a1 = CellAgent(model)
+    a2 = CellAgent(model)
+
+    # Fill the cell
+    a1.cell = cell
+    assert a1 in cell.agents
+
+    # Capture original state of a2
+    original_cell = a2.cell
+
+    # Attempt invalid placement
+    with pytest.raises(Exception):
+        a2.cell = cell
+
+    # Agent state must remain unchanged
+    assert a2.cell is original_cell
+
+    # Invariant must hold
+    if a2.cell is not None:
+        assert a2 in a2.cell.agents
+
+
+def test_grid2DMovingAgent():  # noqa: D103
+    # we first test on a moore grid because all directions are defined
+    grid = OrthogonalMooreGrid((10, 10), torus=False, random=random.Random(42))
+
+    model = Model()
+    agent = Grid2DMovingAgent(model)
+
+    agent.cell = grid[4, 4]
+    agent.move("up")
+    assert agent.cell == grid[3, 4]
+
+    grid = OrthogonalVonNeumannGrid((10, 10), torus=False, random=random.Random(42))
+
+    model = Model()
+    agent = Grid2DMovingAgent(model)
+    agent.cell = grid[4, 4]
+
+    with pytest.raises(ValueError):  # test for invalid direction
+        agent.move("upright")
+
+    with pytest.raises(ValueError):  # test for unknown direction
+        agent.move("back")
+
+
+def test_hexGridMovingAgent():
+    """Test HexGridMovingAgent with 'even-r' (Even Row Shove) geometry."""
+    grid = HexGrid((10, 10), torus=False, random=random.Random(42))
+    model = Model()
+    agent = HexGridMovingAgent(model)
+
+    # 'nw' offset should be (0, -1).
+    agent.cell = grid[5, 2]
+    agent.move("nw")
+
+    assert agent.cell.coordinate == (5, 1)
+
+    # 'nw' offset should be (-1, -1)
+    agent.cell = grid[5, 1]  # Reset position to a known Odd row
+    agent.move("nw")
+
+    assert agent.cell.coordinate == (4, 0)
+
+    # West is (-1, 0) for both parities.
+    agent.cell = grid[5, 2]
+    agent.move("w")
+    assert agent.cell.coordinate == (4, 2)
+
+
+def test_patch():  # noqa: D103
+    cell1 = Cell((1,), capacity=None, random=random.Random())
+    cell2 = Cell((2,), capacity=None, random=random.Random())
+
+    # connect
+    # add_agent
+    model = Model()
+    agent = FixedAgent(model)
+    agent.cell = cell1
+
+    with pytest.raises(ValueError):
+        agent.cell = cell2
+
+    agent.remove()
+    assert agent not in model._all_agents
+
+
+def test_copying_discrete_spaces():  # noqa: D103
+    # inspired by #2373
+    # we use deepcopy but this also applies to pickle
+    # Large grids (100x100 = 10k cells) hit default recursion limit (1000)
+    old_limit = sys.getrecursionlimit()
+    sys.setrecursionlimit(5000)
+    try:
+        grid = OrthogonalMooreGrid((100, 100), random=random.Random(42))
+        grid_copy = copy.deepcopy(grid)
+
+        for c1, c2 in zip(grid.all_cells, grid_copy.all_cells):
+            for k, v in c1.connections.items():
+                assert v.coordinate == c2.connections[k].coordinate
+
+        n = 10
+        m = 20
+        seed = 42
+        G = nx.gnm_random_graph(n, m, seed=seed)  # noqa: N806
+        grid = Network(G, random=random.Random(42))
+        grid_copy = copy.deepcopy(grid)
+
+        for c1, c2 in zip(grid.all_cells, grid_copy.all_cells):
+            for k, v in c1.connections.items():
+                assert v.coordinate == c2.connections[k].coordinate
+
+        grid = HexGrid((100, 100), random=random.Random(42))
+        grid_copy = copy.deepcopy(grid)
+
+        for c1, c2 in zip(grid.all_cells, grid_copy.all_cells):
+            for k, v in c1.connections.items():
+                assert v.coordinate == c2.connections[k].coordinate
+    finally:
+        sys.setrecursionlimit(old_limit)
+
+
+def test_select_random_agent_empty_safe():
+    """Test that select_random_agent returns None when no agents are present."""
+    rng = random.Random(42)
+    empty_collection = CellCollection([], random=rng)
+    with pytest.raises(LookupError):
+        empty_collection.select_random_agent()
+    assert empty_collection.select_random_agent(default=None) is None
+    assert empty_collection.select_random_agent(default="Empty") == "Empty"
+
+
+def test_select_random_cell_empty_safe():
+    """Test that select_random_cell raises LookupError on an empty collection and honors default."""
+    rng = random.Random(42)
+    empty_collection = CellCollection([], random=rng)
+    with pytest.raises(LookupError):
+        empty_collection.select_random_cell()
+    assert empty_collection.select_random_cell(default=None) is None
+    assert empty_collection.select_random_cell(default="Empty") == "Empty"
+
+    # A non-empty collection still returns a cell from the collection
+    collection = CellCollection([Cell((i,), random=rng) for i in range(5)], random=rng)
+    assert collection.select_random_cell() in collection
+
+
+def test_infinite_loop_on_full_grid():
+    """Test that select_random_empty_cell raises ValueError with informative message on a full grid."""
+    # 1. Create a small 2x2 model
+    model = Model()
+    grid = OrthogonalMooreGrid((2, 2), random=model.random)
+
+    # 2. Fill the grid completely
+    for cell in grid.all_cells:
+        agent = CellAgent(model)
+        agent.cell = cell
+
+    # 3. Verify grid is full
+    assert len(grid.empties) == 0
+
+    # 4. Ensure ValueError is raised with a clear message
+    with pytest.raises(ValueError, match="Grid is completely full"):
+        grid.select_random_empty_cell()
+
+
+def test_select_random_empty_cell_fallback():
+    """Test the vectorized fallback of select_random_empty_cell (when heuristic is skipped)."""
+    width = 10
+    height = 10
+    grid = OrthogonalMooreGrid((width, height), torus=False, random=random.Random(42))
+
+    # Fill the grid completely except one specific cell
+    model = Model()
+    target_empty = (5, 5)
+
+    for x in range(width):
+        for y in range(height):
+            if (x, y) != target_empty:
+                agent = CellAgent(model)
+                grid._cells[(x, y)].add_agent(agent)
+
+    # Force the code to skip the heuristic loop and hit the 'np.argwhere' fallback
+    grid._try_random = False
+
+    selected_cell = grid.select_random_empty_cell()
+
+    # Ensure it found the only available empty cell via the fallback path
+    assert selected_cell.coordinate == target_empty
+    assert selected_cell.is_empty
+
+    # Ensure the property layer data was actually correct (the fallback relies on this)
+    assert grid.property_layers["empty"][5, 5]
+    assert not grid.property_layers["empty"][0, 0]
+
+
+def test_fixed_agent_removal_state():
+    """Test that a FixedAgent's cell is None after removal."""
+    model = Model()
+    cell1 = Cell((1,), capacity=None, random=random.Random())
+    agent = FixedAgent(model)
+    agent.cell = cell1
+
+    assert agent in cell1.agents
+    assert agent.cell == cell1
+
+    # Remove the agent
+    agent.remove()
+
+    assert agent not in cell1.agents
+    assert agent.cell is None
+
+
+def test_pickling_cell():
+    """Test pickling of a Cell."""
+    cell = Cell((1,), capacity=1, random=random.Random(42))
+
+    unpickled_cell = pickle.loads(pickle.dumps(cell))  # noqa: S301
+
+    assert cell.coordinate == unpickled_cell.coordinate
+    assert cell.capacity == unpickled_cell.capacity
+
+
+def test_large_radius_neighborhood():
+    """Test that get_neighborhood works with large radius values without RecursionError.
+
+    This is a regression test for issue #3105:
+    Cell.get_neighborhood() crashes with RecursionError for large radius values.
+
+    The fix replaces recursive traversal with iterative BFS.
+    """
+    # Create a linear chain of 2000 cells (e.g., a highway, pipeline, or network path)
+    cells = [Cell((i,), random=random.Random(42)) for i in range(2000)]
+
+    # Connect them in a chain
+    for i in range(len(cells) - 1):
+        cells[i].connect(cells[i + 1], key=(1,))
+        cells[i + 1].connect(cells[i], key=(-1,))
+
+    # This should NOT raise RecursionError (previously crashed at radius > 1000)
+    neighbors = cells[0].get_neighborhood(radius=1500)
+
+    # Verify we got the expected number of neighbors
+    assert len(neighbors) == 1500
+
+
+def test_large_radius_with_include_center():
+    """Test include_center parameter with large radius values."""
+    cells = [Cell((i,), random=random.Random(42)) for i in range(1500)]
+
+    for i in range(len(cells) - 1):
+        cells[i].connect(cells[i + 1], key=(1,))
+        cells[i + 1].connect(cells[i], key=(-1,))
+
+    # With include_center=True
+    neighbors_with_center = cells[0].get_neighborhood(radius=1200, include_center=True)
+
+    # With include_center=False (default)
+    neighbors_without_center = cells[0].get_neighborhood(
+        radius=1200, include_center=False
+    )
+
+    # Center should add exactly 1 cell
+    assert len(neighbors_with_center) == len(neighbors_without_center) + 1
+    assert cells[0] in neighbors_with_center
+    assert cells[0] not in neighbors_without_center
+
+
+def test_radius_exceeds_reachable_cells():
+    """Test that radius larger than reachable cells doesn't crash."""
+    # Create a small chain of 100 cells
+    cells = [Cell((i,), random=random.Random(42)) for i in range(100)]
+
+    for i in range(len(cells) - 1):
+        cells[i].connect(cells[i + 1], key=(1,))
+        cells[i + 1].connect(cells[i], key=(-1,))
+
+    # Request radius much larger than chain length - should not crash
+    neighbors = cells[0].get_neighborhood(radius=5000)
+
+    # Should return all reachable cells (99, since we exclude center by default)
+    assert len(neighbors) == 99
+
+
+def test_network_missing_layout_node():
+    """Test that Network raises a SpaceException when nodes are missing from the layout mapping."""
+    g = nx.Graph()
+    g.add_nodes_from([1, 2, 3])
+
+    rng = random.Random(42)
+
+    # Completely empty layout dictionary
+    with pytest.raises(
+        SpaceException, match="is missing from the provided layout dictionary"
+    ):
+        Network(g, layout={}, random=rng)
+
+    # Partially missing layout dictionary
+    partial_layout = {1: (0, 0), 2: (1, 1)}
+    with pytest.raises(
+        SpaceException, match="is missing from the provided layout dictionary"
+    ):
+        Network(g, layout=partial_layout, random=rng)
+
+
+# Grid capacity tests — PR #3542
+RNG = stdlib_random.Random(42)
+
+# All concrete Grid subclasses parametrized so every test runs on each type.
+GRID_FACTORIES = [
+    pytest.param(
+        lambda cap: OrthogonalMooreGrid((4, 4), torus=False, capacity=cap, random=RNG),
+        id="OrthogonalMooreGrid",
+    ),
+    pytest.param(
+        lambda cap: OrthogonalVonNeumannGrid(
+            (4, 4), torus=False, capacity=cap, random=RNG
+        ),
+        id="OrthogonalVonNeumannGrid",
+    ),
+    pytest.param(
+        lambda cap: HexGrid((4, 4), torus=False, capacity=cap, random=RNG),
+        id="HexGrid",
+    ),
+]
+
+
+def make_model() -> Model:
+    """Return a freshly seeded Model instance."""
+    return Model(rng=42)
+
+
+def make_agent(model: Model) -> CellAgent:
+    """Return a new CellAgent attached to model."""
+    return CellAgent(model)
+
+
+# ---------------------------------------------------------------------------
+# Section 1 — CellFullException  (regression tests for Issue #3505)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_move_to_raises_when_cell_full(factory) -> None:
+    """move_to must raise CellFullException once capacity=1 is occupied."""
+    model = make_model()
+    grid = factory(1)
+    cell = grid._celllist[0]
+    bob, julie = make_agent(model), make_agent(model)
+    bob.move_to(cell)
+    with pytest.raises(CellFullException):
+        julie.move_to(cell)
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_direct_cell_property_raises_when_full(factory) -> None:
+    """Direct assignment ``agent.cell = <full cell>`` must also raise."""
+    model = make_model()
+    grid = factory(1)
+    cell = grid._celllist[0]
+    bob, julie = make_agent(model), make_agent(model)
+    bob.cell = cell
+    with pytest.raises(CellFullException):
+        julie.cell = cell
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_capacity_2_allows_exactly_two_agents(factory) -> None:
+    """capacity=2: two agents fit; a third must be rejected."""
+    model = make_model()
+    grid = factory(2)
+    cell = grid._celllist[0]
+    agents = [make_agent(model) for _ in range(3)]
+    agents[0].move_to(cell)
+    agents[1].move_to(cell)
+    with pytest.raises(CellFullException):
+        agents[2].move_to(cell)
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_unlimited_capacity_never_raises(factory) -> None:
+    """capacity=None: no CellFullException no matter how many agents enter."""
+    model = make_model()
+    grid = factory(None)
+    cell = grid._celllist[0]
+    for _ in range(20):
+        make_agent(model).move_to(cell)
+    assert len(cell._agents) == 20
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_vacating_agent_frees_capacity(factory) -> None:
+    """After an agent leaves, the freed slot must accept a new occupant."""
+    model = make_model()
+    grid = factory(1)
+    cell = grid._celllist[0]
+    bob, julie = make_agent(model), make_agent(model)
+    bob.move_to(cell)
+    bob.cell = None
+    julie.move_to(cell)
+    assert julie in cell._agents
+
+
+# ---------------------------------------------------------------------------
+# Section 2 — available_cells property
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_available_cells_full_grid_all_returned(factory) -> None:
+    """On a fresh (empty) grid every cell is available."""
+    grid = factory(2)
+    assert len(list(grid.cells_with_capacity)) == len(grid._celllist)
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_available_cells_excludes_full_cell(factory) -> None:
+    """A cell filled to capacity must not appear in available_cells."""
+    model = make_model()
+    grid = factory(1)
+    cell = grid._celllist[0]
+    make_agent(model).move_to(cell)
+    available = list(grid.cells_with_capacity)
+    assert cell not in available
+    assert len(available) == len(grid._celllist) - 1
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_available_cells_includes_partially_filled_cell(factory) -> None:
+    """A cell at capacity=3 holding 2 agents must still appear in available_cells."""
+    model = make_model()
+    grid = factory(3)
+    cell = grid._celllist[0]
+    for _ in range(2):
+        make_agent(model).move_to(cell)
+    assert cell in list(grid.cells_with_capacity)
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_available_cells_unlimited_always_includes_cell(factory) -> None:
+    """With capacity=None a cell is always available regardless of agent count."""
+    model = make_model()
+    grid = factory(None)
+    cell = grid._celllist[0]
+    for _ in range(50):
+        make_agent(model).move_to(cell)
+    assert cell in list(grid.cells_with_capacity)
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_available_cells_recovers_after_agent_leaves(factory) -> None:
+    """A full cell must re-appear in available_cells after an agent departs."""
+    model = make_model()
+    grid = factory(1)
+    cell = grid._celllist[0]
+    agent = make_agent(model)
+    agent.move_to(cell)
+    assert cell not in list(grid.cells_with_capacity)
+    agent.cell = None
+    assert cell in list(grid.cells_with_capacity)
+
+
+# ---------------------------------------------------------------------------
+# Section 3 — select_random_available_cell()
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_select_random_available_cell_not_full(factory) -> None:
+    """Returned cell must have remaining capacity."""
+    model = make_model()
+    grid = factory(2)
+    half = len(grid._celllist) // 2
+    for cell in grid._celllist[:half]:
+        for _ in range(2):
+            make_agent(model).move_to(cell)
+    chosen = grid.select_random_cell_with_capacity()
+    assert not chosen.is_full
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_select_random_available_cell_raises_when_all_full(factory) -> None:
+    """IndexError must be raised when every cell is at capacity."""
+    model = make_model()
+    grid = factory(1)
+    for cell in grid._celllist:
+        make_agent(model).move_to(cell)
+    with pytest.raises(IndexError, match="No available cells"):
+        grid.select_random_cell_with_capacity()
+
+
+@pytest.mark.parametrize("factory", GRID_FACTORIES)
+def test_select_random_available_cell_consistent_with_available_cells(factory) -> None:
+    """Every result from select_random_available_cell must be in available_cells."""
+    model = make_model()
+    grid = factory(3)
+    for cell in grid._celllist[::3]:
+        for _ in range(2):
+            make_agent(model).move_to(cell)
+    available_set = set(grid.cells_with_capacity)
+    for _ in range(30):
+        chosen = grid.select_random_cell_with_capacity()
+        assert chosen in available_set
+
+
+def test_cell_is_full_with_capacity_none() -> None:
+    """is_full must always be False for a cell with unlimited capacity."""
+    cell = Cell(coordinate=(0, 0), capacity=None, random=RNG)
+    assert not cell.is_full
+
+
+def test_cell_is_full_transitions_correctly() -> None:
+    """is_full must reflect the exact agent count vs capacity boundary."""
+    model = make_model()
+    cell = Cell(coordinate=(0, 0), capacity=2, random=RNG)
+    a1, a2 = make_agent(model), make_agent(model)
+
+    assert not cell.is_full  # 0 / 2
+    cell.add_agent(a1)
+    assert not cell.is_full  # 1 / 2
+    cell.add_agent(a2)
+    assert cell.is_full  # 2 / 2
+    cell.remove_agent(a1)
+    assert not cell.is_full  # 1 / 2
+
+
+def test_cell_add_agent_raises_when_full() -> None:
+    """add_agent must raise CellFullException directly, not silently overflow."""
+    model = make_model()
+    cell = Cell(coordinate=(0, 0), capacity=1, random=RNG)
+    cell.add_agent(make_agent(model))
+    with pytest.raises(CellFullException):
+        cell.add_agent(make_agent(model))
+
+
+def test_voronoi_default_no_capacity() -> None:
+    """Default VoronoiGrid (capacity=None) leaves cells with None capacity."""
+    centroids = [[0.0, 0.0], [1.0, 0.0], [0.5, 1.0], [1.5, 1.0], [0.0, 2.0], [1.0, 2.0]]
+    grid = VoronoiGrid(centroids, random=random.Random(42))
+    for cell in grid._cells.values():
+        assert cell.capacity is None
+
+
+def test_voronoi_int_capacity_applied_to_all_cells() -> None:
+    """Integer capacity is applied uniformly to every cell."""
+    centroids = [[0.0, 0.0], [1.0, 0.0], [0.5, 1.0], [1.5, 1.0], [0.0, 2.0], [1.0, 2.0]]
+    grid = VoronoiGrid(centroids, capacity=5, random=random.Random(42))
+    for cell in grid._cells.values():
+        assert cell.capacity == 5
+
+
+def test_voronoi_callable_capacity_derives_from_area() -> None:
+    """A callable capacity is called per-cell with polygon area and must return int."""
+    centroids = [[0.0, 0.0], [1.0, 0.0], [0.5, 1.0], [1.5, 1.0], [0.0, 2.0], [1.0, 2.0]]
+    grid = VoronoiGrid(centroids, capacity=round_float, random=random.Random(42))
+    for cell in grid._cells.values():
+        assert cell.capacity is not None
+        assert isinstance(cell.capacity, int)
+        assert cell.capacity >= 0
+
+
+def test_voronoi_callable_capacity_custom_function() -> None:
+    """A custom callable capacity is applied correctly."""
+    centroids = [[0.0, 0.0], [1.0, 0.0], [0.5, 1.0], [1.5, 1.0], [0.0, 2.0], [1.0, 2.0]]
+    grid = VoronoiGrid(centroids, capacity=lambda area: 10, random=random.Random(42))
+    for cell in grid._cells.values():
+        assert cell.capacity == 10
+
+
+def test_voronoi_int_capacity_enforced_at_runtime() -> None:
+    """CellFullException fires when integer capacity is exceeded."""
+    centroids = [[0.0, 0.0], [1.0, 0.0], [0.5, 1.0], [1.5, 1.0], [0.0, 2.0], [1.0, 2.0]]
+    model = Model(rng=42)
+    grid = VoronoiGrid(centroids, capacity=1, random=random.Random(42))
+    cell = next(iter(grid._cells.values()))
+    a1 = CellAgent(model)
+    a2 = CellAgent(model)
+    a1.move_to(cell)
+    with pytest.raises(CellFullException):
+        a2.move_to(cell)

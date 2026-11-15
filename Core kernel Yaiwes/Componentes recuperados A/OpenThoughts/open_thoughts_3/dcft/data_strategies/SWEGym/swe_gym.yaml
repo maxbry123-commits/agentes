@@ -1,0 +1,50 @@
+operators:
+- id: load_hf_dataset
+  config:
+    type: hf_source
+    dataset: SWE-Gym/SWE-Gym-Raw
+    split: train
+- id: load_hf_dataset_2
+  config:
+    type: hf_source
+    dataset: SWE-Gym/SWE-Gym-Raw
+    split: train
+- id: get_unique_code_sources
+  config:
+    type: function
+    function: data_strategies.SWEGym.utils.get_unique_code_sources
+  input_ids:  
+  - load_hf_dataset
+- id: get_files_for_repo
+  config:
+    type: function
+    function: data_strategies.SWEGym.utils.get_files_for_repo
+    function_config:
+      repo_column: repo
+  input_ids:
+  - get_unique_code_sources
+- id: compute_relevant_context
+  config:
+    type: generic_resource_function
+    sharded: true
+    num_shards: 4096
+    memory: 200
+    function: data_strategies.SWEGym.utils.compute_relevant_context
+    input_dataset_map:
+      dataset: load_hf_dataset_2
+      dataset_with_code_files: get_files_for_repo
+  input_ids:
+  - load_hf_dataset_2
+  - get_files_for_repo
+- id: bm25k
+  config:
+    type: generic_resource_function
+    sharded: true
+    num_shards: 4096
+    memory: 300
+    num_cpus: 32
+    function: data_strategies.SWEGym.utils.bm25k
+    function_config:
+      num_docs: 3
+  input_ids:
+  - compute_relevant_context

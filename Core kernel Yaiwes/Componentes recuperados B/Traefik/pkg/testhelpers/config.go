@@ -1,0 +1,216 @@
+package testhelpers
+
+import (
+	"github.com/traefik/traefik/v3/pkg/config/dynamic"
+	otypes "github.com/traefik/traefik/v3/pkg/observability/types"
+)
+
+// BuildConfiguration is a helper to create a configuration.
+func BuildConfiguration(dynamicConfigBuilders ...func(*dynamic.HTTPConfiguration)) *dynamic.HTTPConfiguration {
+	conf := &dynamic.HTTPConfiguration{
+		Models:            map[string]*dynamic.Model{},
+		ServersTransports: map[string]*dynamic.ServersTransport{},
+	}
+
+	for _, build := range dynamicConfigBuilders {
+		build(conf)
+	}
+	return conf
+}
+
+// WithRouters is a helper to create a configuration.
+func WithRouters(opts ...func(*dynamic.Router) string) func(*dynamic.HTTPConfiguration) {
+	return func(c *dynamic.HTTPConfiguration) {
+		c.Routers = make(map[string]*dynamic.Router)
+		for _, opt := range opts {
+			b := &dynamic.Router{}
+			name := opt(b)
+			c.Routers[name] = b
+		}
+	}
+}
+
+// WithRouter is a helper to create a configuration.
+func WithRouter(routerName string, opts ...func(*dynamic.Router)) func(*dynamic.Router) string {
+	return func(r *dynamic.Router) string {
+		for _, opt := range opts {
+			opt(r)
+		}
+		return routerName
+	}
+}
+
+// WithRouterMiddlewares is a helper to create a configuration.
+func WithRouterMiddlewares(middlewaresName ...string) func(*dynamic.Router) {
+	return func(r *dynamic.Router) {
+		r.Middlewares = middlewaresName
+	}
+}
+
+// WithServiceName is a helper to create a configuration.
+func WithServiceName(serviceName string) func(*dynamic.Router) {
+	return func(r *dynamic.Router) {
+		r.Service = serviceName
+	}
+}
+
+// WithObservability is a helper to create a configuration.
+func WithObservability() func(*dynamic.Router) {
+	return func(r *dynamic.Router) {
+		r.Observability = &dynamic.RouterObservabilityConfig{
+			AccessLogs:     new(true),
+			Metrics:        new(true),
+			Tracing:        new(true),
+			TraceVerbosity: otypes.MinimalVerbosity,
+		}
+	}
+}
+
+// WithServices is a helper to create a configuration.
+func WithServices(opts ...func(service *dynamic.Service) string) func(*dynamic.HTTPConfiguration) {
+	return func(c *dynamic.HTTPConfiguration) {
+		c.Services = make(map[string]*dynamic.Service)
+		for _, opt := range opts {
+			b := &dynamic.Service{}
+			name := opt(b)
+			c.Services[name] = b
+		}
+	}
+}
+
+// WithService is a helper to create a configuration.
+func WithService(name string, opts ...func(*dynamic.Service)) func(*dynamic.Service) string {
+	return func(s *dynamic.Service) string {
+		for _, opt := range opts {
+			opt(s)
+		}
+
+		return name
+	}
+}
+
+func WithServiceServersLoadBalancer(opts ...func(*dynamic.ServersLoadBalancer)) func(*dynamic.Service) {
+	return func(s *dynamic.Service) {
+		b := &dynamic.ServersLoadBalancer{}
+		b.SetDefaults()
+
+		for _, opt := range opts {
+			opt(b)
+		}
+
+		s.LoadBalancer = b
+	}
+}
+
+func WithServiceWRR(opts ...func(*dynamic.WeightedRoundRobin)) func(*dynamic.Service) {
+	return func(s *dynamic.Service) {
+		b := &dynamic.WeightedRoundRobin{}
+
+		for _, opt := range opts {
+			opt(b)
+		}
+
+		s.Weighted = b
+	}
+}
+
+// WithWRRServices is a helper to create a configuration.
+func WithWRRServices(opts ...func(*dynamic.WRRService)) func(*dynamic.WeightedRoundRobin) {
+	return func(b *dynamic.WeightedRoundRobin) {
+		for _, opt := range opts {
+			service := dynamic.WRRService{}
+			opt(&service)
+			b.Services = append(b.Services, service)
+		}
+	}
+}
+
+// WithWRRService is a helper to create a configuration.
+func WithWRRService(name string, opts ...func(*dynamic.WRRService)) func(*dynamic.WRRService) {
+	return func(s *dynamic.WRRService) {
+		for _, opt := range opts {
+			opt(s)
+		}
+		s.Name = name
+	}
+}
+
+// WithMiddlewares is a helper to create a configuration.
+func WithMiddlewares(opts ...func(*dynamic.Middleware) string) func(*dynamic.HTTPConfiguration) {
+	return func(c *dynamic.HTTPConfiguration) {
+		c.Middlewares = make(map[string]*dynamic.Middleware)
+		for _, opt := range opts {
+			b := &dynamic.Middleware{}
+			name := opt(b)
+			c.Middlewares[name] = b
+		}
+	}
+}
+
+// WithMiddleware is a helper to create a configuration.
+func WithMiddleware(name string, opts ...func(*dynamic.Middleware)) func(*dynamic.Middleware) string {
+	return func(r *dynamic.Middleware) string {
+		for _, opt := range opts {
+			opt(r)
+		}
+		return name
+	}
+}
+
+// WithBasicAuth is a helper to create a configuration.
+func WithBasicAuth(auth *dynamic.BasicAuth) func(*dynamic.Middleware) {
+	return func(r *dynamic.Middleware) {
+		r.BasicAuth = auth
+	}
+}
+
+// WithErrorPage is a helper to create a configuration.
+func WithErrorPage(errorPage *dynamic.ErrorPage) func(*dynamic.Middleware) {
+	return func(r *dynamic.Middleware) {
+		r.Errors = errorPage
+	}
+}
+
+// WithEntryPoints is a helper to create a configuration.
+func WithEntryPoints(eps ...string) func(*dynamic.Router) {
+	return func(f *dynamic.Router) {
+		f.EntryPoints = eps
+	}
+}
+
+// WithRule is a helper to create a configuration.
+func WithRule(rule string) func(*dynamic.Router) {
+	return func(f *dynamic.Router) {
+		f.Rule = rule
+	}
+}
+
+// WithServers is a helper to create a configuration.
+func WithServers(opts ...func(*dynamic.Server)) func(*dynamic.ServersLoadBalancer) {
+	return func(b *dynamic.ServersLoadBalancer) {
+		for _, opt := range opts {
+			server := dynamic.Server{}
+			opt(&server)
+			b.Servers = append(b.Servers, server)
+		}
+	}
+}
+
+// WithServer is a helper to create a configuration.
+func WithServer(url string, opts ...func(*dynamic.Server)) func(*dynamic.Server) {
+	return func(s *dynamic.Server) {
+		for _, opt := range opts {
+			opt(s)
+		}
+		s.URL = url
+	}
+}
+
+// WithSticky is a helper to create a configuration.
+func WithSticky(cookieName string) func(*dynamic.ServersLoadBalancer) {
+	return func(b *dynamic.ServersLoadBalancer) {
+		b.Sticky = &dynamic.Sticky{
+			Cookie: &dynamic.Cookie{Name: cookieName},
+		}
+	}
+}

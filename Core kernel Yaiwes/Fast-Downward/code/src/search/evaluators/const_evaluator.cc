@@ -1,0 +1,49 @@
+#include "const_evaluator.h"
+
+#include "../evaluation_result.h"
+
+#include "../plugins/plugin.h"
+
+using namespace std;
+
+namespace const_evaluator {
+ConstEvaluator::ConstEvaluator(
+    const shared_ptr<AbstractTask> &task, int value, const string &description,
+    utils::Verbosity verbosity)
+    : Evaluator(task, false, false, false, description, verbosity),
+      value(value) {
+}
+
+EvaluationResult ConstEvaluator::compute_result(EvaluationContext &) {
+    EvaluationResult result;
+    result.set_evaluator_value(value);
+    return result;
+}
+bool ConstEvaluator::is_safe() const {
+    return value < EvaluationResult::INFTY;
+}
+
+class ConstEvaluatorFeature
+    : public plugins::TypedFeature<TaskIndependentEvaluator> {
+public:
+    ConstEvaluatorFeature() : TypedFeature("const") {
+        document_subcategory("evaluators_basic");
+        document_title("Constant evaluator");
+        document_synopsis("Returns a constant value.");
+
+        add_option<int>(
+            "value", "the constant value", "1",
+            plugins::Bounds("0", "infinity"));
+        add_evaluator_options_to_feature(*this, "const");
+    }
+
+    virtual shared_ptr<TaskIndependentEvaluator> create_component(
+        const plugins::Options &opts) const override {
+        return components::make_auto_task_independent_component<
+            ConstEvaluator, Evaluator>(
+            opts.get<int>("value"), get_evaluator_arguments_from_options(opts));
+    }
+};
+
+static plugins::FeaturePlugin<ConstEvaluatorFeature> _plugin;
+}

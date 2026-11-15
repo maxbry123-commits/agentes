@@ -1,0 +1,70 @@
+Exit code: 1
+---
+Stdout:
+Schemathesis dev
+━━━━━━━━━━━━━━━━
+
+
+ ✅  Loaded specification from http://127.0.0.1/graphql (in 0.00s)
+
+     Base URL:         http://127.0.0.1/graphql
+     Specification:    GraphQL
+     Operations:       4 selected / 4 total
+     Configuration:    /tmp/config.toml
+
+
+ ✅  API capabilities:
+
+     Supports NULL byte in headers:                            ✓
+     Accepts backslash and control characters in URL paths:    ✓
+
+ ❌  Fuzzing (in 0.00s)
+
+     ✅ 3 passed  ❌ 1 failed
+
+ ❌  Stateful (in 0.00s)
+
+     Scenarios:    N
+     API Links:    N covered / 3 selected / 3 total (3 inferred)
+
+     ✅ N passed  ❌ 1 failed
+
+=================================== FAILURES ===================================
+_____________________________ Mutation.updateBook ______________________________
+1. Test Case ID: <PLACEHOLDER>
+
+- GraphQL server error
+
+    planted: update-on-existing
+
+[200] OK:
+
+    `{"data": {"updateBook": null}, "errors": [{"message": "planted: update-on-existing", "locations": [{"line": 2, "column": 3}], "path": ["updateBook"]}]}`
+
+Reproduce with:
+
+    <PLACEHOLDER>
+
+    st replay <PLACEHOLDER>
+
+=================================== SUMMARY ====================================
+
+API Operations:
+  Selected: 4/4
+  Tested: 4
+
+Test Phases:
+  ⏭  Examples (not supported)
+  ⏭  Coverage (not supported)
+  ❌ Fuzzing
+  ❌ Stateful
+
+Failures:
+  ❌ GraphQL server error: 1
+
+Test cases:
+  N generated, N found N unique failures
+
+Seed: 42
+
+============================== 1 failure in 1.00s ==============================

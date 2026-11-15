@@ -1,0 +1,20 @@
+{% extends "base.jinja" %}
+
+{% block preview %}
+  {{ email }} at {{ company|noHyperlink }}
+{% endblock %}
+
+{% block title %}
+  A new organization joined GrowthBook
+{% endblock %}
+
+{% block top %}
+  <p>
+    Company: <strong>{{ company|noHyperlink }}</strong><br/>
+    Email: <strong>{{ email }}</strong>
+  </p>
+{% endblock %}
+
+{% block lower %}
+  <p>You are receiving this email because you are an admin.</p>
+{% endblock %}

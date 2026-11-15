@@ -1,0 +1,91 @@
+operators:
+  - id: stage_1_2_train_fasttext
+    config:
+      type: load_preexisting
+      framework_name: webinstruct_stage_1_2
+   
+  - id: sample_dclm_refined_web_shards
+    config:
+      type: dclm_refinedweb_source
+      num_shards: 500
+      s3_bucket: commoncrawl
+      s3_prefix: contrib/datacomp/DCLM-refinedweb/
+      seed: 314 # different shards than for training with seed 42
+      materialize_output: false
+    input_ids:
+      - stage_1_2_train_fasttext
+
+  - id: clean_dclm_refinedweb_shards
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.clean_dataset
+      function_config:
+        input_column: text
+        output_column: cleaned_text
+        remove_columns: 
+          - bff_contained_ngram_count_before_dedupe
+          - language_id_whole_page_fasttext
+          - metadata
+          - previous_word_count
+          - warcinfo
+      sharded: true
+      materialize_output: false
+    input_ids:
+      - sample_dclm_refined_web_shards
+
+  - id: classify_fasttext
+    config:
+      type: fasttext
+      hf_repo_id: mlfoundations-dev/fasttext_webinstruct_stage_1_2_20k_stemez_20k_mathhelpforum_40k_negative_refinedweb
+      input_column: cleaned_text
+      target_label: "__label__QA_doc"
+      filter_threshold: 0.5
+    input_ids:
+      - clean_dclm_refinedweb_shards
+
+  - id: count_domains
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.count_domains_per_shard
+      sharded: true
+      function_config:
+        input_url_column: "url"
+        output_domain_column: "domain"
+        output_count_column: "count"
+    input_ids:
+      - classify_fasttext
+
+  - id: sum_and_filter_counts
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.sum_and_filter_low_frequency_domains
+      function_config:
+        input_domain_column: "domain"
+        input_count_column: "count"
+        min_count: 20
+    input_ids:
+      - count_domains
+
+  - id: classify_domains
+    config:
+      type: completions
+      map: webinstruct_classify_educational_domain
+      map_config:
+        input_domain_column: "domain"
+        output_classification_column: "is_educational_domain"
+      model: gpt-4o-mini
+      batch: false
+    input_ids:
+      - sum_and_filter_counts
+
+  - id: annotate_frequent_and_educational_domains
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.annotate_frequent_and_educational_domains
+      input_dataset_map:
+        dataset: classify_fasttext
+        domains: classify_domains
+      sharded: true
+    input_ids:
+      - classify_fasttext
+      - classify_domains

@@ -1,0 +1,105 @@
+//go:build !windows && cgo
+
+package apiserver
+
+import (
+	"net/http"
+)
+
+// APIOverviewResponse represents the response for GET /api/v1
+type APIOverviewResponse struct {
+	Service     string            `json:"service"`
+	Version     string            `json:"version"`
+	Description string            `json:"description"`
+	Endpoints   []EndpointInfo    `json:"endpoints"`
+	TaskTypes   []TaskTypeInfo    `json:"task_types"`
+	Links       map[string]string `json:"links"`
+}
+
+// taskTypeRegistry is a centralized registry of all supported task types
+var taskTypeRegistry = []TaskTypeInfo{
+	{Name: "intent", Description: "Intent/category classification (default for batch endpoint)"},
+	{Name: "pii", Description: "Personally Identifiable Information detection"},
+	{Name: "security", Description: "Jailbreak and security threat detection"},
+	{Name: "all", Description: "All classification types combined"},
+}
+
+// handleAPIOverview handles GET /api/v1 for API discovery
+func (s *ClassificationAPIServer) handleAPIOverview(w http.ResponseWriter, _ *http.Request) {
+	// Build endpoints list from registry.
+	metadata := apiEndpointMetadata()
+	endpoints := make([]EndpointInfo, 0, len(metadata))
+	for _, endpoint := range metadata {
+		endpoints = append(endpoints, EndpointInfo(endpoint))
+	}
+
+	response := APIOverviewResponse{
+		Service:     "Semantic Router Apiserver",
+		Version:     "v1",
+		Description: "HTTP router apiserver for classification utilities, config management, and service introspection",
+		Endpoints:   endpoints,
+		TaskTypes:   taskTypeRegistry,
+		Links: map[string]string{
+			"documentation": "https://vllm-project.github.io/semantic-router/",
+			"openapi_spec":  "/openapi.json",
+			"swagger_ui":    "/docs",
+			"models_info":   "/info/models",
+			"health":        "/health",
+			"ready":         "/ready",
+		},
+	}
+
+	s.writeJSONResponse(w, http.StatusOK, response)
+}
+
+// handleOpenAPISpec serves the OpenAPI 3.0 specification at /openapi.json
+func (s *ClassificationAPIServer) handleOpenAPISpec(w http.ResponseWriter, _ *http.Request) {
+	spec := s.generateOpenAPISpec()
+	s.writeJSONResponse(w, http.StatusOK, spec)
+}
+
+// handleSwaggerUI serves the Swagger UI at /docs
+func (s *ClassificationAPIServer) handleSwaggerUI(w http.ResponseWriter, _ *http.Request) {
+	// Serve a simple HTML page that loads Swagger UI from CDN
+	html := `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Semantic Router API Documentation</title>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-standalone-preset.js"></script>
+    <script>
+        window.onload = function() {
+            window.ui = SwaggerUIBundle({
+                url: "/openapi.json",
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout"
+            });
+        };
+    </script>
+</body>
+</html>`
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(html))
+}

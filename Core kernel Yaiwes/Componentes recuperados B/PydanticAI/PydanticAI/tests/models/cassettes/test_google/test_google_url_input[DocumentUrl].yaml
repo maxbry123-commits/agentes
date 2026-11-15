@@ -1,0 +1,74 @@
+interactions:
+  - request:
+      headers:
+        accept:
+          - "*/*"
+        accept-encoding:
+          - gzip, deflate
+        connection:
+          - keep-alive
+        content-length:
+          - "264"
+        content-type:
+          - application/json
+        host:
+          - aiplatform.googleapis.com
+      method: POST
+      parsed_body:
+        contents:
+          - parts:
+              - text: What is the main content of this URL?
+              - fileData:
+                  file_uri: https://storage.googleapis.com/cloud-samples-data/generative-ai/pdf/2403.05530.pdf
+                  mime_type: application/pdf
+            role: user
+        generationConfig: {}
+      uri: https://aiplatform.googleapis.com/v1beta1/projects/pydantic-ai/locations/global/publishers/google/models/gemini-2.0-flash:generateContent
+    response:
+      headers:
+        alt-svc:
+          - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+        content-length:
+          - "1364"
+        content-type:
+          - application/json; charset=UTF-8
+        transfer-encoding:
+          - chunked
+        vary:
+          - Origin
+          - X-Origin
+          - Referer
+      parsed_body:
+        candidates:
+          - avgLogprobs: -0.45115502366741883
+            content:
+              parts:
+                - text:
+                    The URL points to a technical report from Google DeepMind introducing Gemini 1.5 Pro, a multimodal AI model
+                    designed for understanding and reasoning over extremely large contexts (millions of tokens). It details the
+                    model's architecture, training, performance across a range of tasks, and responsible deployment considerations.
+                    Key highlights include near-perfect recall on long-context retrieval tasks, state-of-the-art performance in
+                    areas like long-document question answering, and surprising new capabilities like in-context learning of new
+                    languages.
+              role: model
+            finishReason: STOP
+        createTime: "2025-05-31T21:23:50.139470Z"
+        modelVersion: gemini-2.0-flash
+        responseId: ZnM7aM7BCL_z2PgP1KyaoAY
+        usageMetadata:
+          candidatesTokenCount: 103
+          candidatesTokensDetails:
+            - modality: TEXT
+              tokenCount: 103
+          promptTokenCount: 19875
+          promptTokensDetails:
+            - modality: DOCUMENT
+              tokenCount: 19866
+            - modality: TEXT
+              tokenCount: 9
+          totalTokenCount: 19978
+          trafficType: ON_DEMAND
+      status:
+        code: 200
+        message: OK
+version: 1

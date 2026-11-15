@@ -1,0 +1,100 @@
+
+
+operators:
+- id: load_code
+  config:
+    type: hf_source
+    dataset: PrimeIntellect/real-world-swe-problems
+    split: train
+    trust_remote_code: True
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        prompt: instruction_seed 
+  input_ids:
+  - load_code
+
+- id: sample_dataset_pre
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_100_000
+  input_ids:
+  - rename_task_column
+- id: add_source_name
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      _source: "PrimeIntellect/real-world-swe-problems"
+  input_ids:
+  - sample_dataset_pre
+
+- id: decontaminate
+  config:
+    type: cpu_function
+    sharded: true
+    num_shards: 8
+    num_cpus: 32
+    function:  data_strategies._A1_Source.utils.decontaminate_fuzzy_w_ngram
+    function_config:
+      column: instruction_seed
+      eval_datasets:
+        - HuggingFaceH4/MATH-500
+        - Maxwell-Jia/AIME_2024
+        - AI-MO/aimo-validation-amc
+        - livecodebench/code_generation_lite
+        - mlfoundations-dev/AIME2025_combined
+        - cais/hle
+        - open-r1/codeforces
+        - Idavidrein/gpqa
+        - daman1209arora/jeebench
+        - mlfoundations-dev/mmlu_pro_eval_full
+        - Qwen/CodeElo
+        - open-r1/ioi
+      eval_columns:
+        - problem
+        - Problem
+        - problem
+        - question_content
+        - question
+        - question
+        - description
+        - Question
+        - question
+        - prompt
+        - description
+        - statement
+      eval_splits:
+        - test
+        - train
+        - train
+        - test
+        - train
+        - test
+        - test
+        - train
+        - test
+        - test
+        - test
+        - test
+      eval_subsets:
+        Idavidrein/gpqa: gpqa_diamond
+      similarity_threshold: 75.0
+      ngram_size: 13
+  input_ids:
+  - add_source_name
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_000_000
+  input_ids:
+  - decontaminate 
+
+

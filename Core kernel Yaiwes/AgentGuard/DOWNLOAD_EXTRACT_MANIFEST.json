@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 161941,
+  "bundle_sha256": "381204a8f0f02b75f2ccf949660069152dfc581a7cd9b897512a858d81154e6e",
+  "extracted_tree": {
+    "bytes": 628500,
+    "files": 64,
+    "sha256": "2d555691451ec3e31837ddc8f51a28676f0ae290db024a54176feca17a9985e8"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 161941,
+      "name": "AgentGuard.bundle.zip.part-0001",
+      "sha256": "381204a8f0f02b75f2ccf949660069152dfc581a7cd9b897512a858d81154e6e"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "AgentGuard",
+  "source_bytes": 628500,
+  "source_commit": "196ec99873eccefb79fc1bbc28024e3ae92a4ece",
+  "source_files": 64,
+  "source_ref": "HEAD",
+  "source_repo": "krishkumar/agentguard",
+  "source_tree": {
+    "bytes": 628500,
+    "files": 64,
+    "sha256": "2d555691451ec3e31837ddc8f51a28676f0ae290db024a54176feca17a9985e8"
+  }
+}

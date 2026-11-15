@@ -1,0 +1,176 @@
+package constraintapi
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/json"
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/inngest/inngest/pkg/logger"
+	"github.com/inngest/inngest/pkg/util/errs"
+	"github.com/oklog/ulid/v2"
+)
+
+type extendLeaseScriptResponse struct {
+	Status                  int                          `json:"s"`
+	Debug                   flexibleStringArray          `json:"d"`
+	LeaseID                 ulid.ULID                    `json:"lid"`
+	EnvID                   string                       `json:"e,omitempty"`
+	AppID                   string                       `json:"ai,omitempty"`
+	FunctionID              string                       `json:"f,omitempty"`
+	StoredConstraints       []SerializedConstraintItem   `json:"sc"`
+	ConstraintUsage         flexibleConstraintUsageArray `json:"cu"`
+	OperationIdempotencyHit int                          `json:"oih"`
+}
+
+// ExtendLease implements CapacityManager.
+func (r *redisCapacityManager) ExtendLease(ctx context.Context, req *CapacityExtendLeaseRequest) (*CapacityExtendLeaseResponse, errs.InternalError) {
+	l := logger.StdlibLogger(ctx)
+
+	// Validate request
+	if err := req.Valid(); err != nil {
+		return nil, errs.Wrap(0, false, "invalid request: %w", err)
+	}
+
+	l = l.With(
+		"account_id", req.AccountID,
+		"lease_id", req.LeaseID,
+		"source", req.Source,
+		"shard", r.shardName,
+	)
+
+	now := r.clock.Now()
+
+	leaseExpiry := now.Add(req.Duration)
+	newLeaseID, err := ulid.New(ulid.Timestamp(leaseExpiry), rand.Reader)
+	if err != nil {
+		return nil, errs.Wrap(0, false, "failed to generate new lease ID: %w", err)
+	}
+
+	keys := []string{
+		r.keyOperationIdempotency(req.AccountID, "ext", req.IdempotencyKey),
+		r.keyScavengerShard(),
+		r.keyAccountLeases(req.AccountID),
+		r.keyLeaseDetails(req.AccountID, req.LeaseID),
+		r.keyLeaseDetails(req.AccountID, newLeaseID),
+	}
+
+	enableDebugLogsVal := "0"
+	if enableDebugLogs || r.enableDebugLogs {
+		enableDebugLogsVal = "1"
+	}
+
+	scopedKeyPrefix := fmt.Sprintf("{cs}:%s", accountScope(req.AccountID))
+
+	args, err := strSlice([]any{
+		scopedKeyPrefix,
+		req.AccountID,
+		req.LeaseID.String(),
+		newLeaseID.String(),
+		now.UnixMilli(), // current time in milliseconds for throttle
+		leaseExpiry.UnixMilli(),
+		int(r.operationIdempotencyTTL.Seconds()),
+		enableDebugLogsVal,
+	})
+	if err != nil {
+		return nil, errs.Wrap(0, false, "invalid args: %w", err)
+	}
+
+	l.Trace(
+		"prepared extend call",
+		"req", req,
+		"keys", keys,
+		"args", args,
+	)
+
+	rawRes, operationIdempotencyHit, internalErr := executeLuaScript(
+		ctx,
+		"extend",
+		r.shardName,
+		req.Source,
+		r.client,
+		r.clock,
+		keys,
+		args,
+	)
+	if internalErr != nil {
+		return nil, internalErr
+	}
+
+	parsedResponse := extendLeaseScriptResponse{}
+	err = json.Unmarshal(rawRes, &parsedResponse)
+	if err != nil {
+		return nil, errs.Wrap(0, false, "invalid response structure: %w", err)
+	}
+	if operationIdempotencyHit {
+		parsedResponse.OperationIdempotencyHit = 1
+	}
+
+	res := &CapacityExtendLeaseResponse{
+		AccountID:               req.AccountID,
+		Usage:                   constraintUsageFromScript([]scriptConstraintUsage(parsedResponse.ConstraintUsage), constraintItemsFromSerialized(parsedResponse.StoredConstraints)),
+		OperationIdempotencyHit: parsedResponse.OperationIdempotencyHit != 0,
+		internalDebugState:      parsedResponse,
+	}
+	if parsedResponse.LeaseID != ulid.Zero {
+		res.LeaseID = &parsedResponse.LeaseID
+	}
+	if parsedResponse.EnvID != "" {
+		envID, err := uuid.Parse(parsedResponse.EnvID)
+		if err != nil {
+			return nil, errs.Wrap(0, false, "invalid env_id in response: %w", err)
+		}
+		res.EnvID = envID
+	}
+	if parsedResponse.AppID != "" {
+		appID, err := uuid.Parse(parsedResponse.AppID)
+		if err != nil {
+			return nil, errs.Wrap(0, false, "invalid app_id in response: %w", err)
+		}
+		res.AppID = appID
+	}
+	if parsedResponse.FunctionID != "" {
+		functionID, err := uuid.Parse(parsedResponse.FunctionID)
+		if err != nil {
+			return nil, errs.Wrap(0, false, "invalid function_id in response: %w", err)
+		}
+		res.FunctionID = functionID
+	}
+
+	switch parsedResponse.Status {
+	case 1, 2, 3:
+		l.Trace("capacity lease in extend call already cleaned up")
+
+		// TODO: Track status (1: cleaned up, 2: cleaned up or lease superseded, 3: lease expired)
+		return res, nil
+	case 4:
+		if r.enableHighCardinalityInstrumentation != nil && r.enableHighCardinalityInstrumentation(ctx, req.AccountID, uuid.Nil, uuid.Nil) {
+			l.Debug("lease extended")
+		}
+
+		if len(r.lifecycles) > 0 {
+			for _, hook := range r.lifecycles {
+				err := hook.OnCapacityLeaseExtended(ctx, OnCapacityLeaseExtendedData{
+					AccountID:               req.AccountID,
+					EnvID:                   res.EnvID,
+					AppID:                   res.AppID,
+					FunctionID:              res.FunctionID,
+					Duration:                req.Duration,
+					OldLeaseID:              req.LeaseID,
+					NewLeaseID:              parsedResponse.LeaseID,
+					Usage:                   res.Usage,
+					OperationIdempotencyHit: res.OperationIdempotencyHit,
+				})
+				if err != nil {
+					return nil, errs.Wrap(0, false, "extend lifecycle failed: %w", err)
+				}
+			}
+		}
+
+		// TODO: track success
+		return res, nil
+	default:
+		return nil, errs.Wrap(0, false, "unexpected status code %v", parsedResponse.Status)
+	}
+}

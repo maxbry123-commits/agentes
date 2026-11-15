@@ -1,0 +1,17 @@
+# C58 — L7. B6 SALIDA4
+id: C58
+layer: L7
+name: loop_bound
+implementado: true
+critical: false
+description: "Límite de loops/reintentos"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C58 aplica en capa L7"
+checks:
+  - loop_bound_check
+evidence:
+  type: loop_bound_marker
+  required: false

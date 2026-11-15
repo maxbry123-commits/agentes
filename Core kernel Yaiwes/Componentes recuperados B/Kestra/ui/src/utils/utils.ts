@@ -1,0 +1,358 @@
+import {computed} from "vue"
+import moment from "moment"
+import {copyToClipboard} from "@kestra-io/design-system"
+import {useMiscStore} from "override/stores/misc"
+
+export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+
+export function uid() {
+    return String.fromCharCode(Math.floor(Math.random() * 26) + 97) +
+        Math.random().toString(16).slice(2) +
+        Date.now().toString(16).slice(4)
+}
+
+/**
+ * Checks whether a value is a supported file URI.
+ *
+ * @param value Value to validate.
+ * @returns `true` if the value is a string with a supported file prefix.
+ */
+export function isFile(value: unknown): boolean {
+    const PREFIXES = ["kestra:///", "file://", "nsfile://"]
+    return typeof value === "string" && PREFIXES.some(p => value.startsWith(p))
+}
+
+/**
+ * Returns `true` when the value is an Ion internal-storage file (i.e. passes {@link isFile}
+ * and the URI ends with a `.ion` extension, case-insensitive).
+ *
+ * @param value Value to validate.
+ * @returns `true` if the value is an Ion file URI.
+ */
+export function isIon(value: unknown): boolean {
+    return isFile(value) && typeof value === "string" && value.toLowerCase().endsWith(".ion")
+}
+
+export function flatten(object: Record<string, any>) {
+    return Object.assign({}, ...function _flatten(child: Record<string, any> | null, path: string[] = []): Record<string, any>[] {
+        if (child === null) {
+            return [{[path.join(".")]: null}]
+        }
+
+        const keys = Object.keys(child)
+
+        // An empty container has no leaves, so recursing dropped the key entirely. The `path`
+        // guard keeps a top-level `{}` flattening to `{}` rather than gaining a blank key.
+        if (path.length > 0 && keys.length === 0) {
+            return [{[path.join(".")]: child}]
+        }
+
+        return ([] as Record<string, any>[]).concat(...keys
+            .map(key => typeof child[key] === "object" ?
+                _flatten(child[key], path.concat([key])) :
+                [{[path.concat([key]).join(".")]: child[key]}],
+            ))
+    }(object))
+}
+
+export function executionVars(data: Record<string, any>) {
+    if (data === undefined) {
+        return []
+    }
+
+    const flat = flatten(data)
+
+    return Object.keys(flat).map(key => {
+        const rawValue = flat[key]
+        if (key === "variables.executionId") {
+            return {key, value: rawValue, subflow: true}
+        }
+
+        if (typeof rawValue === "string" && rawValue.match(/\d{4}-\d{2}-\d{2}/)) {
+            const date = moment(rawValue, moment.ISO_8601)
+            if (date.isValid()) {
+                return {key, value: rawValue, date: true}
+            }
+        }
+
+        if (typeof rawValue === "number") {
+            return {key, value: number(rawValue)}
+        }
+
+        return {key, value: rawValue}
+
+    })
+}
+
+/**
+ * Format bytes as human-readable text.
+ *
+ * @param bytes Number of bytes.
+ * @param si True to use metric (SI) units, aka powers of 1000. False to use
+ *           binary (IEC), aka powers of 1024.
+ * @param dp Number of decimal places to display.
+ *
+ * @return Formatted string.
+ */
+export function humanFileSize(bytes: number, si = false, dp = 1) {
+    if (bytes === undefined) {
+        // when the size is 0 it arrives as undefined here!
+        return "0B"
+    }
+    const thresh = si ? 1000 : 1024
+
+    if (Math.abs(bytes) < thresh) {
+        return bytes + " B"
+    }
+
+    const units = si ?
+        ["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"] :
+        ["KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
+    let u = -1
+    const r = 10 ** dp
+
+    do {
+        bytes /= thresh
+        ++u
+    } while (Math.round(Math.abs(bytes) * r) / r >= thresh && u < units.length - 1)
+
+
+    return bytes.toFixed(dp) + " " + units[u]
+}
+
+export function number(n: number) {
+    return n.toString().replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1 ")
+}
+
+export function hexToRgba(hex: string, opacity: number) {
+    let c: any
+    if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
+        c = hex.substring(1).split("")
+        if (c.length === 3) {
+            c = [c[0], c[0], c[1], c[1], c[2], c[2]]
+        }
+        c = "0x" + c.join("")
+        return "rgba(" + [(c >> 16) & 255, (c >> 8) & 255, c & 255].join(",") + "," + (opacity || 1) + ")"
+    }
+    throw new Error("Bad Hex")
+}
+
+export function downloadUrl(url: string, filename: string) {
+    const link = document.createElement("a")
+    link.href = url
+    link.setAttribute("download", filename)
+    link.setAttribute("target", "_blank")
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+}
+
+/**
+ * Extracts a filename from an HTTP `Content-Disposition` header.
+ *
+ * @param header  the header value
+ */
+export function extractFileNameFromContentDisposition(header: string | null | undefined): string | null {
+    if (!header) return null
+
+    const filenameRegex = /filename\*=UTF-8''(.+)|filename="(.+?)"|filename=(.+)/
+    const matches = header.match(filenameRegex)
+
+    // Check for UTF-8 encoded filename first
+    if (matches && matches[1]) {
+        return decodeURIComponent(matches[1])
+    }
+    // Fallback to quoted or unquoted filename
+    if (matches && matches[2]) {
+        return matches[2]
+    }
+    if (matches && matches[3]) {
+        return matches[3]
+    }
+
+    return null // Return null if no filename is found
+}
+
+export function switchTheme(miscStore: {theme: SelectedTheme}, theme?: SelectedTheme) {
+    // default theme
+    if (theme === undefined) {
+        if (localStorage.getItem("theme")) {
+            theme = localStorage.getItem("theme") as SelectedTheme
+        } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+            theme = "dark"
+        } else {
+            theme = "light"
+        }
+    }
+
+    const disableTransitions = document.createElement("style")
+    disableTransitions.appendChild(document.createTextNode("*,*::before,*::after{transition:none !important}"))
+    document.head.appendChild(disableTransitions)
+
+    // class name
+    const htmlClass = document.getElementsByTagName("html")[0].classList
+
+    const themeClasses = ["dark", "light", "syncWithSystem", "dark-2"]
+    function removeClasses() {
+        themeClasses.forEach((cls) => htmlClass.remove(cls))
+    }
+    removeClasses()
+
+    if (theme === "syncWithSystem") {
+        const systemTheme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+        htmlClass.add(theme, systemTheme)
+    }
+    else if (theme === "dark-2") {
+        htmlClass.add("dark", "dark-2")
+    }
+    else {
+        htmlClass.add(theme)
+    }
+
+    miscStore.theme = theme
+
+    localStorage.setItem("theme", theme)
+
+    void document.body.offsetHeight
+    requestAnimationFrame(() => disableTransitions.remove())
+}
+
+export type SelectedTheme = "syncWithSystem" | "dark" | "dark-2" | "light"
+
+export function getSelectedTheme(): SelectedTheme {
+    return (localStorage.getItem("theme") as SelectedTheme | null) ?? "syncWithSystem"
+}
+
+export function getTheme(): "light" | "dark" {
+    let theme = getSelectedTheme()
+
+    if (theme === "syncWithSystem") {
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+    }
+
+    return theme === "light" ? "light" : "dark"
+}
+
+export function getLang() {
+    return localStorage.getItem("lang") || "en"
+}
+
+/**
+ * The stored language as a valid BCP 47 tag ("pt_BR" -> "pt-BR") for Intl APIs and the html lang
+ * attribute, which reject the underscore form getLang() returns.
+ */
+export function getLanguageTag() {
+    return getLang().replace(/_/g, "-")
+}
+
+export function splitFirst(str: string, separator: string) {
+    return str.split(separator).slice(1).join(separator)
+}
+
+export function asArray(objOrArray: any | any[]) {
+    if (objOrArray === undefined) {
+        return []
+    }
+
+    return Array.isArray(objOrArray) ? objOrArray : [objOrArray]
+}
+
+export async function copy(text: string) {
+    await copyToClipboard(text)
+}
+
+export function toFormData(obj: FormData | Record<string, any>) {
+    if (!(obj instanceof FormData)) {
+        const formData = new FormData()
+        for (const key in obj) {
+            formData.append(key, obj[key])
+        }
+        return formData
+    }
+    return obj
+}
+
+export interface DateGrouping {
+    format: string;
+    unit: "month" | "week" | "day" | "hour" | "minute";
+}
+
+export function getDateGrouping(startDate: moment.MomentInput, endDate: moment.MomentInput, timeRange: string | undefined): DateGrouping {
+    if ((!startDate || !endDate) && timeRange === undefined) {
+        return {format: "yyyy-MM-DD", unit: "day"}
+    }
+
+    const duration = timeRange === undefined
+        ? moment.duration(moment(endDate).diff(moment(startDate)))
+        : moment.duration(timeRange)
+
+    if (duration.asDays() > 365) {
+        return {format: "yyyy-MM", unit: "month"}
+    } else if (duration.asDays() > 180) {
+        return {format: "yyyy-'W'ww", unit: "week"}
+    } else if (duration.asDays() > 1) {
+        return {format: "yyyy-MM-DD", unit: "day"}
+    } else if (duration.asHours() > 1) {
+        return {format: "yyyy-MM-DD HH:00", unit: "hour"}
+    } else {
+        return {format: "yyyy-MM-DD HH:mm", unit: "minute"}
+    }
+}
+
+export function getParentNamespaces(namespace: string): string[] {
+    if (!namespace) return []
+
+    const parts = namespace.split(".")
+    const parents: string[] = []
+
+    for (let i = 1; i <= parts.length; i++) {
+        parents.push(parts.slice(0, i).join("."))
+    }
+
+    return parents
+}
+
+export const useTheme = () => {
+    const miscStore = useMiscStore()
+    return computed<"light" | "dark">(() => {
+        void miscStore.theme
+        return getTheme()
+    })
+}
+
+export function resolve$ref(fullSchema: Record<string, any>, obj: Record<string, any>) {
+    if (obj === undefined || obj === null) {
+        return obj
+    }
+    if (obj.$ref) {
+        return getValueAtJsonPath(fullSchema, obj.$ref)
+    }
+    return obj
+}
+
+export function getValueAtJsonPath(fullSchema: Record<string, any>, path: string): any {
+    if (!fullSchema || !path || typeof path !== "string") {
+        return undefined
+    }
+
+    const keys = path.replace(/^#\//, "").split("/")
+    let current = fullSchema
+
+    for (const key of keys) {
+        if (current && key in current) {
+            current = resolve$ref(fullSchema, current[key])
+        } else {
+            return undefined
+        }
+    }
+
+    return current
+}
+
+export function deepEqual(x: any, y: any): boolean {
+    const ok = Object.keys, tx = typeof x, ty = typeof y
+    return x && y && tx === "object" && tx === ty ? (
+        ok(x).length === ok(y).length &&
+        ok(x).every(key => deepEqual(x[key], y[key]))
+    ) : (x === y)
+}

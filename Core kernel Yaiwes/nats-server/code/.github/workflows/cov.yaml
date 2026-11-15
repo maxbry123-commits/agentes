@@ -1,0 +1,53 @@
+name: NATS Server Code Coverage
+on:
+  workflow_dispatch: {}
+
+  schedule:
+    - cron: "40 4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  nightly_coverage:
+    runs-on: ubuntu-latest
+
+    env:
+      GOPATH: /home/runner/work/nats-server
+      GO111MODULE: "on"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          path: src/github.com/nats-io/nats-server
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache-dependency-path: src/github.com/nats-io/nats-server/go.sum
+
+      - name: Run code coverage
+        shell: bash --noprofile --norc -x -eo pipefail {0}
+        run: |
+          set -e
+          cd src/github.com/nats-io/nats-server
+          ./scripts/cov.sh upload
+          set +e
+
+      - name: Convert coverage.out to coverage.lcov
+        # Use commit hash here to avoid a re-tagging attack, as this is a third-party action
+        # Commit e4612787670fc5b5f49026b8c29c5569921de1db = tag v1.2.0
+        uses: jandelgado/gcov2lcov-action@e4612787670fc5b5f49026b8c29c5569921de1db
+        with:
+          infile: acc.out
+          working-directory: src/github.com/nats-io/nats-server
+
+      - name: Coveralls
+        # Use commit hash here to avoid a re-tagging attack, as this is a third-party action
+        # Commit 5cbfd81b66ca5d10c19b062c04de0199c215fb6e = tag v2.3.7
+        uses: coverallsapp/github-action@5cbfd81b66ca5d10c19b062c04de0199c215fb6e
+        with:
+          github-token: ${{ secrets.github_token }}
+          file: src/github.com/nats-io/nats-server/coverage.lcov

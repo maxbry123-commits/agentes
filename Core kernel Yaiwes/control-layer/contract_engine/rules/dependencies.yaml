@@ -1,0 +1,14 @@
+# dependencies · aristas contrato → requiere
+# Ciclos = ERROR en graph resolver
+version: "1.0.0"
+
+depends:
+  C47: [C48, C49]      # seguridad exige audit+evidence
+  C49: [C48]           # evidence implica audit trail
+  C55: [C52, C53, C54] # promotion exige provenance+test+trust
+  C82: [C00]           # ABI mount exige governance
+  C83: [C82]
+  C84: [C82]
+  C85: [C82]
+  C74: [C47, C73]
+  C35: [C34]           # rollback tras saga/timeout path

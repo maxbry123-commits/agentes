@@ -1,0 +1,14 @@
+operators:
+- id: hf_source
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/etash_code_golf_annotated
+    split: train
+- id: convert
+  config:
+    type: function
+    function: data_strategies.Stratos.etash_utils.convert_to_share_gpt
+    function_config:
+      user_column: problem
+  input_ids:
+  - hf_source

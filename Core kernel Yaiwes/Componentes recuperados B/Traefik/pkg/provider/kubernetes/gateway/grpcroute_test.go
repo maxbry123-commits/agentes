@@ -1,0 +1,251 @@
+package gateway
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	gatev1 "sigs.k8s.io/gateway-api/apis/v1"
+)
+
+func Test_buildGRPCMatchRule(t *testing.T) {
+	testCases := []struct {
+		desc             string
+		match            gatev1.GRPCRouteMatch
+		hostnames        []gatev1.Hostname
+		expectedRule     string
+		expectedPriority int
+		expectedError    bool
+	}{
+		{
+			desc:             "Empty rule and matches",
+			expectedRule:     `PathPrefix("/")`,
+			expectedPriority: 15,
+		},
+		{
+			desc:             "One Host rule without match",
+			hostnames:        []gatev1.Hostname{"foo.com"},
+			expectedRule:     `Host("foo.com") && PathPrefix("/")`,
+			expectedPriority: 22,
+		},
+		{
+			desc: "One GRPCRouteMatch with no GRPCHeaderMatch",
+			match: gatev1.GRPCRouteMatch{
+				Method: &gatev1.GRPCMethodMatch{
+					Type:    new(gatev1.GRPCMethodMatchExact),
+					Service: new("foo"),
+					Method:  new("bar"),
+				},
+			},
+			expectedRule:     `PathRegexp("/foo/bar")`,
+			expectedPriority: 22,
+		},
+		{
+			desc: "One GRPCRouteMatch with one GRPCHeaderMatch",
+			match: gatev1.GRPCRouteMatch{
+				Method: &gatev1.GRPCMethodMatch{
+					Type:    new(gatev1.GRPCMethodMatchExact),
+					Service: new("foo"),
+					Method:  new("bar"),
+				},
+				Headers: []gatev1.GRPCHeaderMatch{
+					{
+						Type:  new(gatev1.GRPCHeaderMatchExact),
+						Name:  "foo",
+						Value: "bar",
+					},
+				},
+			},
+			expectedRule:     `PathRegexp("/foo/bar") && Header("foo","bar")`,
+			expectedPriority: 45,
+		},
+		{
+			desc:      "One GRPCRouteMatch with one GRPCHeaderMatch and one Host",
+			hostnames: []gatev1.Hostname{"foo.com"},
+			match: gatev1.GRPCRouteMatch{
+				Method: &gatev1.GRPCMethodMatch{
+					Type:    new(gatev1.GRPCMethodMatchExact),
+					Service: new("foo"),
+					Method:  new("bar"),
+				},
+				Headers: []gatev1.GRPCHeaderMatch{
+					{
+						Type:  new(gatev1.GRPCHeaderMatchExact),
+						Name:  "foo",
+						Value: "bar",
+					},
+				},
+			},
+			expectedRule:     `Host("foo.com") && PathRegexp("/foo/bar") && Header("foo","bar")`,
+			expectedPriority: 52,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			t.Parallel()
+
+			rule, priority := buildGRPCMatchRule(test.hostnames, test.match)
+			assert.Equal(t, test.expectedRule, rule)
+			assert.Equal(t, test.expectedPriority, priority)
+		})
+	}
+}
+
+func Test_buildGRPCMethodRule(t *testing.T) {
+	testCases := []struct {
+		desc         string
+		method       *gatev1.GRPCMethodMatch
+		expectedRule string
+	}{
+		{
+			desc:         "Empty",
+			expectedRule: `PathPrefix("/")`,
+		},
+		{
+			desc: "Exact service matching",
+			method: &gatev1.GRPCMethodMatch{
+				Type:    new(gatev1.GRPCMethodMatchExact),
+				Service: new("foo"),
+			},
+			expectedRule: `PathRegexp("/foo/[^/]+")`,
+		},
+		{
+			desc: "Exact method matching",
+			method: &gatev1.GRPCMethodMatch{
+				Type:   new(gatev1.GRPCMethodMatchExact),
+				Method: new("bar"),
+			},
+			expectedRule: `PathRegexp("/[^/]+/bar")`,
+		},
+		{
+			desc: "Regexp service matching",
+			method: &gatev1.GRPCMethodMatch{
+				Type:    new(gatev1.GRPCMethodMatchRegularExpression),
+				Service: new("[^1-9/]"),
+			},
+			expectedRule: `PathRegexp("/[^1-9/]/[^/]+")`,
+		},
+		{
+			desc: "Regexp method matching",
+			method: &gatev1.GRPCMethodMatch{
+				Type:   new(gatev1.GRPCMethodMatchRegularExpression),
+				Method: new("[^1-9/]"),
+			},
+			expectedRule: `PathRegexp("/[^/]+/[^1-9/]")`,
+		},
+		{
+			desc: "Regexp service and method matching",
+			method: &gatev1.GRPCMethodMatch{
+				Type:    new(gatev1.GRPCMethodMatchRegularExpression),
+				Service: new("[^1-9/]"),
+				Method:  new("[^1-9/]"),
+			},
+			expectedRule: `PathRegexp("/[^1-9/]/[^1-9/]")`,
+		},
+		{
+			desc: "Exact type with dot in service name escapes dot",
+			method: &gatev1.GRPCMethodMatch{
+				Type:    new(gatev1.GRPCMethodMatchExact),
+				Service: new("foo.bar"),
+				Method:  new("Method"),
+			},
+			expectedRule: `PathRegexp("/foo\\.bar/Method")`,
+		},
+		{
+			desc: "Nil type defaults to exact and escapes dot",
+			method: &gatev1.GRPCMethodMatch{
+				Type:    nil,
+				Service: new("auth.api"),
+				Method:  new("Login"),
+			},
+			expectedRule: `PathRegexp("/auth\\.api/Login")`,
+		},
+		{
+			desc: "RegularExpression type preserves dot as regex wildcard",
+			method: &gatev1.GRPCMethodMatch{
+				Type:    new(gatev1.GRPCMethodMatchRegularExpression),
+				Service: new("foo.bar"),
+				Method:  new(".*"),
+			},
+			expectedRule: `PathRegexp("/foo.bar/.*")`,
+		},
+		{
+			desc: "Exact type with neither service nor method uses full wildcard",
+			method: &gatev1.GRPCMethodMatch{
+				Type: new(gatev1.GRPCMethodMatchExact),
+			},
+			expectedRule: `PathRegexp("/[^/]+/[^/]+")`,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			t.Parallel()
+
+			rule := buildGRPCMethodRule(test.method)
+			assert.Equal(t, test.expectedRule, rule)
+		})
+	}
+}
+
+func Test_buildGRPCHeaderRules(t *testing.T) {
+	testCases := []struct {
+		desc          string
+		headers       []gatev1.GRPCHeaderMatch
+		expectedRules []string
+	}{
+		{
+			desc: "Empty",
+		},
+		{
+			desc: "One exact match type",
+			headers: []gatev1.GRPCHeaderMatch{
+				{
+					Type:  new(gatev1.GRPCHeaderMatchExact),
+					Name:  "foo",
+					Value: "bar",
+				},
+			},
+			expectedRules: []string{`Header("foo","bar")`},
+		},
+		{
+			desc: "One regexp match type",
+			headers: []gatev1.GRPCHeaderMatch{
+				{
+					Type:  new(gatev1.GRPCHeaderMatchRegularExpression),
+					Name:  "foo",
+					Value: ".*",
+				},
+			},
+			expectedRules: []string{`HeaderRegexp("foo",".*")`},
+		},
+		{
+			desc: "One exact and regexp match type",
+			headers: []gatev1.GRPCHeaderMatch{
+				{
+					Type:  new(gatev1.GRPCHeaderMatchExact),
+					Name:  "foo",
+					Value: "bar",
+				},
+				{
+					Type:  new(gatev1.GRPCHeaderMatchRegularExpression),
+					Name:  "foo",
+					Value: ".*",
+				},
+			},
+			expectedRules: []string{
+				`Header("foo","bar")`,
+				`HeaderRegexp("foo",".*")`,
+			},
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			t.Parallel()
+
+			rule := buildGRPCHeaderRules(test.headers)
+			assert.Equal(t, test.expectedRules, rule)
+		})
+	}
+}

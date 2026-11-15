@@ -1,0 +1,48 @@
+### model
+model_name_or_path: Qwen/Qwen2.5-32B-Instruct
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: dcft/train/zero3_offload.json
+flash_attn: fa2
+
+### dataset
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/LIMO
+messages: conversations
+formatting: sharegpt
+role_tag: from
+content_tag: value
+user_tag: human
+assistant_tag: gpt
+
+cutoff_len: 16384
+overwrite_cache: true
+preprocessing_num_workers: 64
+template: qwen
+
+### output
+output_dir: "/data4/dcft/experiments/train/checkpoints/LIMO_limoconfigs_16k"
+run_name: LIMO_limoconfigs_16k
+hub_model_id: mlfoundations-dev/LIMO_limoconfigs_16k
+report_to: wandb
+push_to_db: true
+push_to_hub: true
+
+logging_steps: 1
+save_strategy: epoch
+plot_loss: true
+overwrite_output_dir: true
+
+### train
+global_batch_size: 8
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 1
+learning_rate: 5.0e-6
+num_train_epochs: 15
+lr_scheduler_type: cosine
+warmup_ratio: 0.0
+bf16: true
+ddp_timeout: 180000000

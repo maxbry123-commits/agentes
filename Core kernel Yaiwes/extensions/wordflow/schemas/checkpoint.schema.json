@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.checkpoint.v1",
+  "title": "Checkpoint",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "checkpoint_id",
+    "lock_id",
+    "created_at",
+    "state",
+    "checkpoint_hash"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "checkpoint_id": { "type": "string" },
+    "lock_id": { "type": "string" },
+    "task_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string" },
+    "label": { "type": ["string", "null"] },
+    "state": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "checkpoint_hash": { "type": "string" }
+  }
+}

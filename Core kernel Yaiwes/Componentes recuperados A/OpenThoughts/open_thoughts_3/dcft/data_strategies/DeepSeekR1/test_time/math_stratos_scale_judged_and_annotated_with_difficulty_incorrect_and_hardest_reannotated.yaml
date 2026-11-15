@@ -1,0 +1,106 @@
+operators:
+  - id: load_stratos_math_with_difficulty_hardest_incorrect_reannotated
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/math_stratos_scale_judged_and_annotated_with_difficulty_incorrect_and_hardest_reannnotated_twice
+      split: train
+  - id: "fix_third_reason"
+    config:
+      type: function
+      sharded: true
+      function: data_strategies.commons.extract_list_index
+      function_config:
+        list_column: deepseek_reasoning_3
+        index: -1
+        keep_original_columns: True
+    input_ids:
+      - load_stratos_math_with_difficulty_hardest_incorrect_reannotated
+  - id: fix_third_answer
+    config:
+      type: function
+      sharded: true
+      function: data_strategies.commons.extract_list_index
+      function_config:
+        list_column: deepseek_solution_3
+        index: -1
+        keep_original_columns: True
+    input_ids:
+      - fix_third_reason
+  - id: math_verify_1
+    config:
+      type: function
+      sharded: true
+      function: data_strategies.DeepSeekR1.test_time.utils.math_verify_map
+      function_config:
+        ground_truth_column: ground_truth_solution
+        solution_column: deepseek_solution_1
+        output_extracted_answer_column: extracted_answer_1
+        output_extracted_gold_column: extracted_gold_1
+        output_verifier_label_column: verifier_label_1
+        output_error_column: error_1
+    input_ids:
+      - fix_third_answer
+  - id: math_verify_2
+    config:
+      type: function
+      sharded: true
+      function: data_strategies.DeepSeekR1.test_time.utils.math_verify_map
+      function_config:
+        ground_truth_column: ground_truth_solution
+        solution_column: deepseek_solution_2
+        output_extracted_answer_column: extracted_answer_2
+        output_extracted_gold_column: extracted_gold_2
+        output_verifier_label_column: verifier_label_2
+        output_error_column: error_2
+    input_ids:
+      - math_verify_1
+  - id: math_verify_3
+    config:
+      type: function
+      sharded: true
+      function: data_strategies.DeepSeekR1.test_time.utils.math_verify_map
+      function_config:
+        ground_truth_column: ground_truth_solution
+        solution_column: deepseek_solution_3
+        output_extracted_answer_column: extracted_answer_3
+        output_extracted_gold_column: extracted_gold_3
+        output_verifier_label_column: verifier_label_3
+        output_error_column: error_3
+    input_ids:
+      - math_verify_2
+  - id: choose_a_correct_answer
+    config:
+      type: function
+      sharded: true
+      function: data_strategies.DeepSeekR1.test_time.utils.choose_a_correct_answer
+      function_config:
+        solution_columns: [deepseek_solution_1, deepseek_solution_2, deepseek_solution_3]
+        reason_columns: [deepseek_reasoning_1, deepseek_reasoning_2, deepseek_reasoning_3]
+        is_correct_columns: [verifier_label_1, verifier_label_2, verifier_label_3]
+        output_solution_column: deepseek_solution
+        output_reason_column: reasoning
+        output_is_correct_column: new_solution_is_correct
+    input_ids:
+      - math_verify_3
+  - id: filter_still_incorrect
+    config:
+      type: function
+      function: data_strategies.commons.filter_out_falsey_values
+      function_config:
+        filter_column: new_solution_is_correct
+    input_ids:
+      - choose_a_correct_answer
+  - id: remove_other_columns 
+    config:
+      type: function
+      function: data_strategies.commons.select_columns
+      function_config:
+        columns:
+          - problem
+          - reasoning
+          - deepseek_solution
+          - ground_truth_solution
+          - difficulty
+          - new_solution_is_correct
+    input_ids:
+      - filter_still_incorrect

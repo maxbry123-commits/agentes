@@ -1,0 +1,541 @@
+{
+  "moved": [
+    {
+      "slug": "AG2",
+      "source_path": "Agente core kernel Yaiwes principal/AG2_0001.zip",
+      "target_path": "core kernel Yaiwes principal/AG2_0001.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0001.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0002.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0002.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0003.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0003.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0004.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0004.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0005.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0005.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0006.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0006.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0007.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0007.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0008.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0008.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0009.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0009.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0010.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0010.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0011.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0011.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0012.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0012.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0013.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0013.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0014.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0014.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0015.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0015.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0016.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0016.zip"
+    },
+    {
+      "slug": "Agenta",
+      "source_path": "Agente core kernel Yaiwes principal/Agenta_0017.zip",
+      "target_path": "core kernel Yaiwes principal/Agenta_0017.zip"
+    },
+    {
+      "slug": "Agno",
+      "source_path": "Agente core kernel Yaiwes principal/Agno_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Agno_0001.zip"
+    },
+    {
+      "slug": "Agno",
+      "source_path": "Agente core kernel Yaiwes principal/Agno_0002.zip",
+      "target_path": "core kernel Yaiwes principal/Agno_0002.zip"
+    },
+    {
+      "slug": "Agno",
+      "source_path": "Agente core kernel Yaiwes principal/Agno_0003.zip",
+      "target_path": "core kernel Yaiwes principal/Agno_0003.zip"
+    },
+    {
+      "slug": "Aider",
+      "source_path": "Agente core kernel Yaiwes principal/Aider_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Aider_0001.zip"
+    },
+    {
+      "slug": "Aider",
+      "source_path": "Agente core kernel Yaiwes principal/Aider_0002.zip",
+      "target_path": "core kernel Yaiwes principal/Aider_0002.zip"
+    },
+    {
+      "slug": "Aider",
+      "source_path": "Agente core kernel Yaiwes principal/Aider_0003.zip",
+      "target_path": "core kernel Yaiwes principal/Aider_0003.zip"
+    },
+    {
+      "slug": "Aider",
+      "source_path": "Agente core kernel Yaiwes principal/Aider_0004.zip",
+      "target_path": "core kernel Yaiwes principal/Aider_0004.zip"
+    },
+    {
+      "slug": "Aider",
+      "source_path": "Agente core kernel Yaiwes principal/Aider_0005.zip",
+      "target_path": "core kernel Yaiwes principal/Aider_0005.zip"
+    },
+    {
+      "slug": "Aider",
+      "source_path": "Agente core kernel Yaiwes principal/Aider_0006.zip",
+      "target_path": "core kernel Yaiwes principal/Aider_0006.zip"
+    },
+    {
+      "slug": "Anthropic-Skills",
+      "source_path": "Agente core kernel Yaiwes principal/Anthropic-Skills_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Anthropic-Skills_0001.zip"
+    },
+    {
+      "slug": "BullMQ",
+      "source_path": "Agente core kernel Yaiwes principal/BullMQ_0001.zip",
+      "target_path": "core kernel Yaiwes principal/BullMQ_0001.zip"
+    },
+    {
+      "slug": "Cadence",
+      "source_path": "Agente core kernel Yaiwes principal/Cadence_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Cadence_0001.zip"
+    },
+    {
+      "slug": "Cadence",
+      "source_path": "Agente core kernel Yaiwes principal/Cadence_0002.zip",
+      "target_path": "core kernel Yaiwes principal/Cadence_0002.zip"
+    },
+    {
+      "slug": "Casbin",
+      "source_path": "Agente core kernel Yaiwes principal/Casbin_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Casbin_0001.zip"
+    },
+    {
+      "slug": "Firecracker",
+      "source_path": "Agente core kernel Yaiwes principal/Firecracker_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Firecracker_0001.zip"
+    },
+    {
+      "slug": "Firecracker",
+      "source_path": "Agente core kernel Yaiwes principal/Firecracker_0002.zip",
+      "target_path": "core kernel Yaiwes principal/Firecracker_0002.zip"
+    },
+    {
+      "slug": "GrowthBook",
+      "source_path": "Agente core kernel Yaiwes principal/GrowthBook_0001.zip",
+      "target_path": "core kernel Yaiwes principal/GrowthBook_0001.zip"
+    },
+    {
+      "slug": "GrowthBook",
+      "source_path": "Agente core kernel Yaiwes principal/GrowthBook_0002.zip",
+      "target_path": "core kernel Yaiwes principal/GrowthBook_0002.zip"
+    },
+    {
+      "slug": "GrowthBook",
+      "source_path": "Agente core kernel Yaiwes principal/GrowthBook_0003.zip",
+      "target_path": "core kernel Yaiwes principal/GrowthBook_0003.zip"
+    },
+    {
+      "slug": "GrowthBook",
+      "source_path": "Agente core kernel Yaiwes principal/GrowthBook_0004.zip",
+      "target_path": "core kernel Yaiwes principal/GrowthBook_0004.zip"
+    },
+    {
+      "slug": "GrowthBook",
+      "source_path": "Agente core kernel Yaiwes principal/GrowthBook_0005.zip",
+      "target_path": "core kernel Yaiwes principal/GrowthBook_0005.zip"
+    },
+    {
+      "slug": "GrowthBook",
+      "source_path": "Agente core kernel Yaiwes principal/GrowthBook_0006.zip",
+      "target_path": "core kernel Yaiwes principal/GrowthBook_0006.zip"
+    },
+    {
+      "slug": "GrowthBook",
+      "source_path": "Agente core kernel Yaiwes principal/GrowthBook_0007.zip",
+      "target_path": "core kernel Yaiwes principal/GrowthBook_0007.zip"
+    },
+    {
+      "slug": "GrowthBook",
+      "source_path": "Agente core kernel Yaiwes principal/GrowthBook_0008.zip",
+      "target_path": "core kernel Yaiwes principal/GrowthBook_0008.zip"
+    },
+    {
+      "slug": "GrowthBook",
+      "source_path": "Agente core kernel Yaiwes principal/GrowthBook_0009.zip",
+      "target_path": "core kernel Yaiwes principal/GrowthBook_0009.zip"
+    },
+    {
+      "slug": "GrowthBook",
+      "source_path": "Agente core kernel Yaiwes principal/GrowthBook_0010.zip",
+      "target_path": "core kernel Yaiwes principal/GrowthBook_0010.zip"
+    },
+    {
+      "slug": "Hatchet",
+      "source_path": "Agente core kernel Yaiwes principal/Hatchet_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Hatchet_0001.zip"
+    },
+    {
+      "slug": "Hatchet",
+      "source_path": "Agente core kernel Yaiwes principal/Hatchet_0002.zip",
+      "target_path": "core kernel Yaiwes principal/Hatchet_0002.zip"
+    },
+    {
+      "slug": "Hatchet",
+      "source_path": "Agente core kernel Yaiwes principal/Hatchet_0003.zip",
+      "target_path": "core kernel Yaiwes principal/Hatchet_0003.zip"
+    },
+    {
+      "slug": "Hatchet",
+      "source_path": "Agente core kernel Yaiwes principal/Hatchet_0004.zip",
+      "target_path": "core kernel Yaiwes principal/Hatchet_0004.zip"
+    },
+    {
+      "slug": "Hatchet",
+      "source_path": "Agente core kernel Yaiwes principal/Hatchet_0005.zip",
+      "target_path": "core kernel Yaiwes principal/Hatchet_0005.zip"
+    },
+    {
+      "slug": "Hatchet",
+      "source_path": "Agente core kernel Yaiwes principal/Hatchet_0006.zip",
+      "target_path": "core kernel Yaiwes principal/Hatchet_0006.zip"
+    },
+    {
+      "slug": "Hatchet",
+      "source_path": "Agente core kernel Yaiwes principal/Hatchet_0007.zip",
+      "target_path": "core kernel Yaiwes principal/Hatchet_0007.zip"
+    },
+    {
+      "slug": "Hatchet",
+      "source_path": "Agente core kernel Yaiwes principal/Hatchet_0008.zip",
+      "target_path": "core kernel Yaiwes principal/Hatchet_0008.zip"
+    },
+    {
+      "slug": "Hatchet",
+      "source_path": "Agente core kernel Yaiwes principal/Hatchet_0009.zip",
+      "target_path": "core kernel Yaiwes principal/Hatchet_0009.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0001.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0002.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0002.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0003.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0003.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0004.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0004.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0005.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0005.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0006.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0006.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0007.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0007.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0008.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0008.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0009.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0009.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0010.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0010.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0011.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0011.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0012.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0012.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0013.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0013.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0014.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0014.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0015.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0015.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0016.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0016.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0017.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0017.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0018.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0018.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0019.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0019.zip"
+    },
+    {
+      "slug": "Helicone",
+      "source_path": "Agente core kernel Yaiwes principal/Helicone_0020.zip",
+      "target_path": "core kernel Yaiwes principal/Helicone_0020.zip"
+    },
+    {
+      "slug": "Kestra",
+      "source_path": "Agente core kernel Yaiwes principal/Kestra_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Kestra_0001.zip"
+    },
+    {
+      "slug": "Kestra",
+      "source_path": "Agente core kernel Yaiwes principal/Kestra_0002.zip",
+      "target_path": "core kernel Yaiwes principal/Kestra_0002.zip"
+    },
+    {
+      "slug": "LMQL",
+      "source_path": "Agente core kernel Yaiwes principal/LMQL_0001.zip",
+      "target_path": "core kernel Yaiwes principal/LMQL_0001.zip"
+    },
+    {
+      "slug": "MCP-TypeScript-SDK",
+      "source_path": "Agente core kernel Yaiwes principal/MCP-TypeScript-SDK_0001.zip",
+      "target_path": "core kernel Yaiwes principal/MCP-TypeScript-SDK_0001.zip"
+    },
+    {
+      "slug": "OpenAI-Guardrails",
+      "source_path": "Agente core kernel Yaiwes principal/OpenAI-Guardrails_0001.zip",
+      "target_path": "core kernel Yaiwes principal/OpenAI-Guardrails_0001.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0001.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0001.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0002.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0002.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0003.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0003.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0004.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0004.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0005.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0005.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0006.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0006.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0007.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0007.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0008.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0008.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0009.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0009.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0010.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0010.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0011.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0011.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0012.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0012.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0013.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0013.zip"
+    },
+    {
+      "slug": "PydanticAI",
+      "source_path": "Agente core kernel Yaiwes principal/PydanticAI_0014.zip",
+      "target_path": "core kernel Yaiwes principal/PydanticAI_0014.zip"
+    },
+    {
+      "slug": "Ragas",
+      "source_path": "Agente core kernel Yaiwes principal/Ragas_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Ragas_0001.zip"
+    },
+    {
+      "slug": "Ragas",
+      "source_path": "Agente core kernel Yaiwes principal/Ragas_0002.zip",
+      "target_path": "core kernel Yaiwes principal/Ragas_0002.zip"
+    },
+    {
+      "slug": "Ragas",
+      "source_path": "Agente core kernel Yaiwes principal/Ragas_0003.zip",
+      "target_path": "core kernel Yaiwes principal/Ragas_0003.zip"
+    },
+    {
+      "slug": "Ragas",
+      "source_path": "Agente core kernel Yaiwes principal/Ragas_0004.zip",
+      "target_path": "core kernel Yaiwes principal/Ragas_0004.zip"
+    },
+    {
+      "slug": "Reflexion",
+      "source_path": "Agente core kernel Yaiwes principal/Reflexion_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Reflexion_0001.zip"
+    },
+    {
+      "slug": "Reflexion",
+      "source_path": "Agente core kernel Yaiwes principal/Reflexion_0002.zip",
+      "target_path": "core kernel Yaiwes principal/Reflexion_0002.zip"
+    },
+    {
+      "slug": "SQLite",
+      "source_path": "Agente core kernel Yaiwes principal/SQLite_0001.zip",
+      "target_path": "core kernel Yaiwes principal/SQLite_0001.zip"
+    },
+    {
+      "slug": "SQLite",
+      "source_path": "Agente core kernel Yaiwes principal/SQLite_0002.zip",
+      "target_path": "core kernel Yaiwes principal/SQLite_0002.zip"
+    },
+    {
+      "slug": "Stamina",
+      "source_path": "Agente core kernel Yaiwes principal/Stamina_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Stamina_0001.zip"
+    },
+    {
+      "slug": "Traefik",
+      "source_path": "Agente core kernel Yaiwes principal/Traefik_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Traefik_0001.zip"
+    },
+    {
+      "slug": "Traefik",
+      "source_path": "Agente core kernel Yaiwes principal/Traefik_0002.zip",
+      "target_path": "core kernel Yaiwes principal/Traefik_0002.zip"
+    },
+    {
+      "slug": "XState",
+      "source_path": "Agente core kernel Yaiwes principal/XState_0001.zip",
+      "target_path": "core kernel Yaiwes principal/XState_0001.zip"
+    },
+    {
+      "slug": "durable_rules",
+      "source_path": "Agente core kernel Yaiwes principal/durable_rules_0001.zip",
+      "target_path": "core kernel Yaiwes principal/durable_rules_0001.zip"
+    }
+  ],
+  "collisions_left_in_place": [
+    {
+      "slug": "Kestra",
+      "source_path": "Download code/archivos/Kestra_0001.zip",
+      "target_path": "core kernel Yaiwes principal/Kestra_0001.zip"
+    },
+    {
+      "slug": "Kestra",
+      "source_path": "Download code/archivos/Kestra_0002.zip",
+      "target_path": "core kernel Yaiwes principal/Kestra_0002.zip"
+    }
+  ]
+}

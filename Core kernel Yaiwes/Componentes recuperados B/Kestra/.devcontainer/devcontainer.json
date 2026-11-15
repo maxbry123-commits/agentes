@@ -1,0 +1,55 @@
+{
+  "name": "kestra",
+  "build": {
+    "context": ".",
+    "dockerfile": "Dockerfile"
+  },
+  "workspaceFolder": "/workspaces/kestra",
+  "forwardPorts": [5173, 8080],
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:4": {}
+  },
+  "postCreateCommand": "cd ui && npm install && npx playwright install",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/bin/zsh"
+          }
+        },
+        "workbench.iconTheme": "vscode-icons",
+        "editor.tabSize": 4,
+        "editor.formatOnSave": true,
+        "files.insertFinalNewline": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "telemetry.telemetryLevel": "off",
+        "editor.bracketPairColorization.enabled": true,
+        "editor.guides.bracketPairs": "active"
+      },
+      "extensions": [
+        "aaron-bond.better-comments",
+        "andys8.jest-snippets",
+        "codeandstuff.package-json-upgrade",
+        "dbaeumer.vscode-eslint",
+        "docker.docker",
+        "eamodio.gitlens",
+        "esbenp.prettier-vscode",
+        "evondev.indent-rainbow-palettes",
+        "formulahendry.auto-rename-tag",
+        "github.vscode-github-actions",
+        "FanaticPythoner.better-todo-tree",
+        "IronGeek.vscode-env",
+        "ms-azuretools.vscode-containers",
+        "oderwat.indent-rainbow",
+        "oxc.oxc-vscode",
+        "redhat.vscode-yaml",
+        "vitest.explorer",
+        "vscjava.vscode-java-pack",
+        "vscode-icons-team.vscode-icons",
+        "Vue.volar",
+        "yoavbls.pretty-ts-errors"
+      ]
+    }
+  }
+}

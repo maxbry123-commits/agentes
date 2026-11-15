@@ -1,0 +1,57 @@
+# Contributing to DeepEval 🥳
+
+Thanks for thinking about contributing to DeepEval! We accept fixes, improvements, or even entire new features. Some reasons why you might want to contribute:
+
+- there's a bug that you want fixed
+- there's a cool new feature you're thinking about that might be useful for DeepEval
+- there's a metric or benchmark that you want implemented
+- there's room for improvement in the docs
+
+## How to contribute
+
+We follow fork and pull request workflow. To know more about it, check out this [guide](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request-from-a-fork).
+
+### Set up your development environment
+
+1. Create a python virtual environment.
+2. We recommend using Poetry to install dependencies. If you haven't already, see the [Poetry docs](https://python-poetry.org/docs/).
+3. Install the dependencies using:
+
+```bash
+poetry install
+```
+
+## Our expectations (not a lot :)
+
+To contribute, all we ask for is to follow existing patterns within the codebase. For example, if you're looking to add a new benchmark, look at how the different modules in the existing benchmarks are structured and implemented, and we encourage you to reuse helper functions and methods shared by similar modules.
+
+Other than that, there are no strict rules to follow, except for optionally running `black` to ensure good formatting. Also, there's no need to worry about failing test cases in GitHub Actions, as these are mostly for internal use and will only pass if triggered by a user with the correct permissions within Confident AI.
+
+## Contributing new metrics
+
+Metrics contributed by the community go through a staged process:
+
+1. **Start in the community section.** New metrics land under `deepeval/metrics/community/` in the codebase and under the "Community" section of the metrics docs. Community metrics are **not** exported from `deepeval.metrics` — users import them explicitly:
+
+```python
+from deepeval.metrics.community import YourNewMetric
+```
+
+2. **Promotion over time.** Metrics that prove useful — through adoption, feedback, and stability — will be promoted out of the community section and into `deepeval.metrics` proper, alongside the built-in metrics.
+
+When adding a community metric, mirror the structure of existing metrics (a folder containing the metric class, `schema.py`, and `template.py`), export it from `deepeval/metrics/community/__init__.py`, add a docs page under the community section, and include tests.
+
+Thank you and come ask any questions or discuss any new PRs you have in mind on our [Discord](https://discord.com/invite/a3K9c8GRGt)!
+
+
+## Issue lifecycle & staleness policy
+
+- **Stale closure:** We close issues with no activity for **≥ 12 months**.
+- **Reopening:** If your issue is still relevant:
+
+  1. Leave a comment mentioning one or more maintainers from [MAINTAINERS.md](./MAINTAINERS.md) and include any new details (version, repro steps, logs).
+  2. If you don’t get a response in a few days, open a **new issue** and reference the old one.
+
+**Exclusions:** Labeled issues.
+
+**Why:** Keeps the tracker actionable and reflects the current roadmap. If your issue still matters, please comment and we’ll re-open.

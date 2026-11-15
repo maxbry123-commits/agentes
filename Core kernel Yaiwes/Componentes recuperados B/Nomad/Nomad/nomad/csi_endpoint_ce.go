@@ -1,0 +1,15 @@
+// Copyright IBM Corp. 2015, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+//go:build !ent
+
+package nomad
+
+import (
+	"github.com/hashicorp/nomad/nomad/state"
+	"github.com/hashicorp/nomad/nomad/structs"
+)
+
+func (v *CSIVolume) enforceEnterprisePolicy(_ *state.StateSnapshot, _ *structs.CSIVolume, _ *structs.CSIVolume, _ *structs.ACLToken, _ bool) (error, error) {
+	return nil, nil
+}

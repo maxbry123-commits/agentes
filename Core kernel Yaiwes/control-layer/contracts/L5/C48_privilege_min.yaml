@@ -1,0 +1,18 @@
+# C48 — L5. B4 SALIDA4
+id: C48
+layer: L5
+name: privilege_min
+implementado: true
+critical: false
+description: "Mínimo privilegio"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C48 aplica en capa L5"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - privilege_min_check
+evidence:
+  type: privilege_min_marker
+  required: false

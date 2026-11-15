@@ -1,0 +1,60 @@
+# ============================================================================
+# Cognithor · Systemd Service (System-Level)
+# ============================================================================
+# Installation (bare-metal):
+#   sudo cp deploy/cognithor.service /etc/systemd/system/cognithor.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cognithor
+#
+# Installation (user-level, replace paths):
+#   cp deploy/cognithor.service ~/.config/systemd/user/cognithor.service
+#   sed -i "s|/opt/cognithor/venv|$HOME/.cognithor/venv|g" ~/.config/systemd/user/cognithor.service
+#   sed -i "s|/var/lib/cognithor|$HOME/.cognithor|g" ~/.config/systemd/user/cognithor.service
+#   sed -i "s|User=cognithor||; s|Group=cognithor||" ~/.config/systemd/user/cognithor.service
+#   sed -i "s|WantedBy=multi-user.target|WantedBy=default.target|" ~/.config/systemd/user/cognithor.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now cognithor
+# ============================================================================
+
+[Unit]
+Description=Cognithor Agent OS
+Documentation=https://github.com/team-soellner/cognithor
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cognithor
+Group=cognithor
+ExecStart=/opt/cognithor/venv/bin/cognithor --no-cli --api-host 0.0.0.0
+ExecReload=/bin/kill -HUP $MAINPID
+WorkingDirectory=/var/lib/cognithor
+EnvironmentFile=-/var/lib/cognithor/.env
+
+# Restart on failure
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Watchdog
+WatchdogSec=300
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cognithor /tmp
+PrivateTmp=true
+
+# Resource limits
+MemoryMax=4G
+TasksMax=64
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cognithor
+
+[Install]
+WantedBy=multi-user.target

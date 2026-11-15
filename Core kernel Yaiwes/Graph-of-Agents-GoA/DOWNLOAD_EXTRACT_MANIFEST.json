@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 6708403,
+  "bundle_sha256": "0f926c189de1389d6dba79724ae1da2632993af921c3c3033dd33799ca5111ac",
+  "extracted_tree": {
+    "bytes": 23657071,
+    "files": 24,
+    "sha256": "492d7762fc1fbf19c1c005ed4e240e7b0e30380e89b339f1ca52065ce206f01a"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 6708403,
+      "name": "Graph-of-Agents-GoA.bundle.zip.part-0001",
+      "sha256": "0f926c189de1389d6dba79724ae1da2632993af921c3c3033dd33799ca5111ac"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Graph-of-Agents-GoA",
+  "source_bytes": 23657071,
+  "source_commit": "c9def0082e43bb737dd97d998db381842e444908",
+  "source_files": 24,
+  "source_ref": "HEAD",
+  "source_repo": "UNITES-Lab/GoA",
+  "source_tree": {
+    "bytes": 23657071,
+    "files": 24,
+    "sha256": "492d7762fc1fbf19c1c005ed4e240e7b0e30380e89b339f1ca52065ce206f01a"
+  }
+}

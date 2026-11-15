@@ -1,0 +1,27 @@
+z3_add_component(z3_opt
+  SOURCES
+    maxcore.cpp
+    maxlex.cpp
+    maxsmt.cpp
+    opt_cmds.cpp
+    opt_context.cpp
+    opt_cores.cpp
+    opt_lns.cpp
+    opt_nlsat.cpp
+    opt_pareto.cpp
+    opt_parse.cpp
+    opt_preprocess.cpp
+    optsmt.cpp
+    opt_solver.cpp
+    pb_sls.cpp
+    sortmax.cpp
+    totalizer.cpp
+    wmax.cpp
+  COMPONENT_DEPENDENCIES
+    sat_solver
+    sls_tactic
+    smt
+    smtlogic_tactics
+  PYG_FILES
+    opt_params.pyg
+)

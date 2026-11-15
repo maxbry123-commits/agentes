@@ -1,0 +1,546 @@
+package execution
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"time"
+
+	"github.com/inngest/inngest/pkg/enums"
+	"github.com/inngest/inngest/pkg/execution/apiresult"
+	"github.com/inngest/inngest/pkg/execution/batch"
+	"github.com/inngest/inngest/pkg/execution/exechttp"
+	"github.com/inngest/inngest/pkg/tracing/meta"
+
+	"github.com/google/uuid"
+	"github.com/inngest/inngest/pkg/event"
+	"github.com/inngest/inngest/pkg/execution/queue"
+	"github.com/inngest/inngest/pkg/execution/state"
+	sv2 "github.com/inngest/inngest/pkg/execution/state/v2"
+	"github.com/inngest/inngest/pkg/inngest"
+	"github.com/oklog/ulid/v2"
+)
+
+const (
+	StateErrorKey         = "error"
+	StateDataKey          = "data"
+	SdkInvokeTimeoutError = "InngestInvokeTimeoutError"
+)
+
+// Executor manages executing actions.  It interfaces over a state store to save
+// action and workflow data once an action finishes or fails.  Once a function
+// finishes, its children become available to execute.  This is not handled
+// immediately;  instead, the executor returns the children which can be executed.
+// The owner of the executor is responsible for managing and calling the next
+// child functions.
+//
+// # Atomicity
+//
+// Functions in the executor should be considered atomic.  If the context has closed
+// because the process is terminating whilst we are executing, completing, or failing
+// an action we must wait for the executor to finish processing before quitting. If
+// we fail to wait for the executor, workflows may finish prematurely as future
+// actions may not be scheduled.
+//
+// # Running functions
+//
+// The executor schedules function execution over drivers.  A driver is a runtime-specific
+// implementation which runs functions, eg. a docker driver for running contianers,
+// or a webassembly driver for wasm runtimes.
+//
+// Runtimes can be asynchronous.  A docker container may take minutes to run, and
+// the connection to docker may be interrupted.  The executor provides functionality
+// for storing the outcome of an action via Resume and Fail at any point after an
+// action has started.
+type Executor interface {
+	// Schedule is called to schedule a given function with the given event.  This
+	// creates a new function run by initializing blank function state and placing
+	// the run in the queue.
+	//
+	// Note that the executor does *not* handle rate limiting, debouncing, batching,
+	// expressions, etc.  Any Schedule request will immediately be scheduled for the
+	// given time. Filtering of events in any way must be handled prior scheduling.
+	Schedule(ctx context.Context, r ScheduleRequest) (*ulid.ULID, *sv2.Metadata, error)
+
+	// Execute runs the given function via the execution drivers.  If the
+	// from ID is "$trigger" this is treated as a new workflow invocation from the
+	// trigger, and all functions that are direct children of the trigger will be
+	// scheduled for execution.
+	//
+	// Attempt is the zero-index attempt number for this execution.  The executor
+	// needs knowledge of the attempt number to store the error for each attempt,
+	// and to figure out whether this is the final retry for determining whether
+	// the next error is "finalized".
+	//
+	// It is important for this function to be atomic;  if the function was scheduled
+	// and the context terminates, we must store the output or async data in workflow
+	// state then schedule the child functions else the workflow will terminate early.
+	//
+	// Execution will fail with no response and state.ErrFunctionCancelled if this function
+	// run has been cancelled by an external event or process.
+	//
+	// This returns the step's response and any error.
+	Execute(
+		ctx context.Context,
+		id state.Identifier,
+		// item is the queue item which scheduled the execution of this step.
+		// all steps are scheduled by a queue item.
+		item queue.Item,
+		// edge represents the edge to run.  This executes the step defined within
+		// Incoming, optionally using the StepPlanned field to execute a substep if
+		// the step is a generator.
+		edge inngest.Edge,
+	) (*state.DriverResponse, error)
+
+	// Resume resumes an in-progress function run from the given waitForEvent pause.
+	Resume(ctx context.Context, p state.Pause, r ResumeRequest) error
+	// ResumePauseTimeout is an optimization over Resume which handles timeout cases for any paused
+	// steps, eg. step.waitForEvent, step.waitForSignal and step.invoke.
+	ResumePauseTimeout(ctx context.Context, pause state.Pause, r ResumeRequest) error
+	// ResumeSignal handles resuming a signal, delegating to Resume() to resume the underlying pause.
+	ResumeSignal(ctx context.Context, workspaceID uuid.UUID, signalID string, data json.RawMessage) (*ResumeSignalResult, error)
+
+	// HandlePauses handles pauses loaded from an incoming event.  This delegates to Cancel and
+	// Resume where necessary, depending on pauses that have been loaded and matched.
+	HandlePauses(ctx context.Context, event event.TrackedEvent) (HandlePauseResult, error)
+	// HandleInvokeFinish handles the invoke pauses from an incoming event. This delegates to Cancel and
+	// Resume where necessary
+	HandleInvokeFinish(ctx context.Context, event event.TrackedEvent) error
+
+	// HandleGenerator handles an individual opcode from an executor response.
+	// NOTE: This is used for both async (executor controlled) and sync (externally controlled request)
+	// functions.  This specific codepath always converts from sync -> async.
+	HandleGenerator(ctx context.Context, i RunContext, gen state.GeneratorOpcode) error
+
+	// Cancel cancels an in-progress function run, preventing any enqueued or future steps from running.
+	Cancel(ctx context.Context, id sv2.ID, r CancelRequest) error
+
+	Finalize(ctx context.Context, opts FinalizeOpts) error
+
+	// RunFunctionFinishedLifecycle fans OnFunctionFinished out to every
+	// registered LifecycleListener.
+	RunFunctionFinishedLifecycle(ctx context.Context, md sv2.Metadata, item queue.Item, evts []json.RawMessage, resp state.DriverResponse)
+
+	// AddLifecycleListener adds a lifecycle listener to run on hooks.  This must
+	// always add to a list of listeners vs replace listeners.
+	AddLifecycleListener(l LifecycleListener)
+	AddEventLifecycleListener(l EventLifecycleListener)
+
+	CloseLifecycleListeners(ctx context.Context)
+
+	// SetFinalizer sets the function which publishes finalization events on
+	// run completion
+	SetFinalizer(f FinalizePublisher)
+
+	// InvokeFailHandler invokes the invoke fail handler.
+	InvokeFailHandler(context.Context, InvokeFailHandlerOpts) error
+
+	AppendAndScheduleBatch(ctx context.Context, fn inngest.Function, bi batch.BatchItem, opts *BatchExecOpts) error
+
+	RetrieveAndScheduleBatch(ctx context.Context, fn inngest.Function, payload batch.ScheduleBatchPayload, opts *BatchExecOpts) error
+
+	// NOTE: Temporary for manually resuming pauses, you likely shouldn't use this
+	GetEvent(ctx context.Context, id ulid.ULID, accountID uuid.UUID, workspaceID uuid.UUID) (any, error)
+}
+
+// RunContext provides the context needed for HandleGenerator execution without
+// exposing internal executor state. This allows external packages to implement
+// HandleGenerator calls.
+type RunContext interface {
+	// Metadata access
+	Metadata() *sv2.Metadata
+	DriverResponse() *state.DriverResponse
+	Events() []json.RawMessage
+	HTTPClient() exechttp.RequestExecutor
+
+	// The span that represents this individual execution
+	ExecutionSpan() *meta.SpanReference
+	// The span that represents this execution's parent.
+	ParentSpan() *meta.SpanReference
+	// The root span of this execution. IE the run span.
+	RootSpan() *meta.SpanReference
+
+	StartTime() time.Time
+
+	// Group correlation - for pause operations and history tracking
+	GroupID() string
+
+	// Retry logic - encapsulates the common retry pattern
+	AttemptCount() int
+	MaxAttempts() *int
+	ShouldRetry() bool
+	IncrementAttempt()
+
+	// OnlyHasLazyOps reports whether the opcode batch being processed contains
+	// only lazy ops (DeferAdd, DeferAbort), i.e. no host op to drive forward
+	// progress. Lazy ops normally piggyback on a host (e.g. StepRun); the
+	// all-lazy case shouldn't happen, but lazy handlers fall back to enqueueing
+	// their own discovery step when it does. See enums.OpcodeIsLazy.
+	//
+	// In other words, this should always return false, but an SDK bug could
+	// make it true.
+	OnlyHasLazyOps() bool
+
+	// Queue item creation - provides the "template" data for new items
+	PriorityFactor() *int64
+	ConcurrencyKeys() []state.CustomConcurrency
+	ParallelMode() enums.ParallelMode
+
+	// Lifecycle support - provides queue.Item for lifecycle events
+	// TODO: This could be further abstracted in the future
+	LifecycleItem() queue.Item
+
+	// Response tracking methods
+	SetStatusCode(code int)
+	UpdateOpcodeError(op *state.GeneratorOpcode, err state.UserError)
+	UpdateOpcodeOutput(op *state.GeneratorOpcode, output json.RawMessage)
+	SetError(err error)
+
+	// ReleaseCapacityLease is a convenient wrapper over checking whether a capacity lease
+	// was set on the queue item and then invoking Release() in a non-blocking way.
+	ReleaseCapacityLease() error
+}
+
+type ResumeSignalResult struct {
+	MatchedSignal bool
+	RunID         *ulid.ULID
+}
+
+type InvokeFailHandlerOpts struct {
+	OriginalEvent event.TrackedEvent
+	FunctionID    string
+	RunID         string
+	Err           map[string]any
+	Result        any
+}
+
+// BatchExecOpts communicates state and options that are relevant only when scheduling a batch
+// to be worked on *imminently* (i.e. ~now, not at some future time).
+type BatchExecOpts struct {
+	FunctionPausedAt *time.Time
+}
+
+// FinalizePublisher is a function that handles functions finishing in the executor.
+// It should be used to send the given events.
+type FinalizePublisher func(context.Context, sv2.ID, []event.Event) error
+
+// InvokeFailHandler is a function that handles invocations failing due to the
+// function failing to run (not found, rate-limited). It is passed a list of
+// events to send.
+type InvokeFailHandler func(context.Context, InvokeFailHandlerOpts, []event.Event) error
+
+// HandleInvokeEvent handles sending an event given an event and the queue
+// item.
+type HandleInvokeEvent func(context.Context, event.TrackedEvent) error
+
+// ScheduleRequest represents all data necessary to schedule a new function.
+type ScheduleRequest struct {
+	Function inngest.Function
+	// At allows functions to be scheduled in the future.
+	At *time.Time
+	// AccountID is the account that the request belongs to.
+	AccountID uuid.UUID
+	// WorkspaceID is the workspace that this request belongs to.
+	WorkspaceID uuid.UUID
+	// AppID is the app that this request belongs to.
+	AppID uuid.UUID
+	// AppName is the app ID defined in user code.
+	AppName string
+	// RunID allows specifying a run ID for the scheduled run.  This is entirely
+	// optional, and allows clients to choose a run ID when scheduling.  We need this
+	// for run IDs with API-based checkpointing.
+	RunID *ulid.ULID
+	// URL is the URL that is being hit for durable endpoints, and without this
+	// we cannot reenter and resume these durable endpoint runs.
+	//
+	// This is required because some URLs may contain IDs (/v1/users/:id).
+	// These URLs are *run specific* vs function specific;  we must always include
+	// the URL for these in metadata.
+	URL string
+	// OriginalRunID is the ID of the ID of the original run, if this a replay.
+	OriginalRunID *ulid.ULID
+	// ReplayID is the ID of the ID of the replay, if this a replay.
+	ReplayID *uuid.UUID
+	// FromStep is the step that this function is being scheduled from.
+	FromStep *ScheduleRequestFromStep
+
+	// Events represent one or more events that the function is being triggered with.
+	Events []event.TrackedEvent
+	// BatchID refers to the batch ID, if this function is started as a batch.
+	BatchID *ulid.ULID
+	// IdempotencyKey represents an optional idempotency key for the function.
+	IdempotencyKey *string
+	// Context represents additional context used when initializing function runs.
+	Context map[string]any
+	// PreventDebounce prevents debouncing this function and immediately schedules
+	// execution.  This is used after the debounce has finished to force execution
+	// of the function, instead of debouncing again.
+	PreventDebounce bool
+	// PreventRateLimit allows ignoring rate limit checks in case the check was
+	// previously handled and scheduling was allowed.
+	PreventRateLimit bool
+	// FunctionPausedAt indicates whether the function is paused.
+	FunctionPausedAt *time.Time
+	// RunMode represents how this function runs.  Async functions are, by nature,
+	// purely background orchestration driven by queues, and so on.  Sync functions
+	// are ephemeral functions that start their live via eg. API requests.
+	//
+	// The default is always RunModeAsync which is safer:  asyncs are always backed
+	// by the queue.
+	RunMode enums.RunMode
+	// DrainedAt indicates the time that the function started draining.  Draining is
+	// similar to paused in that new functions skip, but current functions continue
+	// to execute.
+	DrainedAt *time.Time
+	// DebugSessionID is the ID of the debugger session that this function is being scheduled from.
+	DebugSessionID *ulid.ULID
+	// DebugRunID is the ID of the debugger run that this function is being scheduled from.
+	DebugRunID *ulid.ULID
+	// ScheduleType describes how this run was triggered.
+	ScheduleType enums.ScheduleType
+	// RequestVersion represents the executor request versioning/hashing style
+	// used to manage state.
+	//
+	// This lets us send the hashing style to SDKs so that we can execute in
+	// the correct format with backcompat guarantees built in.
+	//
+	// We usually wait for the SDK to decide this, but allow passing it in here
+	// if we're queuing a function as a result of a sync run going async, as
+	// the SDK has already been run at that point.
+	RequestVersion *int
+}
+
+// NewScheduleRequest creates an initial ScheduleRequest given a deployed
+// function, ensuring common fields are filled out.
+//
+// XXX: We should replace Function in ScheduleRequest with a DeployedFunction
+// to remove this method.
+func NewScheduleRequest(f inngest.DeployedFunction) ScheduleRequest {
+	req := ScheduleRequest{
+		Function:    f.Function,
+		AccountID:   f.AccountID,
+		WorkspaceID: f.EnvironmentID,
+		AppID:       f.AppID,
+		AppName:     f.AppName,
+	}
+	if !f.PausedAt.IsZero() {
+		req.FunctionPausedAt = &f.PausedAt
+	}
+	if !f.DrainedAt.IsZero() {
+		req.DrainedAt = &f.DrainedAt
+	}
+	return req
+}
+
+func (r ScheduleRequest) SkipReason() enums.SkipReason {
+	if r.FunctionPausedAt != nil && r.FunctionPausedAt.Before(time.Now()) {
+		return enums.SkipReasonFunctionPaused
+	}
+	if r.DrainedAt != nil && r.DrainedAt.Before(time.Now()) {
+		return enums.SkipReasonFunctionDrained
+	}
+	return enums.SkipReasonNone
+}
+
+type ScheduleRequestFromStep struct {
+	// StepID is the ID of the step that this function is being scheduled from.
+	StepID string
+
+	// Input is the input data for the step. Can be partial JSON, in which case
+	// an SDK will merge this with the existing input data.
+	Input json.RawMessage
+}
+
+// CancelRequest stores information about the incoming cancellation request within
+// history.
+type CancelRequest struct {
+	EventID        *ulid.ULID
+	Expression     *string
+	UserID         *uuid.UUID
+	CancellationID *ulid.ULID
+
+	// ForceLifecycleHook is used to force the OnFunctionCancelled lifecycle
+	// hook to run even if the function is already finalized. This is useful
+	// when a user wants to cancel a "false stuck" function run (i.e. it isn't
+	// in the state store but the history store thinks it's running)
+	ForceLifecycleHook bool
+}
+
+type ResumeRequest struct {
+	// With is the step data we're resuming with
+	With any
+	// EventID is the ID of the event that matched, if this ResumeRequest
+	// originated from a waitForEvent pause.
+	EventID *ulid.ULID
+	// EventName is the event name of the event that matched, if this ResumeRequest
+	// originated from a waitForEvent pause.
+	EventName string
+	// RunID is the ID of the run that causes this resume, used for invoking
+	// functions directly.
+	RunID *ulid.ULID
+	// StepName is the human step name used for o11y.
+	StepName string
+	// IsTimeout indicates if this Resume is a timeout.  Note that timeouts
+	// should be resumed with StepTimeout.
+	IsTimeout bool
+	// IdempotencyKey is used to make sure pause consumption is idempotent
+	IdempotencyKey string
+}
+
+func (r *ResumeRequest) Error() string {
+	return r.withKey(StateErrorKey)
+}
+
+func (r *ResumeRequest) HasError() bool {
+	return r.Error() != ""
+}
+
+// Set `r.With` to `error` given a `name` and `message`
+func (r *ResumeRequest) SetError(name string, message string) {
+	r.With = map[string]any{
+		StateErrorKey: state.StandardError{
+			Name:    name,
+			Message: message,
+			Error:   name + ": " + message,
+		},
+	}
+}
+
+// Set `r.With` to an invoke timeout `error`
+func (r *ResumeRequest) SetInvokeTimeoutError() {
+	r.SetError(
+		SdkInvokeTimeoutError,
+		"Timed out waiting for invoked function to complete",
+	)
+}
+
+func (r *ResumeRequest) Data() string {
+	return r.withKey(StateDataKey)
+}
+
+func (r *ResumeRequest) HasData() bool {
+	return r.Data() != ""
+}
+
+// Set `r.With` to `data` given any data to be set
+func (r *ResumeRequest) SetData(data any) {
+	r.With = map[string]any{
+		StateDataKey: data,
+	}
+}
+
+func (r *ResumeRequest) withKey(key string) string {
+	if r.With != nil {
+		if withData, ok := r.With.(map[string]any)[key]; ok {
+			byt, err := json.Marshal(withData)
+			if err == nil {
+				return string(byt)
+			}
+			return ""
+		}
+	}
+
+	return ""
+}
+
+// HandlePauseResult returns status information about pause handling.
+type HandlePauseResult [2]int32
+
+// Processed returns the number of pauses processed.
+func (h HandlePauseResult) Processed() int32 {
+	return h[0]
+}
+
+// Processed returns the number of pauses handled, eg. pauses that matched
+// and successfully impacted runs (either by cancellation or continuing).
+func (h HandlePauseResult) Handled() int32 {
+	return h[1]
+}
+
+type FinalizeOpts struct {
+	// Metadata is the run metadata.
+	Metadata sv2.Metadata
+	// Response is the final run output, either an opcode, API result, or
+	// driver response.
+	Response FinalizeResponse
+	// Optional represents optional fields that improve performance of the
+	// finalize call, requiring less data calls to fetch associated information
+	// when finalizing.  Where possible, if already loaded in memory these fields
+	// should be supplied.
+	Optional FinalizeOptional
+}
+
+type FinalizeResponseType int
+
+const (
+	FinalizeResponseRunComplete FinalizeResponseType = iota
+	FinalizeResponseAPI
+	FinalizeResponseDriver
+)
+
+// FinalizeResponse is a union containing one of:
+// 1. an enums.OpcodeRunComplete (for async fns),
+// 2. or a apiresult.APIResponse (for sync fns)
+// 3. A DriverResponse for SDKs not using opcode responses.
+type FinalizeResponse struct {
+	// Type indicates the field to use.
+	Type FinalizeResponseType
+	// OpcodeResponse exists with an enums.OpcodeRunComplete enum.
+	RunComplete state.GeneratorOpcode
+	// DriverResponse is the old response for <= V4 TS SDKs which don't respond
+	// with FunctionRunResponse opcodes.
+	DriverResponse state.DriverResponse
+	// APIResponse exists for HTTP-based sync functions.
+	APIResponse apiresult.APIResult
+}
+
+// FinalizeOptional represents optional fields that improve performance of the
+// finalize call, requiring less data calls to fetch associated information
+// when finalizing.  Where possible, if already loaded in memory these fields
+// should be supplied.
+type FinalizeOptional struct {
+	// FnSlug is the slug of the function, used in the finish event.
+	//
+	// If not present, this will be loaded via the function loader.
+	FnSlug string
+	// InputEvents are the events that triggered the function run.
+	InputEvents []json.RawMessage
+	// TODO: Document
+	OutputSpanRef *meta.SpanReference
+	// Reason is the tag used in finalization counters to track in metrics.
+	Reason string
+	// Cancel indicates if we've cancelled the function.  This has no output
+	// and defaults to false.
+	Cancel bool
+}
+
+func (f FinalizeOpts) Status() enums.StepStatus {
+	if f.Optional.Cancel {
+		return enums.StepStatusCancelled
+	}
+
+	switch f.Response.Type {
+	case FinalizeResponseRunComplete:
+		return enums.StepStatusCompleted
+	case FinalizeResponseAPI:
+		// XXX: all statuses are currently completed except for 5XX
+		if f.Response.APIResponse.StatusCode >= 500 {
+			return enums.StepStatusFailed
+		}
+		return enums.StepStatusCompleted
+	case FinalizeResponseDriver:
+
+		dr := f.Response.DriverResponse
+
+		if dr.Error() != "" {
+			return enums.StepStatusFailed
+		}
+
+		if dr.Err != nil && strings.Contains(*dr.Err, state.ErrFunctionCancelled.Error()) {
+			return enums.StepStatusCancelled
+		}
+
+	}
+
+	return enums.StepStatusCompleted
+}

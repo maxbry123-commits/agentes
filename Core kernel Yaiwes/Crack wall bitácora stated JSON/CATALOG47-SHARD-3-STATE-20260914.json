@@ -1,0 +1,322 @@
+{
+  "created_at": 1789369306,
+  "items": {
+    "C47-004": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 57, in scan_tree\n    if special: raise RuntimeError('SOURCE_SPECIAL_FILE_GAP:'+','.join(special[:30]))\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_SPECIAL_FILE_GAP:.agents/skills/autoreview/CLAUDE.md,.claude/skills,CLAUDE.md,apps/android/CLAUDE.md,apps/ios/CLAUDE.md,apps/macos/CLAUDE.md,apps/macos/Tests/OpenClawIPCTests/GatewayTLSStoreFixture.swift,docs/CLAUDE.md,extensions/CLAUDE.md,extensions/acpx/CLAUDE.md,extensions/telegram/CLAUDE.md,scripts/CLAUDE.md,src/agents/CLAUDE.md,src/agents/embedded-agent-runner/run/CLAUDE.md,src/agents/tools/CLAUDE.md,src/channels/CLAUDE.md,src/channels/plugins/contracts/test-helpers/CLAUDE.md,src/gateway/CLAUDE.md,src/gateway/server-methods/CLAUDE.md,src/infra/outbound/CLAUDE.md,src/plugin-sdk/CLAUDE.md,src/plugins/CLAUDE.md,src/tui/CLAUDE.md,test/CLAUDE.md,test/helpers/CLAUDE.md,ui/CLAUDE.md\n",
+      "slug": "OpenClaw",
+      "source_repo": "openclaw/openclaw",
+      "status": "FAILED"
+    },
+    "C47-009": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 57, in scan_tree\n    if special: raise RuntimeError('SOURCE_SPECIAL_FILE_GAP:'+','.join(special[:30]))\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_SPECIAL_FILE_GAP:TauBench/web/leaderboard/public/task-data/domains\n",
+      "slug": "Life-Harness",
+      "source_repo": "Tianshi-Xu/Life-Harness",
+      "status": "FAILED"
+    },
+    "C47-014": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/Cognithor\n",
+      "slug": "Cognithor",
+      "source_repo": "Alex8791-cyber/cognithor",
+      "status": "FAILED"
+    },
+    "C47-019": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 5915071,
+        "bundle_sha256": "12624ddce2ebeb1a5b75354cb98b8abe8cfa1e0222edd494ddd9b115294733f5",
+        "elapsed_seconds": 38.62,
+        "extracted_tree": {
+          "bytes": 8518671,
+          "files": 251,
+          "sha256": "89e1fac940b55de105351ecf04205c5a7b4c0f4b4cbc7048fcc0415df609fd63"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 5915071,
+            "name": "AIOS.bundle.zip.part-0001",
+            "sha256": "12624ddce2ebeb1a5b75354cb98b8abe8cfa1e0222edd494ddd9b115294733f5"
+          }
+        ],
+        "publish": {
+          "commit": "551778d9383cea705724e6aabf25bb8e92becf1e",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "AIOS",
+        "source_bytes": 8518671,
+        "source_commit": "292d98f78c835499df18cdb6de6325bba1895862",
+        "source_files": 251,
+        "source_ref": "HEAD",
+        "source_repo": "agiresearch/AIOS",
+        "source_tree": {
+          "bytes": 8518671,
+          "files": 251,
+          "sha256": "89e1fac940b55de105351ecf04205c5a7b4c0f4b4cbc7048fcc0415df609fd63"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "AIOS",
+      "source_repo": "agiresearch/AIOS",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-024": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 4527835,
+        "bundle_sha256": "0df6c08e47bda3d66909b9d76f728f2ce58caeb80764ec6c94e289bd131a18de",
+        "elapsed_seconds": 38.93,
+        "extracted_tree": {
+          "bytes": 5813381,
+          "files": 43,
+          "sha256": "f8f7838253650cd0c7c96e70238d8c55cd9958a5e456108dec8a5dab683f1a2a"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 4527835,
+            "name": "RecursiveMAS.bundle.zip.part-0001",
+            "sha256": "0df6c08e47bda3d66909b9d76f728f2ce58caeb80764ec6c94e289bd131a18de"
+          }
+        ],
+        "publish": {
+          "commit": "b44860616b9a8802da4dbb7f8d33254a2d11d587",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "RecursiveMAS",
+        "source_bytes": 5813381,
+        "source_commit": "38f7da45c1728747979c7a35bf5f66f17e67b1bb",
+        "source_files": 43,
+        "source_ref": "HEAD",
+        "source_repo": "RecursiveMAS/RecursiveMAS",
+        "source_tree": {
+          "bytes": 5813381,
+          "files": 43,
+          "sha256": "f8f7838253650cd0c7c96e70238d8c55cd9958a5e456108dec8a5dab683f1a2a"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "RecursiveMAS",
+      "source_repo": "RecursiveMAS/RecursiveMAS",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-029": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 69978,
+        "bundle_sha256": "eca2099dc42325ad5f6e8525e2ba15db48f17f8093a13038222a514b929cd951",
+        "elapsed_seconds": 35.35,
+        "extracted_tree": {
+          "bytes": 273529,
+          "files": 21,
+          "sha256": "72097f1b0f48b777f2ddb4a9840c84b7e419cd659a39caf7901ee4d3f08db197"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 69978,
+            "name": "EVOLVE-MEM.bundle.zip.part-0001",
+            "sha256": "eca2099dc42325ad5f6e8525e2ba15db48f17f8093a13038222a514b929cd951"
+          }
+        ],
+        "publish": {
+          "commit": "04b0f406413554389ace81d68669fb43583a1efb",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "EVOLVE-MEM",
+        "source_bytes": 273529,
+        "source_commit": "3ac9b1deb1ade7cca6c7e4efd7e3492535646ce2",
+        "source_files": 21,
+        "source_ref": "HEAD",
+        "source_repo": "RS-010806/EVOLVE-MEM",
+        "source_tree": {
+          "bytes": 273529,
+          "files": 21,
+          "sha256": "72097f1b0f48b777f2ddb4a9840c84b7e419cd659a39caf7901ee4d3f08db197"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "EVOLVE-MEM",
+      "source_repo": "RS-010806/EVOLVE-MEM",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-034": {
+      "attempts": 3,
+      "result": {
+        "bundle_bytes": 161941,
+        "bundle_sha256": "381204a8f0f02b75f2ccf949660069152dfc581a7cd9b897512a858d81154e6e",
+        "elapsed_seconds": 24.32,
+        "extracted_tree": {
+          "bytes": 628500,
+          "files": 64,
+          "sha256": "2d555691451ec3e31837ddc8f51a28676f0ae290db024a54176feca17a9985e8"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 161941,
+            "name": "AgentGuard.bundle.zip.part-0001",
+            "sha256": "381204a8f0f02b75f2ccf949660069152dfc581a7cd9b897512a858d81154e6e"
+          }
+        ],
+        "publish": {
+          "commit": "b4baab6e90a0be3373586e8913bb43843a5ad7ce",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "AgentGuard",
+        "source_bytes": 628500,
+        "source_commit": "196ec99873eccefb79fc1bbc28024e3ae92a4ece",
+        "source_files": 64,
+        "source_ref": "HEAD",
+        "source_repo": "krishkumar/agentguard",
+        "source_tree": {
+          "bytes": 628500,
+          "files": 64,
+          "sha256": "2d555691451ec3e31837ddc8f51a28676f0ae290db024a54176feca17a9985e8"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "AgentGuard",
+      "source_repo": "krishkumar/agentguard",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-039": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 6708403,
+        "bundle_sha256": "0f926c189de1389d6dba79724ae1da2632993af921c3c3033dd33799ca5111ac",
+        "elapsed_seconds": 26.71,
+        "extracted_tree": {
+          "bytes": 23657071,
+          "files": 24,
+          "sha256": "492d7762fc1fbf19c1c005ed4e240e7b0e30380e89b339f1ca52065ce206f01a"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 6708403,
+            "name": "Graph-of-Agents-GoA.bundle.zip.part-0001",
+            "sha256": "0f926c189de1389d6dba79724ae1da2632993af921c3c3033dd33799ca5111ac"
+          }
+        ],
+        "publish": {
+          "commit": "d60e32580de37b54b7416807c4f4e12fa646669a",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "Graph-of-Agents-GoA",
+        "source_bytes": 23657071,
+        "source_commit": "c9def0082e43bb737dd97d998db381842e444908",
+        "source_files": 24,
+        "source_ref": "HEAD",
+        "source_repo": "UNITES-Lab/GoA",
+        "source_tree": {
+          "bytes": 23657071,
+          "files": 24,
+          "sha256": "492d7762fc1fbf19c1c005ed4e240e7b0e30380e89b339f1ca52065ce206f01a"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "Graph-of-Agents-GoA",
+      "source_repo": "UNITES-Lab/GoA",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-044": {
+      "attempts": 2,
+      "result": {
+        "bundle_bytes": 70032045,
+        "bundle_sha256": "086c3cb351de256966368e0fad8a270cad1df8d49667bac8f6d9d68efe35e1d3",
+        "elapsed_seconds": 54.73,
+        "extracted_tree": {
+          "bytes": 236903155,
+          "files": 2085,
+          "sha256": "a35a1e1984e46da68663e8b621dee4340495720c01be249bccfe481fd5905f14"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 12582912,
+            "name": "AgentCgroup.bundle.zip.part-0001",
+            "sha256": "31403303fd60ee807e11195d0129f3a885d880206aa73ec3127e781c29fbe1fc"
+          },
+          {
+            "bytes": 12582912,
+            "name": "AgentCgroup.bundle.zip.part-0002",
+            "sha256": "0cff5daa777c0643d901165ba17be6ebaabc60c5487d59df7559d3ab8ee3cada"
+          },
+          {
+            "bytes": 12582912,
+            "name": "AgentCgroup.bundle.zip.part-0003",
+            "sha256": "ec5b3ab4dabd34b92af4ecf8f4f767001cb1b1425824c22c3a412b1e5409254e"
+          },
+          {
+            "bytes": 12582912,
+            "name": "AgentCgroup.bundle.zip.part-0004",
+            "sha256": "4bd5ce8e315a7b5ce762cf8d1914691fbe921bd213a1639bf11489d8c3f96ad2"
+          },
+          {
+            "bytes": 12582912,
+            "name": "AgentCgroup.bundle.zip.part-0005",
+            "sha256": "f6696f8255b4947599e3eda16613ef6632fb0356671f5694054b555f110076db"
+          },
+          {
+            "bytes": 7117485,
+            "name": "AgentCgroup.bundle.zip.part-0006",
+            "sha256": "bed937b806af17660639039fd060ae0d0e47c57e72bdf554b58e47a646866070"
+          }
+        ],
+        "publish": {
+          "commit": "2b57c56304cfd5cb32e98554fb6a5e7eecaf6e68",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "AgentCgroup",
+        "source_bytes": 236903155,
+        "source_commit": "551ca1689b7d2d30db6b8a8613414750103cc68b",
+        "source_files": 2085,
+        "source_ref": "HEAD",
+        "source_repo": "eunomia-bpf/agentcgroup",
+        "source_tree": {
+          "bytes": 236903155,
+          "files": 2085,
+          "sha256": "a35a1e1984e46da68663e8b621dee4340495720c01be249bccfe481fd5905f14"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "AgentCgroup",
+      "source_repo": "eunomia-bpf/agentcgroup",
+      "status": "VERIFIED_CLOSED"
+    }
+  },
+  "schema": "yaiwes.frontend.download-extract-queue.v1"
+}

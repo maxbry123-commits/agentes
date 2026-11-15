@@ -1,0 +1,6312 @@
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from flask import jsonify, request
+from syrupy.extensions.json import JSONSnapshotExtension
+
+import schemathesis
+from schemathesis.core.errors import InvalidSchema
+from schemathesis.specs.openapi.stateful import dependencies
+from schemathesis.specs.openapi.stateful.dependencies import analyze, naming
+from schemathesis.specs.openapi.stateful.dependencies.models import infer_fk_target
+from test.utils import flaky
+
+KNOWN_INCORRECT_FIELD_MAPPINGS = {
+    "merge-empty-schema-then-detailed": frozenset(
+        [
+            "Directory",
+        ]
+    ),
+    "id-no-match": frozenset(
+        [
+            "Brand",
+        ]
+    ),
+}
+
+
+def make_user_paths(content, include_operation_id=True, post_status: str = "201"):
+    """Build User CRUD paths with optional operationId."""
+    post = {
+        "responses": {post_status: {"content": content}},
+    }
+    if include_operation_id:
+        post["operationId"] = "createUser"
+
+    get = {
+        "parameters": [
+            {
+                "name": "id",
+                "in": "path",
+                "required": True,
+                "schema": {"type": "string"},
+            }
+        ],
+    }
+    if include_operation_id:
+        get["operationId"] = "getUser"
+
+    return {
+        "/users": {"post": post},
+        "/users/{id}": {"get": get},
+    }
+
+
+def response(status: str, schema=None, content_type: str = "application/json"):
+    container = {"responses": {status: {"description": "Text"}}}
+    if schema is not None:
+        container["responses"][status]["content"] = {content_type: {"schema": schema}}
+    return container
+
+
+def path_param(name: str, param_type: str = "string", required: bool = True):
+    return {"name": name, "in": "path", "required": required, "schema": {"type": param_type}}
+
+
+def operation(method: str, path: str, response_status: str, response_schema=None, parameters=None, operation_id=None):
+    operation = response(response_status, response_schema)
+    if parameters:
+        operation["parameters"] = parameters
+    if operation_id:
+        operation["operationId"] = operation_id
+    return {path: {method: operation}}
+
+
+def ref(ref_path: str):
+    """Build a $ref object."""
+    return {"$ref": ref_path}
+
+
+def component_ref(schema_name: str):
+    """Build a reference to a component schema."""
+    return ref(f"#/components/schemas/{schema_name}")
+
+
+def json_response(status: str, schema):
+    """Shorthand for JSON response."""
+    return response(status, schema, "application/json")
+
+
+def operation_with_body(
+    method: str,
+    path: str,
+    response_status: str,
+    request_body_schema,
+    response_schema=None,
+    parameters=None,
+    operation_id=None,
+):
+    op = response(response_status, response_schema)
+    op["requestBody"] = {"content": {"application/json": {"schema": request_body_schema}}, "required": True}
+    if parameters:
+        op["parameters"] = parameters
+    if operation_id:
+        op["operationId"] = operation_id
+    return {path: {method: op}}
+
+
+def analyze_dependencies(ctx, paths, **kwargs):
+    schema = ctx.openapi.load_schema(paths, **kwargs)
+    return schema, analyze(schema)
+
+
+ORDER_REQUEST_WITH_CUSTOMER = {
+    "type": "object",
+    "properties": {"customer_id": {"type": "string"}, "total": {"type": "number"}},
+    "required": ["customer_id"],
+}
+
+ORDER_RESPONSE = {
+    "type": "object",
+    "properties": {"id": {"type": "string"}, "customer_id": {"type": "string"}, "total": {"type": "number"}},
+    "required": ["id"],
+}
+
+PRODUCT_REQUEST = {
+    "type": "object",
+    "properties": {"name": {"type": "string"}, "price": {"type": "number"}},
+    "required": ["name"],
+}
+
+PRODUCT_RESPONSE = {
+    "type": "object",
+    "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "price": {"type": "number"}},
+    "required": ["id"],
+}
+
+
+USER_SCHEMA = {
+    "type": "object",
+    "properties": {"id": {"type": "string"}},
+    "required": ["id"],
+}
+SCHEMA_WITH_ID = {
+    "type": "object",
+    "properties": {"id": {"type": "string"}},
+    "required": ["id"],
+}
+
+
+@pytest.fixture
+def snapshot_json(snapshot):
+    return snapshot.with_defaults(extension_class=JSONSnapshotExtension)
+
+
+@pytest.mark.parametrize(
+    ["paths", "components"],
+    [
+        pytest.param(
+            make_user_paths(
+                {
+                    "application/json": {
+                        "schema": USER_SCHEMA,
+                    }
+                }
+            ),
+            None,
+            id="normal-schema",
+        ),
+        pytest.param(
+            operation("post", "/users", "201", USER_SCHEMA),
+            None,
+            id="only-producer",
+        ),
+        pytest.param(
+            {
+                **operation("post", "/users", "201", component_ref("User")),
+                **operation("post", "/users-2", "201", component_ref("User")),
+            },
+            {
+                "schemas": {
+                    "User": USER_SCHEMA,
+                }
+            },
+            id="normal-schema-two-producers",
+        ),
+        pytest.param(
+            {
+                **operation("get", "/users/{id}", "200", component_ref("User"), [path_param("id")]),
+                **operation("get", "/users/{userId}/messages", "200", component_ref("User"), [path_param("userId")]),
+            },
+            {
+                "schemas": {
+                    "User": USER_SCHEMA,
+                }
+            },
+            id="different-names-for-same-resource-two-consumers",
+        ),
+        pytest.param(
+            {
+                **operation("delete", "/spaces/{id}", "200"),
+                **operation("post", "/spaces/{spaceId}/topic", "201"),
+            },
+            None,
+            id="different-names-for-same-resource",
+        ),
+        pytest.param(
+            operation("get", "/users/{id}", "200", component_ref("User")),
+            {
+                "schemas": {
+                    "User": USER_SCHEMA,
+                }
+            },
+            id="only-consumer",
+        ),
+        pytest.param(
+            make_user_paths(
+                {
+                    "application/json": {
+                        "schema": USER_SCHEMA,
+                    }
+                },
+                post_status="200",
+            ),
+            None,
+            id="producer-non-201",
+        ),
+        pytest.param(
+            make_user_paths({"application/json": {}}),
+            None,
+            id="missing-schema",
+        ),
+        pytest.param(
+            make_user_paths(
+                {
+                    "application/json": {
+                        "schema": True,
+                    }
+                }
+            ),
+            None,
+            id="schema-true",
+        ),
+        pytest.param(
+            make_user_paths({"application/json": {"schema": {}}}),
+            None,
+            id="schema-without-fields",
+        ),
+        pytest.param(
+            make_user_paths(
+                {
+                    "application/json": {
+                        "schema": component_ref("User"),
+                    }
+                },
+            ),
+            {"schemas": {"User": USER_SCHEMA}},
+            id="ref-to-component",
+        ),
+        pytest.param(
+            make_user_paths({"application/json": {"schema": USER_SCHEMA}}, include_operation_id=False),
+            None,
+            id="infer-from-path",
+        ),
+        pytest.param(
+            operation("post", "/items", "400"),
+            None,
+            id="producer-response-no-match",
+        ),
+        pytest.param(
+            operation("get", "/items", "400"),
+            None,
+            id="consumer-response-no-match",
+        ),
+        pytest.param(
+            operation("get", "/items", "202"),
+            None,
+            id="consumer-response-non-200",
+        ),
+        pytest.param(
+            operation("post", "/", "201", USER_SCHEMA),
+            None,
+            id="empty-path-producer",
+        ),
+        pytest.param(
+            operation("get", "/", "200", USER_SCHEMA),
+            None,
+            id="empty-path-consumer",
+        ),
+        pytest.param(
+            operation("post", "/", "201", True),
+            None,
+            id="empty-path-boolean",
+        ),
+        pytest.param(
+            make_user_paths(
+                {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/unknown",
+                        }
+                    }
+                }
+            ),
+            None,
+            id="unresolvable-ref",
+        ),
+        pytest.param(
+            {"/path": {"get": {"responses": []}}},
+            None,
+            id="malformed_operation",
+        ),
+        pytest.param(
+            {
+                **operation(
+                    "get",
+                    "/users/{userId}/posts",
+                    "200",
+                    SCHEMA_WITH_ID,
+                    [
+                        path_param("userId"),
+                        {"name": "limit", "in": "query", "required": False, "schema": {"type": "integer"}},
+                    ],
+                ),
+                **operation("post", "/users", "201", SCHEMA_WITH_ID),
+            },
+            None,
+            id="path-and-query-params",
+        ),
+        pytest.param(
+            {
+                **operation("post", "/users", "201", USER_SCHEMA),
+                **operation(
+                    "post",
+                    "/users/{userId}/posts",
+                    "201",
+                    SCHEMA_WITH_ID,
+                    [path_param("userId")],
+                ),
+                **operation(
+                    "get",
+                    "/users/{userId}/posts/{postId}",
+                    "200",
+                    parameters=[
+                        path_param("userId"),
+                        path_param("postId"),
+                    ],
+                ),
+            },
+            None,
+            id="nested-resources",
+        ),
+        pytest.param(
+            {
+                **operation("post", "/channels", "201", SCHEMA_WITH_ID),
+                **operation(
+                    "get",
+                    "/channels/{channel_id}/messages",
+                    "200",
+                    {
+                        "type": "array",
+                        "items": component_ref("Message"),
+                    },
+                    [
+                        path_param("channel_id"),
+                    ],
+                ),
+            },
+            {
+                "schemas": {
+                    "Message": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}, "text": {"type": "string"}},
+                        "required": ["id", "text"],
+                    }
+                }
+            },
+            id="array-response-at-root",
+        ),
+        pytest.param(
+            {
+                **operation("get", "/channels/", "200", {"type": "array", "items": True}),
+            },
+            None,
+            id="array-response-with-true",
+        ),
+        pytest.param(
+            {
+                "/search": {
+                    "get": {
+                        "parameters": [
+                            {
+                                "in": "query",
+                                "name": "user_guid",
+                                "schema": {"type": "string"},
+                            },
+                        ]
+                    }
+                },
+                "/profile": {
+                    "get": {
+                        "responses": {
+                            "200": {
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "$ref": "#/components/schemas/User",
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            },
+            {"schemas": {"User": {"properties": {"guid": {"type": "string"}}}}},
+            id="field-name-suffix",
+        ),
+        pytest.param(
+            {
+                "/something": {
+                    "post": {
+                        "responses": {
+                            "200": {
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "$ref": "#/components/schemas/Category",
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "/categories/{id}.json": {
+                    "delete": {
+                        "responses": {
+                            "200": {
+                                "description": "Ok",
+                            }
+                        }
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Category": {
+                        "properties": {
+                            "category": component_ref("CategoryFields"),
+                        }
+                    },
+                    "CategoryFields": {
+                        "properties": {
+                            "id": {"type": "integer"},
+                        },
+                        "type": "object",
+                    },
+                }
+            },
+            id="field-as-resource-name",
+        ),
+        pytest.param(
+            {
+                **operation("post", "/blog/posts", "201", component_ref("Blog post public")),
+                **operation("get", "/blog/posts/{postId}", "200", component_ref("Blog post"), [path_param("postId")]),
+            },
+            {
+                "schemas": {
+                    "Blog post public": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}, "body": {"type": "string"}},
+                        "required": ["id", "body"],
+                    },
+                    "Blog post": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "checksum": {"type": "string"},
+                            "body": {"type": "string"},
+                        },
+                        "required": ["id", "body"],
+                    },
+                }
+            },
+            id="schema-names-mismatch",
+        ),
+        pytest.param(
+            {
+                **operation("get", "/books/", "200", component_ref("Books")),
+                **operation("get", "/books/{id}/notes", "200", component_ref("Note")),
+            },
+            {
+                "schemas": {
+                    "Books": {"type": "array", "items": component_ref("Book")},
+                    "Book": SCHEMA_WITH_ID,
+                    "Note": SCHEMA_WITH_ID,
+                }
+            },
+            id="link-from-listing-to-details",
+        ),
+        pytest.param(
+            {
+                **operation(
+                    "get",
+                    "/channels/{channel_id}/messages",
+                    "200",
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {
+                                "type": "array",
+                                "items": component_ref("Message"),
+                            },
+                            "total": {"type": "integer"},
+                            "page": {"type": "integer"},
+                        },
+                    },
+                    [path_param("channel_id")],
+                ),
+                **operation("post", "/channels", "201", SCHEMA_WITH_ID),
+            },
+            {
+                "schemas": {
+                    "Message": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}, "text": {"type": "string"}},
+                        "required": ["id", "text"],
+                    }
+                }
+            },
+            id="pagination-django-style",
+        ),
+        pytest.param(
+            {
+                **operation(
+                    "get",
+                    "/groups",
+                    "200",
+                    {
+                        "properties": {
+                            "nextLink": {"type": "string"},
+                            "value": {"items": {"properties": {"id": {"type": "string"}}}, "type": "array"},
+                        }
+                    },
+                ),
+                **operation(
+                    "get",
+                    "/groups/{groupId}/users",
+                    "200",
+                    {
+                        "properties": {
+                            "nextLink": {"type": "string"},
+                            "value": {"items": {"properties": {"id": {"type": "string"}}}, "type": "array"},
+                        }
+                    },
+                ),
+            },
+            None,
+            id="pagination-azure-style",
+        ),
+        pytest.param(
+            {
+                **operation(
+                    "get",
+                    "/groups",
+                    "200",
+                    {
+                        "properties": {
+                            "nextLink": {"type": "string"},
+                            "random-field-with_items": {
+                                "items": {"properties": {"id": {"type": "string"}}},
+                                "type": "array",
+                            },
+                        }
+                    },
+                ),
+            },
+            None,
+            id="pagination-unknown-style",
+        ),
+        pytest.param(
+            {
+                **operation(
+                    "get",
+                    "/channels/{channel_id}/messages",
+                    "200",
+                    component_ref("MessageList"),
+                    [path_param("channel_id")],
+                ),
+                **operation("post", "/channels", "201", SCHEMA_WITH_ID),
+            },
+            {
+                "schemas": {
+                    "MessageList": {
+                        "type": "object",
+                        "properties": {
+                            "data": {"type": "array", "items": component_ref("Message")},
+                            "total": {"type": "integer"},
+                            "page": {"type": "integer"},
+                        },
+                    },
+                    "Message": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}, "text": {"type": "string"}},
+                        "required": ["id", "text"],
+                    },
+                }
+            },
+            id="pagination-django-style-behind-ref",
+        ),
+        pytest.param(
+            operation(
+                "get",
+                "/users",
+                "200",
+                {
+                    "type": "object",
+                    "properties": {
+                        "_embedded": {
+                            "type": "object",
+                            "properties": {
+                                "another": True,
+                                "users": {
+                                    "type": "array",
+                                    "items": SCHEMA_WITH_ID,
+                                },
+                            },
+                        },
+                        "page": {
+                            "type": "object",
+                            "properties": {
+                                "size": {"type": "integer"},
+                                "totalElements": {"type": "integer"},
+                            },
+                        },
+                    },
+                },
+            ),
+            None,
+            id="pagination-hal-embedded",
+        ),
+        pytest.param(
+            {
+                **operation(
+                    "get",
+                    "/items/runner-groups",
+                    "200",
+                    {
+                        "properties": {
+                            "runner_groups": {
+                                "type": "array",
+                                "items": SCHEMA_WITH_ID,
+                            },
+                            "total_count": {"type": "integer"},
+                        }
+                    },
+                ),
+                **operation(
+                    "delete",
+                    "/items/{runner_group_id}",
+                    "200",
+                ),
+            },
+            None,
+            id="pagination-github-style",
+        ),
+        pytest.param(
+            operation(
+                "get",
+                "/users",
+                "200",
+                {
+                    "type": "object",
+                    "properties": {
+                        "_embedded": {
+                            "type": "object",
+                        },
+                        "page": {
+                            "type": "object",
+                            "properties": {
+                                "size": {"type": "integer"},
+                                "totalElements": {"type": "integer"},
+                            },
+                        },
+                    },
+                },
+            ),
+            None,
+            id="pagination-hal-embedded-broken",
+        ),
+        pytest.param(
+            {
+                **operation("post", "/users", "201", component_ref("User")),
+                **operation("get", "/users/{userId}", "200", component_ref("User"), [path_param("userId")]),
+            },
+            {
+                "schemas": {
+                    "BaseEntity": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "createdAt": {"type": "string", "format": "date-time"},
+                            "updatedAt": {"type": "string", "format": "date-time"},
+                        },
+                        "required": ["id"],
+                    },
+                    "User": {
+                        "allOf": [
+                            component_ref("BaseEntity"),
+                            {
+                                "type": "object",
+                                "properties": {"email": {"type": "string"}, "name": {"type": "string"}},
+                                "required": ["email"],
+                            },
+                        ]
+                    },
+                }
+            },
+            id="allOf-composition",
+        ),
+        pytest.param(
+            operation(
+                "post",
+                "/users",
+                "201",
+                {
+                    "allOf": [
+                        {
+                            "$ref": component_ref("product-example-1/value/data/pas"),
+                        }
+                    ]
+                },
+            ),
+            {
+                "schemas": {
+                    "product-example-1": {
+                        "value": {
+                            "data": {
+                                "pas": None,
+                            }
+                        }
+                    }
+                }
+            },
+            id="bundling-error",
+        ),
+        pytest.param(
+            {
+                "/users": {
+                    "get": json_response("200", component_ref("PagedUsers")),
+                    "post": json_response("201", component_ref("User")),
+                },
+            },
+            {
+                "schemas": {
+                    "User": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "email": {"type": "string"},
+                            "name": {"type": "string"},
+                        },
+                        "required": ["id", "email"],
+                    },
+                    "PaginationMeta": {
+                        "type": "object",
+                        "properties": {
+                            "page": {"type": "integer"},
+                            "pageSize": {"type": "integer"},
+                            "total": {"type": "integer"},
+                        },
+                    },
+                    "PagedUsers": {
+                        "allOf": [
+                            component_ref("PaginationMeta"),
+                            {
+                                "type": "object",
+                                "properties": {"data": {"type": "array", "items": component_ref("User")}},
+                            },
+                        ]
+                    },
+                }
+            },
+            id="pagination-with-allof-mixin",
+        ),
+        pytest.param(
+            operation("get", "/merchants", "200", component_ref("MerchantsResponse")),
+            {
+                "schemas": {
+                    "Merchant": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "category": {"type": "string"},
+                        },
+                        "required": ["id"],
+                    },
+                    "Merchants": {"type": "array", "items": component_ref("Merchant")},
+                    "MerchantsResponse": {
+                        "type": "object",
+                        "properties": {"Merchants": component_ref("Merchants")},
+                    },
+                }
+            },
+            id="externally-tagged-many",
+        ),
+        pytest.param(
+            operation("get", "/merchants", "200", component_ref("MerchantsResponse")),
+            {
+                "schemas": {
+                    "MerchantsResponse": {
+                        "type": "object",
+                        "properties": {"Merchants": {"type": "string"}},
+                    },
+                }
+            },
+            id="externally-tagged-primitive-types",
+        ),
+        pytest.param(
+            operation("get", "/merchants", "200", component_ref("MerchantsResponse")),
+            {
+                "schemas": {
+                    "Base": {"type": "object"},
+                    "Foo": {"type": "object"},
+                    "Merchant": {"allOf": [component_ref("Base"), component_ref("Foo")]},
+                    "MerchantsResponse": {
+                        "type": "object",
+                        "properties": {"Merchants": component_ref("Merchant")},
+                    },
+                }
+            },
+            id="externally-tagged-all-of-multiple-inner-refs",
+        ),
+        pytest.param(
+            operation("get", "/geo/adminDivisions", "200", component_ref("PopulatedPlacesResponse")),
+            {
+                "schemas": {
+                    "BaseCollectionResponse": {
+                        "type": "object",
+                        "properties": {
+                            "links": {"type": "array", "items": {"type": "object"}},
+                            "metadata": {"type": "object", "properties": {"totalCount": {"type": "integer"}}},
+                        },
+                    },
+                    "PopulatedPlaceSummary": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "integer"},
+                            "name": {"type": "string"},
+                            "country": {"type": "string"},
+                            "latitude": {"type": "number"},
+                            "longitude": {"type": "number"},
+                        },
+                        "required": ["id", "name"],
+                    },
+                    "PopulatedPlacesResponse": {
+                        "allOf": [
+                            component_ref("BaseCollectionResponse"),
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "data": {
+                                        "type": "array",
+                                        "items": component_ref("PopulatedPlaceSummary"),
+                                    }
+                                },
+                            },
+                        ]
+                    },
+                }
+            },
+            id="allof-pagination-with-data",
+        ),
+        pytest.param(
+            operation(
+                "get",
+                "/channels",
+                "200",
+                {
+                    "oneOf": [
+                        {
+                            "type": "array",
+                            "items": component_ref("ChannelDetails"),
+                        },
+                        {"type": "array", "items": {"type": "string"}},
+                    ]
+                },
+            ),
+            {
+                "schemas": {
+                    "ChannelDetails": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "memberCount": {"type": "integer"},
+                        },
+                        "required": ["id"],
+                    }
+                }
+            },
+            id="oneof-structured-vs-primitive-array",
+        ),
+        pytest.param(
+            operation(
+                "get",
+                "/status",
+                "200",
+                {
+                    "oneOf": [
+                        component_ref("DetailedStatus"),
+                        {"type": "string"},
+                    ]
+                },
+            ),
+            {
+                "schemas": {
+                    "DetailedStatus": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "state": {"type": "string"},
+                            "message": {"type": "string"},
+                        },
+                    }
+                }
+            },
+            id="oneof-object-vs-primitive",
+        ),
+        pytest.param(
+            operation(
+                "get",
+                "/items",
+                "200",
+                {
+                    "oneOf": [
+                        component_ref("Product"),
+                        component_ref("Service"),
+                    ]
+                },
+            ),
+            {
+                "schemas": {
+                    "Product": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}, "price": {"type": "number"}},
+                    },
+                    "Service": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}, "duration": {"type": "integer"}},
+                    },
+                }
+            },
+            id="oneof-multiple-structured-objects",
+        ),
+        pytest.param(
+            operation(
+                "get",
+                "/data",
+                "200",
+                {
+                    "anyOf": [
+                        component_ref("DataRecord"),
+                        {"type": "null"},
+                    ]
+                },
+            ),
+            {
+                "schemas": {
+                    "DataRecord": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}, "value": {"type": "string"}},
+                    }
+                }
+            },
+            id="anyof-object-vs-null",
+        ),
+        pytest.param(
+            operation(
+                "get",
+                "/data",
+                "200",
+                {
+                    "anyOf": [
+                        {"type": "null"},
+                        {"type": "string"},
+                    ]
+                },
+            ),
+            None,
+            id="anyof-primitive-types",
+        ),
+        pytest.param(
+            operation(
+                "get",
+                "/data",
+                "200",
+                {
+                    "anyOf": [
+                        {"items": True, "type": "array"},
+                        {"allOf": [True]},
+                    ]
+                },
+            ),
+            None,
+            id="anyof-nested-complex-types",
+        ),
+        pytest.param(
+            operation("get", "/data", "200", {"anyOf": 42}),
+            None,
+            id="anyof-invalid",
+        ),
+        pytest.param(
+            {
+                **operation("get", "/directories/{id}", "200", {}, [path_param("id")]),
+                **operation("get", "/files/{id}", "200", {}, [path_param("id")]),
+                **operation(
+                    "get",
+                    "/oauth2/1/files/{id}",
+                    "200",
+                    {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "integer"},
+                            "details": {"type": "object"},
+                            "metadata": {"type": "string"},
+                        },
+                    },
+                    [path_param("id")],
+                ),
+            },
+            None,
+            id="merge-empty-schema-then-detailed",
+        ),
+        pytest.param(
+            operation(
+                "get",
+                "/tags/{resourceArn}",
+                "200",
+                component_ref("ListTagsForResourceOutput"),
+                [path_param("resourceArn")],
+            ),
+            {
+                "schemas": {
+                    "ListTagsForResourceOutput": {
+                        "type": "object",
+                        "required": ["tags"],
+                        "properties": {
+                            "tags": {
+                                "allOf": [
+                                    component_ref("TagMap"),
+                                    {},
+                                ]
+                            },
+                        },
+                    },
+                    "TagMap": {
+                        "type": "object",
+                        "minProperties": 0,
+                        "maxProperties": 200,
+                        "properties": {"id": {"type": "string"}},
+                    },
+                }
+            },
+            id="allOf-inside-tagged-union",
+        ),
+        pytest.param(
+            operation(
+                "get",
+                "/tags/{resourceArn}",
+                "200",
+                component_ref("ListTagsForResourceOutput"),
+                [path_param("resourceArn")],
+            ),
+            {
+                "schemas": {
+                    "ListTagsForResourceOutput": {
+                        "type": "object",
+                        "required": ["tags"],
+                        "properties": {
+                            "tag": True,
+                            "tags": {
+                                "allOf": [
+                                    True,
+                                    component_ref("TagList"),
+                                    {},
+                                ]
+                            },
+                        },
+                    },
+                    "TagList": {
+                        "items": component_ref("Tag"),
+                    },
+                    "Tag": {
+                        "properties": {"id": {"type": "string"}},
+                    },
+                }
+            },
+            id="allOf-inside-tagged-union-with-items",
+        ),
+        pytest.param(
+            {
+                **operation("get", "/brands/{brandId}", "200", component_ref("Brand"), [path_param("brandId")]),
+                **operation("post", "/brands", "201", component_ref("Brand")),
+            },
+            {
+                "schemas": {
+                    "Brand": {
+                        "type": "object",
+                        "required": ["BrandId"],
+                        "properties": {
+                            "BrandId": {"type": "string"},
+                        },
+                    },
+                }
+            },
+            id="id-match-to-pascal-case",
+        ),
+        pytest.param(
+            {
+                **operation("get", "/brands/{id}", "200", component_ref("Brand"), [path_param("id")]),
+                **operation("post", "/brands", "201", component_ref("Brand")),
+            },
+            {
+                "schemas": {
+                    "Brand": {
+                        "type": "object",
+                        "required": ["brandId"],
+                        "properties": {
+                            "brandId": {"type": "string"},
+                        },
+                    },
+                }
+            },
+            id="id-match-id-to-prefixed",
+        ),
+        pytest.param(
+            {
+                **operation("get", "/brands/{id}", "200", component_ref("Brand"), [path_param("id")]),
+                **operation("post", "/brands", "201", component_ref("Brand")),
+            },
+            {
+                "schemas": {
+                    "Brand": {
+                        "type": "object",
+                        "required": ["name"],
+                        "properties": {
+                            "name": {"type": "string"},
+                        },
+                    },
+                }
+            },
+            id="id-no-match",
+        ),
+        pytest.param(
+            {
+                **operation("get", "/brands/{id}", "200", component_ref("Brand"), [path_param("id")]),
+                **operation("post", "/brands", "201", component_ref("Brand")),
+            },
+            {
+                "schemas": {
+                    "Brand": {
+                        "type": "object",
+                        "required": ["id"],
+                        "properties": {
+                            "id": {"type": "string"},
+                        },
+                    },
+                }
+            },
+            id="id-direct-match",
+        ),
+        pytest.param(
+            {
+                "/data_requests/{data_request_id}": {
+                    "get": {},
+                    "put": json_response(
+                        "200",
+                        {
+                            "properties": {
+                                "data_request": {
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    ),
+                },
+            },
+            None,
+            id="same-name-wrapper",
+        ),
+        pytest.param(
+            {
+                "/{source}/datasets": {
+                    "get": json_response(
+                        "200",
+                        {
+                            "properties": {
+                                "datasets": {
+                                    "items": {
+                                        "properties": {
+                                            "dataset": {"$ref": "#/components/schemas/dataset"},
+                                            "links": {},
+                                        },
+                                        "type": "object",
+                                    },
+                                    "type": "array",
+                                },
+                                "links": {},
+                                "total_count": {"type": "integer"},
+                            }
+                        },
+                    )
+                },
+                "/{source}/datasets/{dataset_id}/exports/json": {"get": {}},
+            },
+            {
+                "schemas": {
+                    "dataset": SCHEMA_WITH_ID,
+                }
+            },
+            id="wrapper-with-items",
+        ),
+        pytest.param(
+            {
+                "/comments/{id}/read": {
+                    "patch": {
+                        "responses": {
+                            "200": {"$ref": "#/components/responses/ReadCommentResponse"},
+                        },
+                    }
+                }
+            },
+            {
+                "responses": {
+                    "ReadCommentResponse": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {"data": {"allOf": [{"$ref": "#/components/schemas/ReadComment"}]}}
+                                }
+                            }
+                        }
+                    }
+                },
+                "schemas": {
+                    "Comment": {"properties": {"id": {}}},
+                    "ReadComment": {"allOf": [{"$ref": "#/components/schemas/Comment"}]},
+                },
+            },
+            id="multiple-all-of-layers",
+        ),
+        pytest.param(
+            {
+                **operation("post", "/customers", "201", SCHEMA_WITH_ID, operation_id="createCustomer"),
+                **operation_with_body(
+                    "post", "/orders", "201", ORDER_REQUEST_WITH_CUSTOMER, ORDER_RESPONSE, operation_id="createOrder"
+                ),
+            },
+            None,
+            id="requestbody-with-producer-id",
+        ),
+        pytest.param(
+            {
+                **operation_with_body(
+                    "post", "/orders", "201", ORDER_REQUEST_WITH_CUSTOMER, ORDER_RESPONSE, operation_id="createOrder"
+                ),
+                **operation("post", "/customers", "201", SCHEMA_WITH_ID, operation_id="createCustomer"),
+            },
+            None,
+            id="requestbody-producer-discovered-later",
+        ),
+        pytest.param(
+            {
+                **operation("post", "/customers", "201", SCHEMA_WITH_ID, operation_id="createCustomer"),
+                **operation_with_body(
+                    "post", "/products", "201", PRODUCT_REQUEST, PRODUCT_RESPONSE, operation_id="createProduct"
+                ),
+            },
+            None,
+            id="requestbody-without-producer-id",
+        ),
+        pytest.param(
+            {
+                **operation("post", "/recipients", "201", component_ref("Recipient"), operation_id="createRecipient"),
+                **operation_with_body(
+                    "post",
+                    "/devices",
+                    "201",
+                    component_ref("DeviceDetails"),
+                    component_ref("Device"),
+                    operation_id="createDevice",
+                ),
+            },
+            {
+                "schemas": {
+                    "Recipient": SCHEMA_WITH_ID,
+                    "DeviceDetails": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}, "recipient_id": component_ref("Recipient")},
+                        "required": ["name", "recipient_id"],
+                    },
+                    "Device": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "recipient_id": {"type": "string"},
+                        },
+                        "required": ["id"],
+                    },
+                }
+            },
+            id="requestbody-field-ref-to-producer-schema",
+        ),
+        pytest.param(
+            {
+                **operation("post", "/recipients", "201", component_ref("Recipient"), operation_id="createRecipient"),
+                "/devices": {
+                    "post": {
+                        "operationId": "createDevice",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {"schema": component_ref("DeviceDetails")},
+                                "application/xml": {"schema": component_ref("DeviceDetails")},
+                            },
+                            "required": True,
+                        },
+                        "responses": {
+                            "201": {
+                                "description": "Device created",
+                                "content": {"application/json": {"schema": component_ref("Device")}},
+                            }
+                        },
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Recipient": SCHEMA_WITH_ID,
+                    "DeviceDetails": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}, "recipient_id": component_ref("Recipient")},
+                        "required": ["name", "recipient_id"],
+                    },
+                    "Device": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "recipient_id": {"type": "string"},
+                        },
+                        "required": ["id"],
+                    },
+                }
+            },
+            id="requestbody-multiple-content-types-same-schema",
+        ),
+        pytest.param(
+            {
+                "/devices": {
+                    "post": {
+                        "operationId": "createDevice",
+                        "requestBody": {
+                            "content": {
+                                ";invalid/media-type=malformed": {"schema": SCHEMA_WITH_ID},
+                            },
+                            "required": True,
+                        },
+                        "responses": {
+                            "201": {
+                                "description": "Device created",
+                                "content": {"application/json": {"schema": SCHEMA_WITH_ID}},
+                            }
+                        },
+                    }
+                }
+            },
+            None,
+            id="requestbody-invalid-media-type-key",
+        ),
+        pytest.param(
+            {
+                **operation("post", "/orders", "201", component_ref("Order"), operation_id="createOrder"),
+                **operation("get", "/users/{userId}", "200", component_ref("User"), [path_param("userId")]),
+            },
+            {
+                "schemas": {
+                    "User": SCHEMA_WITH_ID,
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "user": component_ref("User"),
+                            "another": True,
+                            "total": {"type": "number"},
+                        },
+                        "required": ["id", "user", "total"],
+                    },
+                }
+            },
+            id="subresource-extraction-nested-ref",
+        ),
+        pytest.param(
+            {
+                **operation("get", "/tags/{tagId}", "200", component_ref("Tag")),
+                "/tags/bulk": {
+                    "post": {
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "items": component_ref("Tag"),
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            },
+            {"schemas": {"Tag": SCHEMA_WITH_ID}},
+            id="array-input",
+        ),
+        pytest.param(
+            {
+                **operation("post", "/items", "201", SCHEMA_WITH_ID),
+                **operation(
+                    "get",
+                    "/items/search",
+                    "200",
+                    SCHEMA_WITH_ID,
+                    [{"name": "itemId", "in": "query", "required": True, "schema": {"type": "string"}}],
+                ),
+            },
+            None,
+            id="query-parameter-consumer",
+        ),
+        pytest.param(
+            {
+                **operation(
+                    "get",
+                    "/conversations",
+                    "200",
+                    {
+                        "properties": {
+                            "_embedded": {
+                                "properties": {
+                                    "conversations": {
+                                        "items": {
+                                            "properties": {
+                                                "_links": {},
+                                                "name": {},
+                                                "uuid": {"type": "string"},
+                                            }
+                                        },
+                                        "type": "array",
+                                    }
+                                }
+                            }
+                        }
+                    },
+                ),
+                **operation(
+                    "delete",
+                    "/conversations/{conversation_id}/members/{member_id}",
+                    "200",
+                    parameters=[
+                        path_param("conversation_id"),
+                        path_param("member_id"),
+                    ],
+                ),
+            },
+            None,
+            id="id-synonym-uuid-field-matching",
+        ),
+        pytest.param(
+            {
+                **operation("post", "/balances", "201", component_ref("BalanceResponse")),
+                **operation(
+                    "get",
+                    "/balances/{id}",
+                    "200",
+                    component_ref("BalanceResponse"),
+                    [path_param("id")],
+                ),
+            },
+            {
+                "schemas": {
+                    "BalanceResponse": {
+                        "type": "object",
+                        "properties": {
+                            "result": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "amount": {"type": "number"},
+                                },
+                                "required": ["id"],
+                            }
+                        },
+                        "required": ["result"],
+                    }
+                }
+            },
+            id="nested-id-field-behind-result",
+        ),
+        pytest.param(
+            {
+                **operation("get", "/leagues", "200", {"type": "array", "items": component_ref("League")}),
+                **operation(
+                    "get",
+                    "/leagues/{league_id_or_slug}",
+                    "200",
+                    component_ref("League"),
+                    [path_param("league_id_or_slug")],
+                ),
+                **operation(
+                    "get",
+                    "/leagues/{league_id_or_slug}/matches",
+                    "200",
+                    {"type": "array", "items": component_ref("Match")},
+                    [path_param("league_id_or_slug")],
+                ),
+            },
+            {
+                "schemas": {
+                    "League": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "integer"},
+                            "slug": {"type": "string"},
+                            "name": {"type": "string"},
+                        },
+                        "required": ["id", "slug"],
+                    },
+                    "Match": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "integer"},
+                            "league_id": {"type": "integer"},
+                        },
+                        "required": ["id"],
+                    },
+                }
+            },
+            id="composite-id-or-slug-suffix",
+        ),
+        pytest.param(
+            {
+                **operation("get", "/categories", "200", {"type": "array", "items": component_ref("Category")}),
+                **operation(
+                    "get",
+                    "/categories/{category_id_or_slug}",
+                    "200",
+                    component_ref("Category"),
+                    [path_param("category_id_or_slug")],
+                ),
+            },
+            {
+                "schemas": {
+                    "Category": {
+                        "type": "object",
+                        "properties": {
+                            "slug": {"type": "string"},
+                            "name": {"type": "string"},
+                        },
+                        "required": ["slug"],
+                    },
+                }
+            },
+            id="composite-id-or-slug-fallback-to-slug",
+        ),
+        pytest.param(
+            {
+                **operation("get", "/tags", "200", {"type": "array", "items": component_ref("Tag")}),
+                **operation(
+                    "get",
+                    "/tags/{tag_slug}",
+                    "200",
+                    component_ref("Tag"),
+                    [path_param("tag_slug")],
+                ),
+            },
+            {
+                "schemas": {
+                    "Tag": {
+                        "type": "object",
+                        "properties": {
+                            "slug": {"type": "string"},
+                            "name": {"type": "string"},
+                        },
+                        "required": ["slug"],
+                    },
+                }
+            },
+            id="slug-suffix-field-matching",
+        ),
+        # POST returns bare string identifier - like Mealie POST /api/recipes returning slug
+        pytest.param(
+            {
+                **operation("post", "/recipes", "201", {"type": "string"}),
+                **operation(
+                    "get",
+                    "/recipes/{slug}",
+                    "200",
+                    component_ref("Recipe"),
+                    [path_param("slug")],
+                ),
+            },
+            {
+                "schemas": {
+                    "Recipe": {
+                        "type": "object",
+                        "properties": {
+                            "slug": {"type": "string"},
+                            "name": {"type": "string"},
+                        },
+                        "required": ["slug"],
+                    },
+                }
+            },
+            id="post-returns-string-identifier",
+        ),
+        # Sub-resource inside array items should be discovered
+        # Like Mealie's AllBackups.imports which is an array of BackupFile refs
+        pytest.param(
+            {
+                **operation(
+                    "get",
+                    "/backups",
+                    "200",
+                    component_ref("AllBackups"),
+                ),
+                **operation(
+                    "delete",
+                    "/backups/{file_name}",
+                    "200",
+                    None,
+                    [path_param("file_name")],
+                ),
+            },
+            {
+                "schemas": {
+                    "AllBackups": {
+                        "type": "object",
+                        "properties": {
+                            "imports": {
+                                "type": "array",
+                                "items": component_ref("BackupFile"),
+                            },
+                            "templates": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                        },
+                    },
+                    "BackupFile": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "date": {"type": "string"},
+                            "size": {"type": "string"},
+                        },
+                        "required": ["name"],
+                    },
+                }
+            },
+            id="subresource-in-array-items",
+        ),
+        # Prefix matching: parameter "group_slug" -> inferred "Group" not found
+        # but "GroupSummary" starts with "Group" and has "slug" field
+        # Like Mealie's /api/explore/groups/{group_slug}/... endpoints
+        pytest.param(
+            {
+                **operation(
+                    "get",
+                    "/groups/self",
+                    "200",
+                    component_ref("GroupSummary"),
+                ),
+                **operation(
+                    "get",
+                    "/explore/groups/{group_slug}/recipes",
+                    "200",
+                    component_ref("RecipeList"),
+                    [path_param("group_slug")],
+                ),
+            },
+            {
+                "schemas": {
+                    "GroupSummary": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "slug": {"type": "string"},
+                        },
+                        "required": ["id", "slug"],
+                    },
+                    "RecipeList": {
+                        "type": "object",
+                        "properties": {
+                            "items": {"type": "array", "items": {"type": "object"}},
+                        },
+                    },
+                }
+            },
+            id="prefix-matching-group-slug",
+        ),
+        # Foreign key field linking: producer returns object with customer_id FK field,
+        # consumer expects Customer.id in path parameter
+        pytest.param(
+            {
+                # Producer: returns Order with customer_id FK field
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                # Consumer: needs Customer.id
+                **operation("get", "/customers/{id}", "200", component_ref("Customer"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "customer_id": {"type": "string"},
+                            "total": {"type": "number"},
+                        },
+                        "required": ["id", "customer_id"],
+                    },
+                    "Customer": SCHEMA_WITH_ID,
+                }
+            },
+            id="foreign-key-field-linking",
+        ),
+        # Multiple FK fields: booking with customer_id and event_id
+        pytest.param(
+            {
+                **operation("get", "/bookings/{id}", "200", component_ref("Booking"), [path_param("id")]),
+                **operation("get", "/customers/{id}", "200", component_ref("Customer"), [path_param("id")]),
+                **operation("get", "/events/{id}", "200", component_ref("Event"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Booking": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "customer_id": {"type": "string"},
+                            "event_id": {"type": "string"},
+                        },
+                        "required": ["id"],
+                    },
+                    "Customer": SCHEMA_WITH_ID,
+                    "Event": SCHEMA_WITH_ID,
+                }
+            },
+            id="multiple-foreign-key-fields",
+        ),
+        # Array FK field: event with site_ids array
+        pytest.param(
+            {
+                **operation("get", "/events/{id}", "200", component_ref("Event"), [path_param("id")]),
+                **operation("get", "/sites/{id}", "200", component_ref("Site"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Event": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "site_ids": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["id"],
+                    },
+                    "Site": SCHEMA_WITH_ID,
+                }
+            },
+            id="array-foreign-key-field",
+        ),
+        # FK field with _uuid suffix does NOT link to consumer expecting id
+        # user_uuid -> GET /users/{id} (no match because consumer expects id, not uuid)
+        # This ensures FK suffix types are respected
+        pytest.param(
+            {
+                **operation("get", "/sessions/{id}", "200", component_ref("Session"), [path_param("id")]),
+                **operation("get", "/users/{id}", "200", component_ref("User"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Session": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "user_uuid": {"type": "string"},
+                        },
+                        "required": ["id"],
+                    },
+                    "User": SCHEMA_WITH_ID,
+                }
+            },
+            id="foreign-key-uuid-no-match-to-id-consumer",
+        ),
+        # Multi-word snake_case FK: shipping_address_id -> ShippingAddress
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                **operation(
+                    "get", "/shipping-addresses/{id}", "200", component_ref("ShippingAddress"), [path_param("id")]
+                ),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "shipping_address_id": {"type": "string"},
+                        },
+                        "required": ["id"],
+                    },
+                    "ShippingAddress": SCHEMA_WITH_ID,
+                }
+            },
+            id="foreign-key-multi-word-snake-case",
+        ),
+        # Embedded resource: Order contains embedded Customer object
+        # Should link GET /orders/{id} -> GET /customers/{id} via customer.id
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                **operation("get", "/customers/{id}", "200", component_ref("Customer"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "total": {"type": "number"},
+                            "customer": component_ref("Customer"),  # Embedded resource
+                        },
+                        "required": ["id"],
+                    },
+                    "Customer": SCHEMA_WITH_ID,
+                }
+            },
+            id="embedded-resource-linking",
+        ),
+        # Nested FK field: Order.shipping.warehouse_id -> Warehouse
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                **operation("get", "/warehouses/{id}", "200", component_ref("Warehouse"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "shipping": {
+                                "type": "object",
+                                "properties": {
+                                    "warehouse_id": {"type": "string"},
+                                    "tracking": {"type": "string"},
+                                },
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="nested-fk-field-linking",
+        ),
+        # Array of embedded resources: Order.line_items[].product_id -> Product
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                **operation("get", "/products/{id}", "200", component_ref("Product"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "line_items": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "product_id": {"type": "string"},
+                                        "quantity": {"type": "integer"},
+                                    },
+                                },
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                    "Product": SCHEMA_WITH_ID,
+                }
+            },
+            id="array-nested-fk-field-linking",
+        ),
+        # Request body with nested FK field: POST /orders with {shipping: {warehouse_id: "..."}}
+        # Should create link from GET /warehouses to POST /orders
+        pytest.param(
+            {
+                **operation("get", "/warehouses", "200", {"type": "array", "items": component_ref("Warehouse")}),
+                "/orders": {
+                    "post": {
+                        "operationId": "createOrder",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "total": {"type": "number"},
+                                            "shipping": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "warehouse_id": {"type": "string"},
+                                                    "address": {"type": "string"},
+                                                },
+                                                "required": ["warehouse_id"],
+                                            },
+                                        },
+                                        "required": ["shipping"],
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="requestbody-nested-fk-field",
+        ),
+        # Request body with FK field in array items: POST /orders with {items: [{product_id: "..."}]}
+        pytest.param(
+            {
+                **operation("get", "/products", "200", {"type": "array", "items": component_ref("Product")}),
+                "/orders": {
+                    "post": {
+                        "operationId": "createOrder",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "total": {"type": "number"},
+                                            "items": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "product_id": {"type": "string"},
+                                                        "quantity": {"type": "integer"},
+                                                    },
+                                                    "required": ["product_id"],
+                                                },
+                                            },
+                                        },
+                                        "required": ["items"],
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Product": SCHEMA_WITH_ID,
+                }
+            },
+            id="requestbody-array-nested-fk-field",
+        ),
+        # Request body with boolean schema for a property
+        pytest.param(
+            {
+                **operation("get", "/warehouses", "200", {"type": "array", "items": component_ref("Warehouse")}),
+                "/orders": {
+                    "post": {
+                        "operationId": "createOrder",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "warehouse_id": {"type": "string"},
+                                            "config": True,
+                                        },
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="requestbody-property-boolean-schema",
+        ),
+        # Nested object with boolean schema for a property
+        pytest.param(
+            {
+                **operation("get", "/warehouses", "200", {"type": "array", "items": component_ref("Warehouse")}),
+                "/orders": {
+                    "post": {
+                        "operationId": "createOrder",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "shipping": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "warehouse_id": {"type": "string"},
+                                                    "metadata": True,
+                                                },
+                                            },
+                                        },
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="requestbody-nested-property-boolean-schema",
+        ),
+        # Deeply nested FK field - multiple levels of non-FK objects
+        pytest.param(
+            {
+                **operation("get", "/warehouses", "200", {"type": "array", "items": component_ref("Warehouse")}),
+                "/orders": {
+                    "post": {
+                        "operationId": "createOrder",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "fulfillment": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "shipping": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "warehouse_id": {"type": "string"},
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="requestbody-deeply-nested-fk-field",
+        ),
+        # Array items with boolean schema for a property
+        pytest.param(
+            {
+                **operation("get", "/products", "200", {"type": "array", "items": component_ref("Product")}),
+                "/orders": {
+                    "post": {
+                        "operationId": "createOrder",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "items": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "product_id": {"type": "string"},
+                                                        "metadata": True,
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Product": SCHEMA_WITH_ID,
+                }
+            },
+            id="requestbody-array-item-boolean-schema",
+        ),
+        # Deeply nested structure that exceeds the recursion depth limit
+        pytest.param(
+            {
+                **operation("get", "/warehouses", "200", {"type": "array", "items": component_ref("Warehouse")}),
+                "/orders": {
+                    "post": {
+                        "operationId": "createOrder",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "level1": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "level2": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "level3": {
+                                                                "type": "object",
+                                                                "properties": {
+                                                                    "level4": {
+                                                                        "type": "object",
+                                                                        "properties": {
+                                                                            "level5": {
+                                                                                "type": "object",
+                                                                                "properties": {
+                                                                                    "level6": {
+                                                                                        "type": "object",
+                                                                                        "properties": {
+                                                                                            "level7": {
+                                                                                                "type": "object",
+                                                                                                "properties": {
+                                                                                                    "level8": {
+                                                                                                        "type": "object",
+                                                                                                        "properties": {
+                                                                                                            "level9": {
+                                                                                                                "type": "object",
+                                                                                                                "properties": {
+                                                                                                                    "level10": {
+                                                                                                                        "type": "object",
+                                                                                                                        "properties": {
+                                                                                                                            "warehouse_id": {
+                                                                                                                                "type": "string"
+                                                                                                                            },
+                                                                                                                        },
+                                                                                                                    },
+                                                                                                                },
+                                                                                                            },
+                                                                                                        },
+                                                                                                    },
+                                                                                                },
+                                                                                            },
+                                                                                        },
+                                                                                    },
+                                                                                },
+                                                                            },
+                                                                        },
+                                                                    },
+                                                                },
+                                                            },
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="requestbody-max-depth-exceeded",
+        ),
+        # FK field points to non-existent resource (target_resource is None)
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                # No /customers endpoint - Customer resource doesn't exist
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "customer_id": {"type": "string"},  # FK to non-existent Customer
+                        },
+                        "required": ["id"],
+                    },
+                }
+            },
+            id="fk-field-to-nonexistent-resource",
+        ),
+        # Nested FK field pointing to non-existent resource
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                # No /warehouses endpoint - Warehouse resource doesn't exist
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "shipping": {
+                                "type": "object",
+                                "properties": {
+                                    "warehouse_id": {"type": "string"},  # FK to non-existent Warehouse
+                                },
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                }
+            },
+            id="nested-fk-to-nonexistent-resource",
+        ),
+        # Two consumers for the same resource - creates duplicate FK link names
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                # Two consumers for Customer, both expecting id - creates duplicate "GetCustomer" link
+                **operation("get", "/customers/{id}", "200", component_ref("Customer"), [path_param("id")]),
+                **operation(
+                    "get", "/customers/{customerId}", "200", component_ref("Customer"), [path_param("customerId")]
+                ),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "customer_id": {"type": "string"},
+                        },
+                        "required": ["id"],
+                    },
+                    "Customer": SCHEMA_WITH_ID,
+                }
+            },
+            id="fk-duplicate-link-names",
+        ),
+        # Response schema with $ref that needs resolution for nested FK extraction
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                **operation("get", "/warehouses/{id}", "200", component_ref("Warehouse"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "shipping": component_ref("ShippingDetails"),  # $ref needs resolution
+                        },
+                        "required": ["id"],
+                    },
+                    "ShippingDetails": {
+                        "type": "object",
+                        "properties": {
+                            "warehouse_id": {"type": "string"},
+                            "tracking": {"type": "string"},
+                        },
+                    },
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="nested-fk-with-ref-resolution",
+        ),
+        # Response with array of items containing nested FK fields - tests MANY cardinality
+        pytest.param(
+            {
+                **operation("get", "/orders", "200", {"type": "array", "items": component_ref("Order")}),
+                **operation("get", "/warehouses/{id}", "200", component_ref("Warehouse"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "shipping": {
+                                "type": "object",
+                                "properties": {
+                                    "warehouse_id": {"type": "string"},
+                                },
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="nested-fk-many-cardinality",
+        ),
+        # Nested FK field that is an array (site_ids inside nested object)
+        pytest.param(
+            {
+                **operation("get", "/events/{id}", "200", component_ref("Event"), [path_param("id")]),
+                **operation("get", "/sites/{id}", "200", component_ref("Site"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Event": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "location": {
+                                "type": "object",
+                                "properties": {
+                                    "site_ids": {"type": "array", "items": {"type": "string"}},  # Array FK
+                                },
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                    "Site": SCHEMA_WITH_ID,
+                }
+            },
+            id="nested-fk-array-field",
+        ),
+        # Consumer expects body parameter - FK linking should skip this
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                **operation_with_body(
+                    "post",
+                    "/invoices",
+                    "201",
+                    {"type": "object", "properties": {"customer_id": {"type": "string"}}, "required": ["customer_id"]},
+                    SCHEMA_WITH_ID,
+                    operation_id="createInvoice",
+                ),
+                **operation("get", "/customers/{id}", "200", component_ref("Customer"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "customer_id": {"type": "string"},
+                        },
+                        "required": ["id"],
+                    },
+                    "Customer": SCHEMA_WITH_ID,
+                }
+            },
+            id="fk-skip-body-parameter-consumer",
+        ),
+        # Multiple nested FK fields creating duplicate link names
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                **operation("get", "/warehouses/{id}", "200", component_ref("Warehouse"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "shipping": {
+                                "type": "object",
+                                "properties": {
+                                    "warehouse_id": {"type": "string"},
+                                },
+                            },
+                            "billing": {
+                                "type": "object",
+                                "properties": {
+                                    "warehouse_id": {"type": "string"},  # Duplicate FK to same resource
+                                },
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="nested-fk-duplicate-link-names",
+        ),
+        # Nested FK with mismatched target field (uuid vs id)
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                **operation("get", "/warehouses/{id}", "200", component_ref("Warehouse"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "shipping": {
+                                "type": "object",
+                                "properties": {
+                                    "warehouse_uuid": {"type": "string"},  # uuid FK, but consumer expects id
+                                },
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="nested-fk-mismatched-target-field",
+        ),
+        # Self-referencing nested FK - operation is both producer and consumer for FK target
+        # GET /users/{user_id}/posts/{id} returns Post with nested FK user_id -> User
+        # Same operation needs User via user_id path parameter (self-reference)
+        pytest.param(
+            {
+                **operation(
+                    "get",
+                    "/users/{user_id}/posts/{id}",
+                    "200",
+                    component_ref("Post"),
+                    [path_param("user_id"), path_param("id")],
+                ),
+                **operation("post", "/users", "201", component_ref("User")),
+            },
+            {
+                "schemas": {
+                    "User": SCHEMA_WITH_ID,
+                    "Post": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "content": {"type": "string"},
+                            "mentioned": {
+                                "type": "object",
+                                "properties": {
+                                    "user_id": {"type": "string"},  # Nested FK to User (same as path param)
+                                },
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                }
+            },
+            id="nested-fk-self-reference",
+        ),
+        # Nested FK where consumer expects body parameter (should be skipped)
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                **operation_with_body(
+                    "post",
+                    "/shipments",
+                    "201",
+                    {
+                        "type": "object",
+                        "properties": {"warehouse_id": {"type": "string"}},
+                        "required": ["warehouse_id"],
+                    },
+                    SCHEMA_WITH_ID,
+                    operation_id="createShipment",
+                ),
+                **operation("get", "/warehouses/{id}", "200", component_ref("Warehouse"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "shipping": {
+                                "type": "object",
+                                "properties": {
+                                    "warehouse_id": {"type": "string"},
+                                },
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="nested-fk-skip-body-consumer",
+        ),
+        # Two consumers for nested FK - creates duplicate link names
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                **operation("get", "/warehouses/{id}", "200", component_ref("Warehouse"), [path_param("id")]),
+                **operation(
+                    "get", "/warehouses/{warehouseId}", "200", component_ref("Warehouse"), [path_param("warehouseId")]
+                ),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "shipping": {
+                                "type": "object",
+                                "properties": {
+                                    "warehouse_id": {"type": "string"},
+                                },
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="nested-fk-duplicate-consumers",
+        ),
+        # Response schema property with boolean value (not a dict)
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "metadata": True,  # Boolean schema property
+                            "config": True,  # Another boolean schema property
+                        },
+                        "required": ["id"],
+                    },
+                }
+            },
+            id="response-schema-boolean-properties",
+        ),
+        # Multiple request body FK fields requiring nested body merge
+        pytest.param(
+            {
+                **operation("get", "/warehouses", "200", {"type": "array", "items": component_ref("Warehouse")}),
+                **operation("get", "/carriers", "200", {"type": "array", "items": component_ref("Carrier")}),
+                "/orders": {
+                    "post": {
+                        "operationId": "createOrder",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "shipping": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "warehouse_id": {"type": "string"},
+                                                    "carrier_id": {"type": "string"},
+                                                },
+                                                "required": ["warehouse_id", "carrier_id"],
+                                            },
+                                        },
+                                        "required": ["shipping"],
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Warehouse": SCHEMA_WITH_ID,
+                    "Carrier": SCHEMA_WITH_ID,
+                }
+            },
+            id="requestbody-multiple-fk-fields-merge",
+        ),
+        # Request body with array items containing multiple FK fields (tests list merging)
+        pytest.param(
+            {
+                **operation("get", "/products", "200", {"type": "array", "items": component_ref("Product")}),
+                **operation("get", "/suppliers", "200", {"type": "array", "items": component_ref("Supplier")}),
+                "/orders": {
+                    "post": {
+                        "operationId": "createOrder",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "items": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "product_id": {"type": "string"},
+                                                        "supplier_id": {"type": "string"},
+                                                    },
+                                                    "required": ["product_id", "supplier_id"],
+                                                },
+                                            },
+                                        },
+                                        "required": ["items"],
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Product": SCHEMA_WITH_ID,
+                    "Supplier": SCHEMA_WITH_ID,
+                }
+            },
+            id="requestbody-array-multiple-fk-fields-merge",
+        ),
+        # Deeply nested schema with $ref that triggers extract_nested_fk_fields resolution
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                **operation("get", "/warehouses/{id}", "200", component_ref("Warehouse"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "shipping": component_ref("Shipping"),
+                        },
+                        "required": ["id"],
+                    },
+                    "Shipping": {
+                        "type": "object",
+                        "properties": {
+                            "location": component_ref("Location"),
+                        },
+                    },
+                    "Location": {
+                        "type": "object",
+                        "properties": {
+                            "warehouse_id": {"type": "string"},
+                            "address": {"type": "string"},
+                        },
+                    },
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="nested-refs-extract-fk-fields",
+        ),
+        # Nested FK extraction with max depth exceeded in response schema
+        pytest.param(
+            {
+                **operation("get", "/orders/{id}", "200", component_ref("Order"), [path_param("id")]),
+                **operation("get", "/warehouses/{id}", "200", component_ref("Warehouse"), [path_param("id")]),
+            },
+            {
+                "schemas": {
+                    "Order": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "l1": {
+                                "type": "object",
+                                "properties": {
+                                    "l2": {
+                                        "type": "object",
+                                        "properties": {
+                                            "l3": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "l4": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "l5": {
+                                                                "type": "object",
+                                                                "properties": {
+                                                                    "l6": {
+                                                                        "type": "object",
+                                                                        "properties": {
+                                                                            "warehouse_id": {"type": "string"},
+                                                                        },
+                                                                    },
+                                                                },
+                                                            },
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                    "Warehouse": SCHEMA_WITH_ID,
+                }
+            },
+            id="nested-fk-max-depth-response",
+        ),
+        # Multiple FK fields in request body pointing to the same resource (tests _merge_nested_body)
+        # account_id and account_uuid both parse to "Account" resource
+        pytest.param(
+            {
+                **operation("get", "/accounts", "200", {"type": "array", "items": component_ref("Account")}),
+                "/transfers": {
+                    "post": {
+                        "operationId": "createTransfer",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "account_id": {"type": "string"},
+                                            "account_uuid": {"type": "string"},  # Same resource, different field
+                                            "amount": {"type": "number"},
+                                        },
+                                        "required": ["account_id", "account_uuid"],
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Account": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "uuid": {"type": "string"},  # Both id and uuid fields
+                        },
+                        "required": ["id", "uuid"],
+                    },
+                }
+            },
+            id="requestbody-same-resource-multiple-fk-fields",
+        ),
+        # Nested request body with multiple FK fields at same nested path (tests nested merge)
+        pytest.param(
+            {
+                **operation("get", "/accounts", "200", {"type": "array", "items": component_ref("Account")}),
+                "/payments": {
+                    "post": {
+                        "operationId": "createPayment",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "transfer": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "account_id": {"type": "string"},
+                                                    "account_uuid": {"type": "string"},
+                                                },
+                                                "required": ["account_id", "account_uuid"],
+                                            },
+                                        },
+                                        "required": ["transfer"],
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Account": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "uuid": {"type": "string"},
+                        },
+                        "required": ["id", "uuid"],
+                    },
+                }
+            },
+            id="requestbody-nested-same-resource-merge",
+        ),
+        # Request body with array of FK fields pointing to same resource (tests list merge)
+        pytest.param(
+            {
+                **operation("get", "/products", "200", {"type": "array", "items": component_ref("Product")}),
+                "/orders": {
+                    "post": {
+                        "operationId": "createOrder",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "items": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "product_id": {"type": "string"},
+                                                        "product_uuid": {"type": "string"},
+                                                    },
+                                                    "required": ["product_id", "product_uuid"],
+                                                },
+                                            },
+                                        },
+                                        "required": ["items"],
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Product": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "uuid": {"type": "string"},
+                        },
+                        "required": ["id", "uuid"],
+                    },
+                }
+            },
+            id="requestbody-array-same-resource-list-merge",
+        ),
+        # Request body schema is a $ref that gets resolved
+        pytest.param(
+            {
+                **operation("get", "/users", "200", component_ref("User")),
+                "/orders": {
+                    "post": {
+                        "operationId": "createOrder",
+                        "requestBody": {
+                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrderInput"}}},
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "User": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}},
+                    },
+                    "OrderInput": {
+                        "type": "object",
+                        "properties": {
+                            "user_id": {"type": "string"},
+                        },
+                    },
+                }
+            },
+            id="requestbody-schema-ref",
+        ),
+        # Body is array with items $ref AND has properties with FK - triggers mixed request_body types
+        pytest.param(
+            {
+                **operation("get", "/products", "200", component_ref("Product")),
+                "/orders": {
+                    "post": {
+                        "operationId": "createOrder",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "array",
+                                        "items": {"$ref": "#/components/schemas/Product"},
+                                        "properties": {
+                                            "product_id": {"type": "string"},
+                                        },
+                                    }
+                                }
+                            },
+                            "required": True,
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    }
+                },
+            },
+            {
+                "schemas": {
+                    "Product": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}},
+                    },
+                }
+            },
+            id="requestbody-array-and-property-same-resource",
+        ),
+        pytest.param(
+            {
+                "/v1/users": {
+                    "post": {
+                        "operationId": "createUser",
+                        "responses": {
+                            "201": {
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "properties": {"id": {"type": "string"}},
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    }
+                },
+                "/v2/users/{id}": {
+                    "get": {
+                        "operationId": "getUser",
+                        "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}],
+                        "responses": {"200": {"description": "OK"}},
+                    }
+                },
+            },
+            None,
+            id="cross-version-prefix-linking",
+        ),
+        pytest.param(
+            {
+                "/children/groups": {
+                    "get": {
+                        "operationId": "listChildrenGroups",
+                        "responses": {
+                            "200": {
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {"id": {"type": "integer"}},
+                                            },
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    }
+                },
+                "/smallgroups/groups": {
+                    "get": {
+                        "operationId": "listSmallGroups",
+                        "responses": {
+                            "200": {
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {"id": {"type": "integer"}},
+                                            },
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    }
+                },
+                "/smallgroups/groups/{id}": {
+                    "get": {
+                        "operationId": "getSmallGroup",
+                        "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                        "responses": {"200": {"description": "OK"}},
+                    }
+                },
+            },
+            None,
+            id="cross-namespace-collision-bare-id",
+        ),
+        pytest.param(
+            {
+                "/products/{productName}": {
+                    "post": {
+                        "operationId": "createProduct",
+                        "parameters": [
+                            {
+                                "name": "productName",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            }
+                        ],
+                        "responses": {"201": {"description": "Created"}},
+                    },
+                },
+                "/products/{productName}/features/{featureName}": {
+                    "delete": {
+                        "operationId": "deleteFeature",
+                        "parameters": [
+                            {
+                                "name": "productName",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            },
+                            {
+                                "name": "featureName",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            },
+                        ],
+                        "responses": {"204": {"description": "Deleted"}},
+                    },
+                },
+            },
+            None,
+            id="post-creates-resource-keyed-by-path-param",
+        ),
+        pytest.param(
+            {
+                "/products": {
+                    "get": {
+                        "operationId": "listProducts",
+                        "responses": {
+                            "200": {
+                                "description": "OK",
+                                "content": {
+                                    "application/json": {"schema": {"type": "array", "items": {"type": "string"}}}
+                                },
+                            }
+                        },
+                    },
+                },
+                "/products/{productName}/features/{featureName}": {
+                    "delete": {
+                        "operationId": "deleteFeature",
+                        "parameters": [
+                            {
+                                "name": "productName",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            },
+                            {
+                                "name": "featureName",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            },
+                        ],
+                        "responses": {"204": {"description": "Deleted"}},
+                    },
+                },
+            },
+            None,
+            id="primitive-array-collection-as-identifier-list",
+        ),
+        pytest.param(
+            {
+                "/products": {
+                    "post": {
+                        "operationId": "createProduct",
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "required": ["productName"],
+                                        "properties": {"productName": {"type": "string"}},
+                                    }
+                                }
+                            },
+                        },
+                        "responses": {"201": {"description": "Created"}},
+                    },
+                },
+                "/products/{productName}": {
+                    "get": {
+                        "operationId": "getProduct",
+                        "parameters": [
+                            {
+                                "name": "productName",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            }
+                        ],
+                        "responses": {"200": {"description": "OK"}},
+                    },
+                },
+            },
+            None,
+            id="body-field-name-suffix-on-collection-path",
+        ),
+    ],
+)
+def test_dependency_graph(request, ctx, paths, components, snapshot_json):
+    kwargs = {}
+    if components is not None:
+        kwargs["components"] = components
+    schema, graph = analyze_dependencies(ctx, paths, **kwargs)
+
+    graph.assert_incorrect_field_mappings(request.node.callspec.id, KNOWN_INCORRECT_FIELD_MAPPINGS)
+    assert graph.serialize() == snapshot_json
+
+    data = list(graph.iter_links())
+    for response_links in data:
+        source = schema.find_operation_by_reference(response_links.producer_operation_ref)
+        assert response_links.status_code in source.responses.status_codes
+        for link in response_links.links.values():
+            _ = schema.find_operation_by_reference(link.operation_ref)
+
+    assert [[entry.status_code, entry.producer_operation_ref, entry.to_openapi()] for entry in data] == snapshot_json
+
+    assert (
+        sorted((d.resource_name, d.operation, d.status_code, d.pointer) for d in schema.analysis.resource_descriptors)
+        == snapshot_json
+    )
+
+
+def test_path_param_named_after_collection_links_create_to_read(ctx):
+    # `/sessions/{session}` names its path param after the singular collection (route-model-binding
+    # style); the create operation must still link into read.
+    session_response = {
+        "type": "object",
+        "properties": {"id": {"type": "string"}},
+        "required": ["id"],
+    }
+    paths = {
+        "/sessions": {
+            "post": {
+                "operationId": "createSession",
+                "responses": {"201": {"content": {"application/json": {"schema": session_response}}}},
+            }
+        },
+        "/sessions/{session}": {
+            "get": {
+                "operationId": "getSession",
+                "parameters": [{"name": "session", "in": "path", "required": True, "schema": {"type": "string"}}],
+                "responses": {"200": {"content": {"application/json": {"schema": session_response}}}},
+            }
+        },
+    }
+    _, graph = analyze_dependencies(ctx, paths)
+    assert [
+        [entry.producer_operation_ref, entry.status_code, definition.to_openapi()]
+        for entry in graph.iter_links()
+        for definition in entry.links.values()
+    ] == [
+        [
+            "#/paths/~1sessions/post",
+            "201",
+            {
+                "operationRef": "#/paths/~1sessions~1{session}/get",
+                "parameters": {"path.session": "$response.body#/id"},
+                "x-schemathesis": {"is_inferred": True},
+            },
+        ]
+    ]
+
+
+def test_nested_fk_inference_independent_of_path_order(ctx):
+    # Inference must register a nested-body FK input slot regardless of whether the consumer
+    # appears before or after its producer in the spec's `paths` order.
+    location_response = {
+        "type": "object",
+        "properties": {"id": {"type": "integer"}},
+        "required": ["id"],
+    }
+    department_body = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "shipping": {
+                "type": "object",
+                "properties": {"location_id": {"type": "integer"}},
+            },
+        },
+    }
+    consumer_path = {
+        "/departments": {
+            "post": {
+                "operationId": "createDepartment",
+                "requestBody": {
+                    "required": True,
+                    "content": {"application/json": {"schema": department_body}},
+                },
+                "responses": {"201": {"description": "OK"}},
+            }
+        }
+    }
+    producer_path = {
+        "/locations": {
+            "post": {
+                "operationId": "createLocation",
+                "responses": {"201": {"content": {"application/json": {"schema": location_response}}}},
+            }
+        }
+    }
+
+    def _slot_for(graph):
+        for op in graph.operations.values():
+            for slot in op.inputs:
+                if slot.parameter_name == "shipping/location_id":
+                    return slot.resource.name, slot.resource_field
+        return None
+
+    _, producer_first = analyze_dependencies(ctx, {**producer_path, **consumer_path})
+    _, consumer_first = analyze_dependencies(ctx, {**consumer_path, **producer_path})
+
+    expected = ("Location", "id")
+    assert _slot_for(producer_first) == expected
+    assert _slot_for(consumer_first) == expected
+
+
+def test_nested_fk_inference_array_items_consumer_first(ctx):
+    # Consumer references the producer through an array of nested objects (`items: [{location_id}]`),
+    # not a sibling object. The replay path must land the array-branch FK regardless of declaration order.
+    bulk_body = {
+        "type": "object",
+        "properties": {
+            "rows": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {"location_id": {"type": "integer"}},
+                },
+            }
+        },
+    }
+    consumer_path = {
+        "/bulk-departments": {
+            "post": {
+                "operationId": "createBulkDepartments",
+                "requestBody": {
+                    "required": True,
+                    "content": {"application/json": {"schema": bulk_body}},
+                },
+                "responses": {"201": {"description": "OK"}},
+            }
+        }
+    }
+    producer_path = {
+        "/locations": {
+            "post": {
+                "operationId": "createLocation",
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"id": {"type": "integer"}},
+                                    "required": ["id"],
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    }
+    _, graph = analyze_dependencies(ctx, {**consumer_path, **producer_path})
+
+    array_slot = next(
+        (slot for op in graph.operations.values() for slot in op.inputs if slot.parameter_name == "rows/0/location_id"),
+        None,
+    )
+    assert array_slot is not None
+    assert (array_slot.resource.name, array_slot.resource_field) == ("Location", "id")
+
+
+def test_nested_fk_inference_drops_slot_when_target_never_registered(ctx):
+    # A nested FK whose target resource is never declared anywhere stays dropped:
+    # the replay loop sees `resources.get(target) is None` and skips it.
+    consumer_only = {
+        "/orders": {
+            "post": {
+                "operationId": "createOrder",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "shipping": {
+                                        "type": "object",
+                                        "properties": {"phantom_id": {"type": "integer"}},
+                                    }
+                                },
+                            }
+                        }
+                    },
+                },
+                "responses": {"201": {"description": "OK"}},
+            }
+        }
+    }
+    _, graph = analyze_dependencies(ctx, consumer_only)
+
+    assert "Phantom" not in graph.resources
+    for op in graph.operations.values():
+        for slot in op.inputs:
+            assert slot.parameter_name != "shipping/phantom_id"
+
+
+@pytest.mark.parametrize(
+    ("field", "expected"),
+    [
+        pytest.param("locationId", ("Location", "id", False), id="locationId"),
+        pytest.param("userUuid", ("User", "uuid", False), id="userUuid"),
+        pytest.param("orderId", ("Order", "id", False), id="orderId"),
+        pytest.param("customerGuid", ("Customer", "guid", False), id="customerGuid"),
+        pytest.param("warehouseId", ("Warehouse", "id", False), id="warehouseId"),
+        pytest.param("locationIds", ("Location", "id", True), id="locationIds"),
+        pytest.param("userUuids", ("User", "uuid", True), id="userUuids"),
+        pytest.param("orderGuids", ("Order", "guid", True), id="orderGuids"),
+    ],
+)
+def test_infer_fk_target_recognizes_camelcase(field, expected):
+    assert infer_fk_target(field) == expected
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "id",
+        "uuid",
+        "guid",
+        "bid",
+        "fid",
+        "lid",
+        "eid",
+        "paid",
+        "valid",
+        "applied",
+        "denied",
+        "void",
+        "customerName",
+        "displayLabel",
+    ],
+)
+def test_infer_fk_target_avoids_false_positives(field):
+    assert infer_fk_target(field) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "expected"),
+    [
+        pytest.param("customer_id", ("Customer", "id", False), id="customer_id"),
+        pytest.param("user_uuid", ("User", "uuid", False), id="user_uuid"),
+        pytest.param("session_guid", ("Session", "guid", False), id="session_guid"),
+        pytest.param("site_ids", ("Site", "id", True), id="site_ids"),
+        pytest.param("user_uuids", ("User", "uuid", True), id="user_uuids"),
+    ],
+)
+def test_infer_fk_target_snake_case_unchanged(field, expected):
+    assert infer_fk_target(field) == expected
+
+
+def test_camelcase_nested_fk_produces_input_slot(ctx):
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/locations": {
+                "post": {
+                    "operationId": "createLocation",
+                    "responses": {
+                        "201": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {"id": {"type": "integer"}},
+                                        "required": ["id"],
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+            "/departments": {
+                "post": {
+                    "operationId": "createDepartment",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "shipping": {
+                                            "type": "object",
+                                            "properties": {"locationId": {"type": "integer"}},
+                                        },
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"201": {"description": "OK"}},
+                }
+            },
+        },
+    )
+
+    nested_slot = next(
+        (
+            slot
+            for operation in graph.operations.values()
+            for slot in operation.inputs
+            if slot.parameter_name == "shipping/locationId"
+        ),
+        None,
+    )
+    assert nested_slot is not None
+    assert (nested_slot.resource.name, nested_slot.resource_field) == ("Location", "id")
+
+
+def test_body_name_suffix_without_path_or_schema_backing_is_dropped(ctx):
+    # `_name` body fields are attributes, not FKs, when nothing in the spec backs the name.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/people": {
+                "post": {
+                    "operationId": "createPerson",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "first_name": {"type": "string"},
+                                        "last_name": {"type": "string"},
+                                    },
+                                    "required": ["first_name", "last_name"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "201": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {"id": {"type": "integer"}},
+                                        "required": ["id"],
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+        },
+    )
+
+    assert "First" not in graph.resources, sorted(graph.resources)
+    assert "Last" not in graph.resources, sorted(graph.resources)
+    bindings = {
+        (slot.parameter_location.value, slot.parameter_name): (slot.resource.name, slot.resource_field)
+        for slot in graph.operations["POST /people"].inputs
+    }
+    assert ("body", "first_name") not in bindings, bindings
+    assert ("body", "last_name") not in bindings, bindings
+
+
+def test_body_name_suffix_with_matching_path_keeps_slot(ctx):
+    # `_name` gate must let a `file_name` body field through when `/files` exists.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/files": {
+                "post": {
+                    "operationId": "createFile",
+                    "responses": {
+                        "201": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {"id": {"type": "integer"}},
+                                        "required": ["id"],
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+            "/backups": {
+                "post": {
+                    "operationId": "createBackup",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"file_name": {"type": "string"}},
+                                    "required": ["file_name"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"201": {"description": "OK"}},
+                }
+            },
+        },
+    )
+
+    bindings = {
+        (slot.parameter_location.value, slot.parameter_name): slot.resource.name
+        for slot in graph.operations["POST /backups"].inputs
+    }
+    assert bindings.get(("body", "file_name")) == "File", bindings
+
+
+def test_body_id_suffix_without_backing_still_creates_slot(ctx):
+    # The gate is `_name`-only — strong FK suffixes like `_id` keep current behavior.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/orders": {
+                "post": {
+                    "operationId": "createOrder",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"customer_id": {"type": "integer"}},
+                                    "required": ["customer_id"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"201": {"description": "OK"}},
+                }
+            },
+        },
+    )
+
+    bindings = {
+        (slot.parameter_location.value, slot.parameter_name): slot.resource.name
+        for slot in graph.operations["POST /orders"].inputs
+    }
+    assert bindings.get(("body", "customer_id")) == "Customer", bindings
+
+
+def test_body_self_fk_rebinds_to_path_parent_when_parent_has_field(ctx):
+    # `spouse_id` references another Contact, not a Spouse resource — when the path-derived
+    # parent (Contact) has the same field, the slot rebinds and the ghost Spouse is dropped.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/contacts": {
+                "post": {
+                    "operationId": "createContact",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "spouse_id": {"type": "integer"},
+                                    },
+                                    "required": ["name"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "201": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": {"type": "integer"},
+                                            "name": {"type": "string"},
+                                            "spouse_id": {"type": "integer"},
+                                        },
+                                        "required": ["id"],
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+        },
+    )
+
+    assert "Spouse" not in graph.resources, sorted(graph.resources)
+    bindings = {
+        (slot.parameter_location.value, slot.parameter_name): (slot.resource.name, slot.resource_field)
+        for slot in graph.operations["POST /contacts"].inputs
+    }
+    assert bindings.get(("body", "spouse_id")) == ("Contact", "spouse_id"), bindings
+
+
+def test_query_self_fk_rebinds_to_path_parent_when_parent_has_field(ctx):
+    # `?sequence_id=` filters events by another event's sequence_id (a self-FK), not a Sequence resource.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/events": {
+                "get": {
+                    "operationId": "listEvents",
+                    "parameters": [
+                        {"name": "sequence_id", "in": "query", "schema": {"type": "integer"}},
+                    ],
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": {"type": "integer"},
+                                                "sequence_id": {"type": "integer"},
+                                            },
+                                            "required": ["id"],
+                                        },
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+        },
+    )
+
+    assert "Sequence" not in graph.resources, sorted(graph.resources)
+    bindings = {
+        (slot.parameter_location.value, slot.parameter_name): (slot.resource.name, slot.resource_field)
+        for slot in graph.operations["GET /events"].inputs
+    }
+    assert bindings.get(("query", "sequence_id")) == ("Event", "sequence_id"), bindings
+
+
+def _module_disambiguation_paths():
+    # Two modules with same-shaped resource (Group / Group1 in different schemas).
+    children_group_response = {
+        "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Group"}}}}
+    }
+    smallgroups_group_response = {
+        "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Group1"}}}}
+    }
+    return {
+        "/children/groups": {
+            "get": {
+                "operationId": "listChildrenGroups",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/Group"},
+                                }
+                            }
+                        }
+                    }
+                },
+            },
+        },
+        "/children/groups/{id}": {
+            "get": {
+                "operationId": "getChildrenGroup",
+                "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}],
+                "responses": children_group_response,
+            },
+        },
+        "/smallgroups/groups": {
+            "get": {
+                "operationId": "listSmallgroupsGroups",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/Group1"},
+                                }
+                            }
+                        }
+                    }
+                },
+            },
+        },
+        "/smallgroups/groups/{id}": {
+            "get": {
+                "operationId": "getSmallgroupsGroup",
+                "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}],
+                "responses": smallgroups_group_response,
+            },
+        },
+    }
+
+
+def test_path_consumer_picks_same_module_resource_variant(ctx):
+    # Path-id consumers route to their own module's variant when the spec has Group / Group1.
+    _, graph = analyze_dependencies(
+        ctx,
+        _module_disambiguation_paths(),
+        components={
+            "schemas": {
+                "Group": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "name": {"type": "string"}},
+                    "required": ["id"],
+                },
+                "Group1": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "title": {"type": "string"}},
+                    "required": ["id"],
+                },
+            }
+        },
+    )
+    bindings = {
+        (slot.parameter_location.value, slot.parameter_name): slot.resource.name
+        for slot in graph.operations["GET /smallgroups/groups/{id}"].inputs
+    }
+    assert bindings.get(("path", "id")) == "Group1", bindings
+
+
+def test_body_fk_picks_same_module_resource_variant(ctx):
+    # Body FK fields prefer the same-module variant — `group_id` here picks Group1, not Group.
+    paths = _module_disambiguation_paths()
+    paths["/smallgroups/members"] = {
+        "post": {
+            "operationId": "createSmallgroupMember",
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {"group_id": {"type": "string"}},
+                            "required": ["group_id"],
+                        }
+                    }
+                },
+            },
+            "responses": {"201": {"description": "OK"}},
+        }
+    }
+    _, graph = analyze_dependencies(
+        ctx,
+        paths,
+        components={
+            "schemas": {
+                "Group": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "name": {"type": "string"}},
+                    "required": ["id"],
+                },
+                "Group1": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "title": {"type": "string"}},
+                    "required": ["id"],
+                },
+            }
+        },
+    )
+    bindings = {
+        (slot.parameter_location.value, slot.parameter_name): slot.resource.name
+        for slot in graph.operations["POST /smallgroups/members"].inputs
+    }
+    assert bindings.get(("body", "group_id")) == "Group1", bindings
+
+
+def test_path_consumer_picks_same_module_suffix_match(ctx):
+    # `/bookings/resources/{id}` infers `Resource`; both `KeyDateResource` (addressbook)
+    # and `ResourceItem` (bookings) are suffix-affine, so the same-module one wins.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/addressbook/key_date_resources": {
+                "get": {
+                    "operationId": "listAddressbookKeyDateResources",
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "array",
+                                        "items": {"$ref": "#/components/schemas/KeyDateResource"},
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+            "/bookings/resources": {
+                "get": {
+                    "operationId": "listBookingsResources",
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "array",
+                                        "items": {"$ref": "#/components/schemas/ResourceItem"},
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+            "/bookings/resources/{id}": {
+                "get": {
+                    "operationId": "getBookingsResource",
+                    "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}],
+                    "responses": {
+                        "200": {
+                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResourceItem"}}}
+                        }
+                    },
+                }
+            },
+        },
+        components={
+            "schemas": {
+                "KeyDateResource": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "name": {"type": "string"}},
+                    "required": ["id"],
+                },
+                "ResourceItem": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "title": {"type": "string"}},
+                    "required": ["id"],
+                },
+            }
+        },
+    )
+    bindings = {
+        (slot.parameter_location.value, slot.parameter_name): slot.resource.name
+        for slot in graph.operations["GET /bookings/resources/{id}"].inputs
+    }
+    assert bindings.get(("path", "id")) == "ResourceItem", bindings
+
+
+def test_body_fk_inside_all_of_with_one_of_branches(ctx):
+    # FK fields hidden behind allOf siblings or oneOf branches must still be discovered.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/categories": {
+                "post": {
+                    "operationId": "createCategory",
+                    "responses": {
+                        "201": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {"id": {"type": "integer"}},
+                                        "required": ["id"],
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+            "/brands": {
+                "post": {
+                    "operationId": "createBrand",
+                    "responses": {
+                        "201": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {"id": {"type": "integer"}},
+                                        "required": ["id"],
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+            "/events": {
+                "post": {
+                    "operationId": "createEvent",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "allOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "name": {"type": "string"},
+                                                "category_id": {"type": "integer"},
+                                            },
+                                            "required": ["name", "category_id"],
+                                        },
+                                        {
+                                            "oneOf": [
+                                                {
+                                                    "type": "object",
+                                                    "properties": {"all_sites": {"type": "boolean"}},
+                                                    "required": ["all_sites"],
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {"brand_id": {"type": "integer"}},
+                                                    "required": ["brand_id"],
+                                                },
+                                            ]
+                                        },
+                                    ]
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"201": {"description": "OK"}},
+                }
+            },
+        },
+    )
+
+    bindings = {
+        (slot.parameter_location.value, slot.parameter_name): (slot.resource.name, slot.resource_field)
+        for slot in graph.operations["POST /events"].inputs
+    }
+    assert bindings.get(("body", "category_id")) == ("Category", "id"), bindings
+    assert bindings.get(("body", "brand_id")) == ("Brand", "id"), bindings
+
+
+def test_list_items_behind_nested_all_of_keep_their_fields(ctx):
+    # A list response whose array items are an `allOf` composition must still expose the item's
+    # fields, otherwise the resource degrades to a bare path-parameter stub.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/volumes": {
+                "get": {
+                    "operationId": "listVolumes",
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "allOf": [
+                                            {
+                                                "type": "object",
+                                                "properties": {
+                                                    "volumes": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "allOf": [
+                                                                {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "id": {"type": "string"},
+                                                                        "name": {"type": "string"},
+                                                                    },
+                                                                },
+                                                                {
+                                                                    "type": "object",
+                                                                    "properties": {"region": {"type": "string"}},
+                                                                },
+                                                            ]
+                                                        },
+                                                    }
+                                                },
+                                            },
+                                            {"type": "object", "properties": {"meta": {"type": "object"}}},
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+            "/volumes/{volume_id}": {
+                "get": {
+                    "operationId": "getVolume",
+                    "parameters": [path_param("volume_id")],
+                    "responses": {"200": {"description": "OK"}},
+                }
+            },
+        },
+    )
+
+    assert graph.resources["Volume"].fields == ["id", "name", "region"]
+
+
+def test_externally_tagged_items_behind_one_of_keep_their_fields(ctx):
+    # A paginated list whose items tag their payload with a `oneOf` must still expose that payload's
+    # fields, otherwise the resource degrades to a fieldless stub.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/playlists/{playlist_id}/tracks": {
+                "get": {
+                    "operationId": "listPlaylistTracks",
+                    "parameters": [path_param("playlist_id")],
+                    "responses": {"200": {"content": {"application/json": {"schema": component_ref("TrackPage")}}}},
+                }
+            },
+            "/tracks/{id}": {
+                "get": {
+                    "operationId": "getTrack",
+                    "parameters": [path_param("id")],
+                    "responses": {"200": {"description": "OK"}},
+                }
+            },
+        },
+        components={
+            "schemas": {
+                "Page": {
+                    "type": "object",
+                    "properties": {"href": {"type": "string"}, "total": {"type": "integer"}},
+                    "required": ["href", "items", "total"],
+                },
+                "TrackPage": {
+                    "type": "object",
+                    "allOf": [
+                        component_ref("Page"),
+                        {
+                            "type": "object",
+                            "properties": {"items": {"type": "array", "items": component_ref("TrackEntry")}},
+                        },
+                    ],
+                },
+                "TrackEntry": {
+                    "type": "object",
+                    "properties": {
+                        "added_at": {"type": "string"},
+                        "track": {"oneOf": [component_ref("Track"), component_ref("Episode")]},
+                    },
+                },
+                "Track": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "name": {"type": "string"},
+                        "album_id": {"type": "string"},
+                    },
+                },
+                "Episode": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "show_id": {"type": "string"}},
+                    "required": ["id", "show_id"],
+                },
+            }
+        },
+    )
+
+    output = graph.operations["GET /playlists/{playlist_id}/tracks"].outputs[0]
+    assert output.pointer == "/items/track"
+    assert output.resource.fields == ["album_id", "id", "name"]
+
+
+def test_all_of_branches_merge_same_named_object_property(ctx):
+    # When `allOf` branches each define the same object property, the merged property must union
+    # both branches' sub-fields so a FK hidden in the overriding branch is still discovered.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/videos/{id}": {
+                "get": {
+                    "operationId": "getVideo",
+                    "parameters": [path_param("id")],
+                    "responses": {"200": {"content": {"application/json": {"schema": component_ref("VideoDetails")}}}},
+                }
+            },
+            "/users/{id}": {
+                "get": {
+                    "operationId": "getUser",
+                    "parameters": [path_param("id")],
+                    "responses": {"200": {"description": "OK"}},
+                }
+            },
+        },
+        components={
+            "schemas": {
+                "AccountSummary": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "name": {"type": "string"}},
+                },
+                "Account": {
+                    "type": "object",
+                    "properties": {"displayName": {"type": "string"}, "userId": {"type": "string"}},
+                },
+                "Video": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "account": component_ref("AccountSummary")},
+                },
+                "VideoDetails": {
+                    "allOf": [
+                        component_ref("Video"),
+                        {"type": "object", "properties": {"account": component_ref("Account")}},
+                    ]
+                },
+            }
+        },
+    )
+
+    nested = [(fk.pointer, fk.target_resource) for fk in graph.resources["VideoDetails"].nested_fk_fields]
+    assert ("/account/userId", "User") in nested, nested
+
+
+def test_all_of_base_branch_does_not_shadow_specialized_property(ctx):
+    # A base branch declaring a bare `{"type": "object"}` placeholder must not hide the specialized
+    # branch's fields for the same property, even when the item is reached through a list wrapper.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/stations": {
+                "get": {
+                    "operationId": "listStations",
+                    "responses": {
+                        "200": {"content": {"application/json": {"schema": component_ref("StationListDocument")}}}
+                    },
+                }
+            },
+            "/stations/{station_id}": {
+                "get": {
+                    "operationId": "getStation",
+                    "parameters": [path_param("station_id")],
+                    "responses": {
+                        "200": {"content": {"application/json": {"schema": component_ref("StationDocument")}}}
+                    },
+                }
+            },
+            "/orgs/{id}": {
+                "get": {
+                    "operationId": "getOrg",
+                    "parameters": [path_param("id")],
+                    "responses": {"200": {"description": "OK"}},
+                }
+            },
+        },
+        components={
+            "schemas": {
+                "CollectionDocument": {
+                    "properties": {
+                        "attributes": {"type": "object"},
+                        "items": {"type": "array", "items": {"type": "object"}},
+                        "version": {"type": "string"},
+                    },
+                    "required": ["attributes", "items", "version"],
+                },
+                "StationData": {
+                    "properties": {"guid": {"type": "string"}, "orgId": {"type": "string"}},
+                    "required": ["guid", "orgId"],
+                },
+                "StationDocument": {
+                    "allOf": [
+                        component_ref("CollectionDocument"),
+                        {
+                            "properties": {
+                                "attributes": {"$ref": "#/components/schemas/StationData", "description": "Metadata"}
+                            }
+                        },
+                    ]
+                },
+                "StationListDocument": {
+                    "allOf": [
+                        component_ref("CollectionDocument"),
+                        {"properties": {"items": {"type": "array", "items": component_ref("StationDocument")}}},
+                    ]
+                },
+            }
+        },
+    )
+
+    nested = [(fk.pointer, fk.target_resource) for fk in graph.resources["StationDocument"].nested_fk_fields]
+    assert ("/attributes/orgId", "Org") in nested, nested
+
+
+def test_all_of_base_branch_does_not_shadow_specialized_array_items(ctx):
+    # A base branch declaring `items` as an array of bare objects must not hide the element schema
+    # the specialized branch supplies.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/organizations/{org_id}/recommendations": {
+                "get": {
+                    "operationId": "getOverview",
+                    "parameters": [path_param("org_id")],
+                    "responses": {
+                        "200": {"content": {"application/json": {"schema": component_ref("OverviewDocument")}}}
+                    },
+                }
+            },
+            "/media/{id}": {
+                "get": {
+                    "operationId": "getMedia",
+                    "parameters": [path_param("id")],
+                    "responses": {"200": {"description": "OK"}},
+                }
+            },
+        },
+        components={
+            "schemas": {
+                "CollectionDocument": {
+                    "properties": {
+                        "attributes": {"type": "object"},
+                        "items": {"type": "array", "items": {"type": "object"}},
+                        "version": {"type": "string"},
+                    },
+                    "required": ["attributes", "items", "version"],
+                },
+                "AudioData": {"properties": {"mediaId": {"type": "string"}, "title": {"type": "string"}}},
+                "CategoryData": {"properties": {"title": {"type": "string"}}},
+                "OverviewData": {"properties": {"name": {"type": "string"}}},
+                "AudioItemDocument": {
+                    "allOf": [
+                        component_ref("CollectionDocument"),
+                        {"properties": {"attributes": {"$ref": "#/components/schemas/AudioData", "description": "A"}}},
+                    ]
+                },
+                "CategoryListDocument": {
+                    "allOf": [
+                        component_ref("CollectionDocument"),
+                        {
+                            "properties": {
+                                "attributes": {"$ref": "#/components/schemas/CategoryData", "description": "C"},
+                                "items": {"type": "array", "items": component_ref("AudioItemDocument")},
+                            }
+                        },
+                    ]
+                },
+                "OverviewDocument": {
+                    "allOf": [
+                        component_ref("CollectionDocument"),
+                        {
+                            "properties": {
+                                "attributes": {"$ref": "#/components/schemas/OverviewData", "description": "O"},
+                                "items": {"type": "array", "items": component_ref("CategoryListDocument")},
+                            }
+                        },
+                    ]
+                },
+            }
+        },
+    )
+
+    nested = [(fk.pointer, fk.target_resource) for fk in graph.resources["CategoryListDocument"].nested_fk_fields]
+    assert ("/items/*/attributes/mediaId", "Media") in nested, nested
+
+
+def test_body_composition_with_boolean_branch_does_not_crash(ctx):
+    # Boolean schemas (`true`/`false`) inside allOf are spec-legal and must not break traversal.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/categories": {
+                "post": {
+                    "operationId": "createCategory",
+                    "responses": {
+                        "201": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {"id": {"type": "integer"}},
+                                        "required": ["id"],
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+            "/events": {
+                "post": {
+                    "operationId": "createEvent",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "allOf": [
+                                        True,
+                                        {
+                                            "type": "object",
+                                            "properties": {"category_id": {"type": "integer"}},
+                                            "required": ["category_id"],
+                                        },
+                                    ]
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"201": {"description": "OK"}},
+                }
+            },
+        },
+    )
+
+    bindings = {
+        (slot.parameter_location.value, slot.parameter_name): (slot.resource.name, slot.resource_field)
+        for slot in graph.operations["POST /events"].inputs
+    }
+    assert bindings.get(("body", "category_id")) == ("Category", "id"), bindings
+
+
+def test_nested_body_fk_inside_composition_branch(ctx):
+    # Composition keywords inside nested objects must still be traversed for FK fields.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/warehouses": {
+                "post": {
+                    "operationId": "createWarehouse",
+                    "responses": {
+                        "201": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {"id": {"type": "integer"}},
+                                        "required": ["id"],
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+            "/orders": {
+                "post": {
+                    "operationId": "createOrder",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "shipping": {
+                                            "allOf": [
+                                                {
+                                                    "type": "object",
+                                                    "properties": {"warehouse_id": {"type": "integer"}},
+                                                }
+                                            ]
+                                        }
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"201": {"description": "OK"}},
+                }
+            },
+        },
+    )
+
+    nested_slot = next(
+        (
+            slot
+            for operation in graph.operations.values()
+            for slot in operation.inputs
+            if slot.parameter_name == "shipping/warehouse_id"
+        ),
+        None,
+    )
+    assert nested_slot is not None, "nested warehouse_id behind allOf was not discovered"
+    assert (nested_slot.resource.name, nested_slot.resource_field) == ("Warehouse", "id")
+
+
+def test_body_plural_id_array_field_produces_input_slot(ctx):
+    # Plural FK array fields like `site_ids` are FKs to Site.id; the analyzer used
+    # to recognize only singular `_id` body fields.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/sites": {
+                "post": {
+                    "operationId": "createSite",
+                    "responses": {
+                        "201": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {"id": {"type": "integer"}},
+                                        "required": ["id"],
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+            "/events": {
+                "post": {
+                    "operationId": "createEvent",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "site_ids": {"type": "array", "items": {"type": "integer"}},
+                                    },
+                                    "required": ["name", "site_ids"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"201": {"description": "OK"}},
+                }
+            },
+        },
+    )
+
+    bindings = {
+        (slot.parameter_location.value, slot.parameter_name): (slot.resource.name, slot.resource_field)
+        for slot in graph.operations["POST /events"].inputs
+    }
+    assert bindings.get(("body", "site_ids")) == ("Site", "id"), bindings
+
+
+@pytest.mark.parametrize(
+    ["paths", "kwargs", "version"],
+    [
+        (
+            {
+                "/test": {
+                    "put": {
+                        "responses": {
+                            "201": {
+                                "schema": {
+                                    "$ref": "#/definitions/WebService",
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "definitions": {
+                    "WebService": {
+                        "allOf": [],
+                        "properties": {
+                            "key1": {
+                                "$ref": "#/definitions/WebServiceProperties",
+                            }
+                        },
+                    },
+                    "WebServiceProperties": {
+                        "properties": {
+                            "key2": {
+                                "$ref": "",
+                            }
+                        }
+                    },
+                }
+            },
+            "2.0",
+        ),
+        (
+            operation("get", "/test", "200", component_ref("EmployeesResponse")),
+            {"components": {"schemas": {"EmployeesResponse": {"allOf": [{"$ref": ""}]}}}},
+            "3.0.0",
+        ),
+    ],
+)
+def test_recursion(ctx, paths, kwargs, version, snapshot_json):
+    _, graph = analyze_dependencies(ctx, paths, **kwargs, version=version)
+    assert graph.serialize() == snapshot_json
+
+
+@pytest.mark.parametrize(
+    ["path", "expected"],
+    [
+        pytest.param("/users", "User", id="simple-plural"),
+        pytest.param("/posts", "Post", id="simple-plural-posts"),
+        pytest.param("/user", "User", id="already-singular"),
+        pytest.param("/users/{id}", "User", id="with-path-param"),
+        pytest.param("/users/{userId}", "User", id="with-named-param"),
+        pytest.param("/posts/{postId}", "Post", id="posts-with-param"),
+        pytest.param("/api/users", "User", id="api-prefix"),
+        pytest.param("/v1/users", "User", id="version-prefix"),
+        pytest.param("/api/v1/users", "User", id="api-and-version"),
+        pytest.param("/api/v2/posts", "Post", id="api-v2-posts"),
+        pytest.param("/users/{userId}/posts", "Post", id="nested-resource"),
+        pytest.param("/users/{userId}/posts/{postId}", "Post", id="nested-with-params"),
+        pytest.param("/organizations/{orgId}/teams/{teamId}/members", "Member", id="deeply-nested"),
+        pytest.param("/user-profiles", "UserProfile", id="kebab-case"),
+        pytest.param("/user_profiles", "UserProfile", id="snake-case"),
+        pytest.param("/api-keys", "ApiKey", id="kebab-case-api-keys"),
+        pytest.param("/categories", "Category", id="ies-to-y"),
+        pytest.param("/statuses", "Status", id="es-to-empty"),
+        pytest.param("/addresses", "Address", id="es-address"),
+        pytest.param("/users/", "User", id="trailing-slash"),
+        pytest.param("/api/v1/posts/", "Post", id="trailing-slash-with-prefix"),
+        pytest.param("", None, id="empty path"),
+    ],
+)
+def test_resource_name_from_path(path, expected):
+    assert naming.from_path(path) == expected
+
+
+@pytest.mark.parametrize(
+    ["path", "expected"],
+    [
+        pytest.param("/v1/users/{id}", "/users/{id}", id="v1-prefix"),
+        pytest.param("/v2/orders", "/orders", id="v2-prefix"),
+        pytest.param("/v10/items", "/items", id="v10-prefix"),
+        pytest.param("/api/v3/items", "/items", id="api-plus-v3"),
+        pytest.param("/api/users", "/users", id="api-only"),
+        pytest.param("/users/{id}", "/users/{id}", id="no-prefix-unchanged"),
+        pytest.param("/oauth2/files/{id}", "/oauth2/files/{id}", id="oauth2-not-stripped"),
+        pytest.param("/giving/tags/{id}", "/giving/tags/{id}", id="giving-not-stripped"),
+        pytest.param("/smallgroups/groups", "/smallgroups/groups", id="smallgroups-not-stripped"),
+        pytest.param("/v1/", "/", id="v1-only-trailing-slash"),
+        pytest.param("/v1", "/", id="v1-no-trailing"),
+        pytest.param("/", "/", id="root-unchanged"),
+        pytest.param("", "", id="empty-unchanged"),
+    ],
+)
+def test_strip_version_prefix(path, expected):
+    assert naming.strip_version_prefix(path) == expected
+
+
+@pytest.mark.parametrize(
+    ["path", "param_name", "expected"],
+    [
+        pytest.param("/channels/{channel_id}/notes/{id}", "id", "Note", id="id-refers-to-notes"),
+        pytest.param("/channels/{channel_id}/notes/{id}", "channel_id", "Channel", id="channel_id-refers-to-channels"),
+        pytest.param("/users/{user_id}/posts/{post_id}/comments/{id}", "id", "Comment", id="deeply-nested-id"),
+        pytest.param(
+            "/users/{user_id}/posts/{post_id}/comments/{id}", "post_id", "Post", id="deeply-nested-middle-param"
+        ),
+        pytest.param(
+            "/organizations/{org_id}/members", "org_id", "Organization", id="param-without-following-resource"
+        ),
+        pytest.param("/users/{id}", "id", "User", id="simple-path-with-id"),
+        pytest.param("/users/{id}/posts", None, "Post", id="no-param-name-fallback"),
+        pytest.param("/users/{id}/posts/{id}", "nonexistent", "Post", id="param-not-found-fallback"),
+    ],
+)
+def test_resource_name_from_path_with_param(path, param_name, expected):
+    assert naming.from_path(path, param_name) == expected
+
+
+@pytest.mark.snapshot(replace_reproduce_with=True)
+def test_schema_inference_discovers_state_corruption(cli, snapshot_cli, ctx):
+    product_schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "name": {"type": "string"},
+            "price": {"type": "number"},
+        },
+        "required": ["id", "name", "price"],
+    }
+    app, schema = ctx.openapi.make_flask_app(
+        {
+            "/products": {
+                "post": {
+                    "operationId": "createProduct",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"enum": ["Product"]},
+                                        "price": {
+                                            "type": "number",
+                                        },
+                                    },
+                                    "required": ["name", "price"],
+                                }
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "201": {
+                            "description": "Product created",
+                            "content": {"application/json": {"schema": product_schema}},
+                        }
+                    },
+                }
+            },
+            "/products/{productId}": {
+                "get": {
+                    "operationId": "getProduct",
+                    "parameters": [
+                        {
+                            "name": "productId",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Product details",
+                            "content": {"application/json": {"schema": product_schema}},
+                        },
+                        "404": {"description": "Not found"},
+                    },
+                },
+                "patch": {
+                    "operationId": "updateProduct",
+                    "parameters": [{"name": "productId", "in": "path", "required": True, "schema": {"type": "string"}}],
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"name": {"type": "string"}, "price": {"type": "number"}},
+                                }
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {"204": {"description": "Updated"}, "404": {"description": "Not found"}},
+                },
+            },
+        }
+    )
+
+    products = {}
+    next_id = 1
+
+    @app.route("/products", methods=["POST"])
+    def create_product():
+        nonlocal next_id
+        data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return {"error": "Invalid input"}, 400
+        if not isinstance(data.get("price", 0), (int | float)):
+            return {"error": "Invalid price"}, 400
+
+        product_id = str(next_id)
+        next_id += 1
+
+        products[product_id] = {
+            "id": product_id,
+            "name": str(data.get("name", "Product")),
+            "price": float(data.get("price", 9.99)),
+            "corrupted": False,
+        }
+
+        return jsonify(
+            {
+                "id": product_id,
+                "name": products[product_id]["name"],
+                "price": products[product_id]["price"],
+            }
+        ), 201
+
+    @app.route("/products/<product_id>", methods=["GET"])
+    def get_product(product_id):
+        if product_id not in products:
+            return "", 404
+
+        product = products[product_id]
+
+        # Corrupted products return null price (violates schema)
+        if product.get("corrupted"):
+            return jsonify(
+                {
+                    "id": "1",
+                    "name": product["name"],
+                    "price": None,  # Schema requires number, not null
+                }
+            ), 200
+
+        return jsonify({"id": product_id, "name": product["name"], "price": product["price"]}), 200
+
+    @app.route("/products/<product_id>", methods=["PATCH"])
+    def update_product(product_id):
+        if product_id not in products:
+            return "", 404
+
+        data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return {"error": "Invalid input"}, 400
+
+        # PATCH with empty body corrupts internal state
+        if not data.get("name") and not data.get("price"):
+            products[product_id]["corrupted"] = True
+        else:
+            if "name" in data:
+                products[product_id]["name"] = str(data["name"])
+            if "price" in data:
+                products[product_id]["price"] = float(data["price"])
+
+        return "", 204
+
+    assert (
+        cli.run_openapi_app(
+            app,
+            "--max-examples=10",
+            "-c response_schema_conformance",
+            "--mode=positive",
+            "--phases=stateful",
+        )
+        == snapshot_cli
+    )
+
+
+@pytest.mark.snapshot(replace_reproduce_with=True)
+def test_stateful_discovers_bug_with_no_body_producer_with_explicit_links_mixed_with_others(cli, snapshot_cli, ctx):
+    app, schema = ctx.openapi.make_flask_app(
+        {
+            "/sessions": {
+                "post": {
+                    "operationId": "createSession",
+                    "responses": {
+                        "201": {
+                            "description": "Session created",
+                            "content": {"application/json": {"schema": SCHEMA_WITH_ID}},
+                            "links": {
+                                "GetSession": {
+                                    "operationId": "getSession",
+                                    "parameters": {"sessionId": "$response.body#/id"},
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/sessions/{sessionId}": {
+                "get": {
+                    "operationId": "getSession",
+                    "parameters": [{"name": "sessionId", "in": "path", "required": True, "schema": {"type": "string"}}],
+                    "responses": {
+                        "200": {
+                            "content": {"application/json": {"schema": SCHEMA_WITH_ID}},
+                        },
+                        "404": {"description": "Not found"},
+                    },
+                }
+            },
+            "/workspaces": {
+                "post": {
+                    "operationId": "createWorkspace",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"name": {"type": "string"}},
+                                    "required": ["name"],
+                                }
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "201": {
+                            "content": {"application/json": {"schema": SCHEMA_WITH_ID}},
+                            "links": {
+                                "GetWorkspace": {
+                                    "operationId": "getWorkspace",
+                                    "parameters": {"workspaceId": "$response.body#/id"},
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/workspaces/{workspaceId}": {
+                "get": {
+                    "operationId": "getWorkspace",
+                    "parameters": [
+                        {"name": "workspaceId", "in": "path", "required": True, "schema": {"type": "string"}}
+                    ],
+                    "responses": {
+                        "200": {
+                            "content": {"application/json": {"schema": SCHEMA_WITH_ID}},
+                        },
+                        "404": {"description": "Not found"},
+                    },
+                }
+            },
+        }
+    )
+
+    sessions = {}
+
+    @app.route("/sessions", methods=["POST"])
+    def create_session():
+        session_id = str(uuid.uuid4())
+        sessions[session_id] = {"id": session_id}
+        return jsonify({"id": session_id}), 201
+
+    @app.route("/sessions/<session_id>", methods=["GET"])
+    def get_session(session_id):
+        if session_id not in sessions:
+            return "", 404
+        # Always fails with 500 for valid sessions
+        return jsonify({"error": "Internal error"}), 500
+
+    assert (
+        cli.run_openapi_app(
+            app,
+            "--max-examples=10",
+            "-c not_a_server_error",
+            "--phases=stateful",
+        )
+        == snapshot_cli
+    )
+
+
+@pytest.mark.snapshot(replace_reproduce_with=True)
+@flaky(max_runs=5, min_passes=1)
+def test_stateful_discovers_requestbody_dependency_bug(cli, snapshot_cli, ctx):
+    order_response_schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "customer_id": {"type": "string"},
+            "total": {"type": "number"},
+        },
+        "required": ["id", "customer_id", "total"],
+    }
+
+    app, schema = ctx.openapi.make_flask_app(
+        {
+            "/customers": {
+                "post": {
+                    "operationId": "createCustomer",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"name": {"type": "string"}},
+                                    "required": ["name"],
+                                }
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "201": {
+                            "description": "Customer created",
+                            "content": {"application/json": {"schema": SCHEMA_WITH_ID}},
+                        }
+                    },
+                }
+            },
+            "/orders": {
+                "post": {
+                    "operationId": "createOrder",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": ORDER_REQUEST_WITH_CUSTOMER,
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "201": {
+                            "description": "Order created",
+                            "content": {"application/json": {"schema": order_response_schema}},
+                        }
+                    },
+                }
+            },
+        }
+    )
+
+    customers: set[str] = set()
+
+    @app.route("/customers", methods=["POST"])
+    def create_customer():
+        if not isinstance(request.get_json() or {}, dict):
+            return {"error": "Invalid input"}
+        customers.add("customer-1")
+        return jsonify({"id": "customer-1"}), 201
+
+    @app.route("/orders", methods=["POST"])
+    def create_order():
+        data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return {"error": "Invalid input"}
+        customer_id = data.get("customer_id")
+        if not isinstance(customer_id, (str, int)):
+            return jsonify({"detail": "Invalid customer_id"}), 400
+        if customer_id in customers:
+            # Bug: server returns `total` as a string while the response schema declares it a number.
+            return jsonify({"id": "order-1", "customer_id": customer_id, "total": "0"}), 201
+        return jsonify({"detail": "Customer does not exist"}), 404
+
+    assert (
+        cli.run_openapi_app(
+            app,
+            "--max-examples=10",
+            "-c response_schema_conformance",
+            "--phases=stateful",
+        )
+        == snapshot_cli
+    )
+
+
+@pytest.mark.snapshot(replace_reproduce_with=True)
+@flaky(max_runs=5, min_passes=1)
+def test_stateful_discovers_invalid_resource_id_bug(cli, snapshot_cli, ctx):
+    order_response_schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "customer_id": {"type": "string"},
+            "total": {"type": "number"},
+        },
+        "required": ["id", "customer_id", "total"],
+    }
+
+    app, schema = ctx.openapi.make_flask_app(
+        {
+            "/customers": {
+                "post": {
+                    "operationId": "createCustomer",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"name": {"type": "string"}},
+                                    "required": ["name"],
+                                }
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "201": {
+                            "description": "Customer created",
+                            "content": {"application/json": {"schema": SCHEMA_WITH_ID}},
+                        }
+                    },
+                }
+            },
+            "/orders": {
+                "post": {
+                    "operationId": "createOrder",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": ORDER_REQUEST_WITH_CUSTOMER,
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "201": {
+                            "description": "Order created",
+                            "content": {"application/json": {"schema": order_response_schema}},
+                        }
+                    },
+                }
+            },
+        }
+    )
+
+    customers: set[str] = set()
+
+    @app.route("/customers", methods=["POST"])
+    def create_customer():
+        if not isinstance(request.get_json() or {}, dict):
+            return {"error": "Invalid input"}
+        customers.add("customer-1")
+        return jsonify({"id": "customer-1"}), 201
+
+    @app.route("/orders", methods=["POST"])
+    def create_order():
+        data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return {"error": "Invalid input"}
+        customer_id = data.get("customer_id")
+        if customer_id not in customers:
+            # Bug: response missing required `customer_id` field.
+            return jsonify({"id": "order-1", "total": 0}), 201
+        return jsonify({"id": "order-1", "customer_id": customer_id, "total": 0}), 201
+
+    assert (
+        cli.run_openapi_app(
+            app,
+            "--max-examples=50",
+            "-c response_schema_conformance",
+            "--phases=stateful",
+        )
+        == snapshot_cli
+    )
+
+
+@pytest.mark.snapshot(replace_reproduce_with=True)
+def test_schema_inference_link_extraction_fails_due_to_producer_missing_id(cli, snapshot_cli, ctx):
+    product_schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "name": {"type": "string"},
+            "price": {"type": "number"},
+        },
+        "required": ["id", "name", "price"],
+    }
+
+    app, schema = ctx.openapi.make_flask_app(
+        {
+            "/products": {
+                "post": {
+                    "operationId": "createProduct",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"enum": ["Product"]},
+                                        "price": {"type": "number"},
+                                    },
+                                    "required": ["name", "price"],
+                                }
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "201": {
+                            "description": "Product created",
+                            "content": {"application/json": {"schema": product_schema}},
+                        }
+                    },
+                }
+            },
+            "/products/{productId}": {
+                "get": {
+                    "operationId": "getProduct",
+                    "parameters": [
+                        {
+                            "name": "productId",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Product details",
+                            "content": {"application/json": {"schema": product_schema}},
+                        },
+                        "404": {"description": "Not found"},
+                    },
+                }
+            },
+        }
+    )
+
+    products = {}
+    next_id = 1
+
+    @app.route("/products", methods=["POST"])
+    def create_product():
+        nonlocal next_id
+        data = request.get_json() or {}
+
+        if not isinstance(data, dict):
+            return {"error": "Invalid input"}
+        product_id = str(next_id)
+        next_id += 1
+
+        products[product_id] = {
+            "id": product_id,
+            "name": str(data.get("name", "Product")),
+            "price": float(data.get("price", 9.99)),
+        }
+
+        # Producer response is missing the expected 'id' field, so link extraction fails
+        return jsonify({"name": products[product_id]["name"], "price": products[product_id]["price"]}), 201
+
+    @app.route("/products/<product_id>", methods=["GET"])
+    def get_product(product_id):
+        if product_id not in products:
+            return "", 404
+        p = products[product_id]
+        return jsonify({"id": p["id"], "name": p["name"], "price": p["price"]}), 200
+
+    assert (
+        cli.run_openapi_app(
+            app,
+            "--max-examples=10",
+            "-c not_a_server_error",
+            "--mode=positive",
+            "--phases=stateful",
+        )
+        == snapshot_cli
+    )
+
+
+@pytest.mark.snapshot(replace_reproduce_with=True)
+def test_stateful_discovers_requestbody_dependency_bug_producer_missing_field(cli, snapshot_cli, ctx):
+    order_response_schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "customer_id": {"type": "string"},
+            "total": {"type": "number"},
+        },
+        "required": ["id", "customer_id", "total"],
+    }
+
+    app, schema = ctx.openapi.make_flask_app(
+        {
+            "/customers": {
+                "post": {
+                    "operationId": "createCustomer",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"name": {"type": "string"}},
+                                    "required": ["name"],
+                                }
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "201": {
+                            "description": "Customer created",
+                            "content": {"application/json": {"schema": SCHEMA_WITH_ID}},
+                        }
+                    },
+                }
+            },
+            "/orders": {
+                "post": {
+                    "operationId": "createOrder",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": ORDER_REQUEST_WITH_CUSTOMER,
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "201": {
+                            "description": "Order created",
+                            "content": {"application/json": {"schema": order_response_schema}},
+                        }
+                    },
+                }
+            },
+        }
+    )
+
+    customers: set[str] = set()
+
+    @app.route("/customers", methods=["POST"])
+    def create_customer():
+        if not isinstance(request.get_json() or {}, dict):
+            return {"error": "Invalid input"}
+        customers.add("customer-1")
+        return jsonify({}), 201
+
+    @app.route("/orders", methods=["POST"])
+    def create_order():
+        data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return {"error": "Invalid input"}
+        customer_id = data.get("customer_id")
+        if not isinstance(customer_id, str):
+            return {"error": "Invalid input"}
+        if customer_id in customers:
+            return jsonify({"id": "order-1", "customer_id": customer_id, "total": "0"}), 201
+        return jsonify({"detail": "Customer does not exist"}), 404
+
+    assert (
+        cli.run_openapi_app(
+            app,
+            "--max-examples=10",
+            "-c not_a_server_error",
+            "--phases=stateful",
+        )
+        == snapshot_cli
+    )
+
+
+@pytest.mark.snapshot(replace_reproduce_with=True)
+def test_schemathesis_stateful_finds_checksum_match_bug(ctx, cli, snapshot_cli):
+    openapi = {
+        "openapi": "3.0.0",
+        "info": {"title": "Minimal Blog", "version": "1.0.0"},
+        "paths": {
+            "/posts": {
+                "post": {
+                    "operationId": "createPost",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"body": {"type": "string"}},
+                                    "required": ["body"],
+                                }
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "201": {
+                            "description": "Created post",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": {"type": "string"},
+                                            "checksum": {"type": "string"},
+                                            "body": {"type": "string"},
+                                        },
+                                        "required": ["id", "checksum", "body"],
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/posts/{postId}": {
+                "put": {
+                    "operationId": "updatePost",
+                    "parameters": [{"name": "postId", "in": "path", "required": True, "schema": {"type": "string"}}],
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "checksum": {"type": "string"},
+                                        "body": {"type": "string"},
+                                    },
+                                    "required": ["checksum", "body"],
+                                }
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "204": {"description": "Updated"},
+                        "500": {"description": "Found checksum match"},
+                        "404": {"description": "Not found"},
+                    },
+                }
+            },
+        },
+    }
+
+    app = ctx.openapi.make_flask_app_from_schema(openapi)
+    posts = {}
+    next_id = 1
+
+    def make_checksum():
+        # deterministic simple checksum for stable snapshots
+        return "fixed-checksum"
+
+    @app.route("/posts", methods=["POST"])
+    def create_post():
+        nonlocal next_id
+        data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return {"error": "Invalid input"}
+
+        post_id = str(next_id)
+        next_id += 1
+        checksum = make_checksum()
+        posts[post_id] = {"id": post_id, "body": data.get("body", ""), "checksum": checksum}
+        return jsonify({"id": post_id, "checksum": checksum, "body": posts[post_id]["body"]}), 201
+
+    @app.route("/posts/<post_id>", methods=["PUT"])
+    def update_post(post_id):
+        if post_id not in posts:
+            return jsonify({"detail": "not found"}), 404
+        payload = request.get_json() or {}
+        if not isinstance(payload, dict):
+            return {"error": "Invalid input"}
+
+        stored = posts[post_id]
+        # Planted bug: return 500 when checksums match
+        if payload.get("checksum") == stored.get("checksum"):
+            return jsonify({"detail": "Found checksum match"}), 500
+        stored["body"] = payload.get("body", stored["body"])
+        return "", 204
+
+    assert (
+        cli.run_openapi_app(
+            app,
+            "--max-examples=10",
+            "--mode=positive",
+            "-c not_a_server_error",
+            "--phases=stateful",
+        )
+        == snapshot_cli
+    )
+
+
+@pytest.mark.snapshot(replace_reproduce_with=True)
+def test_stateful_bug_when_link_always_used(cli, snapshot_cli, ctx):
+    item_schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "name": {"type": "string"},
+        },
+        "required": ["id", "name"],
+    }
+
+    app, schema = ctx.openapi.make_flask_app(
+        {
+            "/items": {
+                "post": {
+                    "operationId": "createItem",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"name": {"type": "string"}},
+                                    "required": ["name"],
+                                }
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "201": {
+                            "description": "Item created",
+                            "content": {"application/json": {"schema": item_schema}},
+                            "links": {
+                                "GetItem": {
+                                    "operationId": "getItem",
+                                    "parameters": {
+                                        "id": "$response.body#/id",
+                                        # Link always provides json
+                                        "format": "json",
+                                    },
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/items/{id}": {
+                "get": {
+                    "operationId": "getItem",
+                    "parameters": [
+                        {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}},
+                        {
+                            "name": "format",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "string", "enum": ["json", "xml"]},
+                        },
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Item details",
+                            "content": {"application/json": {"schema": item_schema}},
+                        },
+                        "404": {"description": "Not found"},
+                    },
+                }
+            },
+        }
+    )
+
+    items = {}
+    next_id = 1
+
+    @app.route("/items", methods=["POST"])
+    def create_item():
+        nonlocal next_id
+        data = request.get_json() or {}
+
+        if not isinstance(data, dict):
+            return {"error": "Invalid input"}
+
+        item_id = str(next_id)
+        next_id += 1
+
+        items[item_id] = {
+            "id": item_id,
+            "name": data.get("name", "Item"),
+        }
+
+        return jsonify({"id": item_id, "name": items[item_id]["name"]}), 201
+
+    @app.route("/items/<item_id>", methods=["GET"])
+    def get_item(item_id):
+        if item_id not in items:
+            return "", 404
+
+        format_param = request.args.get("format", "json")
+        if format_param != "json":
+            return {"error": "xml format not implemented"}, 500
+
+        item = items[item_id]
+        return jsonify({"id": item["id"], "name": item["name"]}), 200
+
+    assert (
+        cli.run_openapi_app(
+            app,
+            "--max-examples=10",
+            "-c not_a_server_error",
+            "--phases=stateful",
+        )
+        == snapshot_cli
+    )
+
+
+def customer_post(*, operation_id="createCustomer", response_schema=None, links=None):
+    """Build /customers POST endpoint."""
+    endpoint = {
+        "post": {
+            "operationId": operation_id,
+            "responses": {
+                "201": {
+                    "description": "Created",
+                    "content": {"application/json": {"schema": response_schema or SCHEMA_WITH_ID}},
+                }
+            },
+        }
+    }
+    if links:
+        endpoint["post"]["responses"]["201"]["links"] = links
+    return {"/customers": endpoint}
+
+
+def order_post(
+    *, operation_id="createOrder", parameter_name="customer_id", parameter_in="path", use_request_body=False
+):
+    """Build /orders POST endpoint."""
+    endpoint = {
+        "post": {
+            "operationId": operation_id,
+            "responses": {
+                "201": {
+                    "description": "Created",
+                    "content": {"application/json": {"schema": ORDER_RESPONSE if use_request_body else SCHEMA_WITH_ID}},
+                }
+            },
+        }
+    }
+
+    if use_request_body:
+        endpoint["post"]["requestBody"] = {
+            "content": {"application/json": {"schema": ORDER_REQUEST_WITH_CUSTOMER}},
+            "required": True,
+        }
+    else:
+        endpoint["post"]["parameters"] = [
+            {"name": parameter_name, "in": parameter_in, "required": True, "schema": {"type": "string"}}
+        ]
+
+    return {"/orders": endpoint}
+
+
+def customer_get(*, operation_id="getCustomer", parameter_name="customer_id"):
+    """Build /customers/{customer_id} GET endpoint."""
+    return {
+        f"/customers/{{{parameter_name}}}": {
+            "get": {
+                "operationId": operation_id,
+                "parameters": [{"name": parameter_name, "in": "path", "required": True, "schema": {"type": "string"}}],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {"application/json": {"schema": SCHEMA_WITH_ID}},
+                    }
+                },
+            }
+        }
+    }
+
+
+def link(target_operation, parameters=None, request_body=None, use_ref=False):
+    """Build a link definition."""
+    if use_ref:
+        link_def = {"operationRef": target_operation}
+    else:
+        link_def = {"operationId": target_operation}
+
+    if parameters:
+        link_def["parameters"] = parameters
+    if request_body:
+        link_def["requestBody"] = request_body
+
+    return link_def
+
+
+@pytest.mark.parametrize(
+    ["schema", "expected"],
+    [
+        pytest.param(
+            {
+                **customer_post(
+                    links={"CreateOrder": link("createOrder", parameters={"customer_id": "$response.body#/id"})}
+                ),
+                **order_post(),
+            },
+            0,
+            id="duplicate-link-with-operationid",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={
+                        "CreateOrder": link(
+                            "#/paths/~1orders/post",
+                            parameters={"customer_id": "$response.body#/id"},
+                            use_ref=True,
+                        )
+                    }
+                ),
+                **order_post(),
+            },
+            0,
+            id="duplicate-link-with-operationref",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={
+                        "CreateOrder": link(
+                            "#/paths/~1orders/post",
+                            parameters={"path.customer_id": "$response.body#/id"},
+                            use_ref=True,
+                        )
+                    }
+                ),
+                **order_post(),
+            },
+            0,
+            id="duplicate-link-with-operationref-already-normalized",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={
+                        "PostCustomer": link(
+                            "#/paths/~1customers/post",
+                            parameters={"query.something-else": "$response.body#/id"},
+                            use_ref=True,
+                        )
+                    }
+                ),
+                **order_post(),
+            },
+            1,
+            id="existing-link-name",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={"CreateOrder": link("createOrder", parameters={"user_id": "$response.body#/id"})}
+                ),
+                **order_post(),
+            },
+            1,
+            id="different-parameter-name",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={"GetCustomer": link("getCustomer", parameters={"customer_id": "$response.body#/id"})}
+                ),
+                **customer_get(),
+                **order_post(),
+            },
+            2,
+            id="different-target-operation",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={"CreateOrder": link("createOrder", request_body={"customer_id": "$response.body#/id"})}
+                ),
+                **order_post(use_request_body=True),
+            },
+            0,
+            id="duplicate-link-with-requestbody",
+        ),
+        pytest.param(
+            {
+                **customer_post(),
+                **order_post(),
+            },
+            1,
+            id="no-existing-links",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={
+                        "CreateOrder": link(
+                            "createOrder",
+                            request_body={
+                                "customer_id": "$response.body#/id",
+                                # Additional literal field
+                                "order_type": "standard",
+                            },
+                        )
+                    }
+                ),
+                **order_post(use_request_body=True),
+            },
+            0,
+            id="inferred-subset-of-explicit-link",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={
+                        "CreateOrder": link(
+                            "createOrder",
+                            parameters={
+                                "customer_id": "$response.body#/id",
+                                # Additional parameter
+                                "priority": "high",
+                            },
+                        )
+                    }
+                ),
+                # Inference would only find customer_id
+                **order_post(parameter_in="query"),
+            },
+            0,
+            id="inferred-parameter-subset-of-explicit",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={
+                        "CreateOrder": link(
+                            "createOrder",
+                            parameters={"customer_id": "$response.body#/id"},
+                        )
+                    }
+                ),
+                **order_post(parameter_name="customer_id", parameter_in="query"),
+            },
+            # Would infer the same, exact match
+            0,
+            id="inferred-equals-explicit-parameters",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={
+                        "CreateOrder": link(
+                            "createOrder",
+                            parameters={"customer_id": "$response.body#/id"},
+                            request_body={"order_type": "standard"},
+                        )
+                    }
+                ),
+                # No body inferred
+                **order_post(parameter_name="customer_id", parameter_in="query"),
+            },
+            0,
+            id="empty-inferred-body-is-subset",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={
+                        "CreateOrder": link(
+                            "createOrder",
+                            request_body="$response.body#/customer_data",
+                        )
+                    }
+                ),
+                **order_post(use_request_body=True),
+            },
+            1,
+            id="body-type-mismatch-string-vs-dict",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={
+                        "CreateOrder": link(
+                            "createOrder",
+                            parameters={"customer_id": "$response.body#/id"},
+                            # No request_body specified
+                        )
+                    }
+                ),
+                **order_post(use_request_body=True),
+            },
+            # Inferred link NOT a subset (has body, existing doesn't)
+            1,
+            id="inferred-body-not-subset-of-empty",
+        ),
+        pytest.param(
+            {
+                **customer_post(
+                    links={
+                        "CreateOrder": link(
+                            "createOrder",
+                            # Different source field
+                            request_body={"customer_id": "$response.body#/name"},
+                        )
+                    }
+                ),
+                **order_post(use_request_body=True),
+            },
+            # Inferred link NOT a subset (same key, different value)
+            1,
+            id="body-field-value-mismatch",
+        ),
+    ],
+)
+def test_inject_links_deduplication(ctx, schema, expected):
+    schema = ctx.openapi.load_schema(schema)
+    assert dependencies.inject_links(schema) == expected
+
+
+def test_inject_links_invalid_link_missing_operation_ref_and_id(ctx):
+    # Schema with an invalid link definition (missing both operationRef and operationId)
+    schema_dict = {
+        "/users": {
+            "post": {
+                "operationId": "createUser",
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "content": {"application/json": {"schema": SCHEMA_WITH_ID}},
+                        "links": {"InvalidLink": {}},
+                    }
+                },
+            }
+        },
+        "/users/{id}": {
+            "get": {
+                "operationId": "getUser",
+                "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}],
+                "responses": {"200": {"description": "OK"}},
+            }
+        },
+    }
+
+    schema = ctx.openapi.load_schema(schema_dict)
+
+    with pytest.raises(InvalidSchema, match="Link definition is missing both.*operationRef.*operationId"):
+        dependencies.inject_links(schema)
+
+
+def test_inject_links_with_reference_to_components(ctx):
+    schema_dict = {
+        "/users": {
+            "post": {
+                "operationId": "createUser",
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "content": {"application/json": {"schema": SCHEMA_WITH_ID}},
+                        "links": {"InvalidLink": {"$ref": "#/components/links/ExampleLink"}},
+                    }
+                },
+            }
+        },
+        "/users/{id}": {
+            "get": {
+                "operationId": "getUser",
+                "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}],
+                "responses": {"200": {"description": "OK"}},
+            }
+        },
+    }
+
+    schema = ctx.openapi.load_schema(
+        schema_dict,
+        components={
+            "links": {
+                "ExampleLink": {
+                    "operationId": "getUser",
+                }
+            }
+        },
+    )
+
+    assert dependencies.inject_links(schema) == 1
+
+
+def test_iter_links_with_nested_refs(ctx):
+    # GH-3394: Links with nested $refs should be fully resolved
+    # Schema with link chain: Top -> Middle -> Bottom
+    schema_dict = {
+        "/foo": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"id": {"type": "integer"}},
+                                }
+                            }
+                        },
+                        "links": {
+                            "Top": {"$ref": "#/components/links/Middle"},
+                        },
+                    }
+                }
+            }
+        },
+        "/foo/{id}": {
+            "parameters": [{"name": "id", "in": "path", "schema": {"type": "integer"}}],
+            "get": {
+                "operationId": "get-by-id",
+                "responses": {"200": {"description": "OK"}},
+            },
+        },
+    }
+
+    schema = ctx.openapi.load_schema(
+        schema_dict,
+        version="3.1.0",
+        components={
+            "links": {
+                "Bottom": {
+                    "operationId": "get-by-id",
+                    "parameters": {"id": "$response.body#/id"},
+                },
+                "Middle": {"$ref": "#/components/links/Bottom"},
+            }
+        },
+    )
+
+    # Verify that recursive $refs are fully resolved when iterating links
+    for result in schema.get_all_operations():
+        if isinstance(result, schemathesis.core.result.Ok):
+            operation = result.ok()
+            for _, response in operation.responses.items():
+                for name, link in response.iter_links():
+                    # Link should have operationId after resolving all $ref levels
+                    assert "operationId" in link or "operationRef" in link, (
+                        f"Link '{name}' was not fully resolved: {link}"
+                    )
+
+
+def test_iter_links_with_circular_refs(ctx):
+    # Circular $refs in links should not cause infinite recursion
+    schema_dict = {
+        "/foo": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "links": {
+                            "Circular": {"$ref": "#/components/links/A"},
+                        },
+                    }
+                }
+            }
+        },
+    }
+
+    schema = ctx.openapi.load_schema(
+        schema_dict,
+        version="3.1.0",
+        components={
+            "links": {
+                "A": {"$ref": "#/components/links/B"},
+                "B": {"$ref": "#/components/links/A"},
+            }
+        },
+    )
+
+    # Should not hang or crash - circular refs are gracefully handled
+    for result in schema.get_all_operations():
+        if isinstance(result, schemathesis.core.result.Ok):
+            operation = result.ok()
+            for _, response in operation.responses.items():
+                for _, link in response.iter_links():
+                    # Circular ref will not be fully resolved, but shouldn't crash
+                    assert "$ref" in link
+
+
+@pytest.mark.snapshot(replace_reproduce_with=True)
+@flaky(max_runs=5, min_passes=1)
+def test_stateful_discovers_bug_with_custom_deserializer(cli, snapshot_cli, ctx):
+    @schemathesis.deserializer("application/vnd.custom")
+    def deserialize_custom(ctx, response):
+        text = response.content.decode(response.encoding or "utf-8")
+        result = {}
+        for line in text.strip().split("\n"):
+            if "=" in line:
+                key, value = line.split("=", 1)
+                result[key] = None if value == "None" else value
+        return result
+
+    app, schema = ctx.openapi.make_flask_app(
+        {
+            "/users": {
+                "post": {
+                    "operationId": "createUser",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"first_name": {"type": "string"}, "last_name": {"type": "string"}},
+                                    "required": ["first_name", "last_name"],
+                                }
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "201": {
+                            "description": "User created",
+                            "content": {
+                                "application/vnd.custom": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {"id": {"type": "string"}},
+                                        "required": ["id"],
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/users/{user_id}": {
+                "parameters": [{"in": "path", "name": "user_id", "required": True, "schema": {"type": "string"}}],
+                "get": {
+                    "operationId": "getUser",
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/vnd.custom": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {"id": {"type": "string"}, "full_name": {"type": "string"}},
+                                        "required": ["id", "full_name"],
+                                    }
+                                }
+                            },
+                        },
+                        "404": {"description": "Not found"},
+                    },
+                },
+                "patch": {
+                    "operationId": "updateUser",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "first_name": {"type": "string"},
+                                        "last_name": {"type": "string"},
+                                    },
+                                }
+                            }
+                        },
+                        "required": True,
+                    },
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/vnd.custom": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": {"type": "string"},
+                                            "first_name": {"type": "string"},
+                                            "last_name": {"type": "string"},
+                                        },
+                                        "required": ["id"],
+                                    }
+                                }
+                            },
+                        },
+                        "404": {"description": "Not found"},
+                    },
+                },
+            },
+        }
+    )
+
+    users = {}
+
+    @app.route("/users", methods=["POST"])
+    def create_user():
+        data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return {"error": "Invalid input"}, 400
+
+        user_id = "1"
+        users[user_id] = {
+            "id": user_id,
+            "first_name": str(data.get("first_name", "")),
+            "last_name": str(data.get("last_name", "")),
+            "corrupted": False,
+        }
+
+        return f"id={user_id}", 201, {"Content-Type": "application/vnd.custom"}
+
+    @app.route("/users/<user_id>", methods=["GET"])
+    def get_user(user_id):
+        if user_id not in users:
+            return "", 404
+
+        user = users[user_id]
+
+        # If user is corrupted, return None for full_name (violates schema expecting string)
+        if user.get("corrupted"):
+            return f"id={user['id']}\nfull_name=None", 200, {"Content-Type": "application/vnd.custom"}
+
+        full_name = user["first_name"] + " " + user["last_name"]
+        return f"id={user['id']}\nfull_name={full_name}", 200, {"Content-Type": "application/vnd.custom"}
+
+    @app.route("/users/<user_id>", methods=["PATCH"])
+    def update_user(user_id):
+        if user_id not in users:
+            return "", 404
+
+        data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return {"error": "Invalid input"}, 400
+
+        user = users[user_id]
+
+        # PATCH with empty body corrupts internal state (bug!)
+        if not data.get("first_name") and not data.get("last_name"):
+            user["corrupted"] = True
+        else:
+            if "first_name" in data:
+                user["first_name"] = str(data["first_name"])
+            if "last_name" in data:
+                user["last_name"] = str(data["last_name"])
+
+        # Always return success (bug hidden in response)
+        response_first = str(user.get("first_name", ""))
+        response_last = str(user.get("last_name", ""))
+        return (
+            f"id={user['id']}\nfirst_name={response_first}\nlast_name={response_last}",
+            200,
+            {"Content-Type": "application/vnd.custom"},
+        )
+
+    assert (
+        cli.run_openapi_app(
+            app,
+            "--max-examples=10",
+            "-c response_schema_conformance",
+            "--mode=positive",
+            "--phases=stateful",
+        )
+        == snapshot_cli
+    )
+
+
+def test_canonicalize_with_merged_returning_none(ctx):
+    schema = ctx.openapi.load_schema(
+        {
+            "/items": {
+                "post": {
+                    "responses": {
+                        "201": {
+                            "description": "Created",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "allOf": [
+                                            {"$ref": "#/components/schemas/integration"},
+                                            {"properties": {"webhook_secret": {"nullable": True, "": ""}}},
+                                        ]
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            }
+        },
+        version="3.0.3",
+        components={
+            "schemas": {
+                "integration": {"properties": {"webhook_secret": {"": "a", "nullable": True}}},
+            }
+        },
+    )
+    analyze(schema)
+
+
+def test_merged_returning_none_with_anyof_schema(ctx):
+    schema = ctx.openapi.load_schema(
+        {
+            "/items": {
+                "post": {
+                    "responses": {
+                        "201": {
+                            "description": "Created",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "allOf": [
+                                            {"$ref": "#/components/schemas/Base"},
+                                            {
+                                                "type": "object",
+                                                "properties": {
+                                                    "field": {
+                                                        "anyOf": [
+                                                            {"type": "string", "const": "value_a"},
+                                                            {"type": "null"},
+                                                        ]
+                                                    }
+                                                },
+                                            },
+                                        ]
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            }
+        },
+        version="3.1.0",
+        components={
+            "schemas": {
+                "Base": {
+                    "type": "object",
+                    "properties": {
+                        "field": {
+                            "anyOf": [
+                                {"type": "string", "const": "value_b"},  # Different const!
+                                {"type": "null"},
+                            ]
+                        }
+                    },
+                }
+            }
+        },
+    )
+    analyze(schema)
+
+
+def test_content_wrapper_unwrapped_around_single_object(ctx):
+    # Single-property `content` wrapper around a resource object should be unwrapped so the link
+    # extractor points at `/content/id`, not the unresolvable `/id`.
+    _, graph = analyze_dependencies(
+        ctx,
+        {
+            "/albums": {
+                "post": {
+                    "responses": {
+                        "201": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "content": {
+                                                "type": "object",
+                                                "properties": {"id": {"type": "integer"}},
+                                                "required": ["id"],
+                                            }
+                                        },
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    )
+    [output] = graph.operations["POST /albums"].outputs
+    assert (output.resource.name, output.pointer, output.cardinality.value) == ("Album", "/content", "ONE")
+
+
+def test_self_referencing_component_terminates(ctx):
+    # A component that refers to itself must not send reference resolution into infinite recursion.
+    node = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "children": {"type": "array", "items": component_ref("Node")},
+        },
+        "required": ["id"],
+    }
+    # `allOf` is what routes the response schema through `canonicalize`.
+    node_envelope = {"allOf": [component_ref("Node")]}
+    paths = {
+        "/nodes": {
+            "post": {
+                "operationId": "createNode",
+                "responses": {"201": {"content": {"application/json": {"schema": node_envelope}}}},
+            }
+        },
+        "/nodes/{node_id}": {
+            "get": {
+                "operationId": "getNode",
+                "parameters": [path_param("node_id")],
+                "responses": {"200": {"content": {"application/json": {"schema": node_envelope}}}},
+            }
+        },
+    }
+
+    _, graph = analyze_dependencies(ctx, paths, components={"schemas": {"Node": node}})
+
+    assert [entry.producer_operation_ref for entry in graph.iter_links()] == ["#/paths/~1nodes/post"]

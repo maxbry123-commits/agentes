@@ -1,0 +1,68 @@
+{
+  "bundle_bytes": 97217350,
+  "bundle_sha256": "b664fb58b0480fea62e92f15271a9c95765f3a1d31a42b0c9c2858390f9662fb",
+  "extracted_tree": {
+    "bytes": 452399063,
+    "files": 311,
+    "sha256": "2fd7ae7fbcfba0c465cee576db90c4b83c337e43bf94871e243199db86535c61"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "mabwiser.bundle.zip.part-0001",
+      "sha256": "8ef5e70b44d59b51198e970010676bb020556a39052b656daecb6b88a2a58e80"
+    },
+    {
+      "bytes": 12582912,
+      "name": "mabwiser.bundle.zip.part-0002",
+      "sha256": "e3efce6da642ae4af79abdab7e97497eab46c9e134085fee084df39f7ad19a89"
+    },
+    {
+      "bytes": 12582912,
+      "name": "mabwiser.bundle.zip.part-0003",
+      "sha256": "39289f69b58bce297a10e05413697fe1e81cf3fd46338f60c13e37c65424f614"
+    },
+    {
+      "bytes": 12582912,
+      "name": "mabwiser.bundle.zip.part-0004",
+      "sha256": "18ed0f06f537ce0924af217c5e1976752128b7db513e886c1b1622db1cbafbf7"
+    },
+    {
+      "bytes": 12582912,
+      "name": "mabwiser.bundle.zip.part-0005",
+      "sha256": "abb6ffe8c0f7dc2311e6126eaf02763998e1e1fa3bdcb379587b9a558766039c"
+    },
+    {
+      "bytes": 12582912,
+      "name": "mabwiser.bundle.zip.part-0006",
+      "sha256": "729f4cfbc4511eff5c60e1f0169a72f5fe8f1d3fa74c5f9f318d9616a52df6e6"
+    },
+    {
+      "bytes": 12582912,
+      "name": "mabwiser.bundle.zip.part-0007",
+      "sha256": "49a44cb6baf13a171e7cae8e2f6f9e8cb9517a9a51a6a414ac39a3f96de27889"
+    },
+    {
+      "bytes": 9136966,
+      "name": "mabwiser.bundle.zip.part-0008",
+      "sha256": "dc5bb07b34fee0532373a3fe4cf9619eb184df3308aaa0c14932a6f60639f136"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "mabwiser",
+  "source_bytes": 452399063,
+  "source_commit": "b104071351d532aae977955d19b83872a9c1b1e3",
+  "source_files": 311,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/fidelity/mabwiser.git",
+  "source_tree": {
+    "bytes": 452399063,
+    "files": 311,
+    "sha256": "2fd7ae7fbcfba0c465cee576db90c4b83c337e43bf94871e243199db86535c61"
+  }
+}

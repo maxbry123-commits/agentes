@@ -1,0 +1,533 @@
+import tempfile
+
+import pytest
+from test_helpers.utils import failing_solver, skip_if_no_google, skip_if_no_openai
+
+from inspect_ai import Task, eval, eval_retry, task
+from inspect_ai._eval.evalset import eval_set
+from inspect_ai._util.error import PrerequisiteError
+from inspect_ai.dataset._dataset import Sample
+from inspect_ai.log._file import read_eval_log
+from inspect_ai.log._log import EvalLog
+from inspect_ai.model import GenerateConfig, Model, get_model
+from inspect_ai.model._model import model_concurrency_key
+from inspect_ai.model._util import resolve_model_roles
+from inspect_ai.solver import solver
+
+RED_TEAM = "red_team"
+RED_TEAM_DEFAULT = "openai/gpt-4o"
+GEMINI_FLASH_3_PREVIEW = "google/gemini-3-flash-preview"
+
+
+@solver
+def role_solver(red_team_model: Model | None = None):
+    async def solve(state, generate):
+        model = red_team_model or get_model(role=RED_TEAM, default=RED_TEAM_DEFAULT)
+        state.output = await model.generate(state.messages)
+        state.messages.append(state.output.message)
+        return state
+
+    return solve
+
+
+@task
+def role_task():
+    return Task(solver=role_solver())
+
+
+# skip_if_no_openai is needed on the below tests because of RED_TEAM_DEFAULT
+# which is "openai/gpt-4o"
+
+
+@skip_if_no_google
+@skip_if_no_openai
+def test_model_role() -> None:
+    log = eval(role_task(), model_roles={RED_TEAM: GEMINI_FLASH_3_PREVIEW})[0]
+    assert log.eval.model_roles
+    red_team = log.eval.model_roles[RED_TEAM]
+    assert not isinstance(red_team, list)
+    assert red_team.model == GEMINI_FLASH_3_PREVIEW
+    check_model_role(log, RED_TEAM, GEMINI_FLASH_3_PREVIEW)
+
+
+@skip_if_no_openai
+def test_model_role_default() -> None:
+    log = eval(role_task())[0]
+    check_model_role(log, RED_TEAM, RED_TEAM_DEFAULT)
+
+
+@skip_if_no_google
+@skip_if_no_openai
+def test_model_role_retry() -> None:
+    log = eval(role_task(), model_roles={RED_TEAM: GEMINI_FLASH_3_PREVIEW})[0]
+    log.status = "cancelled"
+    log.samples = []
+    log = eval_retry(log)[0]
+    assert log.eval.model_roles
+    red_team = log.eval.model_roles[RED_TEAM]
+    assert not isinstance(red_team, list)
+    assert red_team.model == GEMINI_FLASH_3_PREVIEW
+    check_model_role(log, RED_TEAM, GEMINI_FLASH_3_PREVIEW)
+
+
+@task
+def role_task_init():
+    red_team = get_model(role=RED_TEAM, default="mockllm/model")
+    return Task(solver=role_solver(red_team))
+
+
+@skip_if_no_google
+@skip_if_no_openai
+def test_model_role_task_init():
+    log = eval(role_task_init, model_roles={RED_TEAM: GEMINI_FLASH_3_PREVIEW})[0]
+    assert log.eval.model_roles
+    assert log.eval.model_roles[RED_TEAM].model == GEMINI_FLASH_3_PREVIEW
+    check_model_role(log, RED_TEAM, GEMINI_FLASH_3_PREVIEW)
+
+
+@skip_if_no_google
+@skip_if_no_openai
+def test_model_role_eval_set() -> None:
+    dataset: list[Sample] = []
+    for _ in range(0, 10):
+        dataset.append(Sample(input="Say hello", target="hello"))
+
+    eval_set_task = Task(dataset=dataset, solver=[role_solver(), failing_solver()])
+
+    with tempfile.TemporaryDirectory() as log_dir:
+        _, logs = eval_set(
+            eval_set_task,
+            log_dir=log_dir,
+            retry_wait=0.001,
+            retry_attempts=5,
+            model_roles={RED_TEAM: GEMINI_FLASH_3_PREVIEW},
+        )
+        check_model_role(
+            read_eval_log(logs[0].location), RED_TEAM, GEMINI_FLASH_3_PREVIEW
+        )
+
+
+def check_model_role(log: EvalLog, role: str, model: str) -> None:
+    assert log.samples
+    model_event = next(
+        (event for event in log.samples[0].events if event.event == "model")
+    )
+    assert model_event.role == role
+    assert model_event.model == model
+
+
+def test_role_usage_tracking_mockllm() -> None:
+    @task
+    def mock_role_task():
+        return Task(solver=role_solver())
+
+    log = eval(mock_role_task(), model_roles={RED_TEAM: MOCK_A})[0]
+
+    assert log.stats.role_usage is not None
+    assert RED_TEAM in log.stats.role_usage
+    assert log.stats.role_usage[RED_TEAM].total_tokens > 0
+
+    assert log.samples is not None
+    assert len(log.samples) > 0
+    sample = log.samples[0]
+    assert sample.role_usage is not None
+    assert RED_TEAM in sample.role_usage
+    assert sample.role_usage[RED_TEAM].total_tokens > 0
+
+
+def test_role_usage_shared_model() -> None:
+    log = eval(
+        Task(solver=multi_role_solver()),
+        model_roles={GRADER: MOCK_A, REVIEWER: MOCK_A},
+    )[0]
+
+    # Both roles used the same model
+    assert log.stats.model_usage is not None
+    assert MOCK_A in log.stats.model_usage
+
+    # Role usage should separate them
+    assert log.stats.role_usage is not None
+    assert GRADER in log.stats.role_usage
+    assert REVIEWER in log.stats.role_usage
+
+    grader_tokens = log.stats.role_usage[GRADER].total_tokens
+    reviewer_tokens = log.stats.role_usage[REVIEWER].total_tokens
+    total_tokens = log.stats.model_usage[MOCK_A].total_tokens
+
+    # Both roles have usage
+    assert grader_tokens > 0
+    assert reviewer_tokens > 0
+    assert total_tokens == grader_tokens + reviewer_tokens
+
+
+def test_role_usage_eval_retry() -> None:
+    @task
+    def mock_role_task_retry():
+        return Task(solver=role_solver())
+
+    log = eval(mock_role_task_retry(), model_roles={RED_TEAM: MOCK_A})[0]
+    original_tokens = log.stats.role_usage[RED_TEAM].total_tokens
+    log.status = "cancelled"
+    log.samples = []
+    log_retry = eval_retry(log)[0]
+
+    assert log_retry.stats.role_usage is not None
+    assert RED_TEAM in log_retry.stats.role_usage
+    retry_tokens = log_retry.stats.role_usage[RED_TEAM].total_tokens
+    assert retry_tokens >= original_tokens
+
+
+@skip_if_no_google
+@skip_if_no_openai
+def test_role_usage_tracking() -> None:
+    log = eval(role_task(), model_roles={RED_TEAM: GEMINI_FLASH_3_PREVIEW})[0]
+
+    assert log.stats.role_usage is not None
+    assert RED_TEAM in log.stats.role_usage
+    assert log.stats.role_usage[RED_TEAM].total_tokens > 0
+
+    assert log.samples is not None
+    assert len(log.samples) > 0
+    sample = log.samples[0]
+    assert sample.role_usage is not None
+    assert RED_TEAM in sample.role_usage
+    assert sample.role_usage[RED_TEAM].total_tokens > 0
+
+
+def test_role_models_share_connection_concurrency_key() -> None:
+    """Distinct role Model instances for one model share a connection semaphore.
+
+    resolve_model_roles() creates a distinct Model per role (memoize=False) so
+    per-role usage is attributed correctly. max_connections must nonetheless be
+    enforced per endpoint/account (the concurrency key), not per Model
+    instance — otherwise N roles on one model would get N * max_connections
+    and blow through provider rate limits.
+    """
+    resolved = resolve_model_roles({"auditor": "none/none", "judge": "none/none"})
+    assert resolved is not None
+    auditor, judge = resolved["auditor"], resolved["judge"]
+    assert isinstance(auditor, Model) and isinstance(judge, Model)
+
+    assert auditor is not judge
+    assert model_concurrency_key(auditor.api) == model_concurrency_key(judge.api)
+    assert model_concurrency_key(auditor.api) == model_concurrency_key(
+        get_model("none/none").api
+    )
+
+
+def test_resolve_model_roles_copies_model_objects(no_model_copyreg_reducer) -> None:
+    """A Model passed by object gets a distinct, role-stamped copy per role (#4464).
+
+    The CLI parser guards --model-role with memoize=False, but eval()/eval_set()
+    hand model_roles values straight to resolve_model_roles, bypassing that guard.
+    resolve_model_roles must copy a Model passed by object before stamping its
+    role, otherwise reusing one Model across roles (or as the main eval model)
+    collapses per-role usage or misattributes the original's usage to a role.
+    """
+    # a Model the caller holds; unique config so it is not the same memoized
+    # instance other tests use
+    m = get_model("none/none", config=GenerateConfig(temperature=0.202))
+
+    # the same object handed to two roles must not collapse onto the last role
+    resolved = resolve_model_roles({"auditor": m, "judge": m})
+    assert resolved is not None
+    auditor, judge = resolved["auditor"], resolved["judge"]
+    assert isinstance(auditor, Model) and isinstance(judge, Model)
+    assert auditor is not judge
+    assert auditor.role == "auditor"
+    assert judge.role == "judge"
+
+    # and the caller's original object is left untouched (role not stamped in place)
+    assert m.role is None
+
+
+@solver
+def check_memoize_solver():
+    def validate(condition: bool, description: str):
+        if not condition:
+            raise ValueError(f"Condition not satified: {description}")
+
+    async def solve(state, generate):
+        validate(
+            get_model(role=RED_TEAM, default=RED_TEAM_DEFAULT)
+            == get_model(role=RED_TEAM, default=RED_TEAM_DEFAULT),
+            "get_model by role is memoized",
+        )
+
+        validate(
+            get_model(role=RED_TEAM, default=RED_TEAM_DEFAULT)
+            != get_model(RED_TEAM_DEFAULT),
+            "get_model by role memoization is partioned from normal get_model",
+        )
+
+        validate(
+            get_model(role=RED_TEAM, default=RED_TEAM_DEFAULT).role == RED_TEAM,
+            "role is assigned correctly event for default",
+        )
+
+        return state
+
+    return solve
+
+
+@skip_if_no_google
+@skip_if_no_openai
+def test_model_role_memoize() -> None:
+    # check with role specified
+    log = eval(
+        Task(solver=check_memoize_solver()),
+        model_roles={RED_TEAM: GEMINI_FLASH_3_PREVIEW},
+    )[0]
+    assert log.status == "success"
+
+    # check with default role
+    log = eval(Task(solver=check_memoize_solver()))[0]
+    assert log.status == "success"
+
+
+# -- Merge tests (mockllm, no API keys needed) --
+
+GRADER = "grader"
+REVIEWER = "reviewer"
+MOCK_A = "mockllm/model_a"
+MOCK_B = "mockllm/model_b"
+MOCK_C = "mockllm/model_c"
+
+
+@solver
+def grader_role_solver():
+    async def solve(state, generate):
+        model = get_model(role=GRADER)
+        state.output = await model.generate(state.messages)
+        state.messages.append(state.output.message)
+        return state
+
+    return solve
+
+
+@solver
+def multi_role_solver():
+    async def solve(state, generate):
+        grader = get_model(role=GRADER)
+        reviewer = get_model(role=REVIEWER)
+        state.output = await grader.generate(state.messages)
+        state.messages.append(state.output.message)
+        state.output = await reviewer.generate(state.messages)
+        state.messages.append(state.output.message)
+        return state
+
+    return solve
+
+
+def test_model_role_required_raises_when_not_specified() -> None:
+    """get_model with required=True should raise when the role is not specified."""
+    with pytest.raises(PrerequisiteError, match="required"):
+        get_model(role="nonexistent_role", required=True)
+
+
+def test_model_role_required_succeeds_when_specified() -> None:
+    """get_model with required=True should succeed when the role is provided."""
+
+    @solver
+    def required_role_solver():
+        async def solve(state, generate):
+            model = get_model(role=GRADER, required=True)
+            state.output = await model.generate(state.messages)
+            state.messages.append(state.output.message)
+            return state
+
+        return solve
+
+    log = eval(
+        Task(solver=required_role_solver()),
+        model_roles={GRADER: MOCK_A},
+    )[0]
+    assert log.status == "success"
+    check_model_role(log, GRADER, MOCK_A)
+
+
+def test_model_role_required_falls_back_to_default() -> None:
+    """get_model with required=True but a default should use the default, not raise."""
+    model = get_model(role="missing_role", required=True, default="mockllm/model")
+    assert model is not None
+
+
+def test_model_role_merge_eval_overrides_task() -> None:
+    """Eval-level model_roles should override task-level for the same role."""
+    t = Task(
+        solver=grader_role_solver(),
+        model_roles={GRADER: MOCK_A},
+    )
+    log = eval(t, model_roles={GRADER: MOCK_B})[0]
+    assert log.status == "success"
+    check_model_role(log, GRADER, MOCK_B)
+
+
+def test_model_role_merge_preserves_unspecified() -> None:
+    """Eval-level override for one role preserves task-level defaults for others."""
+    t = Task(
+        solver=multi_role_solver(),
+        model_roles={GRADER: MOCK_A, REVIEWER: MOCK_B},
+    )
+    log = eval(t, model_roles={GRADER: MOCK_C})[0]
+    assert log.status == "success"
+    # grader should be overridden to MOCK_C
+    check_model_role(log, GRADER, MOCK_C)
+    # reviewer should be preserved as MOCK_B from the task
+    assert log.samples
+    model_events = [e for e in log.samples[0].events if e.event == "model"]
+    reviewer_event = next(e for e in model_events if e.role == REVIEWER)
+    assert reviewer_event.model == MOCK_B
+
+
+def test_model_role_merge_preserves_get_model_config_defaults() -> None:
+    """Role overrides should not drop defaults supplied at the get_model call site."""
+
+    @solver
+    def configured_grader_solver():
+        async def solve(state, generate):
+            model = get_model(
+                role=GRADER,
+                default=MOCK_A,
+                config=GenerateConfig(max_tokens=17, reasoning_effort="low"),
+            )
+            state.output = await model.generate(state.messages)
+            state.messages.append(state.output.message)
+            return state
+
+        return solve
+
+    log = eval(
+        Task(solver=configured_grader_solver()),
+        model_roles={GRADER: MOCK_B},
+    )[0]
+    assert log.status == "success"
+    check_model_role(log, GRADER, MOCK_B)
+
+    assert log.samples
+    model_event = next(e for e in log.samples[0].events if e.event == "model")
+    assert model_event.config.max_tokens == 17
+    assert model_event.config.reasoning_effort == "low"
+
+
+# -- List-valued role tests (mockllm, no API keys needed) --
+
+
+def test_resolve_model_roles_list() -> None:
+    resolved = resolve_model_roles({GRADER: [MOCK_A, MOCK_B], REVIEWER: MOCK_C})
+    assert resolved is not None
+    graders = resolved[GRADER]
+    assert isinstance(graders, list)
+    assert [str(m) for m in graders] == [MOCK_A, MOCK_B]
+    assert all(m.role == GRADER for m in graders)
+    reviewer = resolved[REVIEWER]
+    assert isinstance(reviewer, Model)
+    assert reviewer.role == REVIEWER
+
+
+def test_resolve_model_roles_single_element_list_collapses() -> None:
+    resolved = resolve_model_roles({GRADER: [MOCK_A]})
+    assert resolved is not None
+    assert isinstance(resolved[GRADER], Model)
+
+
+def test_resolve_model_roles_rejects_empty_list() -> None:
+    with pytest.raises(PrerequisiteError, match="empty"):
+        resolve_model_roles({GRADER: []})
+
+
+@pytest.mark.parametrize("value", [None, 123, [1, 2]])
+def test_resolve_model_roles_rejects_invalid_values(value) -> None:
+    with pytest.raises(PrerequisiteError, match="invalid value"):
+        resolve_model_roles({GRADER: value})
+
+
+def test_model_roles_list_config_round_trip() -> None:
+    from inspect_ai.model._model_config import (
+        model_roles_config_to_model_roles,
+        model_roles_to_model_roles_config,
+    )
+
+    resolved = resolve_model_roles({GRADER: [MOCK_A, MOCK_B, MOCK_C], REVIEWER: MOCK_A})
+    assert resolved is not None
+
+    config = model_roles_to_model_roles_config(resolved)
+    assert config is not None
+    assert list(config.keys()) == [GRADER, REVIEWER]
+    grader_configs = config[GRADER]
+    assert isinstance(grader_configs, list)
+    assert [mc.model for mc in grader_configs] == [MOCK_A, MOCK_B, MOCK_C]
+    reviewer_config = config[REVIEWER]
+    assert not isinstance(reviewer_config, list)
+    assert reviewer_config.model == MOCK_A
+
+    round_tripped = model_roles_config_to_model_roles(config)
+    assert round_tripped is not None
+    graders = round_tripped[GRADER]
+    assert isinstance(graders, list)
+    assert [str(m) for m in graders] == [MOCK_A, MOCK_B, MOCK_C]
+    assert isinstance(round_tripped[REVIEWER], Model)
+
+
+def test_model_role_list_get_model_returns_first() -> None:
+    log = eval(
+        Task(solver=grader_role_solver()),
+        model_roles={GRADER: [MOCK_A, MOCK_B]},
+    )[0]
+    assert log.status == "success"
+    # get_model(role=...) resolves to the first model in the list
+    check_model_role(log, GRADER, MOCK_A)
+    # the log stores the role as a list of model configs
+    assert log.eval.model_roles is not None
+    graders = log.eval.model_roles[GRADER]
+    assert isinstance(graders, list)
+    assert [mc.model for mc in graders] == [MOCK_A, MOCK_B]
+
+
+def test_model_role_list_eval_set_identity() -> None:
+    """A list-valued role hashes consistently between live tasks and logs."""
+
+    def make_task() -> Task:
+        return Task(
+            dataset=[Sample(input="Say hello", target="hello")],
+            solver=grader_role_solver(),
+        )
+
+    with tempfile.TemporaryDirectory() as log_dir:
+        success, logs = eval_set(
+            make_task(),
+            log_dir=log_dir,
+            model="mockllm/model",
+            model_roles={GRADER: [MOCK_A, MOCK_B]},
+        )
+        assert success
+        # a second run must match the completed log via task identity
+        # (rather than re-running the task under a new identity)
+        success2, logs2 = eval_set(
+            make_task(),
+            log_dir=log_dir,
+            model="mockllm/model",
+            model_roles={GRADER: [MOCK_A, MOCK_B]},
+        )
+        assert success2
+        assert logs2[0].eval.task_id == logs[0].eval.task_id
+
+
+def test_model_role_list_eval_retry() -> None:
+    @task
+    def grader_list_role_task() -> Task:
+        return Task(solver=grader_role_solver())
+
+    log = eval(
+        grader_list_role_task(),
+        model_roles={GRADER: [MOCK_A, MOCK_B]},
+    )[0]
+    log.status = "cancelled"
+    log.samples = []
+    log_retry = eval_retry(log)[0]
+    assert log_retry.status == "success"
+    assert log_retry.eval.model_roles is not None
+    graders = log_retry.eval.model_roles[GRADER]
+    assert isinstance(graders, list)
+    assert [mc.model for mc in graders] == [MOCK_A, MOCK_B]
+    check_model_role(log_retry, GRADER, MOCK_A)

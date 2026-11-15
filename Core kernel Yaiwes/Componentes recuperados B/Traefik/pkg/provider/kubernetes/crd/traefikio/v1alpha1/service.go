@@ -1,0 +1,124 @@
+package v1alpha1
+
+import (
+	"github.com/traefik/traefik/v3/pkg/config/dynamic"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:storageversion
+
+// TraefikService is the CRD implementation of a Traefik Service.
+// TraefikService object allows to:
+// - Apply weight to Services on load-balancing
+// - Mirror traffic on services
+// More info: https://doc.traefik.io/traefik/v3.7/reference/routing-configuration/kubernetes/crd/http/traefikservice/
+type TraefikService struct {
+	metav1.TypeMeta `json:",inline"`
+	// Standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	metav1.ObjectMeta `json:"metadata"`
+
+	Spec TraefikServiceSpec `json:"spec"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// TraefikServiceList is a collection of TraefikService resources.
+type TraefikServiceList struct {
+	metav1.TypeMeta `json:",inline"`
+	// Standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	metav1.ListMeta `json:"metadata"`
+
+	// Items is the list of TraefikService.
+	Items []TraefikService `json:"items"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// TraefikServiceSpec defines the desired state of a TraefikService.
+type TraefikServiceSpec struct {
+	// Weighted defines the Weighted Round Robin configuration.
+	Weighted *WeightedRoundRobin `json:"weighted,omitempty"`
+	// Mirroring defines the Mirroring service configuration.
+	Mirroring *Mirroring `json:"mirroring,omitempty"`
+	// HighestRandomWeight defines the highest random weight service configuration.
+	HighestRandomWeight *HighestRandomWeight `json:"highestRandomWeight,omitempty"`
+	// Failover defines the Failover service configuration.
+	Failover *Failover `json:"failover,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// Mirroring holds the mirroring service configuration.
+// More info: https://doc.traefik.io/traefik/v3.7/reference/routing-configuration/http/load-balancing/service/#mirroring
+type Mirroring struct {
+	LoadBalancerSpec `json:",inline"`
+
+	// MirrorBody defines whether the body of the request should be mirrored.
+	// Default value is true.
+	MirrorBody *bool `json:"mirrorBody,omitempty"`
+	// MaxBodySize defines the maximum size allowed for the body of the request.
+	// If the body is larger, the request is not mirrored.
+	// Default value is -1, which means unlimited size.
+	MaxBodySize *int64 `json:"maxBodySize,omitempty"`
+	// Mirrors defines the list of mirrors where Traefik will duplicate the traffic.
+	Mirrors []MirrorService `json:"mirrors,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// MirrorService holds the mirror configuration.
+type MirrorService struct {
+	LoadBalancerSpec `json:",inline"`
+
+	// Percent defines the part of the traffic to mirror.
+	// Supported values: 0 to 100.
+	Percent int `json:"percent,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// WeightedRoundRobin holds the weighted round-robin configuration.
+// More info: https://doc.traefik.io/traefik/v3.7/reference/routing-configuration/http/load-balancing/service/#weighted-round-robin-wrr
+type WeightedRoundRobin struct {
+	// Services defines the list of Kubernetes Service and/or TraefikService to load-balance, with weight.
+	Services []Service `json:"services,omitempty"`
+	// Sticky defines whether sticky sessions are enabled.
+	// More info: https://doc.traefik.io/traefik/v3.7/reference/routing-configuration/kubernetes/crd/http/traefikservice/#stickiness-and-load-balancing
+	Sticky *dynamic.Sticky `json:"sticky,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// HighestRandomWeight holds the highest random weight configuration.
+// More info: https://doc.traefik.io/traefik/v3.7/routing/services/#highest-random-configuration
+type HighestRandomWeight struct {
+	// Services defines the list of Kubernetes Service and/or TraefikService to load-balance, with weight.
+	Services []Service `json:"services,omitempty"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// Failover holds the Failover configuration.
+type Failover struct {
+	// Service defines the main service to use.
+	Service LoadBalancerSpec `json:"service"`
+	// Fallback defines the fallback service to use when the main service returns an error.
+	Fallback LoadBalancerSpec `json:"fallback"`
+	// Errors defines which errors should trigger the use of the fallback service.
+	Errors FailoverError `json:"errors"`
+}
+
+// +k8s:deepcopy-gen=true
+
+// FailoverError holds errors configuration for a Failover service.
+type FailoverError struct {
+	// Status defines the list of status code ranges for which the fallback service should be used.
+	Status []string `json:"status,omitempty"`
+	// MaxRequestBodyBytes defines the maximum size allowed for the body of the request.
+	// Default value is -1, which means unlimited size.
+	MaxRequestBodyBytes *int64 `json:"maxRequestBodyBytes,omitempty"`
+}

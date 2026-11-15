@@ -1,0 +1,76 @@
+{
+  "items": {
+    "04-networkx": {
+      "error": "COMMAND_FAILED:rsync:23:symlink has no referent: \"/tmp/yaiwes-recover-3v114kkw/source/benchmarks/pyproject.toml\"\nrsync error: some files/attrs were not transferred (see previous errors) (code 23) at main.c(1356) [sender=3.2.7]\n",
+      "gap": "SOURCE_SPECIAL_FILE_GAP",
+      "slug": "NetworkX",
+      "source_repo": "networkx/networkx",
+      "status": "FAILED"
+    },
+    "05-airflow": {
+      "error": "READBACK_TREE_HASH_GAP",
+      "gap": "SOURCE_SPECIAL_FILE_GAP",
+      "slug": "Apache-Airflow",
+      "source_repo": "apache/airflow",
+      "status": "FAILED"
+    },
+    "06-dagster": {
+      "error": "COMMAND_FAILED:rsync:23:symlink has no referent: \"/tmp/yaiwes-recover-re1sv5pr/source/.github/styles\"\nrsync error: some files/attrs were not transferred (see previous errors) (code 23) at main.c(1356) [sender=3.2.7]\n",
+      "gap": "SOURCE_SPECIAL_FILE_GAP",
+      "slug": "Dagster",
+      "source_repo": "dagster-io/dagster",
+      "status": "FAILED"
+    },
+    "07-litellm": {
+      "error": "READBACK_TREE_HASH_GAP",
+      "gap": "SOURCE_SPECIAL_FILE_GAP",
+      "slug": "LiteLLM",
+      "source_repo": "BerriAI/litellm",
+      "status": "FAILED"
+    },
+    "09-tensorzero": {
+      "error": "READBACK_TREE_HASH_GAP",
+      "gap": "SOURCE_SPECIAL_FILE_GAP",
+      "slug": "TensorZero",
+      "source_repo": "tensorzero/tensorzero",
+      "status": "FAILED"
+    },
+    "10-ray": {
+      "error": "READBACK_TREE_HASH_GAP",
+      "gap": "SOURCE_SPECIAL_FILE_GAP",
+      "slug": "Ray",
+      "source_repo": "ray-project/ray",
+      "status": "FAILED"
+    },
+    "11-dask": {
+      "extracted_tree": {
+        "bytes": 9638118,
+        "files": 514,
+        "sha256": "a62c5e7ef4a0c4a7508a43f3c925132790e179cefbbeb454de10cdaae8d65ec2"
+      },
+      "gap": "SOURCE_SPECIAL_FILE_GAP",
+      "publish": {
+        "commit": "77c0edec660a3a14ec134612c2b03bb4ba4b8bb3",
+        "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+      },
+      "slug": "Dask-Distributed",
+      "source_commit": "dc182bda54af488d029f2c40db0893d5f48e69d5",
+      "source_repo": "dask/distributed",
+      "source_tree": {
+        "bytes": 9638118,
+        "files": 514,
+        "sha256": "a62c5e7ef4a0c4a7508a43f3c925132790e179cefbbeb454de10cdaae8d65ec2"
+      },
+      "status": "VERIFIED_CLOSED"
+    },
+    "15-autogen": {
+      "error": "NORMALIZED_LFS_POINTER_GAP:dotnet/website/images/articles/DynamicGroupChat/dynamicChat.gif,dotnet/website/images/articles/PrintMessageMiddleware/streamingoutput.gif,dotnet/website/images/articles/SequentialGroupChat/SearcherSummarizer.gif",
+      "gap": "SOURCE_LFS_POINTER_GAP",
+      "slug": "AutoGen-Core",
+      "source_repo": "microsoft/autogen",
+      "status": "FAILED"
+    }
+  },
+  "motor1_blob": "a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500",
+  "schema": "yaiwes.kernel.catalog20.recovery-state/v1"
+}

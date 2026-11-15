@@ -1,0 +1,795 @@
+import base64
+import errno
+import json
+import os
+import posixpath
+import shlex
+import stat
+import tempfile
+import time
+from logging import getLogger
+from pathlib import Path, PurePosixPath
+from typing import Literal, NamedTuple, Union, overload
+
+from typing_extensions import override
+
+from inspect_ai._util.cpu import effective_cpu_count
+from inspect_ai._util.error import PrerequisiteError
+from inspect_ai.util._subprocess import ExecResult, subprocess
+
+from ..compose import COMPOSE_FILES, DOCKERFILE, ComposeConfig
+from ..environment import (
+    HostMapping,
+    PortMapping,
+    SandboxConnection,
+    SandboxEnvironment,
+    SandboxEnvironmentConfigType,
+    SandboxUnavailableError,
+    sandbox_prebuilt,
+)
+from ..limits import (
+    SandboxEnvironmentLimits,
+    verify_read_file_size,
+)
+from ..registry import sandboxenv
+from .cleanup import (
+    cli_cleanup,
+    project_cleanup,
+    project_cleanup_shutdown,
+    project_cleanup_startup,
+    project_record_auto_compose,
+    project_startup,
+)
+from .compose import (
+    PREBUILT_IMAGES_ERROR_PREFIX,
+    compose_build,
+    compose_check_running,
+    compose_cleanup_images,
+    compose_cp,
+    compose_exec,
+    compose_ps,
+    compose_pull,
+    compose_services,
+    compose_up,
+    compose_verify_prebuilt_images,
+    docker_image_exists_locally,
+)
+from .diagnostics import sandbox_unavailable_diagnostics, service_dead
+from .failure import InjectedWrapper, classify_exec_failure
+from .internal import build_internal_image, is_internal_image, is_internal_image_built
+from .prereqs import validate_prereqs
+from .util import ComposeProject, task_project_name
+
+logger = getLogger(__name__)
+
+_READ_FILE_STAGING_CANARY_BYTES = 32
+
+
+@sandboxenv(name="docker")
+class DockerSandboxEnvironment(SandboxEnvironment):
+    @classmethod
+    def config_files(cls) -> list[str]:
+        return COMPOSE_FILES + [DOCKERFILE]
+
+    @classmethod
+    def is_docker_compatible(cls) -> bool:
+        return True
+
+    @classmethod
+    def default_concurrency(cls) -> int | None:
+        # `effective_cpu_count()` rather than `os.cpu_count()`: an eval running
+        # inside a CPU-limited container would otherwise size its sandbox
+        # concurrency off the host's processors and oversubscribe its own quota
+        return 2 * effective_cpu_count()
+
+    @classmethod
+    async def task_init(
+        cls, task_name: str, config: SandboxEnvironmentConfigType | None
+    ) -> None:
+        # validate prereqs
+        await validate_prereqs()
+
+        # intialize project cleanup
+        project_cleanup_startup()
+
+        try:
+            # create project
+            project = await ComposeProject.create(
+                name=task_project_name(task_name), config=config
+            )
+
+            # record auto compose
+            project_record_auto_compose(project)
+
+            services = await compose_services(project)
+
+            prebuilt = sandbox_prebuilt()
+            if prebuilt:
+                await compose_verify_prebuilt_images(project, services)
+            else:
+                # build containers which are out of date
+                await compose_build(project)
+
+                # cleanup images created during build
+                await compose_cleanup_images(project, timeout=300)
+
+            for name, service in services.items():
+                # if the service has an explicit container_name then
+                # error (as this won't work w/ epochs > 1)
+                container_name = service.get("container_name", None)
+                if container_name:
+                    raise PrerequisiteError(
+                        f"ERROR: Docker service '{name}' includes an explicitly configured container_name ('{container_name}'). This is not permitted, as container names should be provisioned by Docker compose and an explicit container_name will not work with epochs > 1."
+                    )
+
+                # build internal images
+                image = service.get("image", None)
+                if image and is_internal_image(image):
+                    if not prebuilt:
+                        await build_internal_image(image)
+                    elif not await is_internal_image_built(image):
+                        raise PrerequisiteError(
+                            PREBUILT_IMAGES_ERROR_PREFIX
+                            + f"the internal image '{image}' is not present in the Docker image store."
+                        )
+                # pull any remote images
+                elif service.get("build", None) is None and not service.get("x-local"):
+                    # skip the pull if the image is already available locally
+                    # (avoids noisy errors for images loaded via 'docker load')
+                    if image and await docker_image_exists_locally(image):
+                        print(f"Service {name}: using local image '{image}'.")
+                        continue
+                    pull_result = await compose_pull(name, project)
+                    if not pull_result.success:
+                        image = service.get("image", "(unknown)")
+                        if prebuilt:
+                            raise PrerequisiteError(
+                                PREBUILT_IMAGES_ERROR_PREFIX
+                                + f"the image '{image}' for service '{name}' is not present in the Docker image store and could not be pulled."
+                            )
+                        logger.error(
+                            f"Failed to pull docker image '{image}' from remote registry. If this is a locally built image add 'x-local: true' to the the service definition to prevent this error."
+                        )
+
+        except BaseException as ex:
+            await project_cleanup_shutdown(True)
+            raise ex
+
+    @override
+    @classmethod
+    async def task_init_environment(
+        cls, config: SandboxEnvironmentConfigType | None, metadata: dict[str, str]
+    ) -> dict[str, str]:
+        # get interpolated environment variables and underlying config path and text
+        resolved = resolve_config_environment(config, metadata)
+
+        # don't even consider sample-specific environment if there are no sample metadata refs
+        if resolved and len(resolved.env) > 0:
+            # resolve images using our env vars
+            result = await subprocess(
+                ["docker", "compose", "-f", resolved.config_file, "config", "--images"],
+                env=resolved.env,
+            )
+            if result.success:
+                # look through the images, if one of them doesn't apper in the the
+                # config text then this compose file requires its own sample specific
+                # environment for resolution
+                images = result.stdout.strip().splitlines()
+                for image in images:
+                    if image not in resolved.config_text:
+                        return resolved.env
+            else:
+                logger.warning(
+                    f"Unexpected error reading compose file '{resolved.config_file}': {result.stderr}"
+                )
+
+        # no per-sample environment required
+        return {}
+
+    @override
+    @classmethod
+    async def sample_init(
+        cls,
+        task_name: str,
+        config: SandboxEnvironmentConfigType | None,
+        metadata: dict[str, str],
+    ) -> dict[str, SandboxEnvironment]:
+        # create environment variables for sample metadata
+        resolved = resolve_config_environment(config, metadata)
+        env = resolved.env if resolved is not None else {}
+
+        # create project
+        from inspect_ai.log._samples import sample_active
+
+        sample = sample_active()
+        project = await ComposeProject.create(
+            name=task_project_name(task_name),
+            config=config,
+            sample_id=sample.sample.id if sample is not None else None,
+            epoch=sample.epoch if sample is not None else None,
+            env=env,
+        )
+
+        # note that the project is running
+        project_startup(project)
+
+        try:
+            # enumerate the services that will be created
+            services = await compose_services(project)
+
+            # start the services
+            result = await compose_up(project, services)
+
+            # check to ensure that the services are running
+            running_services = await compose_check_running(
+                list(services.keys()), project=project
+            )
+
+            if not running_services:
+                raise RuntimeError(
+                    f"No services started.\nCompose up stderr: {result.stderr}"
+                )
+
+            # create sandbox environments for all running services
+            default_service: str | None = None
+            environments: dict[str, SandboxEnvironment] = {}
+            for service, service_info in services.items():
+                if service in running_services:
+                    # update the project w/ the working directory
+                    working_dir = await container_working_dir(service, project)
+
+                    # create the docker sandbox environemnt
+                    docker_env = DockerSandboxEnvironment(service, project, working_dir)
+
+                    # save reference to default service if requested
+                    if service_info.get("x-default", False):
+                        default_service = service
+
+                    # record service => environment
+                    environments[service] = docker_env
+
+            # confirm that we have a 'default' environemnt
+            if environments.get("default", None) is None and default_service is None:
+                raise RuntimeError(
+                    "No 'default' service found in Docker compose file. "
+                    + "You should either name a service 'default' or add "
+                    + "'x-default: true' to one of your service definitions."
+                )
+
+            # ensure that the default service is first in the dictionary
+            default_service = default_service or "default"
+            default_environment = environments[default_service]
+            del environments[default_service]
+            environments = {default_service: default_environment} | environments
+
+        except BaseException as ex:
+            await project_cleanup(project, True)
+            raise ex
+
+        return environments
+
+    @override
+    @classmethod
+    async def sample_cleanup(
+        cls,
+        task_name: str,
+        config: SandboxEnvironmentConfigType | None,
+        environments: dict[str, SandboxEnvironment],
+        interrupted: bool,
+    ) -> None:
+        # if we were interrupted then wait unil the end of the task to cleanup
+        # (this enables us to show output for the cleanup operation)
+        if not interrupted:
+            # extract project from first environment
+            project = (
+                next(iter(environments.values()))
+                .as_type(DockerSandboxEnvironment)
+                ._project
+            )
+            # cleanup the project
+            await project_cleanup(project=project, quiet=True)
+
+    @classmethod
+    async def task_cleanup(
+        cls, task_name: str, config: SandboxEnvironmentConfigType | None, cleanup: bool
+    ) -> None:
+        await project_cleanup_shutdown(cleanup)
+
+    @classmethod
+    async def cli_cleanup(cls, id: str | None) -> None:
+        await cli_cleanup(id)
+
+    def __init__(self, service: str, project: ComposeProject, working_dir: str) -> None:
+        super().__init__()
+        self._service = service
+        self._project = project
+        self._working_dir = working_dir
+        self._unavailable_diagnostics_logged = False
+
+    @override
+    async def exec(
+        self,
+        cmd: list[str],
+        input: str | bytes | None = None,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        user: str | None = None,
+        timeout: int | None = None,
+        timeout_retry: bool = True,
+        concurrency: bool = True,
+    ) -> ExecResult[str]:
+        # additional args
+        args = []
+
+        final_cwd = PurePosixPath(self._working_dir if cwd is None else cwd)
+        if not final_cwd.is_absolute():
+            final_cwd = self._working_dir / final_cwd
+
+        args.append("--workdir")
+        args.append(str(final_cwd))
+
+        if user:
+            args.append("--user")
+            args.append(user)
+
+        # Forward environment commands to docker compose exec so they
+        # will be available to the bash command
+        if env:
+            for key, value in env.items():
+                args.append("--env")
+                args.append(f"{key}={value}")
+
+        # wrap with in-container `timeout` so the actual process tree
+        # is killed when the timeout fires (docker exec detaches on
+        # signal rather than forwarding it, so a host-level timeout
+        # alone leaves orphaned processes inside the container).
+        in_container_cmd = cmd
+        if timeout is not None:
+            in_container_cmd = ["timeout", "-k", "5s", f"{timeout}s", *cmd]
+
+        # add a buffer to the host timeout so the in-container timeout
+        # fires first under normal conditions. the in-container timeout
+        # takes up to {timeout + 5}s to complete (timeout + SIGKILL grace),
+        # so add 10s for slack and daemon round-trip. the existing host
+        # timeout retry mechanism in compose_command only fires on host
+        # TimeoutError (genuine daemon hangs); when the in-container
+        # timeout fires we get exit 124 returned cleanly and no retry.
+        host_timeout = timeout + 10 if timeout is not None else None
+
+        start_time = time.monotonic()
+        exec_result = await compose_exec(
+            args + [self._service] + in_container_cmd,
+            project=self._project,
+            timeout=host_timeout,
+            timeout_retry=timeout_retry,
+            input=input,
+            output_limit=SandboxEnvironmentLimits.MAX_EXEC_OUTPUT_SIZE,
+            concurrency=concurrency,
+        )
+
+        # in-container timeout fired. the docker CLI returned cleanly
+        # — this is NOT a daemon hang — so fail hard with a TimeoutError
+        # rather than returning the exit code. exit codes vary by
+        # implementation:
+        #   124: GNU timeout, command killed by SIGTERM (the normal case)
+        #   137: SIGKILL escalation via -k (command ignored SIGTERM)
+        #   143: BusyBox timeout, command killed by SIGTERM (128 + 15)
+        #
+        # 137 and 143 are ambiguous: OOM kills also produce 137, and
+        # any SIGTERM from any source produces 143. we use wall-clock
+        # time to disambiguate these from actual timeouts.
+        elapsed = time.monotonic() - start_time
+        if timeout is not None and exec_result.returncode in (124, 137, 143):
+            if exec_result.returncode == 124 or elapsed >= timeout:
+                # preserve the partial output captured before the timeout so it can
+                # be surfaced to the caller via SandboxTimeoutError.truncated_output
+                timeout_error = TimeoutError(
+                    f"Command timed out after {timeout} seconds"
+                )
+                partial_output = (exec_result.stdout or "") + (exec_result.stderr or "")
+                if partial_output:
+                    setattr(timeout_error, "truncated_output", partial_output)
+                raise timeout_error
+            # else: signal-death exit code but too fast to be a timeout
+            # (e.g. OOM kill) — fall through and return the ExecResult
+
+        failure = classify_exec_failure(
+            exec_result,
+            wrapper=InjectedWrapper(binary=in_container_cmd[0], target=cmd[0])
+            if in_container_cmd is not cmd and cmd
+            else None,
+        )
+
+        # a container dying mid-command is invisible to the classifier: docker
+        # reports nothing at all, just the signal-death exit code (#264).
+        # ordinary commands exit silently with small codes constantly
+        # (`grep -q` without a match), so only signal-death exits (> 128) pay
+        # the `compose ps` confirmation, and only a positively dead container
+        # escalates.
+        if (
+            failure is None
+            and not exec_result.success
+            and exec_result.returncode > 128
+            and not exec_result.stdout.strip()
+            and not exec_result.stderr.strip()
+            and await service_dead(self._service, self._project)
+        ):
+            failure = SandboxUnavailableError(
+                "The sandbox is not running and cannot execute: command "
+                f"exited with code {exec_result.returncode} and no output, "
+                f'and the container for service "{self._service}" has exited '
+                "(container diagnostics logged as a warning)"
+            )
+
+        if failure is not None:
+            if isinstance(failure, SandboxUnavailableError):
+                await self._log_unavailable_diagnostics()
+            raise failure
+
+        return exec_result
+
+    async def _log_unavailable_diagnostics(self) -> None:
+        """Log post-mortem evidence for this environment's dead container.
+
+        Logged (not embedded in the error): the audience is the human/CI
+        post-mortem, and error text reaches the model as tool output — up to
+        ~12KB of agent-writable container logs per call. Collected once per
+        environment: a dead sandbox fails every subsequent exec identically,
+        and repeating the probes only loads a daemon that may already be
+        struggling.
+        """
+        if self._unavailable_diagnostics_logged:
+            return
+        self._unavailable_diagnostics_logged = True
+        logger.warning(
+            await sandbox_unavailable_diagnostics(self._service, self._project)
+        )
+
+    @override
+    async def write_file(self, file: str, contents: str | bytes) -> None:
+        # defualt timeout for write_file operations
+        TIMEOUT = 600
+
+        # resolve relative file paths
+        file = self.container_file(file)
+
+        # ensure that the directory exists
+        parent = Path(file).parent.as_posix()
+        if parent != ".":
+            result = await self.exec(["mkdir", "-p", parent])
+            if not result.success:
+                msg = f"Failed to create container directory {parent}: {result.stderr}"
+                raise RuntimeError(msg)
+
+        # write the file
+        if isinstance(contents, str):
+            result = await self.exec(
+                [
+                    "sh",
+                    "-e",
+                    "-c",
+                    'tee -- "$1" > /dev/null',
+                    "write_file_script",
+                    file,
+                ],
+                input=contents,
+                timeout=TIMEOUT,
+            )
+        else:
+            base64_contents = base64.b64encode(contents).decode("US-ASCII")
+            result = await self.exec(
+                [
+                    "sh",
+                    "-e",
+                    "-c",
+                    'base64 -d | tee -- "$1" > /dev/null',
+                    "write_file_script",
+                    file,
+                ],
+                input=base64_contents,
+                timeout=TIMEOUT,
+            )
+        if result.returncode != 0:
+            if "permission denied" in result.stderr.casefold():
+                ls_result = await self.exec(["ls", "-la", "."])
+                error_string = f"Permission was denied. Error details: {result.stderr}; ls -la: {ls_result.stdout}"
+                raise PermissionError(error_string)
+            elif (
+                "cannot overwrite directory" in result.stderr.casefold()
+                or "is a directory" in result.stderr.casefold()
+            ):
+                raise IsADirectoryError(
+                    f"Failed to write file: {file} because it is a directory already"
+                )
+            else:
+                raise RuntimeError(f"failed to copy during write_file: {result}")
+
+    @overload
+    async def read_file(self, file: str, text: Literal[True] = True) -> str: ...
+
+    @overload
+    async def read_file(self, file: str, text: Literal[False]) -> bytes: ...
+
+    @override
+    async def read_file(self, file: str, text: bool = True) -> Union[str, bytes]:
+        original_file = file
+        if _is_directory_alias(file):
+            raise _is_directory_error(original_file)
+
+        # resolve relative file paths
+        file = self.container_file(file)
+
+        # Copy the contents to a host temp file
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            temp_root = Path(temp_dir).resolve(strict=True)
+            dest_fd, dest_file = tempfile.mkstemp(dir=temp_root, prefix="read-")
+            # Keep an existing regular destination so directory copies fail, while
+            # detecting sources (such as sockets) that Docker silently skips.
+            staging_canary = os.urandom(_READ_FILE_STAGING_CANARY_BYTES)
+            with os.fdopen(dest_fd, "wb") as f:
+                f.write(staging_canary)
+            dest_path = Path(dest_file)
+            _validate_staged_read_file(temp_root, dest_path, original_file)
+
+            # copy the file
+            try:
+                await compose_cp(
+                    src=f"{self._service}:{file}",
+                    dest=dest_path.name,
+                    project=self._project,
+                    cwd=temp_root,
+                    output_limit=SandboxEnvironmentLimits.MAX_READ_FILE_SIZE,
+                    # A failed copy may replace the destination with a symlink.
+                    # Never retry against a path previously exposed to Docker.
+                    timeout_retry=False,
+                )
+            except RuntimeError as ex:
+                # extract the message and normalise case
+                message = str(ex).lower()
+
+                # FileNotFoundError
+                if (
+                    "could not find the file" in message
+                    or "no such file or directory" in message
+                ):
+                    raise FileNotFoundError(
+                        errno.ENOENT, "No such file or directory.", original_file
+                    ) from ex
+
+                # PermissionError
+                elif "permission denied" in message:
+                    raise PermissionError(
+                        errno.EACCES, "Permission denied.", original_file
+                    ) from ex
+
+                # IsADirectoryError
+                elif "cannot copy directory" in message or "is a directory" in message:
+                    raise _is_directory_error(original_file) from ex
+                else:
+                    raise
+
+            _validate_staged_read_file(temp_root, dest_path, original_file)
+
+            # read and return w/ appropriate encoding
+            try:
+                if _staged_read_file_matches_canary(dest_path, staging_canary):
+                    raise OSError(
+                        errno.EINVAL,
+                        "Docker read_file did not produce a regular file.",
+                        original_file,
+                    )
+                verify_read_file_size(str(dest_path))
+                if text:
+                    with open(dest_path, "r", newline="", encoding="utf-8") as f:
+                        return f.read()
+                else:
+                    with open(dest_path, "rb") as f:
+                        return f.read()
+            except PermissionError as ex:
+                raise PermissionError(
+                    errno.EACCES, "Permission denied.", original_file
+                ) from ex
+
+    @override
+    async def connection(self, *, user: str | None = None) -> SandboxConnection:
+        # find container for service
+        services = await compose_ps(project=self._project)
+        container = next(
+            (
+                service["Name"]
+                for service in services
+                if service["Service"] == self._service
+            ),
+            None,
+        )
+
+        # vscode doesn't support attaching to a container as a specific user,
+        # so don't include the vscode command if a user is specified
+        vscode_command = (
+            [
+                "remote-containers.attachToRunningContainer",
+                container,
+            ]
+            if user is None
+            else None
+        )
+
+        # return container connection
+        if container:
+            return SandboxConnection(
+                type="docker",
+                command=shlex.join(
+                    [
+                        "docker",
+                        "exec",
+                        "-it",
+                        *(["--user", user] if user else []),
+                        container,
+                        "bash",
+                        "-l",
+                    ]
+                ),
+                vscode_command=vscode_command,
+                ports=await get_ports_info(container),
+                container=container,
+            )
+        # error (not currently running)
+        else:
+            raise ConnectionError(
+                f"Service '{self._service} is not currently running.'"
+            )
+
+    def default_polling_interval(self) -> float:
+        return 0.2
+
+    def container_file(self, file: str) -> str:
+        path = Path(file)
+        if not path.is_absolute():
+            path = Path(self._working_dir) / path
+        return path.as_posix()
+
+
+def _is_directory_alias(file: str) -> bool:
+    return posixpath.basename(file.rstrip("/")) in (".", "..")
+
+
+def _is_directory_error(file: str) -> IsADirectoryError:
+    return IsADirectoryError(errno.EISDIR, "Is a directory.", file)
+
+
+def _staged_read_file_matches_canary(dest_path: Path, canary: bytes) -> bool:
+    if dest_path.stat().st_size != len(canary):
+        return False
+    with dest_path.open("rb") as f:
+        return f.read() == canary
+
+
+def _validate_staged_read_file(
+    temp_root: Path, dest_path: Path, original_file: str
+) -> None:
+    if dest_path.parent.resolve(strict=True) != temp_root:
+        raise RuntimeError("Docker read_file staging path escaped its temporary root.")
+
+    try:
+        mode = dest_path.lstat().st_mode
+    except FileNotFoundError as ex:
+        raise RuntimeError("Docker read_file staging file is missing.") from ex
+
+    if not stat.S_ISREG(mode):
+        raise OSError(
+            errno.EINVAL,
+            "Docker read_file did not produce a regular file.",
+            original_file,
+        )
+
+    if dest_path.resolve(strict=True).parent != temp_root:
+        raise RuntimeError("Docker read_file staging file escaped its temporary root.")
+
+
+async def container_working_dir(
+    service: str, project: ComposeProject, default: str = "/"
+) -> str:
+    result = await compose_exec(
+        [service, "sh", "-c", "pwd"], timeout=60, project=project
+    )
+    if result.success:
+        return result.stdout.strip()
+    else:
+        logger.warning(
+            f"Failed to get working directory for docker container '{service}': "
+            + f"{result.stderr}"
+        )
+        return default
+
+
+async def get_ports_info(container: str) -> list[PortMapping] | None:
+    try:
+        result = await subprocess(
+            [
+                "docker",
+                "inspect",
+                container,
+                "--format",
+                "{{json .NetworkSettings.Ports}}",
+            ],
+            timeout=60,
+        )
+
+        if not result.success:
+            raise RuntimeError(result.stderr)
+
+        return parse_docker_inspect_ports(result.stdout)
+
+    # It's currently a policy decision to let docker timeouts to be silent.
+    except TimeoutError:
+        return None
+
+
+def parse_docker_inspect_ports(json_str: str) -> list[PortMapping] | None:
+    """
+    Parses the JSON output from `docker inspect {container_name} --format='{{json .NetworkSettings.Ports}}'` to extract port mappings.
+
+    Args:
+        json_str (str): A JSON string representing the `NetworkSettings.Ports` output of `docker inspect`. e.g.
+          ```
+          {
+              "5900/tcp": [{"HostIp": "0.0.0.0", "HostPort": "54023"}],
+              "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "54024"}]
+          }
+          ```
+
+    Returns:
+        list[PortMapping] | None: A list of PortMapping objects if any port mappings are found,
+                                   otherwise None.
+    """
+    data = json.loads(json_str)
+    port_mappings = []
+    for port_protocol, mappings in data.items():
+        if mappings is None:
+            continue
+        container_port, protocol = port_protocol.split("/")
+        host_mappings = [
+            HostMapping(host_ip=mapping["HostIp"], host_port=int(mapping["HostPort"]))
+            for mapping in mappings
+        ]
+        port_mapping = PortMapping(
+            container_port=int(container_port),
+            protocol=protocol,
+            mappings=host_mappings,
+        )
+        port_mappings.append(port_mapping)
+    return port_mappings if port_mappings else None
+
+
+class ConfigEnvironment(NamedTuple):
+    config_file: str
+    config_text: str
+    env: dict[str, str]
+
+
+def resolve_config_environment(
+    config: SandboxEnvironmentConfigType | None,
+    metadata: dict[str, str],
+) -> ConfigEnvironment | None:
+    # create environment variables for sample metadata
+    if isinstance(config, str) and Path(config).exists():
+        # read the config file
+        config_file = config
+        with open(config, "r") as f:
+            config_text = f.read()
+
+        # only add metadata files if the key is in the file
+        env: dict[str, str] = {}
+        for key, value in metadata.items():
+            key = f"SAMPLE_METADATA_{key.replace(' ', '_').upper()}"
+            if key in config_text:
+                env[key] = str(value)
+
+        # return resolved
+        return ConfigEnvironment(config_file, config_text, env)
+    elif isinstance(config, ComposeConfig):
+        # ComposeConfig objects don't support metadata interpolation
+        # (they are already fully resolved)
+        return None
+    else:
+        return None

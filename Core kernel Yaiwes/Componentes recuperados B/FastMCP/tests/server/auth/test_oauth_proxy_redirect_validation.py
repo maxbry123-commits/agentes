@@ -1,0 +1,811 @@
+"""Tests for OAuth proxy redirect URI validation."""
+
+from unittest.mock import patch
+
+import pytest
+from key_value.aio.stores.memory import MemoryStore
+from mcp.shared.auth import InvalidRedirectUriError
+from pydantic import AnyHttpUrl, AnyUrl
+
+from fastmcp.server.auth.auth import TokenVerifier
+from fastmcp.server.auth.cimd import CIMDDocument
+from fastmcp.server.auth.oauth_proxy import OAuthProxy
+from fastmcp.server.auth.oauth_proxy.models import ProxyDCRClient
+from fastmcp.server.auth.redirect_validation import (
+    is_loopback_host,
+    is_redirect_uri_allowed_for_application_type,
+)
+
+# Standard public IP used for DNS mocking in tests
+TEST_PUBLIC_IP = "93.184.216.34"
+
+
+class MockTokenVerifier(TokenVerifier):
+    """Mock token verifier for testing."""
+
+    def __init__(self):
+        self.required_scopes = []
+
+    async def verify_token(self, token: str) -> dict | None:  # type: ignore[override]  # ty:ignore[invalid-method-override]
+        return {"sub": "test-user"}
+
+
+class TestProxyDCRClient:
+    """Test ProxyDCRClient redirect URI validation."""
+
+    def test_default_uses_registered_redirect_uris_with_loopback_port_flexibility(self):
+        """Default DCR clients allow registered loopback callbacks to vary ports."""
+        client = ProxyDCRClient(
+            client_id="test",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("http://localhost:3000/callback")],
+        )
+
+        assert client.validate_redirect_uri(
+            AnyUrl("http://localhost:3000/callback")
+        ) == AnyUrl("http://localhost:3000/callback")
+        assert client.validate_redirect_uri(
+            AnyUrl("http://localhost:8080/callback")
+        ) == AnyUrl("http://localhost:8080/callback")
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("http://localhost:8080/other"))
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("http://127.0.0.1:3000/callback"))
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("http://example.com/callback"))
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(
+                AnyUrl("https://claude.ai/api/mcp/auth_callback")
+            )
+
+    def test_default_uses_exact_registered_external_redirect_uri(self):
+        """Default DCR clients require exact matches for non-loopback callbacks."""
+        client = ProxyDCRClient(
+            client_id="test",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("https://client.example.com/oauth/callback")],
+        )
+
+        assert client.validate_redirect_uri(
+            AnyUrl("https://client.example.com/oauth/callback")
+        ) == AnyUrl("https://client.example.com/oauth/callback")
+
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(
+                AnyUrl("https://client.example.com:8443/oauth/callback")
+            )
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("https://evil.example.com/callback"))
+
+    def test_synthetic_client_can_allow_unregistered_redirect_uris(self):
+        """Synthetic clients can opt in to broad redirect URI compatibility."""
+        client = ProxyDCRClient(
+            client_id="test",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("http://localhost")],
+            allow_unregistered_redirect_uris=True,
+        )
+
+        assert client.validate_redirect_uri(AnyUrl("http://localhost:8080")) == AnyUrl(
+            "http://localhost:8080"
+        )
+        assert client.validate_redirect_uri(
+            AnyUrl("https://claude.ai/api/mcp/auth_callback")
+        ) == AnyUrl("https://claude.ai/api/mcp/auth_callback")
+
+    def test_default_rejects_unsafe_registered_redirect_scheme(self):
+        """Stored DCR metadata cannot preserve unsafe browser schemes."""
+        client = ProxyDCRClient(
+            client_id="test",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("javascript:alert(document.cookie)//")],
+        )
+
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("javascript:alert(document.cookie)//"))
+
+    def test_custom_patterns(self):
+        """Test custom redirect URI patterns."""
+        client = ProxyDCRClient(
+            client_id="test",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("http://localhost:3000")],
+            allowed_redirect_uri_patterns=[
+                "http://localhost:*",
+                "https://app.example.com/*",
+            ],
+        )
+
+        # Allowed by patterns
+        assert client.validate_redirect_uri(AnyUrl("http://localhost:3000"))
+        assert client.validate_redirect_uri(AnyUrl("https://app.example.com/callback"))
+
+        # Not allowed by patterns
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("http://127.0.0.1:3000"))
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(
+                AnyUrl("cursor://anysphere.cursor-mcp/oauth/callback")
+            )
+
+    def test_default_not_applied_when_custom_patterns_supplied(self):
+        """Test that default validation is not applied when custom patterns are supplied."""
+        allowed_patterns = [
+            "cursor://anysphere.cursor-mcp/oauth/callback",
+            "https://app.example.com/*",
+        ]
+
+        client = ProxyDCRClient(
+            client_id="test",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("http://localhost:3000")],
+            allowed_redirect_uri_patterns=allowed_patterns,
+        )
+
+        assert client.validate_redirect_uri(
+            AnyUrl("https://app.example.com/oauth/callback")
+        )
+        assert client.validate_redirect_uri(
+            AnyUrl("cursor://anysphere.cursor-mcp/oauth/callback")
+        )
+
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("http://localhost:3000"))
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("http://127.0.0.1:3000"))
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("https://example.com"))
+
+    def test_empty_list_blocks_all(self):
+        """Empty allowed_redirect_uri_patterns blocks all redirect URIs, including pre-registered ones."""
+        client = ProxyDCRClient(
+            client_id="test",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("http://localhost:3000")],
+            allowed_redirect_uri_patterns=[],
+        )
+
+        # All URIs must be rejected — [] means "block all", not "fall back to redirect_uris"
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("http://localhost:3000"))
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("http://example.com"))
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("https://anywhere.com:9999/path"))
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("http://localhost:5000"))
+
+    def test_none_redirect_uri(self):
+        """Test that None redirect URI uses default behavior."""
+        client = ProxyDCRClient(
+            client_id="test",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("http://localhost:3000")],
+        )
+
+        # None should use the first registered URI
+        result = client.validate_redirect_uri(None)
+        assert result == AnyUrl("http://localhost:3000")
+
+    def test_none_redirect_uri_with_matching_patterns(self):
+        """DCR client with single URI and patterns: None resolves and validates against patterns."""
+        client = ProxyDCRClient(
+            client_id="test",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("http://localhost:3000")],
+            allowed_redirect_uri_patterns=["http://localhost:*"],
+        )
+
+        # Resolves to registered URI which matches the pattern — should succeed
+        result = client.validate_redirect_uri(None)
+        assert result == AnyUrl("http://localhost:3000")
+
+    def test_none_redirect_uri_with_nonmatching_patterns(self):
+        """DCR client with single URI and patterns: None raises if resolved URI doesn't match."""
+        client = ProxyDCRClient(
+            client_id="test",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("http://localhost:3000")],
+            allowed_redirect_uri_patterns=["https://myapp.example.com/*"],
+        )
+
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(None)
+
+    def test_cimd_none_redirect_uri_single_exact(self):
+        """CIMD clients may omit redirect_uri only when a single exact URI exists."""
+        cimd_doc = CIMDDocument(
+            client_id=AnyHttpUrl("https://example.com/client.json"),
+            redirect_uris=["http://localhost:3000/callback"],
+        )
+        client = ProxyDCRClient(
+            client_id="https://example.com/client.json",
+            client_secret=None,
+            redirect_uris=None,
+            cimd_document=cimd_doc,
+        )
+
+        result = client.validate_redirect_uri(None)
+        assert result == AnyUrl("http://localhost:3000/callback")
+
+    def test_cimd_none_redirect_uri_respects_proxy_patterns(self):
+        """CIMD fallback redirect_uri must still satisfy proxy allowlist patterns."""
+        cimd_doc = CIMDDocument(
+            client_id=AnyHttpUrl("https://example.com/client.json"),
+            redirect_uris=["https://evil.com/callback"],
+        )
+        client = ProxyDCRClient(
+            client_id="https://example.com/client.json",
+            client_secret=None,
+            redirect_uris=None,
+            cimd_document=cimd_doc,
+            allowed_redirect_uri_patterns=["http://localhost:*"],
+        )
+
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(None)
+
+    def test_cimd_none_redirect_uri_wildcard_rejected(self):
+        """CIMD clients must specify redirect_uri when only wildcard patterns exist."""
+        cimd_doc = CIMDDocument(
+            client_id=AnyHttpUrl("https://example.com/client.json"),
+            redirect_uris=["http://localhost:*/callback"],
+        )
+        client = ProxyDCRClient(
+            client_id="https://example.com/client.json",
+            client_secret=None,
+            redirect_uris=None,
+            cimd_document=cimd_doc,
+        )
+
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(None)
+
+    def test_cimd_loopback_no_port_matches_dynamic_port(self):
+        """RFC 8252 §7.3: CIMD redirect_uris without port match any loopback port."""
+        cimd_doc = CIMDDocument(
+            client_id=AnyHttpUrl("https://example.com/client.json"),
+            redirect_uris=[
+                "http://localhost/callback",
+                "http://127.0.0.1/callback",
+            ],
+        )
+        client = ProxyDCRClient(
+            client_id="https://example.com/client.json",
+            client_secret=None,
+            redirect_uris=None,
+            cimd_document=cimd_doc,
+        )
+
+        # Dynamic ports should be accepted per RFC 8252 §7.3
+        assert client.validate_redirect_uri(AnyUrl("http://localhost:51353/callback"))
+        assert client.validate_redirect_uri(AnyUrl("http://127.0.0.1:3000/callback"))
+
+        # Wrong path should still be rejected
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("http://localhost:51353/other"))
+
+    def test_cimd_empty_proxy_allowlist_rejects_redirect_uri(self):
+        """An explicit empty proxy allowlist should reject all CIMD redirect URIs."""
+        cimd_doc = CIMDDocument(
+            client_id=AnyHttpUrl("https://example.com/client.json"),
+            redirect_uris=["http://localhost:3000/callback"],
+        )
+        client = ProxyDCRClient(
+            client_id="https://example.com/client.json",
+            client_secret=None,
+            redirect_uris=None,
+            cimd_document=cimd_doc,
+            allowed_redirect_uri_patterns=[],
+        )
+
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("http://localhost:3000/callback"))
+
+
+class TestOAuthProxyRedirectValidation:
+    """Test OAuth proxy with redirect URI validation."""
+
+    def test_proxy_default_has_no_server_redirect_pattern_restriction(self):
+        """OAuth proxy defaults to no server-level redirect URI pattern restriction."""
+        proxy = OAuthProxy(
+            upstream_authorization_endpoint="https://auth.example.com/authorize",
+            upstream_token_endpoint="https://auth.example.com/token",
+            upstream_client_id="test-client",
+            upstream_client_secret="test-secret",
+            token_verifier=MockTokenVerifier(),
+            base_url="http://localhost:8000",
+            jwt_signing_key="test-secret",
+            client_storage=MemoryStore(),
+        )
+
+        # The proxy stores None when no server-level pattern restriction is configured.
+        assert proxy._allowed_client_redirect_uris is None
+
+    def test_proxy_custom_patterns(self):
+        """Test OAuth proxy with custom redirect patterns."""
+        custom_patterns = ["http://localhost:*", "https://*.myapp.com/*"]
+
+        proxy = OAuthProxy(
+            upstream_authorization_endpoint="https://auth.example.com/authorize",
+            upstream_token_endpoint="https://auth.example.com/token",
+            upstream_client_id="test-client",
+            upstream_client_secret="test-secret",
+            token_verifier=MockTokenVerifier(),
+            base_url="http://localhost:8000",
+            allowed_client_redirect_uris=custom_patterns,
+            jwt_signing_key="test-secret",
+            client_storage=MemoryStore(),
+        )
+
+        assert proxy._allowed_client_redirect_uris == custom_patterns
+
+    def test_proxy_empty_list_validation(self):
+        """Test OAuth proxy with empty list (allow none)."""
+        proxy = OAuthProxy(
+            upstream_authorization_endpoint="https://auth.example.com/authorize",
+            upstream_token_endpoint="https://auth.example.com/token",
+            upstream_client_id="test-client",
+            upstream_client_secret="test-secret",
+            token_verifier=MockTokenVerifier(),
+            base_url="http://localhost:8000",
+            allowed_client_redirect_uris=[],
+            jwt_signing_key="test-secret",
+            client_storage=MemoryStore(),
+        )
+
+        assert proxy._allowed_client_redirect_uris == []
+
+    async def test_proxy_register_client_uses_patterns(self):
+        """Test that registered clients use the configured patterns."""
+        custom_patterns = ["https://app.example.com/*"]
+
+        proxy = OAuthProxy(
+            upstream_authorization_endpoint="https://auth.example.com/authorize",
+            upstream_token_endpoint="https://auth.example.com/token",
+            upstream_client_id="test-client",
+            upstream_client_secret="test-secret",
+            token_verifier=MockTokenVerifier(),
+            base_url="http://localhost:8000",
+            allowed_client_redirect_uris=custom_patterns,
+            jwt_signing_key="test-secret",
+            client_storage=MemoryStore(),
+        )
+
+        # Register a client
+        from mcp.shared.auth import OAuthClientInformationFull
+
+        client_info = OAuthClientInformationFull(
+            client_id="new-client",
+            client_secret="new-secret",
+            redirect_uris=[AnyUrl("https://app.example.com/callback")],
+        )
+
+        await proxy.register_client(client_info)
+
+        # Get the registered client
+        registered = await proxy.get_client(
+            "new-client"
+        )  # Use the client ID we registered
+        assert isinstance(registered, ProxyDCRClient)
+        assert registered.allowed_redirect_uri_patterns == custom_patterns
+
+    async def test_proxy_unregistered_client_returns_none(self):
+        """Test that unregistered clients return None."""
+        custom_patterns = ["http://localhost:*", "http://127.0.0.1:*"]
+
+        proxy = OAuthProxy(
+            upstream_authorization_endpoint="https://auth.example.com/authorize",
+            upstream_token_endpoint="https://auth.example.com/token",
+            upstream_client_id="test-client",
+            upstream_client_secret="test-secret",
+            token_verifier=MockTokenVerifier(),
+            base_url="http://localhost:8000",
+            allowed_client_redirect_uris=custom_patterns,
+            jwt_signing_key="test-secret",
+            client_storage=MemoryStore(),
+        )
+
+        # Get an unregistered client
+        client = await proxy.get_client("unknown-client")
+        assert client is None
+
+
+class TestOAuthProxyCIMDClient:
+    """Test that CIMD clients obtained via proxy carry their document and apply dual validation."""
+
+    @pytest.fixture
+    def mock_dns(self):
+        """Mock DNS resolution to return test public IP."""
+        with patch(
+            "fastmcp.server.auth.ssrf.resolve_hostname",
+            return_value=[TEST_PUBLIC_IP],
+        ):
+            yield
+
+    async def test_proxy_get_client_returns_cimd_client(self, httpx_mock, mock_dns):
+        """CIMD client obtained via proxy's get_client has cimd_document attached."""
+        url = "https://example.com/client.json"
+        doc_data = {
+            "client_id": url,
+            "client_name": "CIMD App",
+            "redirect_uris": ["http://localhost:*/callback"],
+            "token_endpoint_auth_method": "none",
+        }
+        httpx_mock.add_response(
+            json=doc_data,
+            headers={"content-length": "200"},
+        )
+
+        proxy = OAuthProxy(
+            upstream_authorization_endpoint="https://auth.example.com/authorize",
+            upstream_token_endpoint="https://auth.example.com/token",
+            upstream_client_id="test-client",
+            upstream_client_secret="test-secret",
+            token_verifier=MockTokenVerifier(),
+            base_url="http://localhost:8000",
+            jwt_signing_key="test-secret",
+            client_storage=MemoryStore(),
+        )
+
+        client = await proxy.get_client(url)
+        assert isinstance(client, ProxyDCRClient)
+        assert client.cimd_document is not None
+        assert client.cimd_document.client_name == "CIMD App"
+        assert client.client_id == url
+
+    async def test_proxy_cimd_dual_redirect_validation(self, httpx_mock, mock_dns):
+        """CIMD client from proxy enforces both CIMD redirect_uris and proxy patterns."""
+        url = "https://example.com/client.json"
+        doc_data = {
+            "client_id": url,
+            "client_name": "Dual Validation App",
+            "redirect_uris": [
+                "http://localhost:3000/callback",
+                "https://evil.com/callback",
+            ],
+            "token_endpoint_auth_method": "none",
+        }
+        httpx_mock.add_response(
+            json=doc_data,
+            headers={"content-length": "200"},
+        )
+
+        proxy = OAuthProxy(
+            upstream_authorization_endpoint="https://auth.example.com/authorize",
+            upstream_token_endpoint="https://auth.example.com/token",
+            upstream_client_id="test-client",
+            upstream_client_secret="test-secret",
+            token_verifier=MockTokenVerifier(),
+            base_url="http://localhost:8000",
+            allowed_client_redirect_uris=["http://localhost:*"],
+            jwt_signing_key="test-secret",
+            client_storage=MemoryStore(),
+        )
+
+        client = await proxy.get_client(url)
+        assert client is not None
+
+        # In CIMD AND matches proxy pattern → accepted
+        assert client.validate_redirect_uri(AnyUrl("http://localhost:3000/callback"))
+
+        # In CIMD but NOT in proxy pattern → rejected
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("https://evil.com/callback"))
+
+        # NOT in CIMD but matches proxy pattern → rejected
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(AnyUrl("http://localhost:9999/other"))
+
+
+class TestRegisteredLoopbackPortFlexibility:
+    """The registered-URI port-flexible match uses the shared loopback classifier.
+
+    `models.py` previously carried its own `_is_loopback_host` that only knew
+    `127.0.0.1`, so a client registered on another address in `127.0.0.0/8`
+    silently lost port flexibility and was rejected as unregistered.
+    """
+
+    @pytest.mark.parametrize(
+        "host",
+        ["127.0.0.1", "127.0.0.2", "127.5.5.5", "localhost", "app.localhost"],
+    )
+    def test_loopback_range_keeps_port_flexibility(self, host: str):
+        client = ProxyDCRClient(
+            client_id="native",
+            client_secret="secret",
+            redirect_uris=[AnyUrl(f"http://{host}:3000/callback")],
+        )
+
+        uri = client.validate_redirect_uri(AnyUrl(f"http://{host}:54321/callback"))
+        assert str(uri) == f"http://{host}:54321/callback"
+
+    def test_non_loopback_host_still_requires_exact_match(self):
+        """Port flexibility is loopback-only; other hosts must match exactly."""
+        client = ProxyDCRClient(
+            client_id="external",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("https://client.example.com:3000/callback")],
+        )
+
+        uri = client.validate_redirect_uri(
+            AnyUrl("https://client.example.com:3000/callback")
+        )
+        assert str(uri) == "https://client.example.com:3000/callback"
+
+        with pytest.raises(InvalidRedirectUriError):
+            client.validate_redirect_uri(
+                AnyUrl("https://client.example.com:54321/callback")
+            )
+
+
+class TestStoredApplicationTypeAtAuthorization:
+    """SEP-837: a stored client's application_type is enforced at authorization."""
+
+    def test_web_client_rejects_loopback_at_authorization(self):
+        """A registered web client cannot later authorize a loopback redirect."""
+        client = ProxyDCRClient(
+            client_id="web",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("https://client.example.com/callback")],
+            application_type="web",
+        )
+
+        uri = client.validate_redirect_uri(
+            AnyUrl("https://client.example.com/callback")
+        )
+        assert str(uri) == "https://client.example.com/callback"
+
+        with pytest.raises(InvalidRedirectUriError, match="application_type 'web'"):
+            client.validate_redirect_uri(AnyUrl("http://localhost:8080/callback"))
+
+    def test_web_client_rejects_loopback_even_when_pattern_allows(self):
+        """The application_type check applies on top of the global allowlist."""
+        client = ProxyDCRClient(
+            client_id="web",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("https://client.example.com/callback")],
+            application_type="web",
+            allowed_redirect_uri_patterns=["http://localhost:*", "https://*/*"],
+        )
+
+        with pytest.raises(InvalidRedirectUriError, match="application_type 'web'"):
+            client.validate_redirect_uri(AnyUrl("http://localhost:8080/callback"))
+
+    def test_native_client_accepts_loopback_at_authorization(self):
+        client = ProxyDCRClient(
+            client_id="native",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("http://localhost:8080/callback")],
+            application_type="native",
+        )
+
+        uri = client.validate_redirect_uri(AnyUrl("http://localhost:55555/callback"))
+        assert str(uri) == "http://localhost:55555/callback"
+
+    def test_web_client_rejects_localhost_namespace_at_authorization(self):
+        """The shared classifier means the namespace fix reaches this path too."""
+        client = ProxyDCRClient(
+            client_id="web",
+            client_secret="secret",
+            redirect_uris=[AnyUrl("https://client.example.com/callback")],
+            application_type="web",
+            allowed_redirect_uri_patterns=["https://*/*"],
+        )
+
+        with pytest.raises(InvalidRedirectUriError, match="application_type 'web'"):
+            client.validate_redirect_uri(AnyUrl("https://app.localhost/callback"))
+
+
+class TestApplicationTypeRedirectRules:
+    """SEP-837: application_type governs the web vs native redirect rules."""
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "https://client.example.com/callback",
+            "https://app.example.com:8443/oauth/callback",
+        ],
+    )
+    def test_web_accepts_https(self, uri: str):
+        assert is_redirect_uri_allowed_for_application_type(uri, "web") is True
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "http://127.0.0.1:8080/callback",
+            "http://localhost:12345/callback",
+            "http://[::1]:9000/callback",
+            "https://localhost/callback",
+            "com.example.app:/oauth/callback",
+            "myapp://callback",
+            "http://client.example.com/callback",
+        ],
+    )
+    def test_web_rejects_loopback_and_custom_schemes(self, uri: str):
+        """Web clients must use https on a non-loopback host."""
+        assert is_redirect_uri_allowed_for_application_type(uri, "web") is False
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "http://127.0.0.1:8080/callback",
+            "http://localhost:12345/callback",
+            "http://[::1]:9000/callback",
+            "com.example.app:/oauth/callback",
+            "cursor://anysphere.cursor-mcp/oauth/callback",
+            "myapp://callback",
+            "https://client.example.com/callback",
+        ],
+    )
+    def test_native_accepts_loopback_and_custom_schemes(self, uri: str):
+        assert is_redirect_uri_allowed_for_application_type(uri, "native") is True
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "http://client.example.com/callback",
+            "http://example.com:8080/callback",
+        ],
+    )
+    def test_native_rejects_non_loopback_cleartext_http(self, uri: str):
+        """Native may use cleartext http only against a loopback host."""
+        assert is_redirect_uri_allowed_for_application_type(uri, "native") is False
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            # Real MCP client callbacks — these must keep working.
+            "vscode://callback",
+            "vscode-insiders://callback",
+            "urn:ietf:wg:oauth:2.0:oob",
+            "cursor://anysphere.cursor-mcp/oauth/callback",
+            # Reverse-domain and plain app schemes.
+            "com.example.app://callback",
+            "com.example.app:/oauth/callback",
+            "myapp://callback",
+        ],
+    )
+    def test_native_accepts_app_and_private_use_schemes(self, uri: str):
+        """Native clients keep every scheme outside the unsafe set.
+
+        FastMCP deliberately does not try to classify a native client's scheme
+        as "private-use" versus "network transport": the IANA registry lists
+        `vscode` (an app-dispatch scheme) alongside `coap` and `smb`, so no
+        membership test separates the two without rejecting schemes that real
+        MCP clients depend on.
+        """
+        assert is_redirect_uri_allowed_for_application_type(uri, "native") is True
+
+    @pytest.mark.parametrize(
+        "host",
+        ["127.0.0.1", "127.0.0.2", "127.5.5.5", "127.255.255.254"],
+    )
+    def test_web_rejects_entire_loopback_range(self, host: str):
+        """RFC 8252 §7.3 loopback is all of 127.0.0.0/8, not just 127.0.0.1.
+
+        Checking only 127.0.0.1 would let a web client bypass the non-loopback
+        requirement with any other address in the range.
+        """
+        uri = f"https://{host}/callback"
+        assert is_redirect_uri_allowed_for_application_type(uri, "web") is False
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "http://127.0.0.1:1234/cb",
+            "http://127.0.0.2:1234/cb",
+            "http://127.5.5.5:1234/cb",
+            "http://[::1]:1234/cb",
+            "http://localhost:1234/cb",
+        ],
+    )
+    def test_native_accepts_entire_loopback_range(self, uri: str):
+        """The widened loopback range cuts both ways: native gains 127.0.0.0/8."""
+        assert is_redirect_uri_allowed_for_application_type(uri, "native") is True
+
+
+class TestLocalhostNamespaceIsLoopback:
+    """RFC 6761 §6.3 reserves the whole `localhost` namespace for the local machine."""
+
+    @pytest.mark.parametrize(
+        "host",
+        [
+            "localhost",
+            "localhost.",  # absolute (FQDN) form
+            "LOCALHOST",
+            "app.localhost",  # reserved namespace
+            "api.app.localhost",
+            "App.LocalHost",
+            "evil.localhost",  # .localhost is a reserved TLD — genuinely local
+            "127.0.0.1",
+            "127.0.0.1.",  # absolute form of an IP literal
+            "127.0.0.2.",
+            "::1",
+            "[::1]",
+        ],
+    )
+    def test_loopback_names_and_literals(self, host: str):
+        assert is_loopback_host(host) is True
+
+    @pytest.mark.parametrize(
+        "host",
+        [
+            # `localhost` as a *label* of a registrable domain is not local. The
+            # suffix test is anchored on a leading dot so these cannot spoof it.
+            "localhost.evil.com",
+            "localhost.evil.com.",
+            "notlocalhost",
+            "mylocalhost",
+            "localhostx",
+            "evil.com",
+            "",
+            ".",
+        ],
+    )
+    def test_non_loopback_names_are_not_spoofable(self, host: str):
+        assert is_loopback_host(host) is False
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "https://app.localhost/cb",
+            "https://localhost./cb",
+            "https://api.app.localhost/cb",
+            "https://127.0.0.1./cb",
+        ],
+    )
+    def test_web_rejects_localhost_namespace(self, uri: str):
+        """Web clients must not reach the local machine by name."""
+        assert is_redirect_uri_allowed_for_application_type(uri, "web") is False
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "https://localhost.evil.com/cb",
+            "https://notlocalhost/cb",
+        ],
+    )
+    def test_web_still_accepts_ordinary_public_https(self, uri: str):
+        """Names that merely contain 'localhost' remain ordinary public hosts."""
+        assert is_redirect_uri_allowed_for_application_type(uri, "web") is True
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "http://app.localhost:3000/cb",
+            "http://localhost.:3000/cb",
+            "http://api.app.localhost:3000/cb",
+            "http://127.0.0.1.:3000/cb",
+        ],
+    )
+    def test_native_accepts_localhost_namespace(self, uri: str):
+        """These are legitimate loopback dev callbacks and must not be rejected."""
+        assert is_redirect_uri_allowed_for_application_type(uri, "native") is True
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "http://localhost.evil.com:3000/cb",
+            "http://notlocalhost:3000/cb",
+        ],
+    )
+    def test_native_rejects_plain_http_to_non_loopback_lookalikes(self, uri: str):
+        assert is_redirect_uri_allowed_for_application_type(uri, "native") is False
+
+    @pytest.mark.parametrize("application_type", ["web", "native"])
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "javascript:alert(document.cookie)//",
+            "data:text/html,<script>alert(1)</script>",
+            "file:///etc/passwd",
+            "vbscript:msgbox(1)",
+        ],
+    )
+    def test_unsafe_schemes_rejected_for_all_types(
+        self, uri: str, application_type: str
+    ):
+        assert (
+            is_redirect_uri_allowed_for_application_type(uri, application_type) is False
+        )

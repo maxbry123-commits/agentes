@@ -1,0 +1,49 @@
+# openswarm-runner: one ephemeral Firecracker machine per workflow run. Boots the
+# backend headless, runs the workflow, reports, exits. Nothing here is long-lived.
+#
+# THIS APP MUST NOT SHARE THE TRUSTED 6PN MESH with openswarm-cloud / openswarm-edge.
+# The agent inside has Bash and executes user prose, so from in here
+# `curl http://openswarm-cloud.internal:8080` must resolve to nothing. Fly decides an
+# app's private network AT CREATE TIME and fly.toml cannot express it, so the app is
+# created once, by hand, onto its own isolated network:
+#
+#   fly apps create openswarm-runner --org openswarm --network openswarm-runner-isolated
+#   fly deploy . --config openswarm-runner/fly.toml --dockerfile openswarm-runner/Dockerfile
+#
+# (deploy runs from the REPO ROOT: the image needs backend/ in its build context.)
+# Verify the isolation after the first deploy, do not assume it:
+#   fly ssh console -a openswarm-runner -C "getent hosts openswarm-cloud.internal"   # must fail
+#
+# There is deliberately no [http_service] and no [[services]]: the runner takes no
+# inbound traffic and gets no public IP. It reaches the control plane outbound over
+# the public internet with the callback token in the run spec, which is why the two
+# do not need a shared private network in the first place.
+#
+# Machines are created per run by the control plane (Machines API, auto_destroy=true,
+# run spec passed as OPENSWARM_RUN_SPEC). This file is the app-level shape they inherit.
+
+app = 'openswarm-runner'
+primary_region = 'iad'
+kill_signal = 'SIGTERM'
+kill_timeout = '30s'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+# No [env] block on purpose. Per-run machines are created through the Machines API,
+# which does not read this file, so anything set here would apply to the deploy's
+# template machine and to nothing that actually runs a workflow. Every runtime value,
+# including the RUNNER_MAX_RUN_SECONDS wall-clock cap, is baked into the image instead.
+
+# The template machine this deploy creates has no run spec, so it exits 2 immediately.
+# Without this it would crash-loop on Fly's default on-failure policy and bill forever.
+[[restart]]
+  policy = 'never'
+
+# No [[mounts]]: a run's state is garbage the moment it ends, and an ephemeral rootfs
+# means one run cannot leave a credential lying around for the next tenant to find.
+
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 2
+  memory_mb = 4096

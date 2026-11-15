@@ -1,0 +1,269 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::{
+    server::ShutdownHandle,
+    startup_lifecycle::{
+        EmbeddedStartupGuard, embedded_endpoint_address, log_embedded_server_ready, publish_embedded_startup_ready,
+        release_embedded_startup_guard,
+    },
+    startup_runtime_hooks::init_embedded_runtime_hooks,
+    startup_server::{
+        EmbeddedStartupConfig, init_embedded_startup_listen_context, prepare_embedded_startup_config, start_embedded_http_server,
+    },
+    startup_services::init_embedded_startup_runtime_services,
+    startup_shutdown::signal_embedded_startup_shutdown,
+    startup_storage::{init_embedded_startup_storage_foundation, init_embedded_startup_storage_runtime},
+    storage_api::server::http::ServerContextSlot,
+    storage_api::startup::storage::bootstrap_instance_ctx,
+};
+use std::{io, net::SocketAddr, path::PathBuf};
+use tokio_util::sync::CancellationToken;
+
+pub(crate) struct EmbeddedStartupArgs {
+    address: String,
+    access_key: String,
+    secret_key: String,
+    volumes: Vec<String>,
+    region: String,
+}
+
+impl EmbeddedStartupArgs {
+    pub(crate) fn new_default() -> Self {
+        Self {
+            address: "127.0.0.1:9000".to_string(),
+            access_key: rustfs_credentials::DEFAULT_ACCESS_KEY.to_string(),
+            secret_key: rustfs_credentials::DEFAULT_SECRET_KEY.to_string(),
+            volumes: Vec::new(),
+            region: rustfs_config::RUSTFS_REGION.to_string(),
+        }
+    }
+
+    pub(crate) fn set_address(&mut self, address: String) {
+        self.address = address;
+    }
+
+    pub(crate) fn set_access_key(&mut self, access_key: String) {
+        self.access_key = access_key;
+    }
+
+    pub(crate) fn set_secret_key(&mut self, secret_key: String) {
+        self.secret_key = secret_key;
+    }
+
+    pub(crate) fn set_region(&mut self, region: String) {
+        self.region = region;
+    }
+
+    pub(crate) fn push_volume(&mut self, path: String) {
+        self.volumes.push(path);
+    }
+
+    pub(crate) fn set_volumes(&mut self, paths: Vec<String>) {
+        self.volumes = paths;
+    }
+}
+
+pub(crate) struct EmbeddedStartedServer {
+    pub(crate) bound_addr: SocketAddr,
+    pub(crate) access_key: String,
+    pub(crate) secret_key: String,
+    pub(crate) region: String,
+    pub(crate) shutdown_handle: ShutdownHandle,
+    pub(crate) cancel_token: CancellationToken,
+    pub(crate) temp_dir: Option<PathBuf>,
+}
+
+#[derive(Debug)]
+pub(crate) enum EmbeddedStartupError {
+    AlreadyStarted,
+    Init(String),
+    Io(io::Error),
+}
+
+impl From<io::Error> for EmbeddedStartupError {
+    fn from(err: io::Error) -> Self {
+        Self::Io(err)
+    }
+}
+
+pub(crate) async fn run_embedded_startup(args: EmbeddedStartupArgs) -> Result<EmbeddedStartedServer, EmbeddedStartupError> {
+    let EmbeddedStartupArgs {
+        address,
+        access_key,
+        secret_key,
+        volumes,
+        region,
+    } = args;
+    // Build is allowed to fail before irreversible global initialization
+    // (for example on temporary I/O or directory setup errors), and in that
+    // case callers can retry.
+    let mut startup_guard = EmbeddedStartupGuard::new();
+
+    // The embedded server still shares the process bootstrap context (see the
+    // EMBEDDED_SERVER_STARTED guard); once the request path and app subsystems
+    // are per-server too (backlog#1052 S2–S4), each server constructs its own
+    // context here instead.
+    // The first embedded server adopts the process bootstrap context so the
+    // process-wide facades (current_ctx()) see live state; a second embedded
+    // server constructs its own context to avoid the write-once panics on
+    // region/endpoints/deployment id (backlog#1052 S5).
+    let instance_ctx = if bootstrap_instance_ctx().region().is_some() {
+        crate::storage_api::startup::storage::new_instance_ctx()
+    } else {
+        bootstrap_instance_ctx()
+    };
+    let EmbeddedStartupConfig {
+        config,
+        identity,
+        temp_dir_guard,
+    } = prepare_embedded_startup_config(address, access_key, secret_key, volumes, region)
+        .await
+        .map_err(init_error)?;
+
+    init_embedded_runtime_hooks(config.obs_endpoint.clone())
+        .await
+        .map_err(init_error)?;
+
+    let listen_context = init_embedded_startup_listen_context(&config, &instance_ctx)
+        .await
+        .map_err(init_error)?;
+
+    startup_guard
+        .mark_global_init_started()
+        .map_err(|_| EmbeddedStartupError::AlreadyStarted)?;
+
+    let endpoint_pools = init_embedded_startup_storage_foundation(&listen_context.server_address, &config.volumes, &instance_ctx)
+        .await
+        .map_err(init_error)?;
+
+    let server_ctx = ServerContextSlot::with_instance_context(instance_ctx.clone());
+    let http_server = start_embedded_http_server(&config, listen_context.readiness.clone(), server_ctx.clone()).await?;
+    let shutdown_handle = http_server.shutdown_handle;
+    let bound_addr = http_server.bound_addr;
+    let cancel_token = CancellationToken::new();
+
+    #[cfg(feature = "e2e-test-hooks")]
+    crate::embedded::wait_for_embedded_startup_hook(bound_addr.port()).await;
+
+    let storage_runtime = match init_embedded_startup_storage_runtime(
+        listen_context.server_addr,
+        &endpoint_pools,
+        listen_context.readiness.clone(),
+        cancel_token.clone(),
+        instance_ctx,
+    )
+    .await
+    {
+        Ok(runtime) => runtime,
+        Err(err) => {
+            signal_embedded_startup_shutdown(&shutdown_handle, &cancel_token);
+            return Err(init_error(err));
+        }
+    };
+
+    let credentials_slot = server_ctx.clone();
+    let service_runtime = init_embedded_startup_runtime_services(
+        &config,
+        endpoint_pools,
+        storage_runtime.store,
+        cancel_token.clone(),
+        listen_context.readiness.clone(),
+        server_ctx,
+    )
+    .await
+    .map_err(|err| {
+        signal_embedded_startup_shutdown(&shutdown_handle, &cancel_token);
+        init_error(err)
+    })?;
+
+    // Publish this server's root credentials into its own application context
+    // (backlog#1052 S6) so its request path authenticates against its own
+    // identity — a second embedded server no longer falls back to the first
+    // server's process-global credentials.
+    publish_embedded_server_credentials(&credentials_slot, &identity.access_key, &identity.secret_key);
+
+    publish_embedded_startup_ready(service_runtime.iam_bootstrap, listen_context.readiness.as_ref())
+        .await
+        .map_err(|err| {
+            signal_embedded_startup_shutdown(&shutdown_handle, &cancel_token);
+            EmbeddedStartupError::Init(format!("runtime readiness: {err}"))
+        })?;
+
+    log_embedded_server_ready(embedded_endpoint_address(bound_addr));
+
+    // Startup handed off successfully — release the guard so a second server
+    // in this process can begin its own startup (backlog#1052 S5).
+    release_embedded_startup_guard();
+
+    Ok(EmbeddedStartedServer {
+        bound_addr,
+        access_key: identity.access_key,
+        secret_key: identity.secret_key,
+        region: identity.region,
+        shutdown_handle,
+        cancel_token,
+        temp_dir: temp_dir_guard.map(|guard| guard.keep()),
+    })
+}
+
+fn init_error(err: impl std::fmt::Display) -> EmbeddedStartupError {
+    EmbeddedStartupError::Init(err.to_string())
+}
+
+/// Seed a server's own root credentials into its application context so its
+/// request path validates keys against its own identity (backlog#1052 S6).
+fn publish_embedded_server_credentials(server_ctx: &ServerContextSlot, access_key: &str, secret_key: &str) {
+    if let Some(app_context) = server_ctx.app_context() {
+        app_context.publish_action_credentials(rustfs_credentials::Credentials {
+            access_key: access_key.to_string(),
+            secret_key: secret_key.to_string(),
+            ..Default::default()
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EmbeddedStartupArgs;
+
+    #[test]
+    fn embedded_startup_args_default_matches_public_builder_defaults() {
+        let args = EmbeddedStartupArgs::new_default();
+
+        assert_eq!(args.address, "127.0.0.1:9000");
+        assert_eq!(args.access_key, rustfs_credentials::DEFAULT_ACCESS_KEY);
+        assert_eq!(args.secret_key, rustfs_credentials::DEFAULT_SECRET_KEY);
+        assert_eq!(args.region, rustfs_config::RUSTFS_REGION);
+        assert!(args.volumes.is_empty());
+    }
+
+    #[test]
+    fn embedded_startup_args_setters_preserve_public_builder_inputs() {
+        let mut args = EmbeddedStartupArgs::new_default();
+
+        args.set_address("127.0.0.1:9100".to_string());
+        args.set_access_key("custom-access".to_string());
+        args.set_secret_key("custom-secret".to_string());
+        args.set_region("test-region".to_string());
+        args.push_volume("/tmp/one".to_string());
+        args.set_volumes(vec!["/tmp/two".to_string(), "/tmp/three".to_string()]);
+
+        assert_eq!(args.address, "127.0.0.1:9100");
+        assert_eq!(args.access_key, "custom-access");
+        assert_eq!(args.secret_key, "custom-secret");
+        assert_eq!(args.region, "test-region");
+        assert_eq!(args.volumes, vec!["/tmp/two", "/tmp/three"]);
+    }
+}

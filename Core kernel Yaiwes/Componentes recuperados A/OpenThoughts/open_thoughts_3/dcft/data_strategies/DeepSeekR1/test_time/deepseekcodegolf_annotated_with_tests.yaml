@@ -1,0 +1,55 @@
+operators:
+  - id: load_codegolf
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/etash_code_golf_annotated
+      split: train
+  - id: filter_python
+    config:
+      type: function
+      function: data_strategies.commons.select_rows_regex
+      function_config:
+        column: deepseek_solution
+        regex: "```python"
+    input_ids:
+      - load_codegolf
+  - id: test_cases
+    config:
+      type: completions
+      map: test_cases
+      model: gpt-4o-mini
+      require_all_responses: false
+      num_retries: 3
+      map_config:
+        input_prompt_column: problem
+        output_test_inputs_column: test_inputs
+        output_test_outputs_column: test_outputs
+    input_ids:
+      - filter_python
+  - id: code_golf_extractor
+    config:
+      type: completions
+      map: code_golf_extractor
+      model: gpt-4o-mini
+      require_all_responses: false
+      num_retries: 3
+      map_config:
+        input_solution_column: deepseek_solution
+        output_code_column: deepseek_solution_extracted
+    input_ids:
+      - test_cases
+  - id: test_codegolf
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.codegolf.utils.test_codegolf
+    input_ids:
+      - code_golf_extractor
+  # - id: run_test
+  #   config:
+  #     type: function
+  #     function: data_strategies.DeepSeekR1.codegolf.utils.run_tests
+  #     function_config:s
+  #       solution_column: deepseek_solution
+  #       test_case_column: test_case
+  #   input_ids:
+  #     - python_test_case

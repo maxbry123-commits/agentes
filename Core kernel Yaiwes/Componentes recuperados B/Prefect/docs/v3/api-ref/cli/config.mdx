@@ -1,0 +1,172 @@
+---
+title: " "
+sidebarTitle: prefect config
+---
+
+# `prefect config`
+
+
+
+```command
+prefect config [OPTIONS] COMMAND [ARGS]...
+```
+
+
+
+<Info>
+View and set Prefect settings.
+</Info>
+
+
+
+
+
+
+
+
+## `prefect config set`
+
+
+
+```command
+prefect config set [OPTIONS] SETTINGS
+```
+
+
+
+<Info>
+Change the value for a setting by setting the value in the current profile.
+</Info>
+
+
+
+
+
+
+<AccordionGroup>
+
+
+<Accordion title="Arguments" defaultOpen>
+<ResponseField name="SETTINGS" type="string" required>
+    Settings in VAR=VAL format
+</ResponseField>
+</Accordion>
+
+
+
+</AccordionGroup>
+
+
+
+## `prefect config validate`
+
+
+
+```command
+prefect config validate [OPTIONS]
+```
+
+
+
+<Info>
+Read and validate the current profile.
+
+Deprecated settings will be automatically converted to new names.
+</Info>
+
+
+
+
+
+
+
+
+## `prefect config unset`
+
+
+
+```command
+prefect config unset [OPTIONS] SETTING_NAMES
+```
+
+
+
+<Info>
+Restore the default value for a setting.
+
+Removes the setting from the current profile.
+</Info>
+
+
+
+
+
+
+<AccordionGroup>
+
+
+<Accordion title="Arguments" defaultOpen>
+<ResponseField name="SETTING_NAMES" type="string" required>
+    Setting names to unset
+</ResponseField>
+</Accordion>
+
+
+
+<Accordion title="Options" defaultOpen>
+
+<ResponseField name="--yes">
+    Skip confirmation
+</ResponseField>
+
+</Accordion>
+
+</AccordionGroup>
+
+
+
+## `prefect config view`
+
+
+
+```command
+prefect config view [OPTIONS]
+```
+
+
+
+<Info>
+Display the current settings.
+</Info>
+
+
+
+
+
+
+<AccordionGroup>
+
+
+
+
+<Accordion title="Options" defaultOpen>
+
+<ResponseField name="--show-defaults">
+    Show default values
+</ResponseField>
+
+<ResponseField name="--show-sources">
+    Show value sources
+</ResponseField>
+
+<ResponseField name="--show-secrets">
+    Show secret values
+</ResponseField>
+
+<ResponseField name="--output">
+    Specify an output format. Currently supports: json
+</ResponseField>
+
+</Accordion>
+
+</AccordionGroup>

@@ -1,0 +1,426 @@
+import logger from '../logger';
+import { readGlobalConfig, writeGlobalConfigPartial } from './globalConfig';
+
+export const CLOUD_API_HOST = 'https://api.promptfoo.app';
+
+const CLOUD_HOSTNAMES = new Set([
+  new URL(CLOUD_API_HOST).hostname,
+  new URL('https://www.promptfoo.app').hostname,
+  new URL('https://promptfoo.app').hostname,
+]);
+
+// Free customers created before this date are grandfathered into auto-share.
+export const SHARING_CUTOFF_DATE = new Date('2026-03-09T00:00:00Z');
+
+function isPromptfooCloudHost(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase().replace(/\.$/, '');
+    return CLOUD_HOSTNAMES.has(hostname);
+  } catch {
+    return false;
+  }
+}
+
+let hasWarnedAboutLegacyApiHost = false;
+
+function warnOnceAboutLegacyApiHost(): void {
+  if (hasWarnedAboutLegacyApiHost) {
+    return;
+  }
+  hasWarnedAboutLegacyApiHost = true;
+  logger.warn(
+    'Ignoring the API_HOST environment variable for Promptfoo Cloud routing. ' +
+      'To point at a self-hosted deployment, use PROMPTFOO_CLOUD_API_URL or ' +
+      '`promptfoo auth login --host <url>`.',
+  );
+}
+
+interface CloudUser {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface CloudOrganization {
+  id: string;
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface CloudTeam {
+  id: string;
+  name: string;
+  slug: string;
+  organizationId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CloudApp {
+  url: string;
+}
+
+interface CloudTokenValidation {
+  user: CloudUser;
+  organization: CloudOrganization;
+  app: CloudApp;
+  hasActiveLicense?: boolean;
+}
+
+interface CloudConfigState {
+  appUrl: string;
+  apiHost?: string;
+  apiKey?: string;
+  authHeaderName?: string;
+  sharing?: boolean;
+  currentOrganizationId?: string;
+  currentTeamId?: string;
+  teams?: {
+    [organizationId: string]: {
+      currentTeamId?: string;
+      cache?: Array<{
+        id: string;
+        name: string;
+        slug: string;
+        lastFetched: string;
+      }>;
+    };
+  };
+}
+
+export class CloudConfig {
+  private configState: CloudConfigState | null = null;
+
+  constructor(initializeImmediately: boolean = true) {
+    if (initializeImmediately) {
+      void this.config;
+    }
+  }
+
+  private get config(): CloudConfigState {
+    this.configState ??= this.readConfig();
+    return this.configState;
+  }
+
+  private set config(config: CloudConfigState) {
+    this.configState = config;
+  }
+
+  private readConfig(): CloudConfigState {
+    const savedConfig = readGlobalConfig()?.cloud || {};
+    return {
+      appUrl: savedConfig.appUrl || 'https://www.promptfoo.app',
+      apiHost: savedConfig.apiHost,
+      apiKey: savedConfig.apiKey,
+      authHeaderName: savedConfig.authHeaderName,
+      sharing: savedConfig.sharing,
+      currentOrganizationId: savedConfig.currentOrganizationId,
+      currentTeamId: savedConfig.currentTeamId,
+      teams: savedConfig.teams,
+    };
+  }
+
+  /**
+   * Returns the API key from config file or PROMPTFOO_API_KEY environment variable.
+   * Config file takes precedence over environment variable.
+   */
+  private resolveApiKey(): string | undefined {
+    return this.config.apiKey || process.env.PROMPTFOO_API_KEY;
+  }
+
+  /**
+   * Returns the API host from config file, PROMPTFOO_CLOUD_API_URL environment variable,
+   * or defaults to the standard cloud API host.
+   * Config file takes precedence over environment variable.
+   *
+   * Trailing slashes are stripped so callers that append a path (e.g.
+   * `${getApiHost()}/api/v1/...`) never produce a double slash. On-prem hosts
+   * entered via `promptfoo auth login --host https://host/` commonly include one.
+   */
+  private resolveApiHost(): string {
+    // The generic API_HOST env var is intentionally NOT consulted: the cloud
+    // origin decides where monkeyPatchFetch sends the saved bearer token, and
+    // env files routinely define API_HOST for the app under test. Self-hosted
+    // deployments must use `promptfoo auth login --api-host <url>` or
+    // PROMPTFOO_CLOUD_API_URL. process.env is read directly (not
+    // getEnvString) so an eval config's `env` block can never influence it.
+    const host = this.config.apiHost || process.env.PROMPTFOO_CLOUD_API_URL || CLOUD_API_HOST;
+    // monkeyPatchFetch resolves the host on every request, including evals that
+    // never touch Cloud, so only warn when a Cloud credential is actually in
+    // play — that's the only case where the legacy variable ever had an effect.
+    if (
+      !this.config.apiHost &&
+      !process.env.PROMPTFOO_CLOUD_API_URL &&
+      process.env.API_HOST &&
+      this.resolveApiKey()
+    ) {
+      warnOnceAboutLegacyApiHost();
+    }
+    return host.replace(/\/+$/, '');
+  }
+
+  /**
+   * Returns the header name used to carry the Cloud API credential, from config file,
+   * PROMPTFOO_CLOUD_AUTH_HEADER environment variable, or the default `Authorization`.
+   * Config file takes precedence over environment variable, matching resolveApiHost().
+   *
+   * process.env is read directly (not getEnvString) for the same reason as
+   * PROMPTFOO_CLOUD_API_URL: an eval config's `env` block must never be able to
+   * influence Cloud auth routing.
+   */
+  private resolveAuthHeaderName(): string {
+    return this.config.authHeaderName || process.env.PROMPTFOO_CLOUD_AUTH_HEADER || 'Authorization';
+  }
+
+  isEnabled(): boolean {
+    return !!this.resolveApiKey();
+  }
+
+  setApiHost(apiHost: string): void {
+    // Persist without a trailing slash so the stored host stays clean regardless of
+    // caller (defense in depth alongside the strip in resolveApiHost()).
+    this.config.apiHost = apiHost.replace(/\/+$/, '');
+    this.saveConfig();
+  }
+
+  setApiKey(apiKey: string): void {
+    this.config.apiKey = apiKey;
+    this.saveConfig();
+  }
+
+  getApiKey(): string | undefined {
+    return this.resolveApiKey();
+  }
+
+  getApiHost(): string {
+    return this.resolveApiHost();
+  }
+
+  setAuthHeaderName(authHeaderName: string): void {
+    this.config.authHeaderName = authHeaderName;
+    this.saveConfig();
+  }
+
+  getAuthHeaderName(): string {
+    return this.resolveAuthHeaderName();
+  }
+
+  /**
+   * Returns the header(s) to attach to a Cloud API request for the current credential,
+   * or `undefined` when no API key is resolved. Callers should spread the result
+   * conditionally (`...(cloudConfig.getAuthHeaders() ?? {})`) rather than sending a
+   * header with a `Bearer undefined` value.
+   */
+  getAuthHeaders(): Record<string, string> | undefined {
+    const token = this.getApiKey();
+    if (!token) {
+      return undefined;
+    }
+    return { [this.getAuthHeaderName()]: `Bearer ${token}` };
+  }
+
+  setAppUrl(appUrl: string): void {
+    this.config.appUrl = appUrl;
+    this.saveConfig();
+  }
+
+  getAppUrl(): string {
+    return this.config.appUrl;
+  }
+
+  getSharing(): boolean | undefined {
+    return this.config.sharing;
+  }
+
+  /**
+   * Sets the sharing preference. Note: this value is only updated at authentication time
+   * (via `validateAndSetApiToken`) and may become stale if the user's license status
+   * changes between re-authentications.
+   */
+  setSharing(sharing: boolean): void {
+    this.config.sharing = sharing;
+    this.saveConfig();
+  }
+
+  delete(): void {
+    writeGlobalConfigPartial({ cloud: {} });
+    this.reload();
+  }
+
+  private saveConfig(): void {
+    writeGlobalConfigPartial({ cloud: this.config });
+    this.reload();
+  }
+
+  private reload(): void {
+    this.config = this.readConfig();
+  }
+
+  saveValidatedApiToken(
+    token: string,
+    apiHost: string,
+    user: CloudUser,
+    app: CloudApp,
+    hasActiveLicense?: boolean,
+    authHeaderName?: string,
+  ): void {
+    this.setApiKey(token);
+    this.setApiHost(apiHost);
+    this.setAppUrl(app.url);
+    if (authHeaderName) {
+      this.setAuthHeaderName(authHeaderName);
+    }
+    // On-prem installations are always enterprise deployments. Applying the
+    // public-cloud hasActiveLicense gate to on-prem hosts incorrectly disables
+    // auto-sharing to the on-prem Report Server when the server omits the field
+    // or returns false because it has no licence-check logic. The validated app
+    // URL keeps hosted Cloud behind an API proxy on the public-cloud license gate.
+    const isPublicCloud = isPromptfooCloudHost(apiHost) || isPromptfooCloudHost(app.url);
+    if (!isPublicCloud) {
+      this.setSharing(true);
+    } else if (typeof hasActiveLicense === 'boolean') {
+      const createdAt = user?.createdAt ? new Date(user.createdAt) : null;
+      const isGrandfathered = createdAt != null && createdAt < SHARING_CUTOFF_DATE;
+      this.setSharing(hasActiveLicense || isGrandfathered);
+    }
+  }
+
+  async validateApiToken(
+    token: string,
+    apiHost: string,
+    authHeaderName?: string,
+  ): Promise<CloudTokenValidation> {
+    try {
+      const { fetchWithProxy } = await import('../util/fetch/index');
+      const response = await fetchWithProxy(`${apiHost}/api/v1/users/me`, {
+        headers: {
+          [authHeaderName || this.getAuthHeaderName()]: `Bearer ${token}`,
+        },
+        skipCloudAuthInjection: true,
+      });
+
+      if (!response.ok) {
+        const errorMessage = await response.text();
+        logger.error(
+          `[Cloud] Failed to validate API token: ${errorMessage}. HTTP Status: ${response.status} - ${response.statusText}.`,
+        );
+        throw new Error('Failed to validate API token: ' + response.statusText);
+      }
+
+      const { user, organization, app, hasActiveLicense } = await response.json();
+
+      return {
+        user,
+        organization,
+        app,
+        ...(typeof hasActiveLicense === 'boolean' ? { hasActiveLicense } : {}),
+      };
+    } catch (err) {
+      const error = err as Error & { cause?: string };
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`[Cloud] Failed to validate API token with host ${apiHost}: ${errorMessage}`);
+      if (error.cause) {
+        logger.error(`Cause: ${error.cause}`);
+      }
+      throw error;
+    }
+  }
+
+  async validateAndSetApiToken(
+    token: string,
+    apiHost: string,
+  ): Promise<CloudTokenValidation & { hasActiveLicense: boolean }> {
+    const authHeaderName = this.getAuthHeaderName();
+    const { user, organization, app, hasActiveLicense } = await this.validateApiToken(
+      token,
+      apiHost,
+      authHeaderName,
+    );
+    this.saveValidatedApiToken(token, apiHost, user, app, hasActiveLicense, authHeaderName);
+
+    return {
+      user,
+      organization,
+      app,
+      hasActiveLicense: typeof hasActiveLicense === 'boolean' ? hasActiveLicense : false,
+    };
+  }
+
+  getCurrentOrganizationId(): string | undefined {
+    return this.config.currentOrganizationId;
+  }
+
+  setCurrentOrganization(organizationId: string): void {
+    this.config.currentOrganizationId = organizationId;
+    this.saveConfig();
+  }
+
+  getCurrentTeamId(organizationId?: string): string | undefined {
+    if (organizationId) {
+      return this.config.teams?.[organizationId]?.currentTeamId;
+    }
+    return this.config.currentTeamId;
+  }
+
+  setCurrentTeamId(teamId: string, organizationId?: string): void {
+    if (organizationId) {
+      if (!this.config.teams) {
+        this.config.teams = {};
+      }
+      if (!this.config.teams[organizationId]) {
+        this.config.teams[organizationId] = {};
+      }
+      this.config.teams[organizationId].currentTeamId = teamId;
+    } else {
+      this.config.currentTeamId = teamId;
+    }
+    this.saveConfig();
+  }
+
+  clearCurrentTeamId(organizationId?: string): void {
+    if (organizationId) {
+      if (this.config.teams?.[organizationId]) {
+        delete this.config.teams[organizationId].currentTeamId;
+      }
+    } else {
+      delete this.config.currentTeamId;
+    }
+    this.saveConfig();
+  }
+
+  cacheTeams(teams: CloudTeam[], organizationId?: string): void {
+    if (organizationId) {
+      if (!this.config.teams) {
+        this.config.teams = {};
+      }
+      if (!this.config.teams[organizationId]) {
+        this.config.teams[organizationId] = {};
+      }
+
+      this.config.teams[organizationId].cache = teams.map((t) => ({
+        id: t.id,
+        name: t.name,
+        slug: t.slug,
+        lastFetched: new Date().toISOString(),
+      }));
+    }
+    this.saveConfig();
+  }
+
+  getCachedTeams(
+    organizationId?: string,
+  ): Array<{ id: string; name: string; slug: string }> | undefined {
+    if (organizationId) {
+      return this.config.teams?.[organizationId]?.cache;
+    }
+    return undefined;
+  }
+}
+
+// singleton instance
+// The CLI initializes this singleton lazily after early --env-file handling. Direct CloudConfig
+// instances retain eager initialization for backward compatibility.
+export const cloudConfig = new CloudConfig(false);

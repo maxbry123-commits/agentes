@@ -1,0 +1,1074 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::storage::s3_api::common::rustfs_owner;
+use crate::storage::storage_api::s3_api_consumer::bucket::contract::{
+    bucket::BucketInfo,
+    list::{ListObjectVersionsInfo as StorageListObjectVersionsInfo, ListObjectsV2Info as StorageListObjectsV2Info},
+};
+use crate::storage::storage_api::s3_api_consumer::bucket::to_s3s_etag;
+use percent_encoding::percent_decode_str;
+use s3s::dto::{
+    Bucket, CommonPrefix, DeleteMarkerEntry, EncodingType, ListBucketsOutput, ListObjectVersionsOutput, ListObjectsOutput,
+    ListObjectsV2Output, Object, ObjectStorageClass, ObjectVersion, ObjectVersionStorageClass, Timestamp,
+};
+use s3s::{S3Error, S3ErrorCode};
+use tracing::debug;
+use urlencoding::encode;
+use uuid::Uuid;
+
+use crate::storage::storage_api::s3_api_consumer::bucket::StorageObjectInfo as ObjectInfo;
+
+const S3_MAX_KEYS: i32 = 1000;
+const LIST_CACHE_MARKER_TAG_PREFIX: &str = "[rustfs_cache:";
+const LIST_CACHE_MARKER_TAG_VERSIONS: &[&str] = &["v1", "v2"];
+
+type ListObjectVersionsInfo = StorageListObjectVersionsInfo<ObjectInfo>;
+type ListObjectsV2Info = StorageListObjectsV2Info<ObjectInfo>;
+
+fn normalize_max_keys(max_keys: i32) -> i32 {
+    max_keys.min(S3_MAX_KEYS)
+}
+
+fn should_encode_url(encoding_type: Option<&EncodingType>) -> bool {
+    encoding_type.is_some_and(|e| e.as_str() == EncodingType::URL)
+}
+
+fn encode_s3_name(name: &str) -> String {
+    name.split('/')
+        .map(|part| encode(part).to_string())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn encode_list_output_value(value: String, encoding_type: Option<&EncodingType>) -> String {
+    if should_encode_url(encoding_type) {
+        encode_s3_name(&value)
+    } else {
+        value
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ListObjectVersionsParams {
+    pub prefix: String,
+    pub delimiter: Option<String>,
+    pub key_marker: Option<String>,
+    pub version_id_marker: Option<String>,
+    pub max_keys: i32,
+}
+#[derive(Debug)]
+pub(crate) struct ListObjectsV2Params {
+    pub prefix: String,
+    pub max_keys: i32,
+    pub delimiter: Option<String>,
+    pub response_start_after: Option<String>,
+    pub start_after_for_query: Option<String>,
+    pub response_continuation_token: Option<String>,
+    pub decoded_continuation_token: Option<String>,
+}
+
+pub(crate) fn build_list_objects_output(v2: ListObjectsV2Output, request_marker: Option<String>) -> ListObjectsOutput {
+    let next_marker = calculate_next_marker(&v2);
+
+    // S3 API requires marker field in response, echoing back the request marker.
+    // If no marker was provided in request, return empty string per S3 standard.
+    let marker = Some(request_marker.unwrap_or_default());
+
+    ListObjectsOutput {
+        contents: v2.contents,
+        delimiter: v2.delimiter,
+        encoding_type: v2.encoding_type,
+        name: v2.name,
+        prefix: v2.prefix,
+        max_keys: v2.max_keys,
+        common_prefixes: v2.common_prefixes,
+        is_truncated: v2.is_truncated,
+        marker,
+        next_marker,
+        ..Default::default()
+    }
+}
+
+pub(crate) fn build_list_buckets_output(bucket_infos: &[BucketInfo]) -> ListBucketsOutput {
+    let buckets: Vec<Bucket> = bucket_infos
+        .iter()
+        .map(|bucket_info| Bucket {
+            creation_date: Some(Timestamp::from(bucket_info.created.unwrap_or(time::OffsetDateTime::UNIX_EPOCH))),
+            name: Some(bucket_info.name.clone()),
+            ..Default::default()
+        })
+        .collect();
+
+    ListBucketsOutput {
+        buckets: Some(buckets),
+        owner: Some(rustfs_owner()),
+        ..Default::default()
+    }
+}
+
+pub(crate) fn parse_list_object_versions_params(
+    prefix: Option<String>,
+    delimiter: Option<String>,
+    key_marker: Option<String>,
+    version_id_marker: Option<String>,
+    max_keys: Option<i32>,
+) -> Result<ListObjectVersionsParams, S3Error> {
+    let prefix = prefix.unwrap_or_default();
+    let delimiter = delimiter.filter(|v| !v.is_empty());
+    let key_marker = key_marker.filter(|v| !v.is_empty());
+    let version_id_marker = version_id_marker.filter(|v| !v.is_empty());
+    let max_keys = max_keys.unwrap_or(S3_MAX_KEYS);
+    if max_keys < 0 {
+        return Err(S3Error::with_message(S3ErrorCode::InvalidArgument, "Invalid max keys".to_string()));
+    }
+    let max_keys = normalize_max_keys(max_keys);
+
+    Ok(ListObjectVersionsParams {
+        prefix,
+        delimiter,
+        key_marker,
+        version_id_marker,
+        max_keys,
+    })
+}
+
+pub(crate) fn parse_list_objects_v2_params(
+    prefix: Option<String>,
+    delimiter: Option<String>,
+    max_keys: Option<i32>,
+    continuation_token: Option<String>,
+    start_after: Option<String>,
+) -> Result<ListObjectsV2Params, S3Error> {
+    let prefix = prefix.unwrap_or_default();
+
+    // Log debug info for prefixes with special characters to help diagnose encoding issues
+    if prefix.contains([' ', '+', '%', '\n', '\r', '\0']) {
+        debug!("LIST objects with special characters in prefix: {:?}", prefix);
+    }
+
+    let max_keys = max_keys.unwrap_or(S3_MAX_KEYS);
+    if max_keys < 0 {
+        return Err(S3Error::with_message(S3ErrorCode::InvalidArgument, "Invalid max keys".to_string()));
+    }
+    let max_keys = normalize_max_keys(max_keys);
+
+    let delimiter = delimiter.filter(|v| !v.is_empty());
+
+    // Save original start_after for response (per S3 API spec, must echo back if provided)
+    let response_start_after = start_after.clone();
+    let start_after_for_query = start_after.filter(|v| !v.is_empty());
+
+    // Save original continuation_token for response (per S3 API spec, must echo back if provided)
+    let response_continuation_token = continuation_token.clone();
+
+    // Decode continuation_token from base64 for internal use
+    let decoded_continuation_token = continuation_token
+        .filter(|token| !token.is_empty())
+        .map(|token| {
+            base64_simd::STANDARD
+                .decode_to_vec(token.as_bytes())
+                .map_err(|_| S3Error::with_message(S3ErrorCode::InvalidArgument, "Invalid continuation token".to_string()))
+                .and_then(|bytes| {
+                    String::from_utf8(bytes).map_err(|_| {
+                        S3Error::with_message(S3ErrorCode::InvalidArgument, "Invalid continuation token".to_string())
+                    })
+                })
+        })
+        .transpose()?;
+
+    Ok(ListObjectsV2Params {
+        prefix,
+        max_keys,
+        delimiter,
+        response_start_after,
+        start_after_for_query,
+        response_continuation_token,
+        decoded_continuation_token,
+    })
+}
+
+/// A null version surfaces as `Some(Uuid::nil())` on the client-facing
+/// `ObjectInfo`; AWS advertises it as the literal string `null`, and a nil
+/// UUID must never reach the wire (issue #6745).
+fn list_versions_response_version_id(version_id: Option<Uuid>) -> String {
+    version_id
+        .filter(|id| !id.is_nil())
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "null".to_string())
+}
+
+pub(crate) fn build_list_object_versions_output(
+    object_infos: ListObjectVersionsInfo,
+    bucket: String,
+    params: &ListObjectVersionsParams,
+    encoding_type: Option<&EncodingType>,
+) -> ListObjectVersionsOutput {
+    let encode_output_value = |value: &str| encode_list_output_value(value.to_owned(), encoding_type);
+    let versions: Vec<ObjectVersion> = object_infos
+        .objects
+        .iter()
+        .filter(|v| !v.name.is_empty() && !v.delete_marker)
+        .map(|v| ObjectVersion {
+            key: Some(encode_output_value(&v.name)),
+            last_modified: v.mod_time.map(Timestamp::from),
+            size: Some(v.size),
+            version_id: Some(list_versions_response_version_id(v.version_id)),
+            is_latest: Some(v.is_latest),
+            e_tag: v.etag.clone().map(|etag| to_s3s_etag(&etag)),
+            storage_class: v.storage_class.clone().map(ObjectVersionStorageClass::from),
+            ..Default::default()
+        })
+        .collect();
+
+    let delete_markers: Vec<DeleteMarkerEntry> = object_infos
+        .objects
+        .iter()
+        .filter(|o| o.delete_marker)
+        .map(|o| DeleteMarkerEntry {
+            key: Some(encode_output_value(&o.name)),
+            version_id: Some(list_versions_response_version_id(o.version_id)),
+            is_latest: Some(o.is_latest),
+            last_modified: o.mod_time.map(Timestamp::from),
+            ..Default::default()
+        })
+        .collect();
+
+    let common_prefixes: Vec<CommonPrefix> = object_infos
+        .prefixes
+        .into_iter()
+        .map(|v| CommonPrefix {
+            prefix: Some(encode_output_value(&v)),
+        })
+        .collect();
+
+    // Only return markers when they are non-empty to preserve S3 client compatibility.
+    let next_key_marker = object_infos
+        .next_marker
+        .filter(|v| !v.is_empty())
+        .map(|marker| encode_output_value(&marker));
+    let next_version_id_marker = object_infos.next_version_idmarker.filter(|v| !v.is_empty());
+
+    ListObjectVersionsOutput {
+        is_truncated: Some(object_infos.is_truncated),
+        max_keys: Some(params.max_keys),
+        delimiter: params.delimiter.as_deref().map(encode_output_value),
+        encoding_type: encoding_type.cloned(),
+        key_marker: Some(encode_output_value(params.key_marker.as_deref().unwrap_or_default())),
+        name: Some(bucket),
+        prefix: Some(encode_output_value(&params.prefix)),
+        common_prefixes: Some(common_prefixes),
+        versions: Some(versions),
+        delete_markers: Some(delete_markers),
+        next_key_marker,
+        next_version_id_marker,
+        version_id_marker: Some(params.version_id_marker.clone().unwrap_or_default()),
+        ..Default::default()
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_list_objects_v2_output(
+    object_infos: ListObjectsV2Info,
+    fetch_owner: bool,
+    max_keys: i32,
+    bucket: String,
+    prefix: String,
+    delimiter: Option<String>,
+    encoding_type: Option<EncodingType>,
+    response_continuation_token: Option<String>,
+    response_start_after: Option<String>,
+) -> ListObjectsV2Output {
+    // Apply URL encoding if encoding_type is "url".
+    // S3 URL encoding encodes special characters but keeps '/' unencoded.
+    let should_encode = should_encode_url(encoding_type.as_ref());
+
+    let objects: Vec<Object> = object_infos
+        .objects
+        .iter()
+        .filter(|v| !v.name.is_empty())
+        .map(|v| {
+            let key = if should_encode {
+                encode_s3_name(&v.name)
+            } else {
+                v.name.to_owned()
+            };
+            let mut obj = Object {
+                key: Some(key),
+                last_modified: v.mod_time.map(Timestamp::from),
+                // Compressed legacy objects may retain an unknown (-1)
+                // logical-size sentinel; never expose that internal value in
+                // an S3 response.
+                size: Some(v.get_actual_size_or_physical()),
+                e_tag: v.etag.clone().map(|etag| to_s3s_etag(&etag)),
+                storage_class: v.storage_class.clone().map(ObjectStorageClass::from),
+                ..Default::default()
+            };
+
+            if fetch_owner {
+                obj.owner = Some(rustfs_owner());
+            }
+
+            obj
+        })
+        .collect();
+
+    let common_prefixes: Vec<CommonPrefix> = object_infos
+        .prefixes
+        .into_iter()
+        .map(|v| {
+            let prefix = if should_encode { encode_s3_name(&v) } else { v };
+            CommonPrefix { prefix: Some(prefix) }
+        })
+        .collect();
+
+    // KeyCount should include both objects and common prefixes per S3 API spec.
+    let key_count = (objects.len() + common_prefixes.len()) as i32;
+
+    // Encode next_continuation_token to base64.
+    let next_continuation_token = object_infos
+        .next_continuation_token
+        .map(|token| base64_simd::STANDARD.encode_to_string(token.as_bytes()));
+
+    ListObjectsV2Output {
+        is_truncated: Some(object_infos.is_truncated),
+        continuation_token: response_continuation_token,
+        next_continuation_token,
+        start_after: response_start_after,
+        key_count: Some(key_count),
+        max_keys: Some(max_keys),
+        contents: Some(objects),
+        delimiter,
+        encoding_type,
+        name: Some(bucket),
+        prefix: Some(prefix),
+        common_prefixes: Some(common_prefixes),
+        ..Default::default()
+    }
+}
+
+fn calculate_next_marker(v2: &ListObjectsV2Output) -> Option<String> {
+    // For ListObjects (v1) API, NextMarker should be the last item returned when truncated.
+    // When both Contents and CommonPrefixes are present, NextMarker should be the
+    // lexicographically last item (either last key or last prefix).
+    if !v2.is_truncated.unwrap_or(false) {
+        return None;
+    }
+
+    if let Some(marker) = decoded_next_continuation_marker(v2) {
+        return Some(encode_list_output_value(
+            public_list_marker(&marker).to_owned(),
+            v2.encoding_type.as_ref(),
+        ));
+    }
+
+    let last_key = v2
+        .contents
+        .as_ref()
+        .and_then(|contents| contents.last())
+        .and_then(|obj| obj.key.as_ref())
+        .cloned();
+
+    let last_prefix = v2
+        .common_prefixes
+        .as_ref()
+        .and_then(|prefixes| prefixes.last())
+        .and_then(|prefix| prefix.prefix.as_ref())
+        .cloned();
+
+    let sort_value = |value: &str| {
+        if should_encode_url(v2.encoding_type.as_ref()) {
+            percent_decode_str(value).decode_utf8_lossy().into_owned()
+        } else {
+            value.to_owned()
+        }
+    };
+
+    // NextMarker should be selected by raw object name ordering, even when the
+    // response fields are URL encoded.
+    match (last_key, last_prefix) {
+        (Some(k), Some(p)) => {
+            if sort_value(&k) > sort_value(&p) {
+                Some(k)
+            } else {
+                Some(p)
+            }
+        }
+        (Some(k), None) => Some(k),
+        (None, Some(p)) => Some(p),
+        (None, None) => None,
+    }
+}
+
+fn public_list_marker(marker: &str) -> &str {
+    let Some(start_idx) = marker.rfind(LIST_CACHE_MARKER_TAG_PREFIX) else {
+        return marker;
+    };
+    let Some(tag_body) = marker[start_idx + 1..].strip_suffix(']') else {
+        return marker;
+    };
+
+    if is_list_cache_marker_tag(tag_body) {
+        &marker[..start_idx]
+    } else {
+        marker
+    }
+}
+
+fn is_list_cache_marker_tag(tag_body: &str) -> bool {
+    let mut has_supported_version = false;
+    let mut has_continuation_field = false;
+
+    for tag in tag_body.split(',') {
+        let Some((key, value)) = tag.split_once(':') else {
+            continue;
+        };
+
+        match key {
+            "rustfs_cache" => has_supported_version = LIST_CACHE_MARKER_TAG_VERSIONS.contains(&value),
+            "id" if !value.is_empty() => has_continuation_field = true,
+            "return" => has_continuation_field = true,
+            "p" | "s" if value.parse::<usize>().is_err() => return false,
+            _ => {}
+        }
+    }
+
+    has_supported_version && has_continuation_field
+}
+
+fn decoded_next_continuation_marker(v2: &ListObjectsV2Output) -> Option<String> {
+    let token = v2.next_continuation_token.as_ref()?;
+    let bytes = base64_simd::STANDARD.decode_to_vec(token.as_bytes()).ok()?;
+    String::from_utf8(bytes).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ListObjectVersionsInfo, ListObjectVersionsParams, ListObjectsV2Info, build_list_buckets_output,
+        build_list_object_versions_output, build_list_objects_output, build_list_objects_v2_output,
+        parse_list_object_versions_params, parse_list_objects_v2_params,
+    };
+    use crate::storage::s3_api::common::rustfs_owner;
+    use crate::storage::storage_api::s3_api_consumer::bucket::StorageObjectInfo as ObjectInfo;
+    use crate::storage::storage_api::s3_api_consumer::bucket::contract::bucket::BucketInfo;
+    use rustfs_filemeta::FileInfo;
+    use rustfs_utils::http::headers::AMZ_STORAGE_CLASS;
+    use s3s::S3ErrorCode;
+    use s3s::dto::{CommonPrefix, EncodingType, ListObjectsV2Output, Object};
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_build_list_buckets_output_maps_bucket_infos_and_owner() {
+        let bucket_infos = vec![
+            BucketInfo {
+                name: "bucket-a".to_string(),
+                created: Some(OffsetDateTime::UNIX_EPOCH),
+                ..Default::default()
+            },
+            BucketInfo {
+                name: "bucket-b".to_string(),
+                created: None,
+                ..Default::default()
+            },
+        ];
+
+        let output = build_list_buckets_output(&bucket_infos);
+        let buckets = output.buckets.as_ref().expect("buckets should be present");
+        let owner = output.owner.as_ref().expect("owner should be present");
+
+        assert_eq!(buckets.len(), 2);
+        assert_eq!(buckets[0].name.as_deref(), Some("bucket-a"));
+        assert_eq!(buckets[0].creation_date, Some(s3s::dto::Timestamp::from(OffsetDateTime::UNIX_EPOCH)));
+        assert_eq!(buckets[1].name.as_deref(), Some("bucket-b"));
+        assert_eq!(buckets[1].creation_date, Some(s3s::dto::Timestamp::from(OffsetDateTime::UNIX_EPOCH)));
+
+        let expected_owner = rustfs_owner();
+        assert_eq!(owner.display_name, expected_owner.display_name);
+        assert_eq!(owner.id, expected_owner.id);
+    }
+
+    #[test]
+    fn test_list_objects_marker_echoes_request_value() {
+        let output = build_list_objects_output(ListObjectsV2Output::default(), Some("m-1".to_string()));
+        assert_eq!(output.marker, Some("m-1".to_string()));
+    }
+
+    #[test]
+    fn test_list_objects_marker_preserves_request_value_when_url_encoding_requested() {
+        let output = build_list_objects_output(
+            ListObjectsV2Output {
+                encoding_type: Some(EncodingType::from_static(EncodingType::URL)),
+                ..Default::default()
+            },
+            Some("logs and more/start after".to_string()),
+        );
+
+        assert_eq!(output.marker.as_deref(), Some("logs and more/start after"));
+    }
+
+    #[test]
+    fn test_list_objects_marker_defaults_to_empty_string() {
+        let output = build_list_objects_output(ListObjectsV2Output::default(), None);
+        assert_eq!(output.marker, Some(String::new()));
+    }
+
+    #[test]
+    fn test_list_objects_next_marker_uses_lexicographically_last_item() {
+        let v2 = ListObjectsV2Output {
+            is_truncated: Some(true),
+            contents: Some(vec![Object {
+                key: Some("apple".to_string()),
+                ..Default::default()
+            }]),
+            common_prefixes: Some(vec![CommonPrefix {
+                prefix: Some("zebra/".to_string()),
+            }]),
+            ..Default::default()
+        };
+
+        let output = build_list_objects_output(v2, None);
+        assert_eq!(output.next_marker, Some("zebra/".to_string()));
+    }
+
+    #[test]
+    fn test_list_objects_next_marker_removes_internal_continuation_marker() {
+        let marker = "key-998[rustfs_cache:v2,id:list-cache-id,p:0,s:0]";
+        let v2 = ListObjectsV2Output {
+            is_truncated: Some(true),
+            next_continuation_token: Some(base64_simd::STANDARD.encode_to_string(marker.as_bytes())),
+            contents: Some(vec![Object {
+                key: Some("key-998".to_string()),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+
+        let output = build_list_objects_output(v2, None);
+        assert_eq!(output.next_marker.as_deref(), Some("key-998"));
+    }
+
+    #[test]
+    fn test_list_objects_next_marker_strips_internal_marker_when_url_encoded() {
+        let marker = "dir a/key[rustfs_cache:v2,id:list-cache-id,p:0,s:0]";
+        let v2 = ListObjectsV2Output {
+            is_truncated: Some(true),
+            encoding_type: Some(EncodingType::from_static(EncodingType::URL)),
+            next_continuation_token: Some(base64_simd::STANDARD.encode_to_string(marker.as_bytes())),
+            contents: Some(vec![Object {
+                key: Some("dir%20a/key".to_string()),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+
+        let output = build_list_objects_output(v2, None);
+        assert_eq!(output.next_marker.as_deref(), Some("dir%20a/key"));
+    }
+
+    #[test]
+    fn test_list_objects_next_marker_uses_visible_common_prefix_with_internal_token() {
+        let marker = "asdf[rustfs_cache:v2,id:list-cache-id,p:0,s:0]";
+        let v2 = ListObjectsV2Output {
+            is_truncated: Some(true),
+            next_continuation_token: Some(base64_simd::STANDARD.encode_to_string(marker.as_bytes())),
+            common_prefixes: Some(vec![CommonPrefix {
+                prefix: Some("asdf".to_string()),
+            }]),
+            ..Default::default()
+        };
+
+        let output = build_list_objects_output(v2, None);
+        assert_eq!(output.next_marker.as_deref(), Some("asdf"));
+    }
+
+    #[test]
+    fn test_list_objects_next_marker_preserves_cache_like_key_suffix() {
+        let marker = "key[rustfs_cache:v2]";
+        let v2 = ListObjectsV2Output {
+            is_truncated: Some(true),
+            next_continuation_token: Some(base64_simd::STANDARD.encode_to_string(marker.as_bytes())),
+            contents: Some(vec![Object {
+                key: Some(marker.to_string()),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+
+        let output = build_list_objects_output(v2, None);
+        assert_eq!(output.next_marker.as_deref(), Some(marker));
+    }
+
+    #[test]
+    fn test_list_objects_next_marker_compares_raw_values_when_url_encoded() {
+        let v2 = ListObjectsV2Output {
+            is_truncated: Some(true),
+            encoding_type: Some(EncodingType::from_static(EncodingType::URL)),
+            contents: Some(vec![Object {
+                key: Some("z".to_string()),
+                ..Default::default()
+            }]),
+            common_prefixes: Some(vec![CommonPrefix {
+                prefix: Some("%7E/".to_string()),
+            }]),
+            ..Default::default()
+        };
+
+        let output = build_list_objects_output(v2, None);
+        assert_eq!(output.next_marker, Some("%7E/".to_string()));
+    }
+
+    #[test]
+    fn test_list_objects_next_marker_is_none_when_not_truncated() {
+        let v2 = ListObjectsV2Output {
+            is_truncated: Some(false),
+            contents: Some(vec![Object {
+                key: Some("only-item".to_string()),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+
+        let output = build_list_objects_output(v2, None);
+        assert_eq!(output.next_marker, None);
+    }
+
+    #[test]
+    fn test_list_objects_v2_key_count_includes_objects_and_prefixes() {
+        let object_infos = ListObjectsV2Info {
+            objects: vec![object_info("obj-a"), object_info("")],
+            prefixes: vec!["p1/".to_string(), "p2/".to_string()],
+            ..Default::default()
+        };
+
+        let output = build_list_objects_v2_output(
+            object_infos,
+            false,
+            1000,
+            "bucket-a".to_string(),
+            "prefix-a".to_string(),
+            Some("/".to_string()),
+            None,
+            None,
+            None,
+        );
+
+        assert_eq!(output.key_count, Some(3));
+        assert_eq!(output.contents.as_ref().map(std::vec::Vec::len), Some(1));
+        assert_eq!(output.common_prefixes.as_ref().map(std::vec::Vec::len), Some(2));
+    }
+
+    #[test]
+    fn list_objects_never_exposes_compressed_unknown_size_sentinel() {
+        let mut metadata = std::collections::HashMap::new();
+        rustfs_utils::http::insert_str(
+            &mut metadata,
+            rustfs_utils::http::SUFFIX_COMPRESSION,
+            "klauspost/compress/s2".to_string(),
+        );
+        let output = build_list_objects_v2_output(
+            ListObjectsV2Info {
+                objects: vec![ObjectInfo {
+                    name: "legacy-compressed".to_string(),
+                    size: 128,
+                    actual_size: -1,
+                    user_defined: std::sync::Arc::new(metadata),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            false,
+            1000,
+            "bucket".to_string(),
+            String::new(),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        assert_eq!(
+            output
+                .contents
+                .as_ref()
+                .and_then(|objects| objects.first())
+                .and_then(|object| object.size),
+            Some(128)
+        );
+    }
+
+    #[test]
+    fn list_responses_report_standard_for_legacy_label_only_file_metadata() {
+        let version_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").expect("fixture version ID should be valid");
+        let file_info = FileInfo {
+            name: "legacy-object".to_string(),
+            version_id: Some(version_id),
+            metadata: std::collections::HashMap::from([(AMZ_STORAGE_CLASS.to_string(), "STANDARD_IA".to_string())]),
+            ..Default::default()
+        };
+        let object_info = ObjectInfo::from_file_info(&file_info, "bucket", "legacy-object", true);
+
+        let list_output = build_list_objects_v2_output(
+            ListObjectsV2Info {
+                objects: vec![object_info.clone()],
+                ..Default::default()
+            },
+            false,
+            1000,
+            "bucket".to_string(),
+            String::new(),
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(
+            list_output
+                .contents
+                .as_ref()
+                .and_then(|objects| objects.first())
+                .and_then(|object| object.storage_class.as_ref())
+                .map(|storage_class| storage_class.as_str()),
+            Some("STANDARD")
+        );
+
+        let versions_output = build_list_object_versions_output(
+            ListObjectVersionsInfo {
+                objects: vec![object_info],
+                ..Default::default()
+            },
+            "bucket".to_string(),
+            &ListObjectVersionsParams {
+                prefix: String::new(),
+                delimiter: None,
+                key_marker: None,
+                version_id_marker: None,
+                max_keys: 1000,
+            },
+            None,
+        );
+        assert_eq!(
+            versions_output
+                .versions
+                .as_ref()
+                .and_then(|versions| versions.first())
+                .and_then(|version| version.storage_class.as_ref())
+                .map(|storage_class| storage_class.as_str()),
+            Some("STANDARD")
+        );
+    }
+
+    #[test]
+    fn test_list_objects_v2_url_encoding_preserves_slash() {
+        let object_infos = ListObjectsV2Info {
+            objects: vec![object_info("dir a/file+b%.txt")],
+            prefixes: vec!["prefix a/sub+".to_string()],
+            ..Default::default()
+        };
+
+        let output = build_list_objects_v2_output(
+            object_infos,
+            true,
+            1000,
+            "bucket-b".to_string(),
+            "prefix b/child".to_string(),
+            Some("/".to_string()),
+            Some(EncodingType::from_static(EncodingType::URL)),
+            None,
+            Some("start after".to_string()),
+        );
+
+        let contents = output.contents.as_ref().expect("contents should exist");
+        let common_prefixes = output.common_prefixes.as_ref().expect("common prefixes should exist");
+        let expected_owner = rustfs_owner();
+
+        assert_eq!(contents[0].key.as_deref(), Some("dir%20a/file%2Bb%25.txt"));
+        assert_eq!(common_prefixes[0].prefix.as_deref(), Some("prefix%20a/sub%2B"));
+        assert_eq!(output.prefix.as_deref(), Some("prefix b/child"));
+        assert_eq!(output.delimiter.as_deref(), Some("/"));
+        assert_eq!(output.start_after.as_deref(), Some("start after"));
+        assert!(contents[0].owner.is_some());
+        assert_eq!(
+            contents[0].owner.as_ref().and_then(|owner| owner.display_name.clone()),
+            expected_owner.display_name
+        );
+        assert_eq!(contents[0].owner.as_ref().and_then(|owner| owner.id.clone()), expected_owner.id);
+        assert_eq!(output.encoding_type.as_ref().map(EncodingType::as_str), Some(EncodingType::URL));
+    }
+
+    #[test]
+    fn test_list_objects_v2_next_continuation_token_is_base64_encoded() {
+        let object_infos = ListObjectsV2Info {
+            next_continuation_token: Some("token-123".to_string()),
+            ..Default::default()
+        };
+
+        let output = build_list_objects_v2_output(
+            object_infos,
+            false,
+            1000,
+            "bucket-c".to_string(),
+            "prefix-c".to_string(),
+            None,
+            None,
+            Some("echo-token".to_string()),
+            Some("start-after".to_string()),
+        );
+
+        assert_eq!(output.continuation_token, Some("echo-token".to_string()));
+        assert_eq!(output.start_after, Some("start-after".to_string()));
+        assert_eq!(
+            output.next_continuation_token,
+            Some(base64_simd::STANDARD.encode_to_string("token-123".as_bytes()))
+        );
+    }
+
+    #[test]
+    fn test_parse_list_object_versions_params_defaults_and_filters_empty_values() {
+        let parsed = parse_list_object_versions_params(None, Some(String::new()), Some(String::new()), None, None)
+            .expect("parse should succeed");
+
+        assert_eq!(parsed.prefix, String::new());
+        assert_eq!(parsed.delimiter, None);
+        assert_eq!(parsed.key_marker, None);
+        assert_eq!(parsed.version_id_marker, None);
+        assert_eq!(parsed.max_keys, 1000);
+    }
+
+    #[test]
+    fn test_parse_list_object_versions_params_rejects_negative_max_keys() {
+        let err = parse_list_object_versions_params(None, None, None, None, Some(-1))
+            .expect_err("negative max_keys should be rejected");
+
+        assert_eq!(*err.code(), S3ErrorCode::InvalidArgument);
+    }
+
+    #[test]
+    fn test_parse_list_objects_v2_params_defaults_and_echo_behavior() {
+        let parsed = parse_list_objects_v2_params(None, Some(String::new()), None, None, Some(String::new()))
+            .expect("parse should succeed");
+
+        assert_eq!(parsed.prefix, String::new());
+        assert_eq!(parsed.max_keys, 1000);
+        assert_eq!(parsed.delimiter, None);
+        assert_eq!(parsed.response_start_after, Some(String::new()));
+        assert_eq!(parsed.start_after_for_query, None);
+        assert_eq!(parsed.response_continuation_token, None);
+        assert_eq!(parsed.decoded_continuation_token, None);
+    }
+
+    #[test]
+    fn test_parse_list_objects_v2_params_caps_large_max_keys() {
+        let parsed = parse_list_objects_v2_params(None, None, Some(1001), None, None).expect("parse should succeed");
+
+        assert_eq!(parsed.max_keys, 1000);
+    }
+
+    #[test]
+    fn test_parse_list_object_versions_params_caps_large_max_keys() {
+        let parsed = parse_list_object_versions_params(None, None, None, None, Some(1001)).expect("parse should succeed");
+
+        assert_eq!(parsed.max_keys, 1000);
+    }
+
+    #[test]
+    fn test_parse_list_objects_v2_params_rejects_negative_max_keys() {
+        let err =
+            parse_list_objects_v2_params(None, None, Some(-1), None, None).expect_err("negative max_keys should be rejected");
+
+        assert_eq!(*err.code(), S3ErrorCode::InvalidArgument);
+    }
+
+    #[test]
+    fn test_parse_list_objects_v2_params_preserves_empty_continuation_token() {
+        let parsed = parse_list_objects_v2_params(None, None, Some(1000), Some(String::new()), None)
+            .expect("empty continuation token should be accepted");
+
+        assert_eq!(parsed.response_continuation_token, Some(String::new()));
+        assert_eq!(parsed.decoded_continuation_token, None);
+    }
+
+    #[test]
+    fn test_parse_list_objects_v2_params_decodes_continuation_token() {
+        let raw = "token-123";
+        let encoded = base64_simd::STANDARD.encode_to_string(raw.as_bytes());
+
+        let parsed =
+            parse_list_objects_v2_params(None, None, Some(1000), Some(encoded.clone()), None).expect("parse should succeed");
+
+        assert_eq!(parsed.response_continuation_token, Some(encoded));
+        assert_eq!(parsed.decoded_continuation_token, Some(raw.to_string()));
+    }
+
+    #[test]
+    fn test_parse_list_objects_v2_params_rejects_invalid_continuation_token() {
+        let err = parse_list_objects_v2_params(None, None, Some(1000), Some("%%%".to_string()), None)
+            .expect_err("invalid base64 token should be rejected");
+
+        assert_eq!(*err.code(), S3ErrorCode::InvalidArgument);
+    }
+
+    #[test]
+    fn test_parse_list_objects_v2_params_rejects_non_utf8_continuation_token() {
+        let invalid_utf8 = base64_simd::STANDARD.encode_to_string([0xff, 0xfe, 0xfd]);
+        let err = parse_list_objects_v2_params(None, None, Some(1000), Some(invalid_utf8), None)
+            .expect_err("non-utf8 token should be rejected");
+
+        assert_eq!(*err.code(), S3ErrorCode::InvalidArgument);
+    }
+
+    #[test]
+    fn test_build_list_object_versions_output_maps_versions_delete_markers_and_markers() {
+        let object_infos = ListObjectVersionsInfo {
+            is_truncated: true,
+            next_marker: Some(String::new()),
+            next_version_idmarker: Some("next-version-id".to_string()),
+            objects: vec![
+                ObjectInfo {
+                    name: "obj-a".to_string(),
+                    size: 10,
+                    etag: Some("etag-a".to_string()),
+                    storage_class: Some("STANDARD".to_string()),
+                    version_id: Some(Uuid::nil()),
+                    is_latest: true,
+                    ..Default::default()
+                },
+                ObjectInfo {
+                    name: "obj-delete-marker".to_string(),
+                    delete_marker: true,
+                    is_latest: false,
+                    ..Default::default()
+                },
+                ObjectInfo {
+                    name: "obj-null-delete-marker".to_string(),
+                    delete_marker: true,
+                    version_id: Some(Uuid::nil()),
+                    is_latest: true,
+                    ..Default::default()
+                },
+                ObjectInfo {
+                    name: String::new(),
+                    delete_marker: false,
+                    ..Default::default()
+                },
+            ],
+            prefixes: vec!["photos/".to_string()],
+        };
+
+        let output = build_list_object_versions_output(
+            object_infos,
+            "bucket-a".to_string(),
+            &ListObjectVersionsParams {
+                prefix: "prefix-a".to_string(),
+                delimiter: Some("/".to_string()),
+                key_marker: Some("marker-a".to_string()),
+                version_id_marker: Some("version-marker-a".to_string()),
+                max_keys: 123,
+            },
+            None,
+        );
+
+        assert_eq!(output.is_truncated, Some(true));
+        assert_eq!(output.max_keys, Some(123));
+        assert_eq!(output.name, Some("bucket-a".to_string()));
+        assert_eq!(output.prefix, Some("prefix-a".to_string()));
+        assert_eq!(output.delimiter, Some("/".to_string()));
+        assert_eq!(output.key_marker, Some("marker-a".to_string()));
+        assert_eq!(output.version_id_marker, Some("version-marker-a".to_string()));
+        assert_eq!(output.next_key_marker, None);
+        assert_eq!(output.next_version_id_marker, Some("next-version-id".to_string()));
+
+        let versions = output.versions.unwrap_or_default();
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].key, Some("obj-a".to_string()));
+        // A null version's synthesized nil UUID must surface as the literal
+        // `null`, never as `00000000-…` (issue #6745).
+        assert_eq!(versions[0].version_id, Some("null".to_string()));
+
+        let delete_markers = output.delete_markers.unwrap_or_default();
+        assert_eq!(delete_markers.len(), 2);
+        assert_eq!(delete_markers[0].key, Some("obj-delete-marker".to_string()));
+        assert_eq!(delete_markers[0].version_id, Some("null".to_string()));
+        assert_eq!(delete_markers[1].key, Some("obj-null-delete-marker".to_string()));
+        assert_eq!(delete_markers[1].version_id, Some("null".to_string()));
+
+        let prefixes = output.common_prefixes.unwrap_or_default();
+        assert_eq!(
+            prefixes,
+            vec![CommonPrefix {
+                prefix: Some("photos/".to_string())
+            }]
+        );
+    }
+
+    #[test]
+    fn test_build_list_object_versions_output_url_encodes_response_fields() {
+        let object_infos = ListObjectVersionsInfo {
+            is_truncated: true,
+            next_marker: Some("logs and more/next marker".to_string()),
+            next_version_idmarker: Some("next-version-id".to_string()),
+            objects: vec![
+                ObjectInfo {
+                    name: "logs and more/file name.txt".to_string(),
+                    version_id: Some(Uuid::nil()),
+                    ..Default::default()
+                },
+                ObjectInfo {
+                    name: "logs and more/delete marker.txt".to_string(),
+                    delete_marker: true,
+                    ..Default::default()
+                },
+            ],
+            prefixes: vec!["logs and more/sub prefix/".to_string()],
+        };
+
+        let output = build_list_object_versions_output(
+            object_infos,
+            "bucket-a".to_string(),
+            &ListObjectVersionsParams {
+                prefix: "logs and more/".to_string(),
+                delimiter: Some("/".to_string()),
+                key_marker: Some("logs and more/start marker".to_string()),
+                version_id_marker: Some("version-marker-a".to_string()),
+                max_keys: 123,
+            },
+            Some(&EncodingType::from_static(EncodingType::URL)),
+        );
+
+        assert_eq!(output.encoding_type.as_ref().map(EncodingType::as_str), Some(EncodingType::URL));
+        assert_eq!(output.prefix.as_deref(), Some("logs%20and%20more/"));
+        assert_eq!(output.delimiter.as_deref(), Some("/"));
+        assert_eq!(output.key_marker.as_deref(), Some("logs%20and%20more/start%20marker"));
+        assert_eq!(output.next_key_marker.as_deref(), Some("logs%20and%20more/next%20marker"));
+        assert_eq!(output.version_id_marker.as_deref(), Some("version-marker-a"));
+        assert_eq!(output.next_version_id_marker.as_deref(), Some("next-version-id"));
+
+        let versions = output.versions.unwrap_or_default();
+        assert_eq!(versions[0].key.as_deref(), Some("logs%20and%20more/file%20name.txt"));
+
+        let delete_markers = output.delete_markers.unwrap_or_default();
+        assert_eq!(delete_markers[0].key.as_deref(), Some("logs%20and%20more/delete%20marker.txt"));
+
+        let prefixes = output.common_prefixes.unwrap_or_default();
+        assert_eq!(prefixes[0].prefix.as_deref(), Some("logs%20and%20more/sub%20prefix/"));
+    }
+
+    fn object_info(name: &str) -> ObjectInfo {
+        ObjectInfo {
+            name: name.to_string(),
+            ..Default::default()
+        }
+    }
+}

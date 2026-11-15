@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cognithor &middot; Agent OS</title>
+  <meta name="description" content="Local-first Agent OS with 18 LLM providers, 18 channels, 130+ MCP tools, 6-tier cognitive memory, 4-channel hybrid search, Flutter Command Center UI, cross-platform social listening, hierarchical document reasoning, and enterprise security. 13,000+ tests, 89% coverage.">
+  <meta name="theme-color" content="#050510">
+  <meta name="color-scheme" content="dark">
+  <meta property="og:title" content="Cognithor &middot; Agent OS">
+  <meta property="og:description" content="Local-first autonomous agent operating system. 18 LLM providers, 18 channels, 130+ MCP tools, 4-channel hybrid search, cross-platform social listening.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://alex8791-cyber.github.io/cognithor/">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #050510;
+      --surface: #0A0F24;
+      --surface-hover: #101833;
+      --border: #1A2044;
+      --text: #E8ECF4;
+      --text-muted: #8892B0;
+      --text-dim: #4A5580;
+      --violet: #8B5CF6;
+      --violet-glow: rgba(139, 92, 246, 0.4);
+      --gold: #FFD700;
+      --gold-glow: rgba(255, 215, 0, 0.3);
+      --matrix: #00FF41;
+      --matrix-glow: rgba(0, 255, 65, 0.3);
+      --cyan: #00E5FF;
+      --cyan-glow: rgba(0, 229, 255, 0.3);
+      --pink: #FF1493;
+      --pink-glow: rgba(255, 20, 147, 0.3);
+      --red: #FF5252;
+      --orange: #FFAB40;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    a { color: var(--cyan); text-decoration: none; transition: color 0.2s; }
+    a:hover { color: #fff; }
+
+    /* ── Animated Background Particles ────────────────────── */
+    #particles {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Hero ─────────────────────────────────────────────── */
+    .hero {
+      position: relative;
+      text-align: center;
+      padding: 100px 24px 80px;
+      z-index: 1;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -50%; left: -50%;
+      width: 200%; height: 200%;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(139,92,246,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 70% 80%, rgba(0,229,255,0.05) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(0,255,65,0.03) 0%, transparent 40%);
+      animation: nebula 20s ease-in-out infinite alternate;
+      z-index: -1;
+    }
+    @keyframes nebula {
+      0% { transform: translate(0, 0) rotate(0deg); }
+      100% { transform: translate(-3%, 2%) rotate(3deg); }
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 18px;
+      background: rgba(139,92,246,0.12);
+      border: 1px solid rgba(139,92,246,0.3);
+      border-radius: 100px;
+      font-size: 0.82rem;
+      color: var(--violet);
+      font-weight: 500;
+      letter-spacing: 0.03em;
+      margin-bottom: 32px;
+      animation: fadeUp 0.8s ease-out;
+    }
+    .hero-badge .dot {
+      width: 6px; height: 6px;
+      background: var(--matrix);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--matrix-glow);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.8); }
+    }
+
+    .hero h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      line-height: 1.1;
+      margin-bottom: 8px;
+      animation: fadeUp 0.8s ease-out 0.1s both;
+    }
+    .hero h1 .brand {
+      background: linear-gradient(135deg, var(--violet) 0%, var(--cyan) 50%, var(--matrix) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 30px var(--violet-glow));
+    }
+    .hero h1 .sep {
+      color: var(--gold);
+      -webkit-text-fill-color: var(--gold);
+      font-weight: 400;
+    }
+
+    .hero .tagline {
+      font-size: clamp(1.1rem, 2vw, 1.4rem);
+      color: var(--text-muted);
+      font-weight: 300;
+      margin-bottom: 6px;
+      animation: fadeUp 0.8s ease-out 0.2s both;
+    }
+    .hero .motto {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 36px;
+      animation: fadeUp 0.8s ease-out 0.25s both;
+    }
+
+    .badges {
+      display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;
+      margin-bottom: 40px;
+      animation: fadeUp 0.8s ease-out 0.3s both;
+    }
+    .badges img { height: 22px; border-radius: 4px; }
+
+    .cta {
+      display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+      animation: fadeUp 0.8s ease-out 0.4s both;
+    }
+    .cta a {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 14px 32px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 1rem;
+      transition: all 0.25s ease;
+      letter-spacing: 0.02em;
+    }
+    .cta .primary {
+      background: linear-gradient(135deg, var(--violet), #6D28D9);
+      color: #fff;
+      box-shadow: 0 0 30px var(--violet-glow), inset 0 1px 0 rgba(255,255,255,0.15);
+    }
+    .cta .primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 50px var(--violet-glow), inset 0 1px 0 rgba(255,255,255,0.2);
+    }
+    .cta .secondary {
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(8px);
+    }
+    .cta .secondary:hover {
+      border-color: var(--violet);
+      background: rgba(139,92,246,0.08);
+      transform: translateY(-2px);
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Stats Bar ────────────────────────────────────────── */
+    .stats {
+      position: relative;
+      z-index: 1;
+      display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;
+      padding: 36px 24px;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: rgba(10,15,36,0.8);
+      backdrop-filter: blur(16px);
+    }
+    .stat {
+      text-align: center;
+      padding: 12px 20px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      transition: all 0.3s;
+      min-width: 100px;
+    }
+    .stat:hover {
+      border-color: var(--border);
+      background: rgba(139,92,246,0.06);
+    }
+    .stat .num {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.8rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .stat:nth-child(1) .num { color: var(--violet); }
+    .stat:nth-child(2) .num { color: var(--cyan); }
+    .stat:nth-child(3) .num { color: var(--matrix); }
+    .stat:nth-child(4) .num { color: var(--gold); }
+    .stat:nth-child(5) .num { color: var(--pink); }
+    .stat:nth-child(6) .num { color: var(--cyan); }
+    .stat .label {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-top: 4px;
+      font-weight: 500;
+    }
+
+    /* ── Section Titles ───────────────────────────────────── */
+    .section-title {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+    .section-title h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      margin-bottom: 12px;
+    }
+    .section-title .accent-line {
+      width: 60px;
+      height: 3px;
+      margin: 0 auto;
+      border-radius: 2px;
+    }
+    .section-title p {
+      color: var(--text-muted);
+      font-size: 1rem;
+      max-width: 600px;
+      margin: 16px auto 0;
+      font-weight: 300;
+    }
+
+    /* ── Features Grid ────────────────────────────────────── */
+    .features {
+      position: relative;
+      z-index: 1;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 80px 24px;
+    }
+    .features .accent-line { background: linear-gradient(90deg, var(--violet), var(--cyan)); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      position: relative;
+      background: rgba(10,15,36,0.6);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: all 0.35s ease;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 3px;
+      opacity: 0;
+      transition: opacity 0.35s;
+    }
+    .card:hover {
+      border-color: rgba(139,92,246,0.4);
+      transform: translateY(-4px);
+      box-shadow: 0 8px 40px rgba(139,92,246,0.1);
+    }
+    .card:hover::before { opacity: 1; }
+
+    .card:nth-child(6n+1)::before { background: linear-gradient(90deg, var(--violet), transparent); }
+    .card:nth-child(6n+2)::before { background: linear-gradient(90deg, var(--cyan), transparent); }
+    .card:nth-child(6n+3)::before { background: linear-gradient(90deg, var(--matrix), transparent); }
+    .card:nth-child(6n+4)::before { background: linear-gradient(90deg, var(--gold), transparent); }
+    .card:nth-child(6n+5)::before { background: linear-gradient(90deg, var(--pink), transparent); }
+    .card:nth-child(6n+6)::before { background: linear-gradient(90deg, var(--cyan), transparent); }
+
+    .card .icon-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .card .icon-glyph {
+      font-size: 1.6rem;
+      width: 44px; height: 44px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 12px;
+      flex-shrink: 0;
+    }
+    .card:nth-child(6n+1) .icon-glyph { background: rgba(139,92,246,0.15); }
+    .card:nth-child(6n+2) .icon-glyph { background: rgba(0,229,255,0.12); }
+    .card:nth-child(6n+3) .icon-glyph { background: rgba(0,255,65,0.12); }
+    .card:nth-child(6n+4) .icon-glyph { background: rgba(255,215,0,0.12); }
+    .card:nth-child(6n+5) .icon-glyph { background: rgba(255,20,147,0.12); }
+    .card:nth-child(6n+6) .icon-glyph { background: rgba(0,229,255,0.12); }
+
+    .card h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+    .card p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      line-height: 1.65;
+      font-weight: 300;
+    }
+
+    /* ── GEPA Section ─────────────────────────────────────── */
+    .gepa {
+      position: relative;
+      z-index: 1;
+      padding: 80px 24px;
+      background:
+        linear-gradient(180deg, transparent, rgba(0,255,65,0.02) 50%, transparent),
+        linear-gradient(90deg, transparent, rgba(139,92,246,0.02) 50%, transparent);
+    }
+    .gepa .accent-line { background: linear-gradient(90deg, var(--matrix), var(--gold)); }
+    .gepa-flow {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      flex-wrap: wrap;
+    }
+    .gepa-step {
+      text-align: center;
+      padding: 24px 16px;
+      flex: 1;
+      min-width: 140px;
+    }
+    .gepa-step .step-icon {
+      width: 56px; height: 56px;
+      margin: 0 auto 12px;
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      transition: all 0.3s;
+    }
+    .gepa-step:hover .step-icon {
+      border-color: var(--matrix);
+      box-shadow: 0 0 20px var(--matrix-glow);
+    }
+    .gepa-step h4 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--matrix);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .gepa-step p {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+    .gepa-arrow {
+      font-size: 1.2rem;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    /* ── Architecture ─────────────────────────────────────── */
+    .arch {
+      position: relative;
+      z-index: 1;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 80px 24px;
+    }
+    .arch .accent-line { background: linear-gradient(90deg, var(--gold), var(--violet)); }
+    .arch-diagram {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      line-height: 1.5;
+      color: var(--text-muted);
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .arch-diagram .layer {
+      display: block;
+      padding: 10px 16px;
+      margin: 4px 0;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      text-align: center;
+      transition: all 0.3s;
+    }
+    .arch-diagram .layer:hover {
+      border-color: var(--violet);
+      background: rgba(139,92,246,0.06);
+    }
+    .layer-ui { color: var(--cyan); }
+    .layer-api { color: var(--violet); }
+    .layer-gw { color: var(--gold); }
+    .layer-pge { color: var(--matrix); }
+    .layer-tools { color: var(--pink); }
+    .layer-mem { color: var(--cyan); }
+
+    /* ── Quick Start ──────────────────────────────────────── */
+    .quickstart {
+      position: relative;
+      z-index: 1;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 80px 24px;
+    }
+    .quickstart .accent-line { background: linear-gradient(90deg, var(--cyan), var(--matrix)); }
+    .terminal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--border);
+    }
+    .terminal-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+    }
+    .terminal-dot.r { background: var(--red); }
+    .terminal-dot.y { background: var(--gold); }
+    .terminal-dot.g { background: var(--matrix); }
+    .terminal-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      margin-left: 8px;
+    }
+    .terminal pre {
+      padding: 24px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.8;
+      overflow-x: auto;
+    }
+    .terminal .comment { color: var(--text-dim); }
+    .terminal .cmd { color: var(--matrix); }
+    .terminal .flag { color: var(--violet); }
+    .terminal .output { color: var(--gold); }
+
+    /* ── Robot Office Section ─────────────────────────────── */
+    .robot-office {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      padding: 80px 24px;
+      background: linear-gradient(180deg, transparent, rgba(0,229,255,0.02), transparent);
+    }
+    .robot-office .accent-line { background: linear-gradient(90deg, var(--pink), var(--cyan)); }
+    .office-preview {
+      max-width: 800px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 8px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 40px rgba(139,92,246,0.05);
+    }
+    .office-preview .mock-screen {
+      background: linear-gradient(135deg, #0A0F24, #050510);
+      border-radius: 14px;
+      padding: 40px;
+      min-height: 300px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .office-preview .mock-text {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.2rem;
+      background: linear-gradient(90deg, var(--cyan), var(--matrix));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .office-preview .mock-sub {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+    .office-features {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      flex-wrap: wrap;
+      margin-top: 40px;
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .office-feat {
+      text-align: center;
+    }
+    .office-feat .feat-icon {
+      font-size: 1.8rem;
+      margin-bottom: 8px;
+    }
+    .office-feat h4 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .office-feat p {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      max-width: 150px;
+    }
+
+    /* ── Footer ───────────────────────────────────────────── */
+    footer {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      padding: 48px 24px;
+      border-top: 1px solid var(--border);
+    }
+    footer .footer-brand {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+    }
+    footer .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    footer .footer-links a {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      transition: color 0.2s;
+    }
+    footer .footer-links a:hover { color: var(--violet); }
+    footer .copy {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+    }
+
+    /* ── Responsive ───────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .hero { padding: 60px 16px 48px; }
+      .stats { gap: 8px; padding: 24px 12px; }
+      .stat { min-width: 80px; padding: 8px 12px; }
+      .stat .num { font-size: 1.3rem; }
+      .grid { grid-template-columns: 1fr; }
+      .gepa-arrow { display: none; }
+      .gepa-flow { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="particles"></canvas>
+
+<!-- ═══════════ HERO ═══════════ -->
+<section class="hero">
+  <div class="hero-badge"><span class="dot"></span> v0.90.0 &mdash; Cross-Platform Social Listening + Hierarchical Retrieval + CAG Layer</div>
+  <h1><span class="brand">COGNITHOR</span> <span class="sep">&middot;</span> Agent OS</h1>
+  <p class="tagline">Local-first, autonomous agent operating system for personal AI assistance.</p>
+  <p class="motto">Cognition + Thor &mdash; Intelligence with Power</p>
+  <div class="badges">
+    <a href="https://github.com/Alex8791-cyber/cognithor/stargazers"><img src="https://img.shields.io/github/stars/Alex8791-cyber/cognithor?style=flat-square&color=%238B5CF6&labelColor=0A0F24" alt="Stars"></a>
+    <img src="https://img.shields.io/badge/python-%3E%3D3.12-%2300E5FF?style=flat-square&labelColor=0A0F24" alt="Python">
+    <img src="https://img.shields.io/badge/tests-13%2C000%2B-%2300FF41?style=flat-square&labelColor=0A0F24" alt="Tests">
+    <img src="https://img.shields.io/badge/coverage-89%25-%2300FF41?style=flat-square&labelColor=0A0F24" alt="Coverage">
+    <img src="https://img.shields.io/badge/lint-0%20errors-%2300FF41?style=flat-square&labelColor=0A0F24" alt="Lint">
+    <img src="https://img.shields.io/badge/license-Apache%202.0-%238B5CF6?style=flat-square&labelColor=0A0F24" alt="License">
+    <a href="https://github.com/Alex8791-cyber/cognithor/releases/latest"><img src="https://img.shields.io/github/v/release/Alex8791-cyber/cognithor?style=flat-square&color=%23FFD700&labelColor=0A0F24" alt="Release"></a>
+  </div>
+  <div class="cta">
+    <a class="primary" href="https://github.com/Alex8791-cyber/cognithor">&#9733; View on GitHub</a>
+    <a class="secondary" href="https://github.com/Alex8791-cyber/cognithor/releases/latest">&#8595; Download v0.90.0</a>
+  </div>
+</section>
+
+<!-- ═══════════ STATS ═══════════ -->
+<section class="stats">
+  <div class="stat"><div class="num">18</div><div class="label">LLM Providers</div></div>
+  <div class="stat"><div class="num">18</div><div class="label">Channels</div></div>
+  <div class="stat"><div class="num">130+</div><div class="label">MCP Tools</div></div>
+  <div class="stat"><div class="num">13,000+</div><div class="label">Tests</div></div>
+  <div class="stat"><div class="num">89%</div><div class="label">Coverage</div></div>
+  <div class="stat"><div class="num">33+</div><div class="label">Databases</div></div>
+</section>
+
+<!-- ═══════════ FEATURES ═══════════ -->
+<section class="features">
+  <div class="section-title">
+    <h2>Core Capabilities</h2>
+    <div class="accent-line"></div>
+    <p>Everything an autonomous agent needs, running entirely on your machine.</p>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <div class="icon-row"><div class="icon-glyph">&#x1F9E0;</div><h3>18 LLM Providers</h3></div>
+      <p>Ollama, LM Studio, vLLM, llama-cpp-python (local), OpenAI, Anthropic, Gemini, Groq, DeepSeek, Mistral, Together, OpenRouter, xAI, Cerebras, GitHub Models, AWS Bedrock, Hugging Face, Moonshot. Auto-detects from API key.</p>
+    </div>
+    <div class="card">
+      <div class="icon-row"><div class="icon-glyph">&#x1F4E1;</div><h3>18 Channels</h3></div>
+      <p>CLI, Flutter Web UI, REST API, Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Teams, Matrix, Google Chat, Mattermost, Feishu, IRC, Twitch, Voice (STT/TTS with wake word).</p>
+    </div>
+    <div class="card">
+      <div class="icon-row"><div class="icon-glyph">&#x1F4BE;</div><h3>6-Tier Cognitive Memory</h3></div>
+      <p>Core identity, episodic logs, semantic knowledge graph, procedural skills, working memory, tactical memory. 4-channel hybrid search: BM25 + vector + graph + hierarchical document reasoning.</p>
+    </div>
+    <div class="card">
+      <div class="icon-row"><div class="icon-glyph">&#x2699;</div><h3>PGE Architecture</h3></div>
+      <p>Planner (LLM) &rarr; Gatekeeper (deterministic policy) &rarr; Executor (DAG-based parallel sandbox). No hallucinated tool calls &mdash; every action is policy-checked before execution.</p>
+    </div>
+    <div class="card">
+      <div class="icon-row"><div class="icon-glyph">&#x1F50C;</div><h3>130+ MCP Tools &amp; A2A</h3></div>
+      <p>Filesystem, shell, memory, web, browser, media, vault, synthesis, code, skills, social listening, kanban, documents, identity. A2A protocol for agent-to-agent delegation.</p>
+    </div>
+    <div class="card">
+      <div class="icon-row"><div class="icon-glyph">&#x1F6E1;</div><h3>Security &amp; Audit</h3></div>
+      <p>Deterministic Gatekeeper (4 risk levels), 4-level sandbox (bubblewrap/Docker/JobObject), SHA-256 audit chain, Fernet AES-256 encryption, API rate limiting, CORS hardening.</p>
+    </div>
+    <div class="card">
+      <div class="icon-row"><div class="icon-glyph">&#x1F3AE;</div><h3>Flutter Command Center</h3></div>
+      <p>Sci-Fi UI with glassmorphism, neon glow effects, 5 section colors, morphing sidebar, hacker mode with Matrix rain, Robot Office animation with 8 robots, real-time dashboard.</p>
+    </div>
+    <div class="card">
+      <div class="icon-row"><div class="icon-glyph">&#x1F50A;</div><h3>Voice &amp; Chat</h3></div>
+      <p>Wake word ("Jarvis") with Levenshtein + phonetic matching, Piper TTS (emotional voices), Whisper STT, WebSocket streaming, markdown rendering, file upload.</p>
+    </div>
+    <div class="card">
+      <div class="icon-row"><div class="icon-glyph">&#x1F4DA;</div><h3>Knowledge Vault</h3></div>
+      <p>Obsidian-compatible Markdown vault with YAML frontmatter, tags, backlinks. Knowledge synthesis with confidence ratings, contradiction detection, gap analysis, and lineage tracking.</p>
+    </div>
+    <div class="card">
+      <div class="icon-row"><div class="icon-glyph">&#x1F9EC;</div><h3>GEPA Self-Improvement</h3></div>
+      <p>Guided Evolution through Pattern Analysis. Collects execution traces, performs causal root-cause analysis (10 categories), generates targeted optimizations, auto-applies with rollback safety.</p>
+    </div>
+    <div class="card">
+      <div class="icon-row"><div class="icon-glyph">&#x1F916;</div><h3>Identity &amp; Personality</h3></div>
+      <p>CognitioEngine with 7 Genesis Anchors, personality vector (6 dimensions), emotion shield, reality check, character crystallization, narrative self, existential layer, dream cycle.</p>
+    </div>
+    <div class="card">
+      <div class="icon-row"><div class="icon-glyph">&#x1F3EA;</div><h3>Skill Marketplace</h3></div>
+      <p>Install, search, rate community skills from GitHub registry. Publisher verification with trust levels. agentskills.io SKILL.md format compatibility (Hermes interop).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ GEPA ═══════════ -->
+<section class="gepa">
+  <div class="section-title">
+    <h2>GEPA &mdash; Self-Improving Agent</h2>
+    <div class="accent-line"></div>
+    <p>Cognithor learns from every interaction. GEPA analyzes failures, finds root causes, and generates targeted improvements &mdash; automatically.</p>
+  </div>
+  <div class="gepa-flow">
+    <div class="gepa-step">
+      <div class="step-icon">&#x1F4CA;</div>
+      <h4>Collect</h4>
+      <p>Record execution traces</p>
+    </div>
+    <div class="gepa-arrow">&rarr;</div>
+    <div class="gepa-step">
+      <div class="step-icon">&#x1F50D;</div>
+      <h4>Analyze</h4>
+      <p>Causal root-cause analysis</p>
+    </div>
+    <div class="gepa-arrow">&rarr;</div>
+    <div class="gepa-step">
+      <div class="step-icon">&#x1F4A1;</div>
+      <h4>Propose</h4>
+      <p>Targeted optimizations</p>
+    </div>
+    <div class="gepa-arrow">&rarr;</div>
+    <div class="gepa-step">
+      <div class="step-icon">&#x2705;</div>
+      <h4>Apply</h4>
+      <p>Test &amp; deploy or rollback</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ ARCHITECTURE ═══════════ -->
+<section class="arch">
+  <div class="section-title">
+    <h2>Architecture</h2>
+    <div class="accent-line"></div>
+  </div>
+  <div class="arch-diagram">
+<span class="layer layer-ui">Flutter Command Center (Sci-Fi UI &middot; Chat &middot; Dashboard &middot; Robot Office &middot; Config)</span>
+<span class="layer layer-api">REST API + WebSocket (FastAPI, 170+ endpoints, port 8741)</span>
+<span class="layer layer-gw">Gateway Layer (Sessions &middot; Agent Loop &middot; Personality &middot; Sentiment &middot; Preferences)</span>
+<span class="layer layer-gw">Context Pipeline (Memory + Vault + Episodes &rarr; Enriched Prompt)</span>
+<span class="layer layer-pge">Planner (LLM) &rarr; Gatekeeper (Policy) &rarr; Executor (DAG Sandbox)</span>
+<span class="layer layer-tools">MCP Tools (130+) &middot; A2A Delegation &middot; Browser &middot; Social Listening &middot; Skills</span>
+<span class="layer layer-mem">6-Tier Memory &middot; 4-Channel Hybrid Search &middot; GEPA &middot; CAG Layer &middot; Identity</span>
+<span class="layer" style="color:var(--text-dim)">Multi-LLM Backend (18 providers &middot; Ollama/LM Studio/vLLM local &middot; Cloud optional)</span>
+  </div>
+</section>
+
+<!-- ═══════════ ROBOT OFFICE ═══════════ -->
+<section class="robot-office">
+  <div class="section-title">
+    <h2>Robot Office</h2>
+    <div class="accent-line"></div>
+    <p>Watch 8 animated robots work in real-time. CPU, GPU, RAM, and system load visualized directly in the office scene.</p>
+  </div>
+  <div class="office-preview">
+    <div class="mock-screen">
+      <div class="mock-text">&#x1F916; COGNITHOR HQ</div>
+      <div class="mock-sub">8 robots &middot; desk pathfinding &middot; system monitor &middot; day/night cycle &middot; pets &middot; tap reactions</div>
+    </div>
+  </div>
+  <div class="office-features">
+    <div class="office-feat">
+      <div class="feat-icon">&#x1F4BB;</div>
+      <h4>System Monitor</h4>
+      <p>CPU, GPU, RAM, LOAD bars on wall screen</p>
+    </div>
+    <div class="office-feat">
+      <div class="feat-icon">&#x1F6E4;</div>
+      <h4>Pathfinding</h4>
+      <p>Robots navigate around desks via corridors</p>
+    </div>
+    <div class="office-feat">
+      <div class="feat-icon">&#x1F305;</div>
+      <h4>Day/Night Cycle</h4>
+      <p>Sun, moon, stars, ceiling lights adapt</p>
+    </div>
+    <div class="office-feat">
+      <div class="feat-icon">&#x1F43E;</div>
+      <h4>Office Pets</h4>
+      <p>Dog and cat with AI behavior</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ QUICK START ═══════════ -->
+<section class="quickstart">
+  <div class="section-title">
+    <h2>Quick Start</h2>
+    <div class="accent-line"></div>
+    <p>From clone to running agent in under 5 minutes.</p>
+  </div>
+  <div class="terminal">
+    <div class="terminal-bar">
+      <div class="terminal-dot r"></div>
+      <div class="terminal-dot y"></div>
+      <div class="terminal-dot g"></div>
+      <span class="terminal-title">cognithor &mdash; bash</span>
+    </div>
+    <pre><span class="comment"># Clone &amp; install</span>
+<span class="cmd">git clone</span> https://github.com/Alex8791-cyber/cognithor.git
+<span class="cmd">cd</span> cognithor
+<span class="cmd">pip install</span> <span class="flag">-e ".[all,dev]"</span>
+
+<span class="comment"># Pull local models (Ollama)</span>
+<span class="cmd">ollama pull</span> qwen3:32b       <span class="comment"># Planner (20 GB VRAM)</span>
+<span class="cmd">ollama pull</span> qwen3:8b        <span class="comment"># Executor (6 GB VRAM)</span>
+<span class="cmd">ollama pull</span> qwen3-embedding:0.6b <span class="comment"># Embeddings</span>
+
+<span class="comment"># Launch</span>
+<span class="cmd">cognithor</span>                    <span class="comment"># Full mode</span>
+<span class="cmd">cognithor</span> <span class="flag">--lite</span>             <span class="comment"># 6 GB VRAM mode</span>
+
+<span class="output">  COGNITHOR &middot; Agent OS v0.90.0
+  Backend + UI at http://localhost:8741</span></pre>
+  </div>
+</section>
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<footer>
+  <div class="footer-brand">COGNITHOR</div>
+  <div class="footer-links">
+    <a href="https://github.com/Alex8791-cyber/cognithor">GitHub</a>
+    <a href="https://github.com/Alex8791-cyber/cognithor/releases">Releases</a>
+    <a href="https://github.com/Alex8791-cyber/cognithor/blob/main/QUICKSTART.md">Quick Start</a>
+    <a href="https://github.com/Alex8791-cyber/cognithor/blob/main/ARCHITECTURE.md">Architecture</a>
+    <a href="https://github.com/Alex8791-cyber/cognithor/blob/main/CONFIG_REFERENCE.md">Configuration</a>
+    <a href="https://github.com/Alex8791-cyber/cognithor/blob/main/GEPA.md">GEPA</a>
+    <a href="https://github.com/Alex8791-cyber/cognithor/blob/main/FAQ.md">FAQ</a>
+    <a href="https://github.com/Alex8791-cyber/cognithor/blob/main/LICENSE">Apache 2.0</a>
+  </div>
+  <p class="copy">&copy; 2026 Alexander Soellner &middot; Built with Cognithor</p>
+</footer>
+
+<!-- ═══════════ PARTICLES ═══════════ -->
+<script>
+(function() {
+  const c = document.getElementById('particles');
+  const ctx = c.getContext('2d');
+  let w, h, particles = [];
+
+  function resize() {
+    w = c.width = window.innerWidth;
+    h = c.height = window.innerHeight * 4;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const colors = ['139,92,246', '0,229,255', '0,255,65', '255,215,0'];
+
+  for (let i = 0; i < 60; i++) {
+    particles.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      r: Math.random() * 1.5 + 0.5,
+      dx: (Math.random() - 0.5) * 0.3,
+      dy: (Math.random() - 0.5) * 0.2,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      alpha: Math.random() * 0.15 + 0.03,
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    for (const p of particles) {
+      p.x += p.dx;
+      p.y += p.dy;
+      if (p.x < 0) p.x = w;
+      if (p.x > w) p.x = 0;
+      if (p.y < 0) p.y = h;
+      if (p.y > h) p.y = 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.color},${p.alpha})`;
+      ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
+
+</body>
+</html>

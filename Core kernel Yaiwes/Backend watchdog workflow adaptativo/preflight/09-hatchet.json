@@ -1,0 +1,203 @@
+{
+  "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
+  "index": 9,
+  "name": "Hatchet",
+  "slug": "hatchet",
+  "source_url": "https://github.com/hatchet-dev/hatchet",
+  "source_commit": "4be0bdc7b96c33579f134d859960d4345035cd40",
+  "mode": "DOWNLOAD",
+  "delivery": "EXTRACTED_TREE_AFTER_PREFLIGHT",
+  "file_count": 4766,
+  "total_bytes": 123165597,
+  "max_blob": {
+    "path": "frontend/docs/public/schedule-dash.gif",
+    "bytes": 25412187
+  },
+  "top_level_inventory": {
+    ".claude": {
+      "files": 2,
+      "bytes": 60397
+    },
+    ".cursor": {
+      "files": 6,
+      "bytes": 7023
+    },
+    ".editorconfig": {
+      "files": 1,
+      "bytes": 191
+    },
+    ".gitattributes": {
+      "files": 1,
+      "bytes": 984
+    },
+    ".gitguardian.yaml": {
+      "files": 1,
+      "bytes": 125
+    },
+    ".github": {
+      "files": 39,
+      "bytes": 226050
+    },
+    ".gitignore": {
+      "files": 1,
+      "bytes": 1656
+    },
+    ".golangci.yml": {
+      "files": 1,
+      "bytes": 2342
+    },
+    ".nvmrc": {
+      "files": 1,
+      "bytes": 4
+    },
+    ".pre-commit-config.yaml": {
+      "files": 1,
+      "bytes": 1708
+    },
+    ".tool-versions": {
+      "files": 1,
+      "bytes": 13
+    },
+    ".typos.toml": {
+      "files": 1,
+      "bytes": 302
+    },
+    "AGENTS.md": {
+      "files": 1,
+      "bytes": 1641
+    },
+    "AI_POLICY.md": {
+      "files": 1,
+      "bytes": 1321
+    },
+    "CHANGELOG.md": {
+      "files": 1,
+      "bytes": 98212
+    },
+    "CONTRIBUTING.md": {
+      "files": 1,
+      "bytes": 7930
+    },
+    "Caddyfile": {
+      "files": 1,
+      "bytes": 230
+    },
+    "LICENSE": {
+      "files": 1,
+      "bytes": 1090
+    },
+    "README.md": {
+      "files": 1,
+      "bytes": 9885
+    },
+    "SECURITY.md": {
+      "files": 1,
+      "bytes": 1389
+    },
+    "Taskfile.yaml": {
+      "files": 1,
+      "bytes": 14427
+    },
+    "api": {
+      "files": 231,
+      "bytes": 1161791
+    },
+    "api-contracts": {
+      "files": 57,
+      "bytes": 382439
+    },
+    "assets": {
+      "files": 2,
+      "bytes": 4099
+    },
+    "build": {
+      "files": 13,
+      "bytes": 12113
+    },
+    "cliff.toml": {
+      "files": 1,
+      "bytes": 3881
+    },
+    "cmd": {
+      "files": 374,
+      "bytes": 1726663
+    },
+    "commitlint.config.js": {
+      "files": 1,
+      "bytes": 849
+    },
+    "contributing": {
+      "files": 1,
+      "bytes": 1015
+    },
+    "docker-compose.infra.yml": {
+      "files": 1,
+      "bytes": 1631
+    },
+    "docker-compose.release.yml": {
+      "files": 1,
+      "bytes": 2649
+    },
+    "docker-compose.yml": {
+      "files": 1,
+      "bytes": 2122
+    },
+    "examples": {
+      "files": 578,
+      "bytes": 1002339
+    },
+    "frontend": {
+      "files": 913,
+      "bytes": 98703857
+    },
+    "go.mod": {
+      "files": 1,
+      "bytes": 13462
+    },
+    "go.sum": {
+      "files": 1,
+      "bytes": 62737
+    },
+    "hack": {
+      "files": 69,
+      "bytes": 220090
+    },
+    "internal": {
+      "files": 172,
+      "bytes": 1736171
+    },
+    "nodemon.api.json": {
+      "files": 1,
+      "bytes": 146
+    },
+    "nodemon.engine.json": {
+      "files": 1,
+      "bytes": 142
+    },
+    "pkg": {
+      "files": 425,
+      "bytes": 5624030
+    },
+    "sdks": {
+      "files": 1852,
+      "bytes": 11848151
+    },
+    "sql": {
+      "files": 5,
+      "bytes": 218300
+    }
+  },
+  "licenses": [
+    {
+      "path": "LICENSE",
+      "sha256": "7388b34bd1ad4b9db3c72dcb73f434ea27c88e5ca8f02a24d4f970c906d79be3",
+      "bytes": 1090
+    }
+  ],
+  "lfs_pointer_count": 0,
+  "lfs_pointers": [],
+  "oversized_blob_count": 0,
+  "oversized_blobs": [],
+  "deterministic_tree_sha256": "a915cd7ca66aa7fd6bf0c77ab631570980294ffa0f8a43fa136ba74defc660e6",
+  "status": "PREFLIGHT_PASS"
+}

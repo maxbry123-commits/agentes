@@ -1,0 +1,87 @@
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Optional
+from datetime import datetime
+from uuid import uuid4
+
+
+class CardPosition(BaseModel):
+    session_id: str
+    x: float = 0
+    y: float = 0
+    width: float = 420
+    height: float = 280
+
+
+class ViewCardPosition(BaseModel):
+    output_id: str
+    # Which instance of the app this card is (1 = primary). Persisted or Pydantic strips it on save and a reloaded second-instance card collapses onto the primary's runtime (same failure shape as the browser-card dashboard_id bleed).
+    instance: int = 1
+    x: float = 0
+    y: float = 0
+    width: float = 480
+    height: float = 360
+    # Chat session this app preview lives inside (renders over the chat's dock slot); None = free card.
+    docked_to: Optional[str] = None
+
+
+class BrowserTab(BaseModel):
+    id: str
+    url: str = ""
+    title: str = ""
+    favicon: Optional[str] = None
+
+
+class BrowserCardPosition(BaseModel):
+    browser_id: str
+    url: str = ""
+    tabs: list[BrowserTab] = Field(default_factory=list)
+    activeTabId: str = ""
+    x: float = 0
+    y: float = 0
+    width: float = 1280
+    height: float = 800
+    # Agent session id that spawned this browser, or None for user-created. Used by the frontend to auto-remove the browser when its owner agent reaches a terminal completed/error state.
+    spawned_by: Optional[str] = None
+    # When the agent leaves the deliverable on the page (a video playing, a page to read), it sets this so the frontend's auto-close on parent finish skips the card and the browser stays put.
+    keep_open: bool = False
+    # The dashboard this card calls home. Persisted so the home survives a save; without it the card reloads untagged and renders on EVERY dashboard (the cross-dashboard bleed).
+    dashboard_id: Optional[str] = None
+    # Chat session this browser lives inside (renders over the chat's dock slot); None = free card.
+    docked_to: Optional[str] = None
+    # When this card was spawned, so the idle-agent-card reaper can keep the newest and drop the rest. Cards saved before this field existed read as None and reap first, which is right: they are the oldest thing on the canvas.
+    created_at: Optional[datetime] = None
+
+
+class DashboardLayout(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    cards: dict[str, CardPosition] = Field(default_factory=dict)
+    view_cards: dict[str, ViewCardPosition] = Field(default_factory=dict)
+    browser_cards: dict[str, BrowserCardPosition] = Field(default_factory=dict)
+    workflow_cards: dict = Field(default_factory=dict)
+    workflows_hub: Optional[dict] = None
+    expanded_session_ids: list[str] = Field(default_factory=list)
+
+
+class Dashboard(BaseModel):
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    name: str = "Untitled Dashboard"
+    auto_named: bool = False
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    layout: DashboardLayout = Field(default_factory=DashboardLayout)
+    thumbnail: Optional[str] = None
+    # Bumped only when a fresh thumbnail is saved; drives sidebar/grid order so merely opening a dashboard doesn't reshuffle the list.
+    preview_updated_at: Optional[datetime] = None
+    # Sorted card-id set captured with the last thumbnail; lets the client tell if cards were added/removed since.
+    preview_signature: Optional[str] = None
+
+
+class DashboardCreate(BaseModel):
+    name: str = "Untitled Dashboard"
+
+
+class DashboardUpdate(BaseModel):
+    name: Optional[str] = None
+    layout: Optional[DashboardLayout] = None
+    thumbnail: Optional[str] = None
+    preview_signature: Optional[str] = None

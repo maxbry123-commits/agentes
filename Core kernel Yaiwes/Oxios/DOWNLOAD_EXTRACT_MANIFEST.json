@@ -1,0 +1,38 @@
+{
+  "bundle_bytes": 15273368,
+  "bundle_sha256": "f30de98df04495664a26a2989a4dfd98a140716db2af9437452feaa92b5385ce",
+  "extracted_tree": {
+    "bytes": 30855176,
+    "files": 1561,
+    "sha256": "c12850447ca30146f12b767cad5ecb621a2842bc2919916f29ff31ab1f3500ac"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "Oxios.bundle.zip.part-0001",
+      "sha256": "d4b478b0a0eb357a9f871815c3eb9dbd152ddd6889b7707a6fd50345c1a167e9"
+    },
+    {
+      "bytes": 2690456,
+      "name": "Oxios.bundle.zip.part-0002",
+      "sha256": "a036073d0a3c2d11670dcd02be939c415230c2481c2cc02068b34a9fe1cfdf54"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Oxios",
+  "source_bytes": 30855176,
+  "source_commit": "a200e30c08680c80dd38862bb577d0f2686efc23",
+  "source_files": 1561,
+  "source_ref": "HEAD",
+  "source_repo": "project-oxi/oxios",
+  "source_tree": {
+    "bytes": 30855176,
+    "files": 1561,
+    "sha256": "c12850447ca30146f12b767cad5ecb621a2842bc2919916f29ff31ab1f3500ac"
+  }
+}

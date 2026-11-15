@@ -1,0 +1,668 @@
+"""Test the `SyncVectorEnv` implementation."""
+
+import multiprocessing
+import re
+import time
+import warnings
+from multiprocessing import TimeoutError
+
+import numpy as np
+import pytest
+
+from gymnasium.error import (
+    AlreadyPendingCallError,
+    ClosedEnvironmentError,
+    NoAsyncCallError,
+)
+from gymnasium.spaces import Box, Discrete, MultiDiscrete, Tuple
+from gymnasium.vector import AsyncVectorEnv, AutoresetMode
+from gymnasium.vector.async_vector_env import _async_worker
+from tests.testing_env import GenericTestEnv
+from tests.vector.testing_utils import (
+    CustomSpace,
+    make_custom_space_env,
+    make_env,
+    make_slow_env,
+)
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+def test_create_async_vector_env(shared_memory):
+    """Test creating an async vector environment with or without shared memory."""
+    env_fns = [make_env("CartPole-v1", i) for i in range(8)]
+
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+    assert env.num_envs == 8
+    env.close()
+
+
+def test_metadata_async_vector_env():
+    """Tests that the vector env's metadata doesn't mutate the sub-environment's (class-level) metadata."""
+    envs_1 = AsyncVectorEnv(
+        [make_env("CartPole-v1", 0)], autoreset_mode=AutoresetMode.NEXT_STEP
+    )
+    envs_2 = AsyncVectorEnv(
+        [make_env("CartPole-v1", 1)], autoreset_mode=AutoresetMode.SAME_STEP
+    )
+
+    assert envs_1.metadata["autoreset_mode"] == AutoresetMode.NEXT_STEP
+    assert envs_2.metadata["autoreset_mode"] == AutoresetMode.SAME_STEP
+
+    env = make_env("CartPole-v1", 0)()
+    assert "autoreset_mode" not in env.metadata
+
+    env.close()
+    envs_1.close()
+    envs_2.close()
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+def test_reset_async_vector_env(shared_memory):
+    """Test the reset of async vector environment with or without shared memory."""
+    env_fns = [make_env("CartPole-v1", i) for i in range(8)]
+
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+    observations, infos = env.reset()
+
+    env.close()
+
+    assert isinstance(env.observation_space, Box)
+    assert isinstance(observations, np.ndarray)
+    assert observations.dtype == env.observation_space.dtype
+    assert observations.shape == (8,) + env.single_observation_space.shape
+    assert observations.shape == env.observation_space.shape
+
+    try:
+        env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+        observations, infos = env.reset()
+    finally:
+        env.close()
+
+    assert isinstance(env.observation_space, Box)
+    assert isinstance(observations, np.ndarray)
+    assert observations.dtype == env.observation_space.dtype
+    assert observations.shape == (8,) + env.single_observation_space.shape
+    assert observations.shape == env.observation_space.shape
+    assert isinstance(infos, dict)
+    assert all([isinstance(info, dict) for info in infos])
+
+
+def test_render_async_vector():
+    envs = AsyncVectorEnv(
+        [make_env("CartPole-v1", i, render_mode="rgb_array") for i in range(3)]
+    )
+    assert envs.render_mode == "rgb_array"
+
+    envs.reset()
+    rendered_frames = envs.render()
+    assert isinstance(rendered_frames, tuple)
+    assert len(rendered_frames) == envs.num_envs
+    assert all(isinstance(frame, np.ndarray) for frame in rendered_frames)
+    envs.close()
+
+    envs = AsyncVectorEnv([make_env("CartPole-v1", i) for i in range(3)])
+    assert envs.render_mode is None
+    envs.close()
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+@pytest.mark.parametrize("use_single_action_space", [True, False])
+def test_step_async_vector_env(shared_memory, use_single_action_space):
+    """Test the step async vector environment with and without shared memory."""
+    env_fns = [make_env("CartPole-v1", i) for i in range(8)]
+
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+    env.reset()
+
+    assert isinstance(env.single_action_space, Discrete)
+    assert isinstance(env.action_space, MultiDiscrete)
+
+    if use_single_action_space:
+        actions = [env.single_action_space.sample() for _ in range(8)]
+    else:
+        actions = env.action_space.sample()
+    observations, rewards, terminations, truncations, _ = env.step(actions)
+
+    env.close()
+
+    assert isinstance(env.observation_space, Box)
+    assert isinstance(observations, np.ndarray)
+    assert observations.dtype == env.observation_space.dtype
+    assert observations.shape == (8,) + env.single_observation_space.shape
+    assert observations.shape == env.observation_space.shape
+
+    assert isinstance(rewards, np.ndarray)
+    assert isinstance(rewards[0], (float, np.floating))
+    assert rewards.ndim == 1
+    assert rewards.size == 8
+
+    assert isinstance(terminations, np.ndarray)
+    assert terminations.dtype == np.bool_
+    assert terminations.ndim == 1
+    assert terminations.size == 8
+
+    assert isinstance(truncations, np.ndarray)
+    assert truncations.dtype == np.bool_
+    assert truncations.ndim == 1
+    assert truncations.size == 8
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+def test_call_async_vector_env(shared_memory):
+    """Test call with async vector environment."""
+    env_fns = [
+        make_env("CartPole-v1", i, render_mode="rgb_array_list") for i in range(4)
+    ]
+
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+    env.reset()
+    images = env.call("render")
+    gravity = env.call("gravity")
+
+    env.close()
+
+    assert isinstance(images, tuple)
+    assert len(images) == 4
+    for i in range(4):
+        assert len(images[i]) == 1
+        assert isinstance(images[i][0], np.ndarray)
+
+    assert isinstance(gravity, tuple)
+    assert len(gravity) == 4
+    for i in range(4):
+        assert isinstance(gravity[i], float)
+        assert gravity[i] == 9.8
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+def test_set_attr_async_vector_env(shared_memory):
+    """Test `set_attr_` for async vector environment with or without shared memory."""
+    env_fns = [make_env("CartPole-v1", i) for i in range(4)]
+
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+    env.set_attr("gravity", [9.81, 3.72, 8.87, 1.62])
+    gravity = env.get_attr("gravity")
+    assert gravity == (9.81, 3.72, 8.87, 1.62)
+
+    env.close()
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+def test_copy_async_vector_env(shared_memory):
+    """Test observations are a copy of the true observation with and without shared memory."""
+    env_fns = [make_env("CartPole-v1", i) for i in range(8)]
+
+    # TODO, these tests do nothing, understand the purpose of the tests and fix them
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory, copy=True)
+    observations, infos = env.reset()
+    observations[0] = 0
+
+    env.close()
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+def test_no_copy_async_vector_env(shared_memory):
+    """Test observation are not a copy of the true observation with and without shared memory."""
+    env_fns = [make_env("CartPole-v1", i) for i in range(8)]
+
+    # TODO, these tests do nothing, understand the purpose of the tests and fix them
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory, copy=False)
+    observations, infos = env.reset()
+    observations[0] = 0
+
+    env.close()
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+def test_reset_timeout_async_vector_env(shared_memory):
+    """Test timeout error on reset with and without shared memory."""
+    env_fns = [make_slow_env(0.3, i) for i in range(4)]
+
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+    with pytest.raises(TimeoutError):
+        env.reset_async()
+        env.reset_wait(timeout=0.1)
+
+    env.close(terminate=True)
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+def test_step_timeout_async_vector_env(shared_memory):
+    """Test timeout error on step with and without shared memory."""
+    env_fns = [make_slow_env(0.0, i) for i in range(4)]
+
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+    with pytest.raises(TimeoutError):
+        env.reset()
+        env.step_async(np.array([0.1, 0.1, 0.3, 0.1]))
+        observations, rewards, terminations, truncations, _ = env.step_wait(timeout=0.1)
+    env.close(terminate=True)
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+def test_reset_out_of_order_async_vector_env(shared_memory):
+    """Test reset being called out of order with and without shared memory."""
+    env_fns = [make_env("CartPole-v1", i) for i in range(4)]
+
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+    with pytest.raises(
+        NoAsyncCallError,
+        match=re.escape(
+            "Calling `reset_wait` without any prior call to `reset_async`."
+        ),
+    ):
+        env.reset_wait()
+
+    env.close(terminate=True)
+
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+    with pytest.raises(
+        AlreadyPendingCallError,
+        match=re.escape(
+            "Calling `reset_async` while waiting for a pending call to `step` to complete"
+        ),
+    ):
+        actions = env.action_space.sample()
+        env.reset()
+        env.step_async(actions)
+        env.reset_async()
+
+    with pytest.warns(
+        UserWarning,
+        match=re.escape(
+            "Calling `close` while waiting for a pending call to `step` to complete."
+        ),
+    ):
+        env.close(terminate=True)
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+def test_step_out_of_order_async_vector_env(shared_memory):
+    """Test step out of order with and without shared memory."""
+    env_fns = [make_env("CartPole-v1", i) for i in range(4)]
+
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+    with pytest.raises(
+        NoAsyncCallError,
+        match=re.escape("Calling `step_wait` without any prior call to `step_async`."),
+    ):
+        env.action_space.sample()
+        env.reset()
+        env.step_wait()
+
+    env.close(terminate=True)
+
+    env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+    with pytest.raises(
+        AlreadyPendingCallError,
+        match=re.escape(
+            "Calling `step_async` while waiting for a pending call to `reset` to complete"
+        ),
+    ):
+        actions = env.action_space.sample()
+        env.reset_async()
+        env.step_async(actions)
+
+    with pytest.warns(
+        UserWarning,
+        match=re.escape(
+            "Calling `close` while waiting for a pending call to `reset` to complete."
+        ),
+    ):
+        env.close(terminate=True)
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+def test_already_closed_async_vector_env(shared_memory):
+    """Test the error if a function is called if environment is already closed."""
+    env_fns = [make_env("CartPole-v1", i) for i in range(4)]
+    with pytest.raises(ClosedEnvironmentError):
+        env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+        env.close()
+        env.reset()
+
+
+@pytest.mark.parametrize("shared_memory", [True, False])
+def test_check_spaces_async_vector_env(shared_memory):
+    """Test check spaces for async vector environment with and without shared memory."""
+    # CartPole-v1 - observation_space: Box(4,), action_space: Discrete(2)
+    env_fns = [make_env("CartPole-v1", i) for i in range(8)]
+    # FrozenLake-v1 - Discrete(16), action_space: Discrete(4)
+    env_fns[1] = make_env("FrozenLake-v1", 1)
+    with pytest.raises(RuntimeError):
+        env = AsyncVectorEnv(env_fns, shared_memory=shared_memory)
+        env.close(terminate=True)
+
+
+def test_custom_space_async_vector_env():
+    """Test custom spaces with async vector environment."""
+    env_fns = [make_custom_space_env(i) for i in range(4)]
+
+    env = AsyncVectorEnv(env_fns, shared_memory=False)
+    reset_observations, reset_infos = env.reset()
+
+    assert isinstance(env.single_action_space, CustomSpace)
+    assert isinstance(env.action_space, Tuple)
+
+    actions = ("action-2", "action-3", "action-5", "action-7")
+    step_observations, rewards, terminations, truncations, _ = env.step(actions)
+
+    env.close()
+
+    assert isinstance(env.single_observation_space, CustomSpace)
+    assert isinstance(env.observation_space, Tuple)
+
+    assert isinstance(reset_observations, tuple)
+    assert reset_observations == ("reset", "reset", "reset", "reset")
+
+    assert isinstance(step_observations, tuple)
+    assert step_observations == (
+        "step(action-2)",
+        "step(action-3)",
+        "step(action-5)",
+        "step(action-7)",
+    )
+
+
+def test_custom_space_async_vector_env_shared_memory():
+    """Test custom space with shared memory."""
+    env_fns = [make_custom_space_env(i) for i in range(4)]
+    with pytest.raises(ValueError):
+        env = AsyncVectorEnv(env_fns, shared_memory=True)
+        env.close(terminate=True)
+
+
+def test_float16_async_vector_env_shared_memory():
+    """Test observation dtypes without an `array` typecode (e.g. float16) with shared memory."""
+    obs_space = Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float16)
+    envs = AsyncVectorEnv(
+        [lambda: GenericTestEnv(observation_space=obs_space)] * 2, shared_memory=True
+    )
+
+    observations, _ = envs.reset(seed=0)
+    assert observations.dtype == np.float16
+    assert observations.shape == (2, 3)
+
+    observations, *_ = envs.step(envs.action_space.sample())
+    assert observations.dtype == np.float16
+    assert observations.shape == (2, 3)
+
+    envs.close()
+
+
+def raise_error_reset(self, seed, options):
+    super(GenericTestEnv, self).reset(seed=seed, options=options)
+    if seed == 1:
+        raise ValueError("Error in reset")
+    return self.observation_space.sample(), {}
+
+
+def raise_error_step(self, action):
+    if action >= 1:
+        raise ValueError(f"Error in step with {action}")
+
+    return self.observation_space.sample(), 0, False, False, {}
+
+
+def test_async_vector_subenv_error():
+    envs = AsyncVectorEnv(
+        [
+            lambda: GenericTestEnv(
+                reset_func=raise_error_reset, step_func=raise_error_step
+            )
+        ]
+        * 2
+    )
+
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        envs.reset(seed=[0, 0])
+    assert len(caught_warnings) == 0
+
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        with pytest.raises(ValueError, match="Error in reset"):
+            envs.reset(seed=[1, 0])
+
+    envs.close()
+
+    assert len(caught_warnings) == 3
+    assert (
+        "Received the following error from Worker-0 - Shutting it down"
+        in caught_warnings[0].message.args[0]
+    )
+    assert (
+        'in raise_error_reset\n    raise ValueError("Error in reset")\nValueError: Error in reset'
+        in caught_warnings[1].message.args[0]
+    )
+    assert (
+        caught_warnings[2].message.args[0]
+        == "\x1b[31mERROR: Raising the last exception back to the main process.\x1b[0m"
+    )
+
+    envs = AsyncVectorEnv(
+        [
+            lambda: GenericTestEnv(
+                reset_func=raise_error_reset, step_func=raise_error_step
+            )
+        ]
+        * 3
+    )
+
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        with pytest.raises(ValueError, match="Error in step"):
+            envs.step([0, 1, 2])
+
+    envs.close()
+
+    assert len(caught_warnings) == 5
+    # due to variance in the step time, the order of warnings is random
+    assert re.match(
+        r"\x1b\[31mERROR: Received the following error from Worker-[12] - Shutting it down\x1b\[0m",
+        caught_warnings[0].message.args[0],
+    )
+    assert re.match(
+        r"\x1b\[31mERROR: Traceback \(most recent call last\):(?s:.)*in raise_error_step(?s:.)*ValueError: Error in step with [12]\n\x1b\[0m",
+        caught_warnings[1].message.args[0],
+    )
+    assert re.match(
+        r"\x1b\[31mERROR: Received the following error from Worker-[12] - Shutting it down\x1b\[0m",
+        caught_warnings[2].message.args[0],
+    )
+    assert re.match(
+        r"\x1b\[31mERROR: Traceback \(most recent call last\):(?s:.)*in raise_error_step(?s:.)*ValueError: Error in step with [12]\n\x1b\[0m",
+        caught_warnings[3].message.args[0],
+    )
+    assert (
+        caught_warnings[4].message.args[0]
+        == "\x1b[31mERROR: Raising the last exception back to the main process.\x1b[0m"
+    )
+
+
+def custom_semaphore_worker(
+    index,
+    env_fn,
+    pipe,
+    parent_pipe,
+    shared_memory,
+    error_queue,
+    autoreset_mode,
+    semaphore,
+):
+    """A custom worker with the signature expected by `AsyncVectorEnv`."""
+    _async_worker(
+        index,
+        env_fn,
+        pipe,
+        parent_pipe,
+        shared_memory,
+        error_queue,
+        autoreset_mode,
+        semaphore=semaphore,
+    )
+
+
+def test_max_concurrency_async_vector_env():
+    """Tests that `max_concurrency` limits the number of environments executing at any one time."""
+    with multiprocessing.Manager() as manager:
+        active_count = manager.Value("i", 0)
+        max_active = manager.Value("i", 0)
+        lock = manager.Lock()
+        # Two environments must be executing simultaneously to get past the barrier, so the
+        # exact concurrency is asserted rather than relying on the two happening to overlap.
+        barrier = manager.Barrier(2)
+
+        def counting_step_func(self, action):
+            with lock:
+                active_count.value += 1
+                if active_count.value > max_active.value:
+                    max_active.value = active_count.value
+            barrier.wait(timeout=30)
+            with lock:
+                active_count.value -= 1
+            return self.observation_space.sample(), 0.0, False, False, {}
+
+        envs = AsyncVectorEnv(
+            [lambda: GenericTestEnv(step_func=counting_step_func) for _ in range(4)],
+            max_concurrency=2,
+        )
+        try:
+            envs.reset()
+            envs.step(envs.action_space.sample())
+        finally:
+            envs.close(terminate=True)
+
+        assert max_active.value == 2
+
+
+def test_max_concurrency_one_async_vector_env():
+    """Tests that `max_concurrency=1` fully serializes environment execution."""
+    with multiprocessing.Manager() as manager:
+        active_count = manager.Value("i", 0)
+        max_active = manager.Value("i", 0)
+        lock = manager.Lock()
+
+        def counting_step_func(self, action):
+            with lock:
+                active_count.value += 1
+                if active_count.value > max_active.value:
+                    max_active.value = active_count.value
+            time.sleep(0.05)
+            with lock:
+                active_count.value -= 1
+            return self.observation_space.sample(), 0.0, False, False, {}
+
+        envs = AsyncVectorEnv(
+            [lambda: GenericTestEnv(step_func=counting_step_func) for _ in range(4)],
+            max_concurrency=1,
+        )
+        envs.reset()
+        envs.step(envs.action_space.sample())
+        envs.close()
+
+        assert max_active.value == 1
+
+
+@pytest.mark.parametrize("max_concurrency", [2.5, "2", 2.0])
+def test_non_integer_max_concurrency_async_vector_env(max_concurrency):
+    """Tests that non-integer `max_concurrency` values are rejected rather than silently misused.
+
+    Without an upfront type check, `2.5` fails much later with an opaque `TypeError` from
+    `BoundedSemaphore` and `True` silently becomes `max_concurrency=1`.
+    """
+    with pytest.raises(
+        ValueError, match="`max_concurrency` must be an integer or None, got"
+    ):
+        AsyncVectorEnv(
+            [lambda: GenericTestEnv() for _ in range(2)],
+            max_concurrency=max_concurrency,
+        )
+
+
+@pytest.mark.parametrize("max_concurrency", [0, -1, -10])
+def test_invalid_max_concurrency_async_vector_env(max_concurrency):
+    """Tests that invalid `max_concurrency` values raise a `ValueError`."""
+    with pytest.raises(
+        ValueError, match="`max_concurrency` must be a positive or None, got"
+    ):
+        AsyncVectorEnv(
+            [lambda: GenericTestEnv() for _ in range(2)],
+            max_concurrency=max_concurrency,
+        )
+
+
+@pytest.mark.parametrize("max_concurrency", [None, 2])
+def test_incompatible_custom_worker(max_concurrency):
+    """Tests that a custom `worker` not accepting the `semaphore` argument is rejected upfront.
+
+    The semaphore is always passed to the worker, so otherwise the worker dies with a `TypeError` in
+    the subprocess that the main process only reports as a bare `EOFError`.
+    """
+
+    def custom_worker(
+        index,
+        env_fn,
+        pipe,
+        parent_pipe,
+        shared_memory,
+        error_queue,
+        autoreset_mode,
+    ):
+        pass
+
+    with pytest.raises(ValueError, match="A custom `worker` must accept 8 arguments"):
+        AsyncVectorEnv(
+            [lambda: GenericTestEnv() for _ in range(2)],
+            worker=custom_worker,
+            max_concurrency=max_concurrency,
+        )
+
+
+@pytest.mark.parametrize("max_concurrency", [None, 2])
+def test_custom_worker_with_semaphore(max_concurrency):
+    """Tests that a custom `worker` with the expected signature works with and without `max_concurrency`."""
+    envs = AsyncVectorEnv(
+        [lambda: GenericTestEnv() for _ in range(4)],
+        worker=custom_semaphore_worker,
+        max_concurrency=max_concurrency,
+    )
+    try:
+        envs.reset()
+        envs.step(envs.action_space.sample())
+    finally:
+        envs.close()
+
+
+def test_max_concurrency_greater_than_num_envs():
+    """Tests that `max_concurrency` greater than the number of environments works."""
+    envs = AsyncVectorEnv(
+        [lambda: GenericTestEnv() for _ in range(2)],
+        max_concurrency=4,
+    )
+    envs.reset()
+    envs.step(envs.action_space.sample())
+    envs.close()
+
+
+def test_max_concurrency_releases_before_pipe_send():
+    """Tests that a worker releases its `max_concurrency` permit before writing its result to the pipe.
+
+    The observation must be larger than the OS pipe buffer (~64 KB) for `send` to block, so this
+    only affects `shared_memory=False` (and any large `info`, e.g. `final_obs` under `SAME_STEP`).
+    """
+    envs = AsyncVectorEnv(
+        [
+            lambda: GenericTestEnv(
+                observation_space=Box(
+                    low=0, high=255, shape=(256, 256, 3), dtype=np.uint8
+                )
+            )
+            for _ in range(4)
+        ],
+        shared_memory=False,
+        max_concurrency=1,
+    )
+    try:
+        envs.reset_async()
+        obs, info = envs.reset_wait(timeout=10)
+        assert obs.shape == (4, 256, 256, 3)
+    finally:
+        envs.close(terminate=True)

@@ -1,0 +1,160 @@
+# ============================================================================
+# Cognithor · Docker Compose — Production
+# ============================================================================
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml --profile postgres up -d
+#   docker compose -f docker-compose.prod.yml --profile nginx up -d
+#   docker compose -f docker-compose.prod.yml logs -f
+#
+# Profiles:
+#   (default)   jarvis + webui + ollama
+#   postgres    + PostgreSQL with pgvector
+#   nginx       + Nginx reverse proxy with TLS
+# ============================================================================
+
+services:
+  # ── Jarvis Core (Headless) ───────────────────────────────────
+  jarvis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cognithor:latest
+    container_name: cognithor
+    restart: unless-stopped
+    command: ["--no-cli", "--api-host", "0.0.0.0"]
+    volumes:
+      - jarvis-data:/home/jarvis/.jarvis
+    environment:
+      - COGNITHOR_OLLAMA_BASE_URL=http://ollama:11434
+      - COGNITHOR_API_HOST=0.0.0.0
+      - COGNITHOR_API_TOKEN=${COGNITHOR_API_TOKEN:?Set COGNITHOR_API_TOKEN in .env}
+      - COGNITHOR_LOGGING_LEVEL=${COGNITHOR_LOGGING_LEVEL:-INFO}
+      - COGNITHOR_TELEGRAM_TOKEN=${COGNITHOR_TELEGRAM_TOKEN:-}
+      - COGNITHOR_TELEGRAM_ALLOWED_USERS=${COGNITHOR_TELEGRAM_ALLOWED_USERS:-}
+    networks:
+      - jarvis-internal
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8741/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+  # ── Web UI ───────────────────────────────────────────────────
+  webui:
+    image: cognithor:latest
+    container_name: cognithor-webui
+    restart: unless-stopped
+    entrypoint: ["python", "-m", "uvicorn"]
+    command:
+      - "jarvis.channels.webui:create_app"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--factory"
+      - "--log-level"
+      - "warning"
+    volumes:
+      - jarvis-data:/home/jarvis/.jarvis
+    environment:
+      - COGNITHOR_WEBUI_HOST=0.0.0.0
+      - COGNITHOR_API_TOKEN=${COGNITHOR_API_TOKEN:?Set COGNITHOR_API_TOKEN in .env}
+      - COGNITHOR_WEBUI_CORS_ORIGINS=${COGNITHOR_WEBUI_CORS_ORIGINS:-*}
+    networks:
+      - jarvis-internal
+    depends_on:
+      jarvis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Ollama (LLM Backend) ────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cognithor-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - jarvis-internal
+    # GPU support: uncomment for NVIDIA GPU (requires nvidia-container-toolkit)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:11434/api/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ── PostgreSQL + pgvector (optional) ────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: cognithor-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${COGNITHOR_POSTGRES_DB:-cognithor}
+      POSTGRES_USER: ${COGNITHOR_POSTGRES_USER:-cognithor}
+      POSTGRES_PASSWORD: ${COGNITHOR_POSTGRES_PASSWORD:?Set COGNITHOR_POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - jarvis-internal
+    profiles:
+      - postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${COGNITHOR_POSTGRES_USER:-cognithor}"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Nginx Reverse Proxy (optional) ──────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: cognithor-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${TLS_CERT_DIR:-./deploy/certs}:/etc/nginx/certs:ro
+    networks:
+      - jarvis-internal
+    depends_on:
+      webui:
+        condition: service_healthy
+    profiles:
+      - nginx
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  jarvis-data:
+    name: cognithor-data
+  ollama-data:
+    name: cognithor-ollama
+  postgres-data:
+    name: cognithor-postgres
+
+networks:
+  jarvis-internal:
+    name: cognithor-internal
+    driver: bridge

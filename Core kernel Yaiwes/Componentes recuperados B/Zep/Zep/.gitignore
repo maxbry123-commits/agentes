@@ -1,0 +1,107 @@
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# Binaries for programs and plugins
+out/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Secrets
+.env
+.env.local
+
+# Test data
+test_data
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+.idea
+.vscode
+
+# VSCode local history
+.history
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/**/*.py
+lib/**/*.pyc
+lib/**/__pycache__/
+lib/**/site-packages/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# PyCharm
+.idea/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pytest
+.pytest_cache/
+.coverage
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# UV (Python package manager)
+uv.lock
+.uv_cache/
+__pypackages__/
+
+# Log files
+*.log
+
+# macOS
+.DS_Store
+
+# Node.js
+node_modules/
+dist/
+
+# Coverage (integration test runs)
+coverage.xml
+
+# Superpowers Skill
+.superpowers/

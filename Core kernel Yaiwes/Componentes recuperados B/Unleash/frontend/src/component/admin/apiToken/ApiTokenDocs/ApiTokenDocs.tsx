@@ -1,0 +1,21 @@
+import { Alert } from '@mui/material';
+
+export const ApiTokenDocs = () => {
+    return (
+        <Alert severity='info'>
+            <p>
+                Read the{' '}
+                <a
+                    href='https://docs.getunleash.io/sdks'
+                    target='_blank'
+                    rel='noreferrer'
+                >
+                    SDK overview
+                </a>{' '}
+                to connect Unleash to your application. Please note it can take
+                up to <strong>1 minute</strong> before a new API key is
+                activated.
+            </p>
+        </Alert>
+    );
+};

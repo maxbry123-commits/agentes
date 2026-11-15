@@ -1,0 +1,75 @@
+name: research-download-chain-63-96
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: research-download-chain-63-96-main
+  cancel-in-progress: false
+jobs:
+  download-extract-63-96:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          lfs: false
+          fetch-depth: 1
+      - name: Linear download archive extract 63-96
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import pathlib, subprocess, shutil, json, hashlib, tempfile
+          C=[
+          (63,'logseq','https://github.com/logseq/logseq'),(64,'Trilium','https://github.com/TriliumNext/Trilium'),(65,'anytype-ts','https://github.com/anyproto/anytype-ts'),(66,'AppFlowy','https://github.com/AppFlowy-IO/AppFlowy'),(67,'AFFiNE','https://github.com/toeverything/AFFiNE'),(68,'excalidraw','https://github.com/excalidraw/excalidraw'),(69,'argos-translate','https://github.com/argosopentech/argos-translate'),(70,'LibreTranslate','https://github.com/LibreTranslate/LibreTranslate'),(71,'hermes-agent','https://github.com/NousResearch/hermes-agent'),(72,'plandex','https://github.com/plandex-ai/plandex'),(73,'repomix','https://github.com/yamadashy/repomix'),(74,'crawl4ai','https://github.com/unclecode/crawl4ai'),(75,'yt-dlp','https://github.com/yt-dlp/yt-dlp'),(76,'searxng','https://github.com/searxng/searxng'),(77,'Vane','https://github.com/ItzCrazyKns/Vane'),(78,'khoj','https://github.com/khoj-ai/khoj'),(79,'inngest','https://github.com/inngest/inngest'),(80,'trigger.dev','https://github.com/triggerdotdev/trigger.dev'),(81,'restate','https://github.com/restatedev/restate'),(82,'dbos-transact-ts','https://github.com/dbos-inc/dbos-transact-ts'),(83,'airflow','https://github.com/apache/airflow'),(84,'prefect','https://github.com/PrefectHQ/prefect'),(85,'dagster','https://github.com/dagster-io/dagster'),(86,'argo-workflows','https://github.com/argoproj/argo-workflows'),(87,'dolphinscheduler','https://github.com/apache/dolphinscheduler'),(88,'xxl-job','https://github.com/xuxueli/xxl-job'),(89,'elastic-job-lite','https://github.com/apache/shardingsphere-elasticjob'),(90,'PowerJob','https://github.com/PowerJob/PowerJob'),(91,'cadence','https://github.com/cadence-workflow/cadence'),(92,'ray','https://github.com/ray-project/ray'),(93,'hatchet','https://github.com/hatchet-dev/hatchet'),(94,'conductor','https://github.com/Netflix/conductor'),(95,'litellm-agent-sdk','https://github.com/BerriAI/litellm-agent-sdk'),(96,'litellm','https://github.com/BerriAI/litellm')]
+          root=pathlib.Path.cwd(); dl=root/'_downloads'; ev=root/'_evidence'; dl.mkdir(exist_ok=True); ev.mkdir(exist_ok=True)
+          assert [x[0] for x in C]==list(range(63,97))
+          def run(*a,cwd=None): return subprocess.run(a,cwd=cwd,check=True,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).stdout.strip()
+          manifest=[]
+          for num,name,url in C:
+            print(f'BEGIN {num} {name}',flush=True)
+            with tempfile.TemporaryDirectory(prefix=f'rdc-{num}-') as td0:
+              td=pathlib.Path(td0); clone=td/'src'
+              run('git','clone','--depth','1','--no-tags',url,str(clone)); sha=run('git','rev-parse','HEAD',cwd=clone); shutil.rmtree(clone/'.git',ignore_errors=True)
+              dest=root/name; arc=dl/name; evid=ev/name
+              for p in (dest,arc,evid):
+                if p.exists(): shutil.rmtree(p)
+                p.mkdir(parents=True)
+              # Linear archive: tar -> zstd -> fixed 16 MiB parts. No quadratic trial ZIP recompression.
+              subprocess.run(f"tar -C '{clone}' -cf - . | zstd -q -T0 -3 | split -b 16M -d -a 4 - '{arc}/{name}.tar.zst.part.'",shell=True,check=True)
+              parts=sorted(arc.glob(f'{name}.tar.zst.part.*')); assert parts and all(p.stat().st_size<=16*1024*1024 for p in parts)
+              subprocess.run(f"cat '{arc}'/{name}.tar.zst.part.* | zstd -q -d | tar -C '{dest}' -xf -",shell=True,check=True)
+              srcfiles=sorted(p.relative_to(clone).as_posix() for p in clone.rglob('*') if p.is_file()); dstfiles=sorted(p.relative_to(dest).as_posix() for p in dest.rglob('*') if p.is_file()); assert srcfiles==dstfiles
+              (evid/'FILES.txt').write_text(''.join(x+'\n' for x in dstfiles))
+              manifest.append({'id':num,'name':name,'source_url':url,'source_commit':sha,'parts':len(parts),'files_extracted':len(dstfiles),'status':'PASS'})
+              print(f'PASS {num} {name} files={len(dstfiles)} parts={len(parts)}',flush=True)
+          data=json.dumps(manifest,indent=2)+'\n'; (ev/'MANIFEST.json').write_text(data); (ev/'MANIFEST.sha256').write_text(hashlib.sha256(data.encode()).hexdigest()+'  MANIFEST.json\n')
+          print('BUILD PASS 34/34',flush=True)
+          PY
+      - name: X-Ray evidence gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json,pathlib
+          r=pathlib.Path.cwd(); m=json.loads((r/'_evidence/MANIFEST.json').read_text()); assert len(m)==34 and [x['id'] for x in m]==list(range(63,97))
+          for x in m:
+            d=r/x['name']; a=r/'_downloads'/x['name']; e=r/'_evidence'/x['name']/'FILES.txt'; files=sorted(p.relative_to(d).as_posix() for p in d.rglob('*') if p.is_file()); assert x['status']=='PASS' and len(files)==x['files_extracted'] and files==e.read_text().splitlines() and len(list(a.glob('*.part.*')))==x['parts']
+          print('EVIDENCEGATE PASS 34/34')
+          PY
+      - name: Commit results to main
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'download: components 63-96 linear deterministic extraction' || true
+          git push origin HEAD:main
+      - name: Final verification
+        run: |
+          test -s _evidence/MANIFEST.json
+          test -s _evidence/MANIFEST.sha256
+          echo 'FINAL PASS 34/34'

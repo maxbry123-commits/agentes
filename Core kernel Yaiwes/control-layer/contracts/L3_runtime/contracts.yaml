@@ -1,0 +1,81 @@
+# L3 runtime
+- id: C24
+  capa: L3
+  define: Multi-step ordering
+  aplica_en: [MULTI_STEP]
+  severity: media
+  priority: 60
+  implementado: true
+  impl_ref: control-layer/contract_engine/graph.py
+- id: C25
+  capa: L3
+  define: Continuación de pasos
+  aplica_en: [MULTI_STEP]
+  severity: media
+  priority: 58
+  implementado: true
+  impl_ref: control-layer/runtime/durable.py
+- id: C27
+  capa: L3
+  define: Escritura de estado runtime
+  aplica_en: [WRITE_LOCAL, STATEFUL]
+  severity: alta
+  priority: 75
+  implementado: true
+  impl_ref: control-layer/runtime/durable.py
+- id: C28
+  capa: L3
+  define: Timeout / budget de paso
+  aplica_en: [READ_LOCAL, EXEC_COMMAND, LLM_CALL]
+  severity: media
+  priority: 70
+  implementado: true
+  impl_ref: control-layer/contract_engine/sentinela_router.py
+- id: C29
+  capa: L3
+  define: Paso atómico / saga step
+  aplica_en: [WRITE_LOCAL, DELETE, MULTI_STEP]
+  severity: alta
+  priority: 78
+  implementado: true
+  impl_ref: control-layer/runtime/durable.py
+- id: C30
+  capa: L3
+  define: Estado durable entre pasos
+  aplica_en: [MULTI_STEP, STATEFUL]
+  severity: alta
+  priority: 80
+  implementado: true
+  impl_ref: control-layer/runtime/durable.py
+- id: C33
+  capa: L3
+  define: Watch de timeout en red/exec
+  aplica_en: [NETWORK_CALL, EXEC_COMMAND, LLM_CALL]
+  severity: media
+  priority: 72
+  implementado: true
+  impl_ref: control-layer/contract_engine/sentinela_router.py
+- id: C36
+  capa: L3
+  define: Política de retry
+  aplica_en: [NETWORK_CALL, EXEC_COMMAND, EXTERNAL_AGENT, LLM_CALL]
+  severity: media
+  priority: 65
+  implementado: true
+  impl_ref: control-layer/contract_engine/rules/modifiers.yaml
+- id: C37
+  capa: L3
+  define: Circuit breaker de red
+  aplica_en: [NETWORK_CALL]
+  severity: media
+  priority: 64
+  implementado: true
+  impl_ref: control-layer/contract_engine/rules/routing.yaml
+- id: C38
+  capa: L3
+  define: Backpressure / cola
+  aplica_en: [NETWORK_CALL, EXTERNAL_AGENT]
+  severity: baja
+  priority: 50
+  implementado: true
+  impl_ref: control-layer/runtime/durable.py

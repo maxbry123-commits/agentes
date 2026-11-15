@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "Envoy",
+    "path": "test/extensions/geoip_providers/maxmind/test_data/corrupted-entry-data.mmdb",
+    "chunks_dir": "Envoy/test/extensions/geoip_providers/maxmind/test_data/corrupted-entry-data.mmdb.chunks",
+    "bytes": 9666556,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Envoy",
+    "path": "test/extensions/geoip_providers/maxmind/test_data/GeoIP2-Country-Test.mmdb",
+    "chunks_dir": "Envoy/test/extensions/geoip_providers/maxmind/test_data/GeoIP2-Country-Test.mmdb.chunks",
+    "bytes": 9666556,
+    "chunk_bytes": 8388608
+  }
+]

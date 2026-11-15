@@ -1,0 +1,273 @@
+import { describe, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
+import { db } from "../src/db/client";
+import { acceptRunCommand } from "../src/commands";
+import { acceptRunCancel, CANCEL_SUMMARY } from "../src/commands/cancel";
+import { recoverStaleRuns, type ReconcileProbe } from "../src/runs/recovery";
+import { finalizeRun } from "../src/runs/finalize";
+import {
+  createRun,
+  getRun,
+  insertStep,
+  setRunEngineSession,
+  setRunProviderSession,
+  setRunSandbox,
+  setRunStatus,
+  STALE_SUMMARY,
+} from "../src/runs/repo";
+import { providerSessionBinding } from "@useagent/agent-harness/canonical";
+import type { EngineId, RunStatus } from "../src/db/schema";
+import { waitFor } from "./helpers"; // side-effect: imports src/index → migrate + seed
+
+// Boot recovery of the durable command lane, driven with a deterministic fake
+// harness probe. Covers the crash matrix: reconcile an in-flight run, free a
+// thread whose command was stuck (crash before settle), requeue a run whose
+// worker never started, re-dispatch the queued next turn IN ORDER, and fail
+// legacy runs with no command.
+
+const ORG = "org-skynet-dev";
+
+/** A finished opencode session reports its answer; anything else is unreachable. */
+const fakeReconcile: ReconcileProbe = async (handle) =>
+  handle.sessionId === "ses_done"
+    ? { status: "completed", summary: "the real answer" }
+    : { status: "unreachable" };
+
+/** Seed a command+run and force it into a specific (run, command) state. */
+async function seed(opts: {
+  runId?: string;
+  threadId: string;
+  parentRunId: string | null;
+  engine: EngineId;
+  runStatus: RunStatus;
+  commandState: "queued" | "dispatched";
+  session?: string;
+  sandbox?: string;
+  withStep?: boolean;
+}): Promise<string> {
+  const id = opts.runId ?? crypto.randomUUID();
+  await acceptRunCommand({
+    idempotencyKey: null,
+    orgId: ORG,
+    actorId: null,
+    run: {
+      id,
+      prompt: "x",
+      model: opts.engine === "codex" ? "gpt-5.6-luna" : "claude-opus-5",
+      engine: opts.engine,
+      parentRunId: opts.parentRunId,
+      threadId: opts.threadId,
+    },
+  });
+  if (opts.runStatus !== "queued") await setRunStatus(id, opts.runStatus);
+  if (opts.session && opts.sandbox) {
+    await setRunSandbox(id, opts.sandbox);
+    await setRunProviderSession(id, providerSessionBinding({
+      provider: opts.engine === "daytona" ? "opencode" : opts.engine,
+      nativeSessionId: opts.session,
+      protocolVersion: opts.engine === "opencode" ? "opencode-server/compat" : "t3-orchestration",
+      runtime: { kind: "sandbox", id: opts.sandbox },
+      capabilities: {} as never,
+      generation: 1,
+    }));
+  } else if (opts.session) await setRunEngineSession(id, opts.session);
+  if (opts.sandbox && !opts.session) await setRunSandbox(id, opts.sandbox);
+  await db.execute(sql`update commands set state=${opts.commandState} where run_id=${id} and kind='run.create'`);
+  if (opts.withStep) {
+    await insertStep({ runId: id, idx: 0, kind: "task", label: "Thinking…", chip: "opencode", code: null });
+  }
+  return id;
+}
+
+const isDone = async (id: string) => ((await getRun(id))?.status === "completed" ? true : null);
+
+describe("command-lane restart recovery", () => {
+  test("a durable cancel settles the interrupted run and unblocks its queued replacement", async () => {
+    const A = crypto.randomUUID();
+    await seed({
+      runId: A,
+      threadId: A,
+      parentRunId: null,
+      engine: "opencode",
+      runStatus: "running",
+      commandState: "dispatched",
+      session: "ses_done",
+      sandbox: "sb",
+      withStep: true,
+    });
+    const B = await seed({
+      threadId: A,
+      parentRunId: A,
+      engine: "mock",
+      runStatus: "queued",
+      commandState: "queued",
+    });
+    await acceptRunCancel({ orgId: ORG, actorId: null, runId: A });
+
+    await recoverStaleRuns(fakeReconcile);
+
+    expect((await getRun(A))?.status).toBe("failed");
+    expect((await getRun(A))?.summary).toBe(CANCEL_SUMMARY);
+    await waitFor(() => isDone(B));
+  });
+
+  test("reconciles the in-flight run AND dispatches the queued next turn in order", async () => {
+    // A: opencode, running, command dispatched (native session finished server-side).
+    const A = crypto.randomUUID();
+    await seed({ runId: A, threadId: A, parentRunId: null, engine: "opencode", runStatus: "running", commandState: "dispatched", session: "ses_done", sandbox: "sb", withStep: true });
+    // B: mock reply, queued behind A.
+    const B = await seed({ threadId: A, parentRunId: A, engine: "mock", runStatus: "queued", commandState: "queued" });
+
+    const res = await recoverStaleRuns(fakeReconcile);
+
+    // A reconciled to completed with the real answer.
+    const runA = await getRun(A);
+    expect(runA?.status).toBe("completed");
+    expect(runA?.summary).toBe("the real answer");
+    expect(res.reconciled).toBeGreaterThanOrEqual(1);
+
+    // B re-dispatched → executes (mock) → completes. (Order: only after A settled.)
+    await waitFor(() => isDone(B));
+  });
+
+  test("a recovery finalizer loser reports the durable first-writer status", async () => {
+    const runId = crypto.randomUUID();
+    await seed({
+      runId,
+      threadId: runId,
+      parentRunId: null,
+      engine: "opencode",
+      runStatus: "running",
+      commandState: "dispatched",
+      session: "ses_race",
+      sandbox: "sb",
+      withStep: true,
+    });
+    let releaseProbe!: () => void;
+    let reportProbe!: () => void;
+    const release = new Promise<void>((resolve) => { releaseProbe = resolve; });
+    const probing = new Promise<void>((resolve) => { reportProbe = resolve; });
+    const recovery = recoverStaleRuns(async () => {
+      reportProbe();
+      await release;
+      return { status: "completed", summary: "late provider completion" };
+    });
+    await probing;
+    await finalizeRun(runId, "failed", "first writer failed", 1);
+    releaseProbe();
+    const summary = await recovery;
+    expect((await getRun(runId))?.status).toBe("failed");
+    expect((await getRun(runId))?.summary).toBe("first writer failed");
+    expect(summary.failed).toBeGreaterThanOrEqual(1);
+  });
+
+  test("frees a thread whose command was stuck 'dispatched' after the run already finished", async () => {
+    // Crash between A completing and its command settling: run completed, command dispatched.
+    const A = crypto.randomUUID();
+    await seed({ runId: A, threadId: A, parentRunId: null, engine: "mock", runStatus: "completed", commandState: "dispatched" });
+    const B = await seed({ threadId: A, parentRunId: A, engine: "mock", runStatus: "queued", commandState: "queued" });
+
+    await recoverStaleRuns(fakeReconcile);
+
+    // B still runs — the stuck command is settled so the thread frees for B.
+    await waitFor(() => isDone(B));
+  });
+
+  test("requeues + re-dispatches a run whose worker died before it started", async () => {
+    // Crash between dispatch-commit and run→running: command dispatched, run queued.
+    const A = crypto.randomUUID();
+    await seed({ runId: A, threadId: A, parentRunId: null, engine: "mock", runStatus: "queued", commandState: "dispatched" });
+    await recoverStaleRuns(fakeReconcile);
+    await waitFor(() => isDone(A));
+  });
+
+  test("fails a legacy non-terminal run that has no command", async () => {
+    const legacy = crypto.randomUUID();
+    await createRun({ id: legacy, prompt: "x", model: "claude-opus-5", engine: "mock", orgId: ORG, userId: null, parentRunId: null, threadId: legacy });
+    await setRunStatus(legacy, "running");
+
+    const res = await recoverStaleRuns(fakeReconcile);
+
+    expect((await getRun(legacy))?.status).toBe("failed");
+    expect((await getRun(legacy))?.summary).toBe(STALE_SUMMARY);
+    expect((await getRun(legacy))?.settledAt).toBeInstanceOf(Date);
+    expect(res.failed).toBeGreaterThanOrEqual(1);
+  });
+
+  test("does not infer provider authority from a legacy session-id prefix", async () => {
+    const runId = crypto.randomUUID();
+    await seed({
+      runId,
+      threadId: runId,
+      parentRunId: null,
+      engine: "codex",
+      runStatus: "running",
+      commandState: "dispatched",
+      session: "skynet-thread-looks-runtime",
+      sandbox: undefined,
+    });
+    await setRunSandbox(runId, "sb");
+    let probed = false;
+
+    await recoverStaleRuns(async () => {
+      probed = true;
+      return { status: "completed", summary: "must not adopt" };
+    });
+
+    expect(probed).toBe(false);
+    expect((await getRun(runId))?.status).toBe("failed");
+  });
+
+  test("does not relabel an ambiguous legacy OpenCode row as the current rollout driver", async () => {
+    const runId = crypto.randomUUID();
+    await acceptRunCommand({
+      idempotencyKey: null,
+      orgId: ORG,
+      actorId: null,
+      run: { id: runId, prompt: "legacy", model: "openai/gpt-5.6-luna", engine: "opencode", parentRunId: null, threadId: runId },
+    });
+    await setRunStatus(runId, "running");
+    await setRunEngineSession(runId, "legacy-ambiguous-session");
+    await setRunSandbox(runId, "legacy-sandbox");
+    await db.execute(sql`update commands set state='dispatched' where run_id=${runId} and kind='run.create'`);
+    let probed = false;
+
+    await recoverStaleRuns(async () => {
+      probed = true;
+      return { status: "completed", summary: "wrong protocol" };
+    });
+
+    expect(probed).toBe(false);
+    expect((await getRun(runId))?.status).toBe("failed");
+  });
+
+  test("does not reconcile a session whose credential epoch is no longer resolvable", async () => {
+    const runId = crypto.randomUUID();
+    await acceptRunCommand({
+      idempotencyKey: null,
+      orgId: ORG,
+      actorId: null,
+      run: { id: runId, prompt: "revoked auth", model: "gpt-5.6-luna", engine: "codex", parentRunId: null, threadId: runId },
+    });
+    await setRunStatus(runId, "running");
+    await setRunSandbox(runId, "auth-sandbox");
+    await setRunProviderSession(runId, providerSessionBinding({
+      provider: "codex",
+      nativeSessionId: "auth-session",
+      protocolVersion: "t3-orchestration/useagent-runtime-v7",
+      runtime: { kind: "sandbox", id: "auth-sandbox" },
+      capabilities: {} as never,
+      generation: 2,
+    }, "revoked-epoch"));
+    await db.execute(sql`update commands set state='dispatched' where run_id=${runId} and kind='run.create'`);
+    let probed = false;
+
+    await recoverStaleRuns(async () => {
+      probed = true;
+      return { status: "completed", summary: "must not adopt" };
+    });
+
+    expect(probed).toBe(false);
+    expect((await getRun(runId))?.status).toBe("failed");
+  });
+});

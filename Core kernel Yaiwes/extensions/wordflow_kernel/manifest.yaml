@@ -1,0 +1,18 @@
+name: wordflow_kernel
+version: 0.1.0
+abi_version: "2.0"
+mount_mode: extension
+llm_control: DENY
+ficha: ficha.v2.json
+provides:
+  - forensic
+  - repo_truth
+  - gap_tasks
+  - gateway
+  - engines
+  - memory_local
+  - ledger
+  - trace
+  - checkpoint
+  - resources
+  - validator

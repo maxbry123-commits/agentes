@@ -1,0 +1,66 @@
+### model
+model_name_or_path: "google/gemma-2-9b"
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: dcft/train/zero3.json
+packing: true
+neat_packing: true
+enable_liger_kernel: false
+
+### dataset
+template: gemma
+cutoff_len: 2048
+overwrite_cache: true
+preprocessing_num_workers: 16
+
+### output
+save_strategy: epoch
+logging_steps: 10
+plot_loss: true
+overwrite_output_dir: true
+
+### train
+adam_beta1: 0.85
+adam_beta2: 0.999
+max_grad_norm: 1
+
+global_batch_size: 512              # Do not change this
+gradient_checkpointing: true
+learning_rate: 5.0e-6
+num_train_epochs: 3.0
+lr_scheduler_type: constant
+warmup_ratio: 0.1
+bf16: true
+weight_decay: 0.1
+warmup_steps: 1738
+ddp_timeout: 180000000
+
+### eval
+val_size: 0.05
+eval_strategy: epoch
+
+####################################
+
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/oh-dcft-v3.1-gpt-4o-mini
+template: gemma
+formatting: sharegpt
+messages: conversations
+role_tag: from
+content_tag: value
+user_tag: human
+assistant_tag: gpt
+
+per_device_eval_batch_size: 4
+per_device_train_batch_size: 4      # Can change depending on hardware
+gradient_accumulation_steps: 16     # Can change depending on number of GPUs
+
+output_dir: "/data4/dcft/experiments/train/checkpoints/oh-dcft-v3.1-gpt-4o-mini"
+run_name: hp_ablations_gemma_adambeta1_0.85
+hub_model_id: mlfoundations-dev/hp_ablations_gemma_adambeta1_0.85
+report_to: wandb
+push_to_db: true
+push_to_hub: true

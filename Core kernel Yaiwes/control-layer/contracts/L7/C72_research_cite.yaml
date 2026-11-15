@@ -1,0 +1,17 @@
+# C72 — L7. B6 SALIDA4
+id: C72
+layer: L7
+name: research_cite
+implementado: true
+critical: false
+description: "Citación obligatoria"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C72 aplica en capa L7"
+checks:
+  - research_cite_check
+evidence:
+  type: research_cite_marker
+  required: false

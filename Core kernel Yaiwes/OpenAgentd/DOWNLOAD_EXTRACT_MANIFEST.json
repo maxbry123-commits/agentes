@@ -1,0 +1,38 @@
+{
+  "bundle_bytes": 17745001,
+  "bundle_sha256": "da64903f068568d805a0948679ee4e1a5ac6114587d196f480ebe004eb887782",
+  "extracted_tree": {
+    "bytes": 27542780,
+    "files": 1496,
+    "sha256": "57ba55f82dbc90d12d4a5cc2678edb64afce3ed203b8d39758b869531218673b"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "OpenAgentd.bundle.zip.part-0001",
+      "sha256": "fecc512517c13c1facc3a76116b37781dfb930ce69f3d4618c4367e0115726d3"
+    },
+    {
+      "bytes": 5162089,
+      "name": "OpenAgentd.bundle.zip.part-0002",
+      "sha256": "c882ca45fbc48dcac7721213213c910fd505fda594360dcbceae35b799b1b851"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "OpenAgentd",
+  "source_bytes": 27542780,
+  "source_commit": "a05350f3141488268b018824bb04c2fcd3bf8022",
+  "source_files": 1496,
+  "source_ref": "HEAD",
+  "source_repo": "lthoangg/openagentd",
+  "source_tree": {
+    "bytes": 27542780,
+    "files": 1496,
+    "sha256": "57ba55f82dbc90d12d4a5cc2678edb64afce3ed203b8d39758b869531218673b"
+  }
+}

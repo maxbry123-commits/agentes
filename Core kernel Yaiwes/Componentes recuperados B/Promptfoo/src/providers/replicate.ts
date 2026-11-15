@@ -1,0 +1,597 @@
+import { createHmac } from 'crypto';
+
+import { fetchWithCache, getCache, isCacheEnabled } from '../cache';
+import { getEnvFloat, getEnvInt, getEnvString } from '../envars';
+import logger from '../logger';
+import { getRequestTimeoutMs } from '../providers/shared';
+import { type GenAISpanContext, type GenAISpanResult, withGenAISpan } from '../tracing/genaiTracer';
+import { safeJsonStringify } from '../util/json';
+import { ellipsize } from '../util/text';
+import { createEmptyTokenUsage } from '../util/tokenUsageUtils';
+import { parseChatPrompt } from './shared';
+
+import type { EnvOverrides } from '../types/env';
+import type {
+  ApiModerationProvider,
+  ApiProvider,
+  CallApiContextParams,
+  CallApiOptionsParams,
+  ModerationFlag,
+  ProviderModerationResponse,
+  ProviderResponse,
+} from '../types/index';
+
+interface ReplicateCompletionOptions {
+  apiKey?: string;
+  temperature?: number;
+  max_length?: number;
+  max_new_tokens?: number;
+  max_tokens?: number;
+  top_p?: number;
+  top_k?: number;
+  repetition_penalty?: number;
+  system_prompt?: string;
+  stop_sequences?: string;
+  seed?: number;
+
+  prompt?: {
+    prefix?: string;
+    suffix?: string;
+  };
+
+  // Any other key-value pairs will be passed to the Replicate API as-is
+  [key: string]: any;
+}
+
+interface ReplicatePrediction {
+  id: string;
+  model: string;
+  version: string;
+  input: Record<string, any>;
+  output?: any;
+  logs?: string;
+  error?: string | null;
+  status: 'starting' | 'processing' | 'succeeded' | 'failed' | 'canceled';
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  urls: {
+    get: string;
+    cancel: string;
+  };
+}
+
+const REPLICATE_CACHE_KEY_HMAC_KEY = 'promptfoo:replicate:cache-key:v1';
+
+function normalizeReplicateCacheValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(normalizeReplicateCacheValue);
+  }
+
+  if (value && typeof value === 'object') {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      return value;
+    }
+
+    return Object.keys(value)
+      .sort()
+      .reduce<Record<string, unknown>>((normalized, key) => {
+        normalized[key] = normalizeReplicateCacheValue((value as Record<string, unknown>)[key]);
+        return normalized;
+      }, {});
+  }
+
+  return value;
+}
+
+function hashReplicateCacheValue(value: unknown) {
+  return createHmac('sha256', REPLICATE_CACHE_KEY_HMAC_KEY)
+    .update(safeJsonStringify(normalizeReplicateCacheValue(value)) ?? '')
+    .digest('hex');
+}
+
+function getReplicateAuthCacheNamespace(apiKey: string | undefined) {
+  if (!apiKey) {
+    return 'no-api-key';
+  }
+
+  return createHmac('sha256', apiKey).update(REPLICATE_CACHE_KEY_HMAC_KEY).digest('hex');
+}
+
+function getReplicateValueSummary(prefix: string, value: unknown): Record<string, unknown> {
+  const valueType = Array.isArray(value) ? 'array' : typeof value;
+  return {
+    [`${prefix}Type`]: valueType,
+    [`${prefix}Length`]:
+      typeof value === 'string' || Array.isArray(value) ? value.length : undefined,
+  };
+}
+
+export class ReplicateProvider implements ApiProvider {
+  modelName: string;
+  apiKey?: string;
+  config: ReplicateCompletionOptions;
+
+  constructor(
+    modelName: string,
+    options: { config?: ReplicateCompletionOptions; id?: string; env?: EnvOverrides } = {},
+  ) {
+    const { config, id, env } = options;
+    const { apiKey, ...restConfig } = config ?? {};
+    this.modelName = modelName;
+    this.apiKey =
+      apiKey ||
+      env?.REPLICATE_API_KEY ||
+      env?.REPLICATE_API_TOKEN ||
+      getEnvString('REPLICATE_API_TOKEN') ||
+      getEnvString('REPLICATE_API_KEY');
+    this.config = restConfig;
+    this.id = id ? () => id : this.id;
+  }
+
+  id(): string {
+    return `replicate:${this.modelName}`;
+  }
+
+  toString(): string {
+    return `[Replicate Provider ${this.modelName}]`;
+  }
+
+  getApiKey(): string | undefined {
+    return this.apiKey;
+  }
+
+  requiresApiKey(): boolean {
+    return true;
+  }
+
+  async callApi(prompt: string, context?: CallApiContextParams): Promise<ProviderResponse> {
+    // Set up tracing context
+    const spanContext: GenAISpanContext = {
+      system: 'replicate',
+      operationName: 'chat',
+      model: this.modelName,
+      providerId: this.id(),
+      temperature: this.config.temperature,
+      topP: this.config.top_p,
+      maxTokens: this.config.max_tokens ?? this.config.max_length ?? this.config.max_new_tokens,
+      testIndex: context?.testIdx ?? (context?.test?.vars?.__testIdx as number | undefined),
+      promptLabel: context?.prompt?.label,
+      // W3C Trace Context for linking to evaluation trace
+      traceparent: context?.traceparent,
+    };
+
+    // Result extractor to set response attributes on the span
+    const resultExtractor = (response: ProviderResponse): GenAISpanResult => {
+      const result: GenAISpanResult = {};
+      if (response.tokenUsage) {
+        result.tokenUsage = {
+          prompt: response.tokenUsage.prompt,
+          completion: response.tokenUsage.completion,
+          total: response.tokenUsage.total,
+        };
+      }
+      return result;
+    };
+
+    return withGenAISpan(spanContext, () => this.callApiInternal(prompt), resultExtractor);
+  }
+
+  protected async callApiInternal(prompt: string): Promise<ProviderResponse> {
+    if (!this.apiKey) {
+      throw new Error(
+        'Replicate API key is not set. Set the REPLICATE_API_TOKEN environment variable or or add `apiKey` to the provider config.',
+      );
+    }
+
+    if (this.config.prompt?.prefix) {
+      prompt = this.config.prompt.prefix + prompt;
+    }
+    if (this.config.prompt?.suffix) {
+      prompt = prompt + this.config.prompt.suffix;
+    }
+
+    const messages = parseChatPrompt(prompt, [{ role: 'user', content: prompt }]);
+    const systemPrompt =
+      messages.find((message) => message.role === 'system')?.content ||
+      this.config.system_prompt ||
+      getEnvString('REPLICATE_SYSTEM_PROMPT');
+    const userPrompt = messages.find((message) => message.role === 'user')?.content || prompt;
+
+    const inputOptions = {
+      max_length: this.config.max_length ?? getEnvInt('REPLICATE_MAX_LENGTH'),
+      max_new_tokens: this.config.max_new_tokens ?? getEnvInt('REPLICATE_MAX_NEW_TOKENS'),
+      temperature: this.config.temperature ?? getEnvFloat('REPLICATE_TEMPERATURE'),
+      top_p: this.config.top_p ?? getEnvFloat('REPLICATE_TOP_P'),
+      top_k: this.config.top_k ?? getEnvInt('REPLICATE_TOP_K'),
+      repetition_penalty:
+        this.config.repetition_penalty ?? getEnvFloat('REPLICATE_REPETITION_PENALTY'),
+      stop_sequences: this.config.stop_sequences ?? getEnvString('REPLICATE_STOP_SEQUENCES'),
+      seed: this.config.seed ?? getEnvInt('REPLICATE_SEED'),
+      system_prompt: systemPrompt,
+      prompt: userPrompt,
+    };
+
+    const data = {
+      version: this.modelName.includes(':') ? this.modelName.split(':')[1] : undefined,
+      input: {
+        ...this.config,
+        ...Object.fromEntries(Object.entries(inputOptions).filter(([_, v]) => v !== undefined)),
+      },
+    };
+
+    let cache;
+    let cacheKey;
+    if (isCacheEnabled()) {
+      cache = await getCache();
+      cacheKey = `replicate:${this.modelName}:${getReplicateAuthCacheNamespace(this.apiKey)}:${hashReplicateCacheValue(
+        data,
+      )}`;
+
+      // Try to get the cached response
+      const cachedResponse = await cache.get(cacheKey);
+
+      if (cachedResponse) {
+        logger.debug('Returning cached Replicate response', { modelName: this.modelName });
+        const parsedResponse = JSON.parse(cachedResponse as string);
+        return {
+          ...parsedResponse,
+          tokenUsage: {
+            ...parsedResponse.tokenUsage,
+            cached: parsedResponse.tokenUsage?.total ?? 0,
+            numRequests: 0,
+          },
+          cached: true,
+        };
+      }
+    }
+
+    logger.debug('Calling Replicate', { modelName: this.modelName, promptLength: prompt.length });
+    let response;
+    let cached = false;
+    try {
+      // Create prediction with sync mode (wait up to 60 seconds)
+      const createResponse = await fetchWithCache(
+        this.modelName.includes(':')
+          ? 'https://api.replicate.com/v1/predictions'
+          : `https://api.replicate.com/v1/models/${this.modelName}/predictions`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+            Prefer: 'wait=60',
+          },
+          body: JSON.stringify(data),
+        },
+        getRequestTimeoutMs(),
+        'json',
+      );
+
+      cached = createResponse.cached;
+      response = createResponse.data as ReplicatePrediction;
+
+      // If still processing, poll for completion
+      if (response.status === 'starting' || response.status === 'processing') {
+        cached = false;
+        response = await this.pollForCompletion(response.id);
+      }
+
+      if (response.status === 'failed') {
+        throw new Error(response.error || 'Prediction failed');
+      }
+
+      response = response.output;
+    } catch (err) {
+      return {
+        error: `API call error: ${String(err)}`,
+        ...(cached && { cached: true, tokenUsage: createEmptyTokenUsage() }),
+      };
+    }
+    logger.debug('Replicate API response received', {
+      modelName: this.modelName,
+      ...getReplicateValueSummary('response', response),
+    });
+
+    const responseMetadata = {
+      ...(cached && { cached: true }),
+      tokenUsage: { ...createEmptyTokenUsage(), numRequests: Number(!cached) },
+    };
+
+    if (typeof response === 'string') {
+      // It's text
+      const ret = {
+        output: response,
+        ...responseMetadata,
+      };
+      if (cache && cacheKey) {
+        try {
+          await cache.set(cacheKey, JSON.stringify(ret));
+        } catch (err) {
+          logger.error(`Failed to cache response: ${String(err)}`);
+        }
+      }
+      return ret;
+    } else if (Array.isArray(response)) {
+      // It's a list of generative outputs
+      if (response.every((item) => typeof item === 'string')) {
+        const output = response.join('');
+        const ret = {
+          output,
+          ...responseMetadata,
+        };
+        if (cache && cacheKey) {
+          try {
+            await cache.set(cacheKey, JSON.stringify(ret));
+          } catch (err) {
+            logger.error(`Failed to cache response: ${String(err)}`);
+          }
+        }
+        return ret;
+      }
+    }
+
+    logger.error('Unsupported response from Replicate: ' + JSON.stringify(response));
+    return {
+      error: 'Unsupported response from Replicate: ' + JSON.stringify(response),
+      ...responseMetadata,
+    };
+  }
+
+  protected async pollForCompletion(predictionId: string): Promise<ReplicatePrediction> {
+    const maxPolls = 30; // Max 30 seconds of polling
+    const pollInterval = 1000; // 1 second
+
+    for (let i = 0; i < maxPolls; i++) {
+      const pollResponse = await fetchWithCache(
+        `https://api.replicate.com/v1/predictions/${predictionId}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+        },
+        getRequestTimeoutMs(),
+        'json',
+        true, // Don't cache polling requests
+      );
+
+      const prediction = pollResponse.data as ReplicatePrediction;
+
+      if (
+        prediction.status === 'succeeded' ||
+        prediction.status === 'failed' ||
+        prediction.status === 'canceled'
+      ) {
+        return prediction;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    }
+
+    throw new Error('Prediction timed out');
+  }
+}
+
+// Map of LlamaGuard category codes to descriptions
+// Supports both LlamaGuard 3 (S1-S13) and LlamaGuard 4 (S1-S14)
+export const LLAMAGUARD_DESCRIPTIONS: Record<string, string> = {
+  S1: 'Violent Crimes',
+  S2: 'Non-Violent Crimes',
+  S3: 'Sex Crimes',
+  S4: 'Child Exploitation',
+  S5: 'Defamation',
+  S6: 'Specialized Advice',
+  S7: 'Privacy',
+  S8: 'Intellectual Property',
+  S9: 'Indiscriminate Weapons',
+  S10: 'Hate',
+  S11: 'Self-Harm',
+  S12: 'Sexual Content',
+  S13: 'Elections',
+  S14: 'Code Interpreter Abuse', // LlamaGuard 4 only
+};
+
+export class ReplicateModerationProvider
+  extends ReplicateProvider
+  implements ApiModerationProvider
+{
+  async callModerationApi(prompt: string, assistant: string): Promise<ProviderModerationResponse> {
+    try {
+      const response = await this.callApi(`Human: ${prompt}\n\nAssistant: ${assistant}`);
+      // LlamaGuard moderation runs as a chat completion. Preserve any token usage
+      // reported by that provider response for downstream assertion metrics.
+      const tokenUsageResult = response.tokenUsage ? { tokenUsage: response.tokenUsage } : {};
+      if (response.error) {
+        return { error: response.error, ...tokenUsageResult };
+      }
+
+      const { output } = response;
+      if (!output || typeof output !== 'string') {
+        return {
+          error: `Invalid moderation response: ${JSON.stringify(output)}`,
+          ...tokenUsageResult,
+        };
+      }
+
+      // Parse the LlamaGuard output format
+      const lines = output.trim().split('\n');
+      const verdict = lines[0];
+
+      if (verdict === 'safe') {
+        return { flags: [], ...tokenUsageResult };
+      }
+
+      // Parse unsafe categories
+      const flags: ModerationFlag[] = [];
+      // LlamaGuard may return categories on the second line as comma-separated values
+      if (lines.length > 1) {
+        const categoriesLine = lines[1].trim();
+        const categories = categoriesLine.split(',').map((cat) => cat.trim());
+        for (const category of categories) {
+          if (category && LLAMAGUARD_DESCRIPTIONS[category]) {
+            flags.push({
+              code: category,
+              description: LLAMAGUARD_DESCRIPTIONS[category],
+              confidence: 1.0,
+            });
+          }
+        }
+      }
+
+      return { flags, ...tokenUsageResult };
+    } catch (err) {
+      return { error: `Invalid moderation response: ${String(err)}` };
+    }
+  }
+}
+
+// LlamaGuard 4 is the preferred default on Replicate
+// LlamaGuard 4 adds S14: Code Interpreter Abuse category for enhanced safety
+export const LLAMAGUARD_4_MODEL_ID = 'meta/llama-guard-4-12b';
+
+export const DefaultModerationProvider = new ReplicateModerationProvider(
+  LLAMAGUARD_4_MODEL_ID, // Using LlamaGuard 4 as the default
+);
+
+export class ReplicateImageProvider extends ReplicateProvider {
+  constructor(
+    modelName: string,
+    options: { config?: ReplicateCompletionOptions; id?: string; env?: EnvOverrides } = {},
+  ) {
+    super(modelName, options);
+  }
+
+  async callApi(
+    prompt: string,
+    _context?: CallApiContextParams,
+    _callApiOptions?: CallApiOptionsParams,
+  ): Promise<ProviderResponse> {
+    if (!this.apiKey) {
+      throw new Error(
+        'Replicate API key is not set. Set the REPLICATE_API_TOKEN environment variable or add `apiKey` to the provider config.',
+      );
+    }
+
+    const cache = getCache();
+    const cacheKey = `replicate:image:${this.modelName}:${getReplicateAuthCacheNamespace(this.apiKey)}:${hashReplicateCacheValue(
+      {
+        config: this.config,
+        prompt,
+      },
+    )}`;
+
+    let response: any | undefined;
+    let cached = false;
+    if (isCacheEnabled()) {
+      const cachedResponse = await cache.get(cacheKey);
+      if (cachedResponse) {
+        logger.debug('Retrieved cached Replicate image response', { modelName: this.modelName });
+        response = JSON.parse(cachedResponse as string);
+        cached = true;
+      }
+    }
+
+    if (!response) {
+      const input: any = {
+        prompt,
+        width: this.config.width || 768,
+        height: this.config.height || 768,
+      };
+
+      // Add other config options, excluding internal ones
+      Object.keys(this.config).forEach((key) => {
+        if (!['apiKey', 'width', 'height'].includes(key)) {
+          input[key] = this.config[key];
+        }
+      });
+
+      const data: any = { input };
+
+      // Only add version if it's provided explicitly
+      if (this.modelName.includes(':')) {
+        data.version = this.modelName.split(':')[1];
+      }
+
+      // Create prediction with sync mode
+      const createResponse = await fetchWithCache(
+        this.modelName.includes(':')
+          ? 'https://api.replicate.com/v1/predictions'
+          : `https://api.replicate.com/v1/models/${this.modelName}/predictions`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+            Prefer: 'wait=60',
+          },
+          body: JSON.stringify(data),
+        },
+        getRequestTimeoutMs(),
+        'json',
+      );
+
+      let prediction = createResponse.data as ReplicatePrediction;
+
+      logger.debug(`Initial prediction status: ${prediction.status}, ID: ${prediction.id}`);
+
+      // If still processing, poll for completion
+      if (prediction.status === 'starting' || prediction.status === 'processing') {
+        prediction = await this.pollForCompletion(prediction.id);
+      }
+
+      logger.debug('Final Replicate prediction status', {
+        modelName: this.modelName,
+        status: prediction.status,
+        ...getReplicateValueSummary('output', prediction.output),
+      });
+
+      if (prediction.status === 'failed') {
+        return {
+          error: prediction.error || 'Image generation failed',
+        };
+      }
+
+      response = prediction.output;
+    }
+
+    // Handle various response formats
+    if (!response) {
+      return {
+        error: 'No output received from Replicate',
+      };
+    }
+
+    let url: string | undefined;
+    if (Array.isArray(response) && response.length > 0) {
+      url = response[0];
+    } else if (typeof response === 'string') {
+      url = response;
+    }
+
+    if (!url) {
+      return {
+        error: `No image URL found in response: ${JSON.stringify(response)}`,
+      };
+    }
+
+    if (!cached && isCacheEnabled()) {
+      try {
+        await cache.set(cacheKey, JSON.stringify(response));
+      } catch (err) {
+        logger.error(`Failed to cache response: ${String(err)}`);
+      }
+    }
+
+    const sanitizedPrompt = prompt
+      .replace(/\r?\n|\r/g, ' ')
+      .replace(/\[/g, '(')
+      .replace(/\]/g, ')');
+    const ellipsizedPrompt = ellipsize(sanitizedPrompt, 50);
+    return {
+      output: `![${ellipsizedPrompt}](${url})`,
+      cached,
+    };
+  }
+}

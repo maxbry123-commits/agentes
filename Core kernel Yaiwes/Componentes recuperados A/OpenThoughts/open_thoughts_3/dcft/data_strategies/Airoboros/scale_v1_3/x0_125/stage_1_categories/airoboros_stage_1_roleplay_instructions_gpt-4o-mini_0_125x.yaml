@@ -1,0 +1,59 @@
+operators:
+  - id: args_dataset
+    config:
+      type: function
+      function: data_strategies.commons.create_constant_dataset
+      function_config:
+        language: English
+        batch_size: 20
+        flesch: The output should be written in such a way as to have a Flesch-Kincaid readability score of 30 or lower - best understood by those with college education.  The response must not contain any notes or information about Flesch-Kincaid scores.
+        topic_avoidance: Avoid any tasks that would be related to climate change, green tech, remewable energy, DEI, sex and/or gender, religion, politics, social issues, race, ethnicity, artificial intelligence, or any topic that you would likely not respond to, or any task which a language model would not be able to respond to, e.g. tasks about emotions, feelings, physical senses, etc.
+        min_docsearch_score: 0.10
+        airoboros_subset: roleplay
+
+  - id: generate_general_instructions
+    config:
+      type: completions
+      map: list
+      map_config:
+        user_message: |
+          Here are a few example prompts:
+          Example 1: Write a poem about whales in the style of Yoda.
+          Example 2: Imagine you are Jack Sparrow. In his style, write an email resigning from your janitorial position.
+          Example 3: Create a script for an interview in Da Ali G show with Bill Gates.
+          Example 4: What is the meaning of life? Respond using the words/style of Homer from the Simpsons.
+
+          {{topic_avoidance}}
+
+          Generate a set of {{batch_size}} new similar prompts and then answer the prompt. 
+
+          Be sure your output would rate with an appropriate Flesch reading ease score for the character/persona requested, otherwise:
+          {{flesch}}
+
+          Be appropriately loquacious for the task, e.g. stories should be long, complex, and detailed, whereas a haiku should be the standard three/5-7-5 format.
+
+          All output task should be in {{language}}.
+        output_column: instruction
+      model: gpt-4o-mini
+      temperature: 0.95
+      top_p: 0.5
+      presence_penalty: 2.0
+      n_repeat: 1000 # to get to target count
+    input_ids:
+      - args_dataset
+
+  - id: drop_columns
+    config:
+      type: function
+      function: data_strategies.commons.remove_columns
+      function_config:
+        columns:
+          - language
+          - batch_size
+          - flesch
+          - topic_avoidance
+    input_ids:
+      - generate_general_instructions
+
+# target is 15000
+# min doc search score is 0.15

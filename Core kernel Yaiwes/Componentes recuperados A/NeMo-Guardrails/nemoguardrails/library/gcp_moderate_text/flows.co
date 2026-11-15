@@ -1,0 +1,66 @@
+"""
+https://cloud.google.com/natural-language/docs/moderating-text
+
+See flows.v1.co for the table of supported safety attributes.
+"""
+
+flow gcpnlp moderation
+  """Guardrail based on the maximum risk score."""
+  $result = await CallGcpnlpApiAction(threshold_mode="simple")
+
+  if $result.is_blocked
+    bot refuse to respond
+    abort
+
+flow gcpnlp moderation detailed
+  """Guardrail based on individual risk scores."""
+  $result = await CallGcpnlpApiAction(threshold_mode="detailed")
+
+  if $result.is_blocked
+    $triggered_violation = $result.metadata.get("triggered_violation")
+
+    if $triggered_violation == "Toxic"
+      bot inform cannot engage in abusive_or_harmful behavior
+    else if $triggered_violation == "Insult"
+      bot inform cannot engage in abusive_or_harmful behavior
+    else if $triggered_violation == "Profanity"
+      bot inform cannot engage in abusive_or_harmful behavior
+    else if $triggered_violation == "Derogatory"
+      bot inform cannot engage in abusive_or_harmful behavior
+    else if $triggered_violation == "Violent"
+      bot inform cannot engage in abusive_or_harmful behavior
+    else if $triggered_violation == "Sexual"
+      bot inform cannot engage with inappropriate content
+    else if $triggered_violation == "Death, Harm & Tragedy"
+      bot inform cannot engage with inappropriate content
+    else if $triggered_violation == "Firearms & Weapons"
+      bot inform cannot engage with inappropriate content
+    else if $triggered_violation == "Illicit Drugs"
+      bot inform cannot engage with sensitive content
+    else if $triggered_violation == "Public Safety"
+      bot inform cannot engage with sensitive content
+    else if $triggered_violation == "Health"
+      bot inform cannot engage with sensitive content
+    else if $triggered_violation == "Religion & Belief"
+      bot inform cannot engage with sensitive content
+    else if $triggered_violation == "War & Conflict"
+      bot inform cannot engage with sensitive content
+    else if $triggered_violation == "Politics"
+      bot inform cannot engage with sensitive content
+    else if $triggered_violation == "Finance"
+      bot inform cannot engage with sensitive content
+    else if $triggered_violation == "Legal"
+      bot inform cannot engage with sensitive content
+    else
+      bot refuse to respond
+    abort
+
+
+flow bot inform cannot engage in abusive_or_harmful behavior
+  bot say "I will not engage in any abusive or harmful behavior."
+
+flow bot inform cannot engage with inappropriate content
+  bot say "I will not engage with inappropriate content."
+
+flow bot inform cannot engage with sensitive content
+  bot say "I will not engage with sensitive content."

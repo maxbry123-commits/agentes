@@ -1,0 +1,48 @@
+{
+    "name": "Jigsaw_XLMRoBERTa_multilingual_stage2",
+    "n_gpu": 1,
+    "batch_size": 10,
+    "accumulate_grad_batches": 3,
+    "loss": "binary_cross_entropy",
+    "arch": {
+        "type": "XLMRoBERTa",
+        "args": {
+            "num_classes": 1,
+            "model_type": "xlm-roberta-base",
+            "model_name": "XLMRobertaForSequenceClassification",
+            "tokenizer_name": "XLMRobertaTokenizer"
+        }
+    },
+    "dataset": {
+        "type": "JigsawDataMultilingual",
+        "args": {
+            "train_csv_file": [
+                "jigsaw_data/jigsaw-multilingual-toxic-comment-classification/jigsaw-toxic-comment-train-google-es-cleaned.csv",
+                "jigsaw_data/jigsaw-multilingual-toxic-comment-classification/jigsaw-toxic-comment-train-google-fr-cleaned.csv",
+                "jigsaw_data/jigsaw-multilingual-toxic-comment-classification/jigsaw-toxic-comment-train-google-it-cleaned.csv",
+                "jigsaw_data/jigsaw-multilingual-toxic-comment-classification/jigsaw-toxic-comment-train-google-pt-cleaned.csv",
+                "jigsaw_data/jigsaw-multilingual-toxic-comment-classification/jigsaw-toxic-comment-train-google-ru-cleaned.csv",
+                "jigsaw_data/jigsaw-multilingual-toxic-comment-classification/jigsaw-toxic-comment-train-google-tr-cleaned.csv",
+                "jigsaw_data/jigsaw-unintended-bias-in-toxicity-classification/test_public_expanded.csv"
+            ],
+            "test_csv_file": "jigsaw_data/jigsaw-multilingual-toxic-comment-classification/validation.csv",
+            "classes": [
+                "toxicity",
+                "severe_toxicity",
+                "obscene",
+                "identity_attack",
+                "insult",
+                "threat",
+                "sexual_explicit"
+            ]
+        }
+    },
+    "optimizer": {
+        "type": "Adam",
+        "args": {
+            "lr": 3e-5,
+            "weight_decay": 3e-6,
+            "amsgrad": true
+        }
+    }
+}

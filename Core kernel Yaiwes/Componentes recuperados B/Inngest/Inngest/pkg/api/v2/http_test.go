@@ -1,0 +1,1034 @@
+package apiv2
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/inngest/inngest/pkg/api/v2/apiv2base"
+	"github.com/inngest/inngest/pkg/cqrs"
+	"github.com/inngest/inngest/pkg/enums"
+	"github.com/inngest/inngest/pkg/inngest"
+	"github.com/oklog/ulid/v2"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+)
+
+// Helper function for tests
+func newTestHTTPHandler(ctx context.Context, serviceOpts ServiceOptions, httpOpts HTTPHandlerOptions) (http.Handler, error) {
+	base := apiv2base.NewBase()
+	return NewHTTPHandler(ctx, serviceOpts, httpOpts, base)
+}
+
+type healthResponse struct {
+	Data     healthData       `json:"data"`
+	Metadata responseMetadata `json:"metadata"`
+}
+
+type healthData struct {
+	Status string `json:"status"`
+}
+
+type responseMetadata struct {
+	FetchedAt   string  `json:"fetchedAt"`
+	CachedUntil *string `json:"cachedUntil"`
+}
+
+type errorResponse struct {
+	Errors []errorItem `json:"errors"`
+}
+
+type errorItem struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func TestHTTPGateway_Health(t *testing.T) {
+	ctx := context.Background()
+	opts := HTTPHandlerOptions{}
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{}, opts)
+	require.NoError(t, err)
+
+	t.Run("GET /api/v2/health returns success", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/health", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+
+		var response healthResponse
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.Equal(t, "ok", response.Data.Status)
+		require.NotEmpty(t, response.Metadata.FetchedAt)
+		require.Nil(t, response.Metadata.CachedUntil)
+
+		_, err = time.Parse(time.RFC3339Nano, response.Metadata.FetchedAt)
+		require.NoError(t, err, "fetchedAt should be a valid RFC3339 timestamp")
+	})
+
+	t.Run("POST /api/v2/health returns method not allowed", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v2/health", strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		// gRPC gateway only supports GET for health endpoint according to proto definition
+		require.Equal(t, http.StatusNotImplemented, rec.Code)
+	})
+
+	t.Run("PUT /api/v2/health returns method not allowed", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/api/v2/health", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusNotImplemented, rec.Code)
+	})
+}
+
+func TestHTTPGateway_SandboxesNotImplementedInDevServer(t *testing.T) {
+	handler, err := newTestHTTPHandler(context.Background(), ServiceOptions{}, HTTPHandlerOptions{})
+	require.NoError(t, err)
+
+	for _, test := range []struct {
+		name string
+		path string
+	}{
+		{name: "unary", path: "/api/v2/sandboxes"},
+		{name: "streaming", path: "/api/v2/sandboxes/sandbox-id/logs"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+
+			require.Equal(t, http.StatusNotImplemented, response.Code)
+			var body errorResponse
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+			require.Len(t, body.Errors, 1)
+			require.Equal(t, "api_error", body.Errors[0].Code)
+		})
+	}
+}
+
+func TestHTTPGateway_CreateScoreAcceptsArrayBody(t *testing.T) {
+	ctx := context.Background()
+	runID := ulid.MustParse("01KVDHCS8VTWZHBAHTMYJHBPKJ")
+	stepID := "b436f063682815df5b5fd9780200a9e4e8d4f0b3"
+	provider := &fakeScoreProvider{}
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{Scores: provider}, HTTPHandlerOptions{})
+	require.NoError(t, err)
+
+	body := `[{"name":"accuracy","value":0.95,"step_id":"` + stepID + `"}]`
+	req := httptest.NewRequest(http.MethodPost, "/v2/runs/"+runID.String()+"/scores", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.NotNil(t, provider.params)
+	require.Equal(t, runID, provider.params.RunID)
+	require.Len(t, provider.params.Scores, 1)
+	require.Equal(t, &stepID, provider.params.Scores[0].StepID)
+	require.Equal(t, "accuracy", provider.params.Scores[0].Name)
+	require.Equal(t, 0.95, provider.params.Scores[0].Value)
+
+	var response struct {
+		Data []struct {
+			RunID  string  `json:"runId"`
+			Name   string  `json:"name"`
+			Value  float64 `json:"value"`
+			StepID string  `json:"stepId"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response.Data, 1)
+	require.Equal(t, runID.String(), response.Data[0].RunID)
+	require.Equal(t, "accuracy", response.Data[0].Name)
+	require.Equal(t, 0.95, response.Data[0].Value)
+	require.Equal(t, stepID, response.Data[0].StepID)
+}
+
+func TestHTTPGateway_RunEnumsUseShortJSONNames(t *testing.T) {
+	ctx := context.Background()
+	runID := ulid.MustParse("01hp1zx8m3ng9vp6qn0xk7j4cy")
+	functionID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	appID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	startedAt := time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC)
+
+	fn := inngest.DeployedFunction{
+		ID:      functionID,
+		Slug:    "my-app-test-fn",
+		AppID:   appID,
+		AppName: "my-app",
+		Function: inngest.Function{
+			Name: "Test function",
+			Slug: "my-app-test-fn",
+		},
+	}
+	functionRun := &cqrs.FunctionRun{
+		RunID:        runID,
+		RunStartedAt: startedAt,
+		FunctionID:   functionID,
+		EventID:      runID,
+		Status:       enums.RunStatusCompleted,
+	}
+	functions := &mockFunctionProvider{}
+	functions.On("GetFunction", mock.Anything, functionID.String()).Return(fn, nil).Once()
+	runs := &mockRunProvider{}
+	runs.On("GetRun", mock.Anything, runID, GetRunOpts{}).Return(functionRun, nil).Once()
+
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{
+		Functions: functions,
+		Runs:      runs,
+	}, HTTPHandlerOptions{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		functions.AssertExpectations(t)
+		runs.AssertExpectations(t)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v2/runs/"+runID.String(), nil)
+	req.Header.Set("Accept", "*/*")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	run := body["data"].(map[string]any)
+	require.Equal(t, "COMPLETED", run["status"])
+}
+
+func TestHTTPGateway_RunListRoutes(t *testing.T) {
+	t.Run("binds list filters", func(t *testing.T) {
+		isDeferred := true
+		runs := &mockRunProvider{}
+		runs.On("GetRuns", mock.Anything, GetRunsOpts{
+			Limit:       3,
+			TimeField:   RunTimeFieldStartedAt,
+			Status:      []enums.RunStatus{enums.RunStatusCompleted, enums.RunStatusFailed},
+			AppIDs:      []string{"my-app"},
+			FunctionIDs: []string{"test-fn"},
+			IsDeferred:  &isDeferred,
+			Order:       OrderDirectionAsc,
+		}).Return(&GetRunsResult{}, nil).Once()
+
+		handler, err := newTestHTTPHandler(t.Context(), ServiceOptions{Runs: runs}, HTTPHandlerOptions{})
+		require.NoError(t, err)
+		t.Cleanup(func() { runs.AssertExpectations(t) })
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/runs?limit=3&timeField=STARTED_AT&status=COMPLETED&status=FAILED&appId=my-app&functionId=test-fn&isDeferred=true&order=ASC", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	})
+
+	t.Run("binds function path", func(t *testing.T) {
+		runs := &mockRunProvider{}
+		runs.On("GetRuns", mock.Anything, GetRunsOpts{
+			Limit:       defaultRunsLimit,
+			TimeField:   RunTimeFieldQueuedAt,
+			Status:      []enums.RunStatus{},
+			AppIDs:      []string{"my-app"},
+			FunctionIDs: []string{"test-fn"},
+			Order:       OrderDirectionDesc,
+		}).Return(&GetRunsResult{}, nil).Once()
+
+		handler, err := newTestHTTPHandler(t.Context(), ServiceOptions{Runs: runs}, HTTPHandlerOptions{})
+		require.NoError(t, err)
+		t.Cleanup(func() { runs.AssertExpectations(t) })
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/apps/my-app/functions/test-fn/runs", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	})
+}
+
+func TestHTTPGateway_Rerun(t *testing.T) {
+	ctx := context.Background()
+	runID := ulid.MustParse("01hp1zx8m3ng9vp6qn0xk7j4cy")
+	newRunID := ulid.MustParse("01hp1zx8m3ng9vp6qn0xk7j4d0")
+
+	rerun := &mockRunProvider{}
+	rerun.On("Rerun", mock.Anything, runID, RerunOpts{}).Return(newRunID, nil).Once()
+
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{Runs: rerun}, HTTPHandlerOptions{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		rerun.AssertExpectations(t)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/runs/"+runID.String()+"/rerun", nil)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	data := response["data"].(map[string]any)
+	require.Equal(t, newRunID.String(), data["runId"])
+}
+
+func TestHTTPGateway_RerunFromStep(t *testing.T) {
+	ctx := context.Background()
+	runID := ulid.MustParse("01hp1zx8m3ng9vp6qn0xk7j4cy")
+	newRunID := ulid.MustParse("01hp1zx8m3ng9vp6qn0xk7j4d0")
+	body, err := json.Marshal(map[string]any{
+		"fromStep": map[string]any{
+			"stepId": "step-1",
+			"input": []any{
+				map[string]any{"foo": "bar"},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	rerun := &mockRunProvider{}
+	rerun.On("Rerun", mock.Anything, runID, RerunOpts{
+		FromStep: &RerunFromStep{
+			StepID: "step-1",
+			Input:  json.RawMessage(`[{"foo":"bar"}]`),
+		},
+	}).Return(newRunID, nil).Once()
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{Runs: rerun}, HTTPHandlerOptions{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		rerun.AssertExpectations(t)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/runs/"+runID.String()+"/rerun", strings.NewReader(string(body)))
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	data := response["data"].(map[string]any)
+	require.Equal(t, newRunID.String(), data["runId"])
+}
+
+func TestHTTPGateway_RerunFromStepErrors(t *testing.T) {
+	runID := ulid.MustParse("01hp1zx8m3ng9vp6qn0xk7j4cy")
+	tests := []struct {
+		name    string
+		stepID  string
+		err     error
+		message string
+	}{
+		{name: "missing step", stepID: "missing", err: ErrRerunStepNotFound, message: "Step not found in original run"},
+		{name: "ambiguous step", stepID: "duplicate", err: ErrRerunStepAmbiguous, message: "Step name matches multiple steps in original run"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rerun := &mockRunProvider{}
+			rerun.On("Rerun", mock.Anything, runID, RerunOpts{
+				FromStep: &RerunFromStep{StepID: tt.stepID},
+			}).Return(ulid.ULID{}, tt.err).Once()
+			t.Cleanup(func() {
+				rerun.AssertExpectations(t)
+			})
+
+			handler, err := newTestHTTPHandler(context.Background(), ServiceOptions{Runs: rerun}, HTTPHandlerOptions{})
+			require.NoError(t, err)
+			body, err := json.Marshal(map[string]any{
+				"fromStep": map[string]any{"stepId": tt.stepID},
+			})
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v2/runs/"+runID.String()+"/rerun", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			var response errorResponse
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+			require.Equal(t, apiv2base.ErrorInvalidRequest, response.Errors[0].Code)
+			require.Equal(t, tt.message, response.Errors[0].Message)
+		})
+	}
+}
+
+func TestHTTPGateway_CancelRun(t *testing.T) {
+	ctx := context.Background()
+	runID := ulid.MustParse("01hp1zx8m3ng9vp6qn0xk7j4cy")
+
+	provider := &mockRunProvider{}
+	provider.On("Cancel", mock.Anything, runID).Return(nil).Once()
+
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{Runs: provider}, HTTPHandlerOptions{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		provider.AssertExpectations(t)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/runs/"+runID.String()+"/cancel", nil)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	data := response["data"].(map[string]any)
+	require.Equal(t, runID.String(), data["runId"])
+}
+
+func TestHTTPGateway_GetApp(t *testing.T) {
+	ctx := context.Background()
+	appID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	createdAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	syncedAt := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
+
+	apps := &mockAppProvider{}
+	apps.On("GetApp", mock.Anything, "my-app").Return(App{
+		ID:            "my-app",
+		InternalID:    appID,
+		Name:          "my-app",
+		Method:        enums.AppMethodServe,
+		CreatedAt:     createdAt,
+		FunctionCount: 2,
+		LatestSync: &AppSync{
+			SyncedAt:    syncedAt,
+			SdkLanguage: "typescript",
+			SdkVersion:  "3.22.0",
+			URL:         "https://example.com/api/inngest",
+		},
+	}, nil).Once()
+
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{Apps: apps}, HTTPHandlerOptions{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		apps.AssertExpectations(t)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v2/apps/my-app", nil)
+	req.Header.Set("Accept", "*/*")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	data := body["data"].(map[string]any)
+	require.Equal(t, "my-app", data["id"])
+	require.Equal(t, "my-app", data["name"])
+	require.Equal(t, "SERVE", data["method"])
+	require.Equal(t, float64(2), data["functionCount"])
+	require.Equal(t, "2026-06-01T12:00:00Z", data["createdAt"])
+	latestSync := data["latestSync"].(map[string]any)
+	require.Equal(t, "2026-06-02T12:00:00Z", latestSync["syncedAt"])
+	require.Equal(t, "typescript", latestSync["sdkLanguage"])
+	require.Equal(t, "3.22.0", latestSync["sdkVersion"])
+	require.Equal(t, "https://example.com/api/inngest", latestSync["url"])
+	//
+	// zero-value and empty optional fields are omitted by the gateway marshaler
+	require.NotContains(t, data, "isArchived")
+	require.NotContains(t, latestSync, "framework")
+	require.NotContains(t, latestSync, "error")
+}
+
+func TestHTTPGateway_GetApps(t *testing.T) {
+	ctx := context.Background()
+	appID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	apps := &mockAppProvider{}
+	apps.On("GetApps", mock.Anything, GetAppsOpts{
+		Limit:    1,
+		Archived: true,
+	}).Return(&GetAppsResult{
+		Apps: []App{{
+			ID:         "my-app",
+			InternalID: appID,
+			Name:       "My app",
+		}},
+		HasMore: true,
+	}, nil).Once()
+
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{Apps: apps}, HTTPHandlerOptions{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		apps.AssertExpectations(t)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v2/apps?limit=1&archived=true", nil)
+	req.Header.Set("Accept", "*/*")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	data := body["data"].([]any)
+	item := data[0].(map[string]any)
+	require.Equal(t, "my-app", item["id"])
+	require.Equal(t, "My app", item["name"])
+
+	page := body["page"].(map[string]any)
+	require.True(t, page["hasMore"].(bool))
+	require.Equal(t, appID.String(), page["cursor"])
+	require.Equal(t, float64(1), page["limit"])
+}
+
+func TestHTTPGateway_GetFunction(t *testing.T) {
+	ctx := context.Background()
+	functionID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	appID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	retries := 2
+	condition := "event.data.user_id != nil"
+
+	fn := inngest.DeployedFunction{
+		ID:      functionID,
+		Slug:    "my-app-test-fn",
+		AppID:   appID,
+		AppName: "my-app",
+		Function: inngest.Function{
+			Name: "Test function",
+			Slug: "test-fn",
+			Steps: []inngest.Step{{
+				ID:      "step",
+				Retries: &retries,
+			}},
+			Triggers: inngest.MultipleTriggers{
+				{EventTrigger: &inngest.EventTrigger{Event: "user.created", Expression: &condition}},
+			},
+		},
+	}
+	functions := &mockFunctionProvider{}
+	functions.On("GetFunctionByApp", mock.Anything, "my-app", "test-fn").Return(fn, nil).Once()
+
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{Functions: functions}, HTTPHandlerOptions{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		functions.AssertExpectations(t)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v2/apps/my-app/functions/test-fn", nil)
+	req.Header.Set("Accept", "*/*")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	data := body["data"].(map[string]any)
+	require.Equal(t, "test-fn", data["id"])
+	require.Equal(t, "Test function", data["name"])
+	require.Equal(t, "test-fn", data["slug"])
+
+	app := data["app"].(map[string]any)
+	require.Equal(t, "my-app", app["id"])
+
+	triggers := data["triggers"].([]any)
+	trigger := triggers[0].(map[string]any)
+	require.Equal(t, "EVENT", trigger["type"])
+	require.Equal(t, "user.created", trigger["value"])
+	require.Equal(t, condition, trigger["if"])
+
+	configuration := data["configuration"].(map[string]any)
+	retryConfiguration := configuration["retries"].(map[string]any)
+	require.Equal(t, float64(retries), retryConfiguration["value"])
+}
+
+func TestHTTPGateway_GetFunctions(t *testing.T) {
+	ctx := context.Background()
+	firstID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	appID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	fn := inngest.DeployedFunction{
+		ID:      firstID,
+		Slug:    "my-app-test-fn",
+		AppID:   appID,
+		AppName: "my-app",
+		Function: inngest.Function{
+			Name: "Test function",
+			Slug: "test-fn",
+			Steps: []inngest.Step{{
+				ID: "step",
+			}},
+		},
+	}
+	functions := &mockFunctionProvider{}
+	functions.On("GetFunctions", mock.Anything, "my-app", GetFunctionsOpts{
+		Limit: 1,
+	}).Return(&GetFunctionsResult{
+		Functions: []inngest.DeployedFunction{fn},
+		HasMore:   true,
+	}, nil).Once()
+
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{Functions: functions}, HTTPHandlerOptions{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		functions.AssertExpectations(t)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v2/apps/my-app/functions?limit=1", nil)
+	req.Header.Set("Accept", "*/*")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	data := body["data"].([]any)
+	item := data[0].(map[string]any)
+	require.Equal(t, "test-fn", item["id"])
+	require.Equal(t, "Test function", item["name"])
+
+	page := body["page"].(map[string]any)
+	require.True(t, page["hasMore"].(bool))
+	require.Equal(t, firstID.String(), page["cursor"])
+	require.Equal(t, float64(1), page["limit"])
+}
+
+func TestHTTPGateway_Middleware(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("auth middleware is called", func(t *testing.T) {
+		authCalled := false
+		authMiddleware := func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				authCalled = true
+				r.Header.Set("X-Auth-Called", "true")
+				next.ServeHTTP(w, r)
+			})
+		}
+
+		opts := HTTPHandlerOptions{
+			AuthnMiddleware: authMiddleware,
+		}
+		handler, err := newTestHTTPHandler(ctx, ServiceOptions{}, opts)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/health", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.True(t, authCalled)
+		require.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("auth middleware can block requests", func(t *testing.T) {
+		authMiddleware := func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte("Unauthorized"))
+			})
+		}
+
+		opts := HTTPHandlerOptions{
+			AuthnMiddleware: authMiddleware,
+		}
+		handler, err := newTestHTTPHandler(ctx, ServiceOptions{}, opts)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/health", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusUnauthorized, rec.Code)
+		require.Equal(t, "Unauthorized", rec.Body.String())
+	})
+
+	t.Run("authorization middleware blocks protected endpoints", func(t *testing.T) {
+		authzCalled := false
+		authzMiddleware := func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				authzCalled = true
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"errors":[{"code":"forbidden","message":"Access denied"}]}`))
+			})
+		}
+
+		opts := HTTPHandlerOptions{
+			AuthzMiddleware: authzMiddleware,
+		}
+		handler, err := newTestHTTPHandler(ctx, ServiceOptions{}, opts)
+		require.NoError(t, err)
+
+		// Test protected endpoint (CreatePartnerAccount)
+		req := httptest.NewRequest(http.MethodPost, "/api/v2/partner/accounts", strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.True(t, authzCalled, "Authorization middleware should be called")
+		require.Equal(t, http.StatusForbidden, rec.Code)
+	})
+
+	t.Run("authorization middleware not applied to health endpoint", func(t *testing.T) {
+		authzCalled := false
+		authzMiddleware := func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				authzCalled = true
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"errors":[{"code":"forbidden","message":"Access denied"}]}`))
+			})
+		}
+
+		opts := HTTPHandlerOptions{
+			AuthzMiddleware: authzMiddleware,
+		}
+		handler, err := newTestHTTPHandler(ctx, ServiceOptions{}, opts)
+		require.NoError(t, err)
+
+		// Test health endpoint (should not trigger authz middleware)
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/health", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.False(t, authzCalled)
+		require.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("both authentication and authorization middleware work together", func(t *testing.T) {
+		authnCalled := false
+		authzCalled := false
+
+		authnMiddleware := func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				authnCalled = true
+				r.Header.Set("X-Authn-Called", "true")
+				next.ServeHTTP(w, r)
+			})
+		}
+
+		authzMiddleware := func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				authzCalled = true
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"errors":[{"code":"forbidden","message":"Access denied"}]}`))
+			})
+		}
+
+		opts := HTTPHandlerOptions{
+			AuthnMiddleware: authnMiddleware,
+			AuthzMiddleware: authzMiddleware,
+		}
+		handler, err := newTestHTTPHandler(ctx, ServiceOptions{}, opts)
+		require.NoError(t, err)
+
+		// Test protected endpoint (CreatePartnerAccount) - should hit both middlewares
+		req := httptest.NewRequest(http.MethodPost, "/api/v2/partner/accounts", strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.True(t, authnCalled, "Authentication middleware should be called")
+		require.True(t, authzCalled, "Authorization middleware should be called for protected endpoint")
+		require.Equal(t, http.StatusForbidden, rec.Code)
+	})
+}
+
+func TestHTTPGateway_Routing(t *testing.T) {
+	ctx := context.Background()
+	opts := HTTPHandlerOptions{}
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{}, opts)
+	require.NoError(t, err)
+
+	t.Run("routes without /api/v2 prefix return 404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		// The implementation serves the gateway at root, so /health might resolve
+		// Let's check for a truly non-existent path instead
+		req2 := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
+		rec2 := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec2, req2)
+
+		require.Equal(t, http.StatusNotFound, rec2.Code)
+	})
+
+	t.Run("invalid endpoints under /api/v2 return 404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/invalid", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("invalid endpoints under /v2 return 404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v2/invalid", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("root path returns 404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusNotFound, rec.Code)
+	})
+}
+
+func TestHTTPGateway_ContentTypes(t *testing.T) {
+	ctx := context.Background()
+	opts := HTTPHandlerOptions{}
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{}, opts)
+	require.NoError(t, err)
+
+	t.Run("accepts application/json content type for valid methods", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/health", nil)
+		req.Header.Set("Accept", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("accepts requests without content type for GET", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/health", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("response has correct content type", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/health", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		contentType := rec.Header().Get("Content-Type")
+		require.Contains(t, contentType, "application/json")
+	})
+}
+
+func TestHTTPGateway_ErrorHandling(t *testing.T) {
+	t.Run("handler creation with cancelled context", func(t *testing.T) {
+		cancelledCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		opts := HTTPHandlerOptions{}
+		handler, err := newTestHTTPHandler(cancelledCtx, ServiceOptions{}, opts)
+
+		require.NoError(t, err)
+		require.NotNil(t, handler)
+	})
+}
+
+func TestHTTPGateway_ResponseFormat(t *testing.T) {
+	ctx := context.Background()
+	opts := HTTPHandlerOptions{}
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{}, opts)
+	require.NoError(t, err)
+
+	t.Run("response format matches expected schema", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/health", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		body, err := io.ReadAll(rec.Body)
+		require.NoError(t, err)
+
+		var response map[string]interface{}
+		err = json.Unmarshal(body, &response)
+		require.NoError(t, err)
+
+		require.Contains(t, response, "data")
+		require.Contains(t, response, "metadata")
+
+		data := response["data"].(map[string]interface{})
+		require.Contains(t, data, "status")
+		require.Equal(t, "ok", data["status"])
+
+		metadata := response["metadata"].(map[string]interface{})
+		require.Contains(t, metadata, "fetchedAt")
+		require.NotEmpty(t, metadata["fetchedAt"])
+	})
+
+	t.Run("timestamps are properly formatted", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/health", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		var response healthResponse
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		parsedTime, err := time.Parse(time.RFC3339Nano, response.Metadata.FetchedAt)
+		require.NoError(t, err)
+		require.True(t, time.Since(parsedTime) < 5*time.Second)
+	})
+}
+
+func TestHTTPGateway_ConcurrentRequests(t *testing.T) {
+	ctx := context.Background()
+	opts := HTTPHandlerOptions{}
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{}, opts)
+	require.NoError(t, err)
+
+	t.Run("handles concurrent requests", func(t *testing.T) {
+		const numRequests = 20
+		results := make(chan int, numRequests)
+
+		for i := 0; i < numRequests; i++ {
+			go func() {
+				req := httptest.NewRequest(http.MethodGet, "/api/v2/health", nil)
+				rec := httptest.NewRecorder()
+
+				handler.ServeHTTP(rec, req)
+				results <- rec.Code
+			}()
+		}
+
+		for i := 0; i < numRequests; i++ {
+			select {
+			case statusCode := <-results:
+				require.Equal(t, http.StatusOK, statusCode)
+			case <-time.After(5 * time.Second):
+				require.Fail(t, "timeout waiting for concurrent requests")
+			}
+		}
+	})
+}
+
+func TestHTTPGateway_InvokeFunction(t *testing.T) {
+	ctx := context.Background()
+	opts := HTTPHandlerOptions{}
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{}, opts)
+	require.NoError(t, err)
+
+	t.Run("POST invoke with valid data returns not implemented", func(t *testing.T) {
+		body := `{"data": {"message": "Hello, World!"}, "idempotencyKey": "test-123"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v2/apps/my-app/functions/hello-world/invoke", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusNotImplemented, rec.Code)
+		require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+
+		var response errorResponse
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Len(t, response.Errors, 1)
+		require.Contains(t, response.Errors[0].Code, "not_implemented")
+	})
+
+	t.Run("POST invoke with missing data", func(t *testing.T) {
+		body := `{"idempotencyKey": "test-789"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v2/apps/my-app/functions/hello-world/invoke", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+
+		var response errorResponse
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Len(t, response.Errors, 1)
+		require.Contains(t, response.Errors[0].Message, "Input data is required")
+	})
+
+	t.Run("POST invoke with complex nested data object", func(t *testing.T) {
+		body := `{"data": {"user": {"id": 123, "name": "John"}, "items": [{"id": 1, "name": "Item1"}]}, "idempotencyKey": "test-complex"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v2/apps/my-app/functions/hello-world/invoke", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusNotImplemented, rec.Code)
+		require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+
+		var response errorResponse
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Len(t, response.Errors, 1)
+		require.Contains(t, response.Errors[0].Code, "not_implemented")
+	})
+
+	t.Run("GET invoke returns not implemented", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/apps/my-app/functions/hello-world/invoke", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		// grpc-gateway returns 501 for unsupported HTTP methods on valid endpoints
+		require.Equal(t, http.StatusNotImplemented, rec.Code)
+	})
+}
+
+func BenchmarkHTTPGateway_Health(b *testing.B) {
+	ctx := context.Background()
+	opts := HTTPHandlerOptions{}
+	handler, err := newTestHTTPHandler(ctx, ServiceOptions{}, opts)
+	require.NoError(b, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v2/health", nil)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				b.Fatalf("Expected status 200, got %d", rec.Code)
+			}
+		}
+	})
+}

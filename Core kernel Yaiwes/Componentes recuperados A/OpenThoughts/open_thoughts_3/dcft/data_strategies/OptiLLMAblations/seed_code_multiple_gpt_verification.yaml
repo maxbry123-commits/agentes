@@ -1,0 +1,284 @@
+operators:
+- id: load_8K_samples
+  config:
+    type: load_preexisting
+    framework_name: seed_code_multiple_samples_scale_up_base_16K
+- id: add_row_ids
+  config:
+    type: function
+    function: data_strategies.commons.add_row_ids
+    function_config:
+      column_name: prev_verification_id
+  input_ids:
+    - load_8K_samples
+# Direct Approval Verifier
+- id: verify_direct_approval
+  config:
+    type: completions
+    model: gpt-4o-mini
+    batch: False
+    map: binary_classifier
+    map_config:
+      system_message: You are a critical verifier tasked. You will be presented with a question and a proposed solution. Your job is to carefully go over and analyze the solution. Follow the instructions.
+      user_message: |
+        QUESTION: {{problem}}
+        PROPOSED SOLUTION: {{r1_distill_70b_response}}
+        INSTRUCTIONS: Is this solution correct for the given question?
+      output_column: direct_approval
+    temperature: 0.0
+    top_p: 1.0
+    presence_penalty: 0.0
+  input_ids:
+    - add_row_ids
+# Summarize Solution Verifier
+# - id: verify_summarize_solution
+#   config:
+#     type: completions
+#     model: gpt-4o-mini
+# batch: False
+#     map: binary_classifier
+#     map_config:
+#       system_message: You are a critical verifier tasked. You will be presented with a question and a proposed solution. Your job is to carefully go over and analyze the solution. Follow the instructions.
+#       user_message: |
+#         QUESTION: {{problem}}
+#         PROPOSED SOLUTION: {{r1_distill_70b_response}}
+#         INSTRUCTIONS: Summarize the solution in your own words, explore anything you think may be incorrect. Think out loud.
+#       output_column: summarize_solution
+#     temperature: 0.0
+#     top_p: 1.0
+#     presence_penalty: 0.0
+#   input_ids:
+#     - add_row_ids
+# Explain Differently Verifier
+# - id: verify_explain_differently
+#   config:
+#     type: completions
+#     model: gpt-4o-mini
+# batch: False
+#     map: binary_classifier
+#     map_config:
+#       system_message: You are a critical verifier tasked. You will be presented with a question and a proposed solution. Your job is to carefully go over and analyze the solution. Follow the instructions.
+#       user_message: |
+#         QUESTION: {{problem}}
+#         PROPOSED SOLUTION: {{r1_distill_70b_response}}
+#         INSTRUCTIONS: Explain the solution in a different way than it was presented. Try to find any flaws in the solution. Think out loud.
+#       output_column: explain_differently
+#     temperature: 0.0
+#     top_p: 1.0
+#     presence_penalty: 0.0
+#   input_ids:
+#     - add_row_ids
+# Edge Cases Verifier
+- id: verify_edge_cases
+  config:
+    type: completions
+    model: gpt-4o-mini
+    batch: False
+    map: binary_classifier
+    map_config:
+      system_message: You are a critical verifier tasked. You will be presented with a question and a proposed solution. Your job is to carefully go over and analyze the solution. Follow the instructions.
+      user_message: |
+        QUESTION: {{problem}}
+        PROPOSED SOLUTION: {{r1_distill_70b_response}}
+        INSTRUCTIONS: Check if the solution handles edge cases and boundary conditions, test extreme values or special cases. Think out loud.
+      output_column: edge_cases
+    temperature: 0.0
+    top_p: 1.0
+    presence_penalty: 0.0
+  input_ids:
+    - add_row_ids
+# Common Mistakes Verifier
+- id: verify_common_mistakes
+  config:
+    type: completions
+    model: gpt-4o-mini
+    batch: False
+    map: binary_classifier
+    map_config:
+      system_message: You are a critical verifier tasked. You will be presented with a question and a proposed solution. Your job is to carefully go over and analyze the solution. Follow the instructions.
+      user_message: |
+        QUESTION: {{problem}}
+        PROPOSED SOLUTION: {{r1_distill_70b_response}}
+        INSTRUCTIONS: Check if the solution has any common mistakes, calculation errors, or misconceptions that typically found in this type of problem. Think out loud.
+      output_column: common_mistakes
+    temperature: 0.0
+    top_p: 1.0
+    presence_penalty: 0.0
+  input_ids:
+    - add_row_ids
+# Domain Knowledge Verifier
+- id: verify_domain_knowledge
+  config:
+    type: completions
+    model: gpt-4o-mini
+    batch: False
+    map: binary_classifier
+    map_config:
+      system_message: You are a critical verifier tasked. You will be presented with a question and a proposed solution. Your job is to carefully go over and analyze the solution. Follow the instructions.
+      user_message: |
+        QUESTION: {{problem}}
+        PROPOSED SOLUTION: {{r1_distill_70b_response}}
+        INSTRUCTIONS: Check if the solution correctly applies relevant domain-knowledge, established theories, and standard practices for this type of problem. Think out loud.
+      output_column: domain_knowledge
+    temperature: 0.0
+    top_p: 1.0
+    presence_penalty: 0.0
+  input_ids:
+    - add_row_ids
+# # Mathematical Correctness Verifier
+# - id: verify_mathematical_correctness
+#   config:
+#     type: completions
+#     model: gpt-4o-mini
+# batch: False
+#     map: binary_classifier
+#     map_config:
+#       system_message: You are a critical verifier tasked. You will be presented with a question and a proposed solution. Your job is to carefully go over and analyze the solution. Follow the instructions.
+#       user_message: |
+#         QUESTION: {{problem}}
+#         PROPOSED SOLUTION: {{r1_distill_70b_response}}
+#         INSTRUCTIONS: Go over each step in the proposed solution and check whether it is mathematically correct. Think out loud.
+#       output_column: mathematical_correctness
+#     temperature: 0.0
+#     top_p: 1.0
+#     presence_penalty: 0.0
+#   input_ids:
+#     - add_row_ids
+# Logical Soundness Verifier
+- id: verify_logical_soundness
+  config:
+    type: completions
+    model: gpt-4o-mini
+    batch: False
+    map: binary_classifier
+    map_config:
+      system_message: You are a critical verifier tasked. You will be presented with a question and a proposed solution. Your job is to carefully go over and analyze the solution. Follow the instructions.
+      user_message: |
+        QUESTION: {{problem}}
+        PROPOSED SOLUTION: {{r1_distill_70b_response}}
+        INSTRUCTIONS: Go over each step in the proposed solution and check whether it is logically sound. Think out loud.
+      output_column: logical_soundness
+    temperature: 0.0
+    top_p: 1.0
+    presence_penalty: 0.0
+  input_ids:
+    - add_row_ids
+# Factual Correctness Verifier
+# - id: verify_factual_correctness
+#   config:
+#     type: completions
+#     model: gpt-4o-mini
+# batch: False
+#     map: binary_classifier
+#     map_config:
+#       system_message: You are a critical verifier tasked. You will be presented with a question and a proposed solution. Your job is to carefully go over and analyze the solution. Follow the instructions.
+#       user_message: |
+#         QUESTION: {{problem}}
+#         PROPOSED SOLUTION: {{r1_distill_70b_response}}
+#         INSTRUCTIONS: Go over each step in the proposed solution and check whether the facts presented are correct. Think out loud.
+#       output_column: factual_correctness
+#     temperature: 0.0
+#     top_p: 1.0
+#     presence_penalty: 0.0
+#   input_ids:
+#     - add_row_ids
+# # Unit Conversions Verifier
+# - id: verify_unit_conversions
+#   config:
+#     type: completions
+#     model: gpt-4o-mini
+# batch: False
+#     map: binary_classifier
+#     map_config:
+#       system_message: You are a critical verifier tasked. You will be presented with a question and a proposed solution. Your job is to carefully go over and analyze the solution. Follow the instructions.
+#       user_message: |
+#         QUESTION: {{problem}}
+#         PROPOSED SOLUTION: {{r1_distill_70b_response}}
+#         INSTRUCTIONS: Check if the units are handled correctly in each step of the solution. Think out loud.
+#       output_column: unit_conversions
+#     temperature: 0.0
+#     top_p: 1.0
+#     presence_penalty: 0.0
+#   input_ids:
+#     - add_row_ids
+# Combined Verification Operator (runs all verifiers in parallel)
+- id: verify_all_aspects
+  config:
+    type: merge
+    join_column: prev_verification_id
+  input_ids:
+    - verify_direct_approval
+    - verify_edge_cases
+    - verify_common_mistakes
+    - verify_domain_knowledge
+    - verify_logical_soundness
+
+- id: validate_questions
+  config:
+    type: completions
+    model: gpt-4o-mini
+    batch: False
+    map: binary_classifier
+    map_config:
+      system_message: You are a critical verifier tasked with evaluating code solutions. You will be presented with a question and a proposed solution. Your job is to carefully analyze the solution using multiple verification criteria.
+      user_message: |
+        QUESTION: {{problem}}
+        PROPOSED SOLUTION: {{r1_distill_70b_response}}
+        
+        VERIFICATION CHECKLIST:
+        1. Direct Approval: Is the solution correct for the given question? 
+          Score: {{direct_approval}}
+        2. Edge Cases: Does the solution handle edge cases and boundary conditions?
+          Score: {{edge_cases}}
+        3. Common Mistakes: Check for typical errors, bugs, or misconceptions.
+          Score: {{common_mistakes}}
+        4. Domain Knowledge: Does it apply relevant programming principles and best practices?
+          Score: {{domain_knowledge}}
+        5. Logical Soundness: Evaluate the solution's logical flow and reasoning.
+          Score: {{logical_soundness}}
+        
+        Based on thorough analysis of all these criteria, provide your final determination: is this a correct solution to the problem? Think step by step before making your final determination.
+      output_column: correct
+    temperature: 0.0
+    top_p: 1.0
+    presence_penalty: 0.0
+  input_ids:
+    - verify_all_aspects
+- id: merge_together
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.merge_duplicate_rows
+    function_config:
+      diff_columns: 
+        - r1_distill_70b_response
+        - r1_distill_70b_extracted_answer
+        - correct
+        - classifier_response
+        - direct_approval
+        - edge_cases
+        - common_mistakes
+        - domain_knowledge
+        - logical_soundness
+  input_ids:
+    - validate_questions
+
+- id: gpt_verification
+  config:
+    type: function
+    function: data_strategies.MultipleSamples.utils.select_correct_multiple_samples
+    function_config:
+      response_column: r1_distill_70b_response
+      verified_response_column: verified_r1_distill_70b_response
+  input_ids:
+  - merge_together
+
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: problem
+      input_response_column: verified_r1_distill_70b_response
+      output_sharegpt_column: conversations
+  input_ids:
+    - gpt_verification

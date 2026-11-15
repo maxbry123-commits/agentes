@@ -1,0 +1,30 @@
+[
+  {
+    "repo": "Aider",
+    "path": "aider/website/assets/shell-cmds-small.mp4",
+    "chunks_dir": "Aider/aider/website/assets/shell-cmds-small.mp4.chunks",
+    "bytes": 10547819,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Aider",
+    "path": "aider/website/assets/aider-browser-social.mp4",
+    "chunks_dir": "Aider/aider/website/assets/aider-browser-social.mp4.chunks",
+    "bytes": 12945046,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Aider",
+    "path": "aider/website/assets/watch.mp4",
+    "chunks_dir": "Aider/aider/website/assets/watch.mp4.chunks",
+    "bytes": 11339864,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Aider",
+    "path": "aider/website/assets/copypaste.mp4",
+    "chunks_dir": "Aider/aider/website/assets/copypaste.mp4.chunks",
+    "bytes": 13679407,
+    "chunk_bytes": 8388608
+  }
+]

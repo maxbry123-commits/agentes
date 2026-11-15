@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "Flagsmith",
+    "path": "static-files/ReadMe_Demo.gif",
+    "chunks_dir": "Flagsmith/static-files/ReadMe_Demo.gif.chunks",
+    "bytes": 9259020,
+    "chunk_bytes": 8388608
+  }
+]

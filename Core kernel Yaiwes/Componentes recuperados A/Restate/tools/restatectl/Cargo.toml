@@ -1,0 +1,96 @@
+[package]
+name = "restatectl"
+version.workspace = true
+authors.workspace = true
+description = "Restate cluster administration tools"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[package.metadata.dist]
+dist = true
+formula = "restatectl"
+
+[features]
+default = ["no-trace-logging"]
+no-trace-logging = ["tracing/max_level_trace", "tracing/release_max_level_debug"]
+dump-local-log = [
+    "restate-metadata-server",
+    "restate-rocksdb",
+    "restate-bifrost",
+    "restate-wal-protocol",
+    "rlimit",
+    "futures-util",
+    "tempfile",
+]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-cli-util = { workspace = true }
+restate-clock = { workspace = true, features = ["jiff"] }
+restate-core = { workspace = true }
+restate-futures-util = { workspace = true }
+restate-log-server-grpc = { workspace = true, features = ["grpc-client"] }
+restate-metadata-server-grpc = { workspace = true, features = ["grpc-client"] }
+restate-metadata-store = { workspace = true, features = ["grpc-client"] }
+restate-util-time = { workspace = true, features = ["serde"] }
+restate-types = { workspace = true, features = ["clap"] }
+# only used for dump-log which is gated out by default
+restate-bifrost = { workspace = true, optional = true, features = ["local-loglet", "replicated-loglet"] }
+restate-metadata-server = { workspace = true, optional = true }
+restate-rocksdb = { workspace = true, optional = true }
+restate-wal-protocol = { workspace = true, optional = true }
+
+rlimit = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+anyhow = { workspace = true }
+assert2 = {workspace = true }
+arrow = { workspace = true, features = ["ipc", "json"] }
+bytes = { workspace = true }
+bytesize = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true, features = ["derive", "env", "wrap_help", "color", "std", "suggestions", "usage"] }
+clap_complete = { workspace = true }
+clap-stdin = "0.6.0"
+cling = { workspace = true }
+dirs = { version = "5.0" }
+crossterm = { workspace = true }
+ctrlc = { version = "3.4" }
+diff = "0.1.13"
+futures = { workspace = true }
+itertools = { workspace = true }
+json-patch = "2.0.0"
+humantime = { workspace = true }
+prost-types = { workspace = true }
+rand = { workspace = true }
+rustls = { workspace = true, features = ["aws-lc-rs"]}
+serde = { workspace = true }
+serde_json = { workspace = true }
+test-log = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true, features = ["transport", "zstd", "gzip"] }
+tracing = { workspace = true }
+
+[build-dependencies]
+vergen = { workspace = true, default-features = false, features = [
+    "build",
+    "git",
+    "gitcl",
+    "cargo",
+] }
+
+[dev-dependencies]
+restate-local-cluster-runner = { workspace = true }
+
+googletest = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

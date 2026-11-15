@@ -1,0 +1,1170 @@
+import asyncio
+import logging
+import warnings
+from collections.abc import Callable
+from datetime import timedelta
+from typing import Any, Concatenate, Literal, ParamSpec, cast, overload
+
+from pydantic import TypeAdapter
+
+from hatchet_sdk import Context, DurableContext
+from hatchet_sdk.client import Client
+from hatchet_sdk.clients.dispatcher.dispatcher import DispatcherClient
+from hatchet_sdk.clients.events import EventClient
+from hatchet_sdk.clients.listeners.run_event_listener import RunEventListenerClient
+from hatchet_sdk.config import ClientConfig, EmbeddedHatchetConfig
+from hatchet_sdk.embedded import resolve_embedded_connection
+from hatchet_sdk.features.cel import CELClient
+from hatchet_sdk.features.cron import CronClient
+from hatchet_sdk.features.filters import FiltersClient
+from hatchet_sdk.features.logs import LogsClient
+from hatchet_sdk.features.metrics import MetricsClient
+from hatchet_sdk.features.rate_limits import RateLimitsClient
+from hatchet_sdk.features.runs import RunsClient
+from hatchet_sdk.features.scheduled import ScheduledClient
+from hatchet_sdk.features.stubs import StubsClient
+from hatchet_sdk.features.webhooks import WebhooksClient
+from hatchet_sdk.features.workers import WorkersClient
+from hatchet_sdk.features.workflows import WorkflowsClient
+from hatchet_sdk.logger import logger
+from hatchet_sdk.runnables.contextvars import ctx_hatchet_context
+from hatchet_sdk.runnables.eviction import (
+    DEFAULT_DURABLE_TASK_EVICTION_POLICY,
+    EvictionPolicy,
+)
+from hatchet_sdk.runnables.types import (
+    BatchMemberId,
+    DefaultFilter,
+    EmptyModel,
+    R,
+    TaskDefaults,
+    TWorkflowInput,
+    WorkflowConfig,
+    normalize_validator,
+)
+from hatchet_sdk.runnables.workflow import BaseWorkflow, Standalone, Workflow
+from hatchet_sdk.types.concurrency import ConcurrencyExpression
+from hatchet_sdk.types.idempotency import (
+    StatusBasedIdempotencyConfig,
+    TTLBasedIdempotencyConfig,
+)
+from hatchet_sdk.types.labels import DesiredWorkerLabel
+from hatchet_sdk.types.priority import Priority, _warn_if_int_priority
+from hatchet_sdk.types.rate_limit import RateLimit
+from hatchet_sdk.types.sticky import StickyStrategy
+from hatchet_sdk.utils.slots import normalize_slot_config, resolve_worker_slot_config
+from hatchet_sdk.utils.timedelta_to_expression import Duration
+from hatchet_sdk.utils.typing import CoroutineLike, JSONSerializableMapping
+from hatchet_sdk.worker.worker import LifespanFn, Worker
+
+P = ParamSpec("P")
+
+
+class Hatchet:
+    """
+    Main client for interacting with the Hatchet SDK.
+
+    This class provides access to various client interfaces and utility methods
+    for working with Hatchet workers, workflows, tasks, and our various feature clients.
+    """
+
+    def __init__(
+        self,
+        debug: bool | None = None,
+        client: Client | None = None,
+        config: ClientConfig | None = None,
+    ):
+        if debug is not None:
+            warnings.warn(
+                "The `debug` parameter is deprecated and will be removed in v2.0.0. Please set the debug mode using the HATCHET_CLIENT_DEBUG environment variable instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        _config = config or ClientConfig()
+        _debug = _config.debug if debug is None else debug
+
+        if _debug:
+            logger.setLevel(logging.DEBUG)
+
+        if client is not None:
+            warnings.warn(
+                "The `client` parameter is deprecated and will be removed in v2.0.0. The client internal to the broader Hatchet client is not meant to be provided or interacted with directly.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        self._client = client if client else Client(config=_config, debug=_debug)
+
+    @classmethod
+    def from_embedded(cls, config: ClientConfig | None = None) -> "Hatchet":
+        """
+        Run a full Hatchet engine locally via the hatchet-embedded sidecar
+        (downloaded on first use) and return a client wired to it. By default
+        the sidecar starts a bundled Postgres; pass `database_url` in the
+        options to point it at your own instead.
+
+        :param config: Base client configuration to use; the connection fields
+            (token, tenant, addresses, TLS) are overridden to point at the
+            embedded engine. Set `config.embedded` to configure the embedded
+            engine itself (e.g. database URL, ports, etc.).
+        :return: A Hatchet client instance connected to the embedded engine.
+        """
+        return cls(
+            config=resolve_embedded_connection(
+                config or ClientConfig(embedded=EmbeddedHatchetConfig())
+            )
+        )
+
+    def stop_embedded(self) -> None:
+        """
+        Gracefully stop the embedded engine started in this process by
+        `Hatchet.from_embedded()` and block until it has fully exited,
+        including its bundled Postgres. The embedded engine is process-wide:
+        every client created via `Hatchet.from_embedded()` in this process
+        shares it. Call this before your process exits
+        so the engine's shutdown output does not print after your program has
+        returned. No-op when no embedded engine is running in this process.
+        """
+        from hatchet_sdk.embedded import stop_embedded_sidecar
+
+        stop_embedded_sidecar()
+
+    async def aio_stop_embedded(self) -> None:
+        """
+        Async variant of `stop_embedded`: gracefully stop the embedded engine
+        sidecar without blocking the event loop, and return once it has fully
+        exited. No-op when no embedded engine is running in this process.
+        """
+        await asyncio.to_thread(self.stop_embedded)
+
+    @property
+    def cel(self) -> CELClient:
+        """
+        The CEL client is a client for interacting with Hatchet's CEL API.
+        """
+        return self._client.cel
+
+    @property
+    def cron(self) -> CronClient:
+        """
+        The cron client is a client for managing cron workflows within Hatchet.
+        """
+        return self._client.cron
+
+    @property
+    def filters(self) -> FiltersClient:
+        """
+        The filters client is a client for interacting with Hatchet's filters API.
+        """
+        return self._client.filters
+
+    @property
+    def logs(self) -> LogsClient:
+        """
+        The logs client is a client for interacting with Hatchet's logs API.
+        """
+        return self._client.logs
+
+    @property
+    def metrics(self) -> MetricsClient:
+        """
+        The metrics client is a client for reading metrics out of Hatchet's metrics API.
+        """
+        return self._client.metrics
+
+    @property
+    def rate_limits(self) -> RateLimitsClient:
+        """
+        The rate limits client is a wrapper for Hatchet's gRPC API that makes it easier to work with rate limits in Hatchet.
+        """
+        return self._client.rate_limits
+
+    @property
+    def runs(self) -> RunsClient:
+        """
+        The runs client is a client for interacting with task and workflow runs within Hatchet.
+        """
+        return self._client.runs
+
+    @property
+    def scheduled(self) -> ScheduledClient:
+        """
+        The scheduled client is a client for managing scheduled workflows within Hatchet.
+        """
+        return self._client.scheduled
+
+    @property
+    def webhooks(self) -> WebhooksClient:
+        """
+        The webhooks client provides methods for managing webhook endpoints in Hatchet.
+        """
+        return self._client.webhooks
+
+    @property
+    def workers(self) -> WorkersClient:
+        """
+        The workers client is a client for managing workers programmatically within Hatchet.
+        """
+        return self._client.workers
+
+    @property
+    def workflows(self) -> WorkflowsClient:
+        """
+        The workflows client is a client for managing workflows programmatically within Hatchet.
+
+        Note that workflows are the declaration, _not_ the individual runs. If you're looking for runs, use the `RunsClient` instead.
+        """
+        return self._client.workflows
+
+    @property
+    def dispatcher(self) -> DispatcherClient:
+        return self._client.dispatcher
+
+    @property
+    def event(self) -> EventClient:
+        """
+        The event client, which you can use to push events to Hatchet.
+        """
+        return self._client.event
+
+    @property
+    def listener(self) -> RunEventListenerClient:
+        return self._client.listener
+
+    @property
+    def stubs(self) -> StubsClient:
+        return StubsClient(client=self)
+
+    @property
+    def config(self) -> ClientConfig:
+        return self._client.config
+
+    @property
+    def tenant_id(self) -> str:
+        """
+        The tenant id you're operating in.
+        """
+        return self._client.config.tenant_id
+
+    @property
+    def namespace(self) -> str:
+        """
+        The current namespace you're interacting with.
+        """
+        return self._client.config.namespace
+
+    async def aio_get_engine_version(self) -> str | None:
+        """Fetch the engine version via the dispatcher's GetVersion RPC.
+
+        :return: The engine version string, or ``None`` if the engine is too old
+            to support GetVersion.
+        """
+        return await self._client.dispatcher.get_version()
+
+    def worker(
+        self,
+        name: str,
+        slots: int | None = None,
+        durable_slots: int | None = None,
+        labels: dict[str, str | int] | None = None,
+        workflows: list[BaseWorkflow[Any]] | None = None,
+        lifespan: LifespanFn | None = None,
+    ) -> Worker:
+        """
+        Create a Hatchet worker on which to run workflows.
+
+        :param name: The name of the worker.
+        :param slots: slot count for standard tasks.
+        :param durable_slots: slot count for durable tasks.
+        :param labels: A dictionary of labels to assign to the worker. For more details, view examples on affinity and worker labels.
+        :param workflows: A list of workflows to register on the worker, as a shorthand for calling `register_workflow` on each or `register_workflows` on all of them.
+        :param lifespan: A lifespan function to run on the worker. This function will be called when the worker is started, and can be used to perform any setup or teardown tasks.
+
+        :returns: The created `Worker` object, which exposes an instance method `start` which can be called to start the worker.
+
+        :raises TypeError: If any of the items in `workflows` is not an instance of `Workflow` or `Standalone`, which are the two types of workflow objects that can be passed to a worker. This is to catch a common mistake where users pass the result of a task declaration method like `Workflow.task` instead of the workflow object itself.
+        """
+
+        for workflow in workflows or []:
+            if not isinstance(workflow, BaseWorkflow):
+                raise TypeError(
+                    f"workflows passed to a Hatchet worker need to be either a `Workflow` or a `Standalone`, created via `hatchet.workflow`, `hatchet.task`, or `hatchet.durable_task`. Got {type(workflow)}. hint: you likely passed the result of `Workflow.task`, `Workflow.durable_task`, etc. instead of the workflow itself."
+                )
+
+        resolved_config = resolve_worker_slot_config(
+            None,
+            slots,
+            durable_slots,
+            workflows,
+        )
+
+        return Worker(
+            name=name,
+            slot_config=normalize_slot_config(resolved_config),
+            labels=labels,
+            config=self._client.config,
+            debug=self._client.debug,
+            workflows=workflows,
+            lifespan=lifespan,
+        )
+
+    @overload
+    def workflow(
+        self,
+        *,
+        name: str,
+        description: str | None = None,
+        input_validator: None = None,
+        on_events: list[str] | None = None,
+        on_crons: list[str] | None = None,
+        cron_input: None = None,
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int | Priority = Priority.LOW,
+        concurrency: (
+            int | ConcurrencyExpression | list[ConcurrencyExpression] | None
+        ) = None,
+        task_defaults: TaskDefaults = TaskDefaults(),
+        default_filters: list[DefaultFilter] | None = None,
+        default_additional_metadata: JSONSerializableMapping | None = None,
+        idempotency: (
+            TTLBasedIdempotencyConfig | StatusBasedIdempotencyConfig | None
+        ) = None,
+    ) -> Workflow[EmptyModel]: ...
+
+    @overload
+    def workflow(
+        self,
+        *,
+        name: str,
+        description: str | None = None,
+        input_validator: type[TWorkflowInput],
+        on_events: list[str] | None = None,
+        on_crons: list[str] | None = None,
+        cron_input: TWorkflowInput | None = None,
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int | Priority = Priority.LOW,
+        concurrency: (
+            int | ConcurrencyExpression | list[ConcurrencyExpression] | None
+        ) = None,
+        task_defaults: TaskDefaults = TaskDefaults(),
+        default_filters: list[DefaultFilter] | None = None,
+        default_additional_metadata: JSONSerializableMapping | None = None,
+        idempotency: (
+            TTLBasedIdempotencyConfig | StatusBasedIdempotencyConfig | None
+        ) = None,
+    ) -> Workflow[TWorkflowInput]: ...
+
+    def workflow(
+        self,
+        *,
+        name: str,
+        description: str | None = None,
+        input_validator: type[TWorkflowInput] | None = None,
+        on_events: list[str] | None = None,
+        on_crons: list[str] | None = None,
+        cron_input: TWorkflowInput | None = None,
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int | Priority = Priority.LOW,
+        concurrency: (
+            int | ConcurrencyExpression | list[ConcurrencyExpression] | None
+        ) = None,
+        task_defaults: TaskDefaults = TaskDefaults(),
+        default_filters: list[DefaultFilter] | None = None,
+        default_additional_metadata: JSONSerializableMapping | None = None,
+        idempotency: (
+            TTLBasedIdempotencyConfig | StatusBasedIdempotencyConfig | None
+        ) = None,
+    ) -> Workflow[EmptyModel] | Workflow[TWorkflowInput]:
+        """
+        Define a Hatchet workflow, which can then declare `task`s and be `run`, `schedule`d, and so on.
+
+        :param name: The name of the workflow.
+
+        :param description: A description for the workflow
+
+        :param input_validator: A Pydantic model to use as a validator for the `input` to the tasks in the workflow. If no validator is provided, defaults to an `EmptyModel` under the hood. The `EmptyModel` is a Pydantic model with no fields specified, and with the `extra` config option set to `"allow"`.
+
+        :param on_events: A list of event triggers for the workflow - events which cause the workflow to be run.
+
+        :param on_crons: A list of cron triggers for the workflow.
+
+        :param cron_input: An optional input to provide to runs triggered by the workflow's `on_crons` schedules. Should be an instance of the workflow's input model.
+
+        :param version: A version for the workflow
+
+        :param sticky: A sticky strategy for the workflow
+
+        :param default_priority: The priority of the workflow. Higher values will cause this workflow to have priority in scheduling over other, lower priority ones.
+
+        :param concurrency: A concurrency object controlling the concurrency settings for this workflow. If an integer is provided, it is treated as a constant concurrency limit with a `GROUP_ROUND_ROBIN` strategy, which means that only `N` runs of the task may execute at any given time.
+
+        :param task_defaults: A `TaskDefaults` object controlling the default task settings for this workflow.
+
+        :param default_filters: A list of filters to create with the workflow is created. Note that this is a helper to allow you to create filters "declaratively" without needing to make a separate API call once the workflow is created to create them.
+
+        :param default_additional_metadata: A dictionary of additional metadata to attach to each run of this workflow by default.
+
+        :param idempotency: An optional idempotency configuration for the workflow, controlling how Hatchet should determine if two runs of this workflow are "the same" for the purposes of deduplication and idempotent execution.
+
+        :returns: The created `Workflow` object, which can be used to declare tasks, run the workflow, and so on.
+        """
+
+        _warn_if_int_priority(default_priority)
+
+        return Workflow[TWorkflowInput](
+            WorkflowConfig(
+                name=name,
+                version=version,
+                description=description,
+                on_events=on_events or [],
+                on_crons=on_crons or [],
+                cron_input=cron_input,
+                sticky=sticky,
+                concurrency=concurrency,
+                input_validator=TypeAdapter(normalize_validator(input_validator)),
+                task_defaults=task_defaults,
+                default_priority=default_priority,
+                default_filters=default_filters or [],
+                default_additional_metadata=default_additional_metadata or {},
+                idempotency=idempotency,
+            ),
+            self,
+        )
+
+    @overload
+    def task(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        input_validator: None = None,
+        on_events: list[str] | None = None,
+        on_crons: list[str] | None = None,
+        cron_input: None = None,
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int | Priority = Priority.LOW,
+        concurrency: (
+            int | ConcurrencyExpression | list[ConcurrencyExpression] | None
+        ) = None,
+        schedule_timeout: Duration = timedelta(minutes=5),
+        execution_timeout: Duration = timedelta(seconds=60),
+        retries: int = 0,
+        rate_limits: list[RateLimit] | None = None,
+        desired_worker_labels: (
+            dict[str, DesiredWorkerLabel] | list[DesiredWorkerLabel] | None
+        ) = None,
+        backoff_factor: float | None = None,
+        backoff_max_seconds: int | None = None,
+        default_filters: list[DefaultFilter] | None = None,
+        default_additional_metadata: JSONSerializableMapping | None = None,
+        slot_cost: int | None = None,
+        idempotency: (
+            TTLBasedIdempotencyConfig | StatusBasedIdempotencyConfig | None
+        ) = None,
+    ) -> Callable[
+        [Callable[Concatenate[EmptyModel, Context, P], R | CoroutineLike[R]]],
+        Standalone[EmptyModel, R],
+    ]: ...
+
+    @overload
+    def task(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        input_validator: type[TWorkflowInput],
+        on_events: list[str] | None = None,
+        on_crons: list[str] | None = None,
+        cron_input: TWorkflowInput | None = None,
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int | Priority = Priority.LOW,
+        concurrency: (
+            int | ConcurrencyExpression | list[ConcurrencyExpression] | None
+        ) = None,
+        schedule_timeout: Duration = timedelta(minutes=5),
+        execution_timeout: Duration = timedelta(seconds=60),
+        retries: int = 0,
+        rate_limits: list[RateLimit] | None = None,
+        desired_worker_labels: (
+            dict[str, DesiredWorkerLabel] | list[DesiredWorkerLabel] | None
+        ) = None,
+        backoff_factor: float | None = None,
+        backoff_max_seconds: int | None = None,
+        default_filters: list[DefaultFilter] | None = None,
+        default_additional_metadata: JSONSerializableMapping | None = None,
+        slot_cost: int | None = None,
+        idempotency: (
+            TTLBasedIdempotencyConfig | StatusBasedIdempotencyConfig | None
+        ) = None,
+    ) -> Callable[
+        [Callable[Concatenate[TWorkflowInput, Context, P], R | CoroutineLike[R]]],
+        Standalone[TWorkflowInput, R],
+    ]: ...
+
+    def task(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        input_validator: type[TWorkflowInput] | None = None,
+        on_events: list[str] | None = None,
+        on_crons: list[str] | None = None,
+        cron_input: TWorkflowInput | None = None,
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int | Priority = Priority.LOW,
+        concurrency: (
+            int | ConcurrencyExpression | list[ConcurrencyExpression] | None
+        ) = None,
+        schedule_timeout: Duration = timedelta(minutes=5),
+        execution_timeout: Duration = timedelta(seconds=60),
+        retries: int = 0,
+        rate_limits: list[RateLimit] | None = None,
+        desired_worker_labels: (
+            dict[str, DesiredWorkerLabel] | list[DesiredWorkerLabel] | None
+        ) = None,
+        backoff_factor: float | None = None,
+        backoff_max_seconds: int | None = None,
+        default_filters: list[DefaultFilter] | None = None,
+        default_additional_metadata: JSONSerializableMapping | None = None,
+        slot_cost: int | None = None,
+        idempotency: (
+            TTLBasedIdempotencyConfig | StatusBasedIdempotencyConfig | None
+        ) = None,
+    ) -> (
+        Callable[
+            [Callable[Concatenate[EmptyModel, Context, P], R | CoroutineLike[R]]],
+            Standalone[EmptyModel, R],
+        ]
+        | Callable[
+            [Callable[Concatenate[TWorkflowInput, Context, P], R | CoroutineLike[R]]],
+            Standalone[TWorkflowInput, R],
+        ]
+    ):
+        """
+        A decorator to transform a function into a standalone Hatchet task that runs as part of a workflow.
+
+        :param name: The name of the task. If not specified, defaults to the name of the function being wrapped by the `task` decorator.
+
+        :param description: An optional description for the task.
+
+        :param input_validator: A Pydantic model to use as a validator for the input to the task. If no validator is provided, defaults to an `EmptyModel`.
+
+        :param on_events: A list of event triggers for the task - events which cause the task to be run.
+
+        :param on_crons: A list of cron triggers for the task.
+
+        :param cron_input: An optional input to provide to runs triggered by the task's `on_crons` schedules. Should be an instance of the task's input model.
+
+        :param version: A version for the task.
+
+        :param sticky: A sticky strategy for the task.
+
+        :param default_priority: The priority of the task. Higher values will cause this task to have priority in scheduling.
+
+        :param concurrency: A concurrency object controlling the concurrency settings for this task. If an integer is provided, it is treated as a constant concurrency limit with a `GROUP_ROUND_ROBIN` strategy, which means that only `N` runs of the task may execute at any given time.
+
+        :param schedule_timeout: The maximum time allowed for scheduling the task.
+
+        :param execution_timeout: The maximum time allowed for executing the task.
+
+        :param retries: The number of times to retry the task before failing.
+
+        :param rate_limits: A list of rate limit configurations for the task.
+
+        :param desired_worker_labels: A dictionary of desired worker labels that determine to which worker the task should be assigned.
+
+        :param backoff_factor: The backoff factor for controlling exponential backoff in retries.
+
+        :param backoff_max_seconds: The maximum number of seconds to allow retries with exponential backoff to continue.
+
+        :param default_filters: A list of filters to create with the task is created. Note that this is a helper to allow you to create filters "declaratively" without needing to make a separate API call once the task is created to create them.
+
+        :param default_additional_metadata: A dictionary of additional metadata to attach to each run of this task by default.
+
+        :param slot_cost: The number of default worker slots this task consumes. A normal task consumes one. Set it higher for a task that needs more memory or CPU, so a worker runs fewer of them at once. A single worker must have that many free slots to run it.
+
+        :param idempotency: An optional idempotency configuration for the task, controlling how Hatchet should determine if two runs of this task are "the same" for the purposes of deduplication and idempotent execution.
+
+        :returns: A decorator which creates a `Standalone` task object.
+        """
+
+        _warn_if_int_priority(default_priority)
+
+        def inner(
+            func: Callable[
+                Concatenate[TWorkflowInput, Context, P], R | CoroutineLike[R]
+            ],
+        ) -> Standalone[TWorkflowInput, R]:
+            inferred_name = name or func.__name__
+
+            workflow = Workflow[TWorkflowInput](
+                WorkflowConfig(
+                    name=inferred_name,
+                    version=version,
+                    description=description,
+                    on_events=on_events or [],
+                    on_crons=on_crons or [],
+                    cron_input=cron_input,
+                    sticky=sticky,
+                    default_priority=default_priority,
+                    input_validator=TypeAdapter(normalize_validator(input_validator)),
+                    default_filters=default_filters or [],
+                    default_additional_metadata=default_additional_metadata or {},
+                    idempotency=idempotency,
+                ),
+                self,
+            )
+
+            if isinstance(concurrency, list):
+                _concurrency = concurrency
+            elif isinstance(concurrency, ConcurrencyExpression):
+                _concurrency = [concurrency]
+            elif isinstance(concurrency, int):
+                _concurrency = [ConcurrencyExpression.from_int(concurrency)]
+            else:
+                _concurrency = []
+
+            task_wrapper = workflow.task(
+                name=inferred_name,
+                schedule_timeout=schedule_timeout,
+                execution_timeout=execution_timeout,
+                parents=[],
+                retries=retries,
+                rate_limits=rate_limits or [],
+                desired_worker_labels=desired_worker_labels or None,
+                backoff_factor=backoff_factor,
+                backoff_max_seconds=backoff_max_seconds,
+                concurrency=_concurrency,
+                slot_cost=slot_cost,
+            )
+
+            created_task = task_wrapper(func)
+
+            return Standalone[TWorkflowInput, R](
+                workflow=workflow,
+                task=created_task,
+            )
+
+        return inner
+
+    @overload
+    def batch_task(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        input_validator: None = None,
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int = 1,
+        schedule_timeout: Duration = timedelta(minutes=5),
+        execution_timeout: Duration = timedelta(seconds=60),
+        rate_limits: list[RateLimit] | None = None,
+        desired_worker_labels: dict[str, DesiredWorkerLabel] | None = None,
+        backoff_factor: float | None = None,
+        backoff_max_seconds: int | None = None,
+        default_filters: list[DefaultFilter] | None = None,
+        batch_max_size: int = ...,
+        batch_max_interval: timedelta | None = None,
+        batch_group_key: str | None = None,
+        batch_group_max_runs: int | None = None,
+        broadcast_output: Literal[True],
+    ) -> Callable[
+        [
+            Callable[
+                Concatenate[dict[BatchMemberId, EmptyModel], Context, P],
+                R | CoroutineLike[R],
+            ]
+        ],
+        Standalone[EmptyModel, R],
+    ]: ...
+
+    @overload
+    def batch_task(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        input_validator: None = None,
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int = 1,
+        schedule_timeout: Duration = timedelta(minutes=5),
+        execution_timeout: Duration = timedelta(seconds=60),
+        rate_limits: list[RateLimit] | None = None,
+        desired_worker_labels: dict[str, DesiredWorkerLabel] | None = None,
+        backoff_factor: float | None = None,
+        backoff_max_seconds: int | None = None,
+        default_filters: list[DefaultFilter] | None = None,
+        batch_max_size: int = ...,
+        batch_max_interval: timedelta | None = None,
+        batch_group_key: str | None = None,
+        batch_group_max_runs: int | None = None,
+        broadcast_output: Literal[False] = False,
+    ) -> Callable[
+        [
+            Callable[
+                Concatenate[dict[BatchMemberId, EmptyModel], Context, P],
+                dict[BatchMemberId, R] | CoroutineLike[dict[BatchMemberId, R]],
+            ]
+        ],
+        Standalone[EmptyModel, R],
+    ]: ...
+
+    @overload
+    def batch_task(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        input_validator: type[TWorkflowInput],
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int = 1,
+        schedule_timeout: Duration = timedelta(minutes=5),
+        execution_timeout: Duration = timedelta(seconds=60),
+        rate_limits: list[RateLimit] | None = None,
+        desired_worker_labels: dict[str, DesiredWorkerLabel] | None = None,
+        backoff_factor: float | None = None,
+        backoff_max_seconds: int | None = None,
+        default_filters: list[DefaultFilter] | None = None,
+        batch_max_size: int = ...,
+        batch_max_interval: timedelta | None = None,
+        batch_group_key: str | None = None,
+        batch_group_max_runs: int | None = None,
+        broadcast_output: Literal[True],
+    ) -> Callable[
+        [
+            Callable[
+                Concatenate[dict[BatchMemberId, TWorkflowInput], Context, P],
+                R | CoroutineLike[R],
+            ]
+        ],
+        Standalone[TWorkflowInput, R],
+    ]: ...
+
+    @overload
+    def batch_task(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        input_validator: type[TWorkflowInput],
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int = 1,
+        schedule_timeout: Duration = timedelta(minutes=5),
+        execution_timeout: Duration = timedelta(seconds=60),
+        rate_limits: list[RateLimit] | None = None,
+        desired_worker_labels: dict[str, DesiredWorkerLabel] | None = None,
+        backoff_factor: float | None = None,
+        backoff_max_seconds: int | None = None,
+        default_filters: list[DefaultFilter] | None = None,
+        batch_max_size: int = ...,
+        batch_max_interval: timedelta | None = None,
+        batch_group_key: str | None = None,
+        batch_group_max_runs: int | None = None,
+        broadcast_output: Literal[False] = False,
+    ) -> Callable[
+        [
+            Callable[
+                Concatenate[dict[BatchMemberId, TWorkflowInput], Context, P],
+                dict[BatchMemberId, R] | CoroutineLike[dict[BatchMemberId, R]],
+            ]
+        ],
+        Standalone[TWorkflowInput, R],
+    ]: ...
+
+    # mypy can't prove this implementation covers the `input_validator`-bound overloads
+    # above when their inner-callable return types differ (broadcast vs. dict) -- a known
+    # limitation when a TypeVar is required in overloads but optional in the implementation.
+    def batch_task(  # type: ignore[misc]
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        input_validator: type[TWorkflowInput] | None = None,
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int = 1,
+        schedule_timeout: Duration = timedelta(minutes=5),
+        execution_timeout: Duration = timedelta(seconds=60),
+        rate_limits: list[RateLimit] | None = None,
+        desired_worker_labels: dict[str, DesiredWorkerLabel] | None = None,
+        backoff_factor: float | None = None,
+        backoff_max_seconds: int | None = None,
+        default_filters: list[DefaultFilter] | None = None,
+        batch_max_size: int = 1,
+        batch_max_interval: timedelta | None = None,
+        batch_group_key: str | None = None,
+        batch_group_max_runs: int | None = None,
+        broadcast_output: bool = False,
+    ) -> Callable[
+        [
+            Callable[
+                Concatenate[dict[BatchMemberId, TWorkflowInput], Context, P],
+                dict[BatchMemberId, R]
+                | R
+                | CoroutineLike[dict[BatchMemberId, R]]
+                | CoroutineLike[R],
+            ]
+        ],
+        Standalone[TWorkflowInput, R],
+    ]:
+        """
+        .. note::
+        **Preview:** This function is in beta and may change in future releases.
+
+        A decorator to transform a function into a Hatchet *batch* task that runs as part of a workflow.
+
+        Batch tasks buffer individual executions until Hatchet flushes the batch (size reached or flush interval),
+        then invoke the handler once with all buffered inputs keyed by step run ID.
+
+        The handler must return a dict mapping each step run ID to its output, or use `broadcast_output` to return the same result to all callsites.
+        """
+
+        def inner(
+            func: Callable[
+                Concatenate[dict[BatchMemberId, TWorkflowInput], Context, P],
+                dict[BatchMemberId, R]
+                | R
+                | CoroutineLike[dict[BatchMemberId, R]]
+                | CoroutineLike[R],
+            ],
+        ) -> Standalone[TWorkflowInput, R]:
+            inferred_name = name or func.__name__
+
+            workflow = Workflow[TWorkflowInput](
+                WorkflowConfig(
+                    name=inferred_name,
+                    version=version,
+                    description=description,
+                    sticky=sticky,
+                    default_priority=default_priority,
+                    input_validator=TypeAdapter(normalize_validator(input_validator)),
+                    default_filters=default_filters or [],
+                ),
+                self,
+            )
+
+            # Split on `broadcast_output` (rather than forwarding the plain `bool`) so each
+            # branch matches one of `Workflow.batch_task`'s `Literal[True]`/`Literal[False]`
+            # overloads and the decorated function's return type is checked accordingly.
+            if broadcast_output:
+                broadcast_task_wrapper = workflow.batch_task(
+                    name=inferred_name,
+                    schedule_timeout=schedule_timeout,
+                    execution_timeout=execution_timeout,
+                    parents=[],
+                    rate_limits=rate_limits or [],
+                    desired_worker_labels=desired_worker_labels or None,
+                    backoff_factor=backoff_factor,
+                    backoff_max_seconds=backoff_max_seconds,
+                    batch_max_size=batch_max_size,
+                    batch_max_interval=batch_max_interval,
+                    batch_group_key=batch_group_key,
+                    batch_group_max_runs=batch_group_max_runs,
+                    broadcast_output=True,
+                )
+                created_task = broadcast_task_wrapper(
+                    cast(
+                        Callable[
+                            Concatenate[
+                                dict[BatchMemberId, TWorkflowInput], Context, P
+                            ],
+                            R | CoroutineLike[R],
+                        ],
+                        func,
+                    )
+                )
+            else:
+                dict_task_wrapper = workflow.batch_task(
+                    name=inferred_name,
+                    schedule_timeout=schedule_timeout,
+                    execution_timeout=execution_timeout,
+                    parents=[],
+                    rate_limits=rate_limits or [],
+                    desired_worker_labels=desired_worker_labels or None,
+                    backoff_factor=backoff_factor,
+                    backoff_max_seconds=backoff_max_seconds,
+                    batch_max_size=batch_max_size,
+                    batch_max_interval=batch_max_interval,
+                    batch_group_key=batch_group_key,
+                    batch_group_max_runs=batch_group_max_runs,
+                    broadcast_output=False,
+                )
+                created_task = dict_task_wrapper(
+                    cast(
+                        Callable[
+                            Concatenate[
+                                dict[BatchMemberId, TWorkflowInput], Context, P
+                            ],
+                            dict[BatchMemberId, R]
+                            | CoroutineLike[dict[BatchMemberId, R]],
+                        ],
+                        func,
+                    )
+                )
+
+            return Standalone[TWorkflowInput, R](
+                workflow=workflow,
+                task=created_task,
+            )
+
+        return inner
+
+    @overload
+    def durable_task(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        input_validator: None = None,
+        on_events: list[str] | None = None,
+        on_crons: list[str] | None = None,
+        cron_input: None = None,
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int | Priority = Priority.LOW,
+        concurrency: (
+            int | ConcurrencyExpression | list[ConcurrencyExpression] | None
+        ) = None,
+        schedule_timeout: Duration = timedelta(minutes=5),
+        execution_timeout: Duration = timedelta(seconds=60),
+        retries: int = 0,
+        rate_limits: list[RateLimit] | None = None,
+        desired_worker_labels: (
+            dict[str, DesiredWorkerLabel] | list[DesiredWorkerLabel] | None
+        ) = None,
+        backoff_factor: float | None = None,
+        backoff_max_seconds: int | None = None,
+        default_filters: list[DefaultFilter] | None = None,
+        default_additional_metadata: JSONSerializableMapping | None = None,
+        eviction_policy: EvictionPolicy | None = DEFAULT_DURABLE_TASK_EVICTION_POLICY,
+        idempotency: (
+            TTLBasedIdempotencyConfig | StatusBasedIdempotencyConfig | None
+        ) = None,
+    ) -> Callable[
+        [Callable[Concatenate[EmptyModel, DurableContext, P], R | CoroutineLike[R]]],
+        Standalone[EmptyModel, R],
+    ]: ...
+
+    @overload
+    def durable_task(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        input_validator: type[TWorkflowInput],
+        on_events: list[str] | None = None,
+        on_crons: list[str] | None = None,
+        cron_input: TWorkflowInput | None = None,
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int | Priority = Priority.LOW,
+        concurrency: (
+            int | ConcurrencyExpression | list[ConcurrencyExpression] | None
+        ) = None,
+        schedule_timeout: Duration = timedelta(minutes=5),
+        execution_timeout: Duration = timedelta(seconds=60),
+        retries: int = 0,
+        rate_limits: list[RateLimit] | None = None,
+        desired_worker_labels: (
+            dict[str, DesiredWorkerLabel] | list[DesiredWorkerLabel] | None
+        ) = None,
+        backoff_factor: float | None = None,
+        backoff_max_seconds: int | None = None,
+        default_filters: list[DefaultFilter] | None = None,
+        default_additional_metadata: JSONSerializableMapping | None = None,
+        eviction_policy: EvictionPolicy | None = DEFAULT_DURABLE_TASK_EVICTION_POLICY,
+        idempotency: (
+            TTLBasedIdempotencyConfig | StatusBasedIdempotencyConfig | None
+        ) = None,
+    ) -> Callable[
+        [
+            Callable[
+                Concatenate[TWorkflowInput, DurableContext, P], R | CoroutineLike[R]
+            ]
+        ],
+        Standalone[TWorkflowInput, R],
+    ]: ...
+
+    def durable_task(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        input_validator: type[TWorkflowInput] | None = None,
+        on_events: list[str] | None = None,
+        on_crons: list[str] | None = None,
+        cron_input: TWorkflowInput | None = None,
+        version: str | None = None,
+        sticky: StickyStrategy | None = None,
+        default_priority: int | Priority = Priority.LOW,
+        concurrency: (
+            int | ConcurrencyExpression | list[ConcurrencyExpression] | None
+        ) = None,
+        schedule_timeout: Duration = timedelta(minutes=5),
+        execution_timeout: Duration = timedelta(seconds=60),
+        retries: int = 0,
+        rate_limits: list[RateLimit] | None = None,
+        desired_worker_labels: (
+            dict[str, DesiredWorkerLabel] | list[DesiredWorkerLabel] | None
+        ) = None,
+        backoff_factor: float | None = None,
+        backoff_max_seconds: int | None = None,
+        default_filters: list[DefaultFilter] | None = None,
+        default_additional_metadata: JSONSerializableMapping | None = None,
+        eviction_policy: EvictionPolicy | None = DEFAULT_DURABLE_TASK_EVICTION_POLICY,
+        idempotency: (
+            TTLBasedIdempotencyConfig | StatusBasedIdempotencyConfig | None
+        ) = None,
+    ) -> (
+        Callable[
+            [
+                Callable[
+                    Concatenate[EmptyModel, DurableContext, P], R | CoroutineLike[R]
+                ]
+            ],
+            Standalone[EmptyModel, R],
+        ]
+        | Callable[
+            [
+                Callable[
+                    Concatenate[TWorkflowInput, DurableContext, P], R | CoroutineLike[R]
+                ]
+            ],
+            Standalone[TWorkflowInput, R],
+        ]
+    ):
+        """
+        A decorator to transform a function into a standalone Hatchet _durable_ task that runs as part of a workflow.
+
+        :param name: The name of the task. If not specified, defaults to the name of the function being wrapped by the `task` decorator.
+
+        :param description: An optional description for the task.
+
+        :param input_validator: A Pydantic model to use as a validator for the input to the task. If no validator is provided, defaults to an `EmptyModel`.
+
+        :param on_events: A list of event triggers for the task - events which cause the task to be run.
+
+        :param on_crons: A list of cron triggers for the task.
+
+        :param cron_input: An optional input to provide to runs triggered by the task's `on_crons` schedules. Should be an instance of the task's input model.
+
+        :param version: A version for the task.
+
+        :param sticky: A sticky strategy for the task.
+
+        :param default_priority: The priority of the task. Higher values will cause this task to have priority in scheduling.
+
+        :param concurrency: A concurrency object controlling the concurrency settings for this task. If an integer is provided, it is treated as a constant concurrency limit with a `GROUP_ROUND_ROBIN` strategy, which means that only `N` runs of the task may execute at any given time.
+
+        :param schedule_timeout: The maximum time allowed for scheduling the task.
+
+        :param execution_timeout: The maximum time allowed for executing the task.
+
+        :param retries: The number of times to retry the task before failing.
+
+        :param rate_limits: A list of rate limit configurations for the task.
+
+        :param desired_worker_labels: A dictionary of desired worker labels that determine to which worker the task should be assigned.
+
+        :param backoff_factor: The backoff factor for controlling exponential backoff in retries.
+
+        :param backoff_max_seconds: The maximum number of seconds to allow retries with exponential backoff to continue.
+
+        :param default_filters: A list of filters to create with the task is created. Note that this is a helper to allow you to create filters "declaratively" without needing to make a separate API call once the task is created to create them.
+
+        :param default_additional_metadata: A dictionary of additional metadata to attach to each run of this task by default.
+
+        :param eviction_policy: An optional eviction policy controlling when idle durable tasks are evicted from workers.
+
+        :param idempotency: An optional idempotency configuration for the task, controlling how Hatchet should determine if two runs of this task are "the same" for the purposes of deduplication and idempotent execution.
+
+        :returns: A decorator which creates a `Standalone` task object.
+        """
+
+        def inner(
+            func: Callable[
+                Concatenate[TWorkflowInput, DurableContext, P], R | CoroutineLike[R]
+            ],
+        ) -> Standalone[TWorkflowInput, R]:
+            inferred_name = name or func.__name__
+            workflow = Workflow[TWorkflowInput](
+                WorkflowConfig(
+                    name=inferred_name,
+                    version=version,
+                    description=description,
+                    on_events=on_events or [],
+                    on_crons=on_crons or [],
+                    cron_input=cron_input,
+                    sticky=sticky,
+                    input_validator=TypeAdapter(normalize_validator(input_validator)),
+                    default_priority=default_priority,
+                    default_filters=default_filters or [],
+                    default_additional_metadata=default_additional_metadata or {},
+                    idempotency=idempotency,
+                ),
+                self,
+            )
+
+            if isinstance(concurrency, list):
+                _concurrency = concurrency
+            elif isinstance(concurrency, ConcurrencyExpression):
+                _concurrency = [concurrency]
+            elif isinstance(concurrency, int):
+                _concurrency = [ConcurrencyExpression.from_int(concurrency)]
+            else:
+                _concurrency = []
+
+            task_wrapper = workflow.durable_task(
+                name=inferred_name,
+                schedule_timeout=schedule_timeout,
+                execution_timeout=execution_timeout,
+                parents=[],
+                retries=retries,
+                rate_limits=rate_limits or [],
+                desired_worker_labels=desired_worker_labels or None,
+                backoff_factor=backoff_factor,
+                backoff_max_seconds=backoff_max_seconds,
+                concurrency=_concurrency,
+                eviction_policy=eviction_policy,
+            )
+
+            return Standalone[TWorkflowInput, R](
+                workflow=workflow,
+                task=task_wrapper(func),
+            )
+
+        return inner
+
+    def get_current_context(self) -> Context | None:
+        """
+        Get the current Hatchet context, if it exists. This is only available within the execution of a task or workflow.
+
+        :returns: The current `Context` object, or `None` if there is no current context (i.e. if this is called outside of the execution of a task or workflow).
+        """
+        warnings.warn(
+            "The `get_current_context` method is deprecated and will be removed in v2.0.0. Please use the `current_context` property instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+        return ctx_hatchet_context.get()
+
+    @property
+    def current_context(self) -> Context | None:
+        """
+        Get the current Hatchet context, if it exists. This is only available within the execution of a task or workflow.
+
+        :returns: The current `Context` object, or `None` if there is no current context (i.e. if this is called outside of the execution of a task or workflow).
+        """
+        return ctx_hatchet_context.get()

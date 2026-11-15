@@ -1,0 +1,21 @@
+# Verdict policy — A-AUD-06
+version: "1.0"
+rules:
+  refutado_if:
+    - critical_path_missing
+    - critical_gap
+    - contradiction_fail
+    - ci_claimed_and_failed
+    - packet_invalid
+  parcial_if:
+    - any_no_verificado
+    - non_critical_gap
+    - ci_claimed_unverified
+  confirmado_requires:
+    - no_refutado_conditions
+    - no_parcial_conditions
+    - all_critical_present
+verdicts:
+  - CONFIRMADO
+  - PARCIAL
+  - REFUTADO

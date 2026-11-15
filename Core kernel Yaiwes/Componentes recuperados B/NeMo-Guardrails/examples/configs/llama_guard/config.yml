@@ -1,0 +1,20 @@
+models:
+  - type: main
+    engine: openai
+    model: gpt-3.5-turbo-instruct
+
+  - type: llama_guard
+    engine: openai
+    model: meta-llama/LlamaGuard-7b
+    parameters:
+      base_url: "http://localhost:5000/v1"
+      api_key: EMPTY
+
+rails:
+  input:
+    flows:
+      - llama guard check input
+
+  output:
+    flows:
+      - llama guard check output

@@ -1,0 +1,142 @@
+name: "🧪 E2E Tests: Webapp"
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+
+jobs:
+  e2eTests:
+    name: "🧪 E2E Tests: Webapp"
+    runs-on: warp-ubuntu-latest-x64-16x
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2]
+        shardTotal: [2]
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      SHARD_INDEX: ${{ matrix.shardIndex }}
+      SHARD_TOTAL: ${{ matrix.shardTotal }}
+    steps:
+      - name: 🔧 Disable IPv6
+        run: |
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+
+      - name: 🔧 Configure docker address pool
+        run: |
+          CONFIG='{
+            "default-address-pools" : [
+              {
+                "base" : "172.17.0.0/12",
+                "size" : 20
+              },
+              {
+                "base" : "192.168.0.0/16",
+                "size" : 24
+              }
+            ]
+          }'
+          mkdir -p /etc/docker
+          echo "$CONFIG" | sudo tee /etc/docker/daemon.json
+
+      - name: 🔧 Restart docker daemon
+        run: sudo systemctl restart docker
+
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        with:
+          version: 10.33.2
+
+      - name: ⎔ Setup node
+        uses: WarpBuilds/setup-node@bc639b444d583175926b588962199c247d23e8d3 # v6
+        with:
+          node-version: 24.18.0
+          cache: "pnpm"
+
+      # ..to avoid rate limits when pulling images
+      - name: 🐳 Login to DockerHub
+        if: ${{ env.DOCKERHUB_USERNAME }}
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: 🐳 Skipping DockerHub login (no secrets available)
+        if: ${{ !env.DOCKERHUB_USERNAME }}
+        run: echo "DockerHub login skipped because secrets are not available."
+
+      - name: 📥 Prepare deps and testcontainer images
+        run: |
+          # Pull images concurrently with dependency installation. Retry each pull because
+          # registry timeouts are a recurring transient CI flake.
+          pull() {
+            for attempt in 1 2 3; do
+              docker pull "$1" && return 0
+              echo "::warning::docker pull $1 failed (attempt ${attempt}/3); retrying in 10s"
+              sleep 10
+            done
+            echo "::error::docker pull $1 failed after 3 attempts"
+            return 1
+          }
+
+          pull_images() {
+            local pids=()
+            local failed=0
+            for image in \
+              postgres:14 \
+              redis:7.2 \
+              testcontainers/ryuk:0.14.0 \
+              ghcr.io/s2-streamstore/s2:0.40.0@sha256:b26249e2ede0949755f5af8028185dc2bcfc3aa2db21eb9610543d144eb6ee9d \
+              minio/minio:latest
+            do
+              pull "$image" &
+              pids+=("$!")
+            done
+            for pid in "${pids[@]}"; do
+              if ! wait "$pid"; then
+                failed=1
+              fi
+            done
+            return "$failed"
+          }
+
+          echo "Installing dependencies and pre-pulling Docker images..."
+          pull_images &
+          pull_pid=$!
+          install_status=0
+          pnpm install --frozen-lockfile || install_status=$?
+          pull_status=0
+          wait "$pull_pid" || pull_status=$?
+          if (( install_status != 0 || pull_status != 0 )); then
+            exit 1
+          fi
+          echo "Dependency install and image pre-pull complete"
+
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
+      - name: 🏗️ Build Webapp
+        run: pnpm run build --filter webapp
+
+      - name: 🎭 Install Playwright Chromium
+        run: cd apps/webapp && pnpm exec playwright install chromium
+
+      - name: 🧪 Run Webapp E2E Tests
+        run: cd apps/webapp && pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        env:
+          WEBAPP_TEST_VERBOSE: "1"

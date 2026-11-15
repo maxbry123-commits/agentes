@@ -1,0 +1,377 @@
+import { rm } from 'fs/promises';
+
+import { AbortPromptError, ExitPromptError } from '@inquirer/core';
+import * as yaml from 'js-yaml';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import logger from '../src/logger';
+import {
+  createDummyFiles,
+  initializeProject,
+  reportProviderAPIKeyWarnings,
+} from '../src/onboarding';
+import { TestSuiteConfigSchema } from '../src/types/index';
+import { mockProcessEnv } from './util/utils';
+
+// Create hoisted mocks for inquirer modules
+const mockSelect = vi.hoisted(() => vi.fn());
+const mockCheckbox = vi.hoisted(() => vi.fn());
+const mockConfirm = vi.hoisted(() => vi.fn());
+const mockFs = vi.hoisted(() => ({
+  existsSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  access: vi.fn((path: string) => {
+    if (mockFs.existsSync(path)) {
+      return undefined;
+    }
+    throw Object.assign(new Error(`ENOENT: no such file or directory, access '${path}'`), {
+      code: 'ENOENT',
+    });
+  }),
+}));
+
+vi.mock('fs', () => ({
+  default: mockFs,
+  ...mockFs,
+}));
+
+vi.mock('fs/promises', () => ({
+  default: {
+    access: mockFs.access,
+    writeFile: mockFs.writeFileSync,
+    mkdir: mockFs.mkdirSync,
+    mkdtemp: vi.fn(),
+    rm: vi.fn(),
+  },
+  access: mockFs.access,
+  writeFile: mockFs.writeFileSync,
+  mkdir: mockFs.mkdirSync,
+  mkdtemp: vi.fn(),
+  rm: vi.fn(),
+}));
+
+vi.mock('glob', () => ({
+  globSync: vi.fn(),
+}));
+
+vi.mock('libsql');
+
+vi.mock('@inquirer/select', () => ({
+  __esModule: true,
+  default: mockSelect,
+}));
+
+vi.mock('@inquirer/checkbox', () => ({
+  __esModule: true,
+  default: mockCheckbox,
+}));
+
+vi.mock('@inquirer/confirm', () => ({
+  __esModule: true,
+  default: mockConfirm,
+}));
+
+vi.mock('../src/database', () => ({
+  getDb: vi.fn(),
+}));
+
+vi.mock('../src/telemetry', () => ({
+  default: { record: vi.fn() },
+  record: vi.fn(),
+}));
+
+vi.mock('../src/util/fetch/index.ts', () => ({
+  fetch: vi.fn(),
+}));
+
+vi.mock('../src/redteam/commands/init', () => ({
+  redteamInit: vi.fn(),
+}));
+
+vi.mock('../src/envars', () => ({
+  getEnvString: vi.fn(),
+  getEnvBool: vi.fn(() => false),
+  getEnvInt: vi.fn((_key: string, defaultValue: number) => defaultValue),
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockSelect.mockReset();
+  mockCheckbox.mockReset();
+  mockConfirm.mockReset();
+  mockFs.existsSync.mockReset();
+  mockFs.writeFileSync.mockReset();
+  mockFs.mkdirSync.mockReset();
+  mockFs.access.mockClear();
+});
+
+describe('reportProviderAPIKeyWarnings', () => {
+  const openaiID = 'openai:gpt-4o';
+  const anthropicID = 'anthropic:messages:claude-3-5-sonnet-20241022';
+  let restoreEnv: () => void;
+
+  beforeEach(() => {
+    restoreEnv = mockProcessEnv({
+      ANTHROPIC_API_KEY: '',
+      OPENAI_API_KEY: '',
+    });
+  });
+
+  afterEach(() => {
+    restoreEnv();
+  });
+
+  it('should produce a warning for openai if env key is not set', () => {
+    expect(reportProviderAPIKeyWarnings([openaiID])).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('OPENAI_API_KEY environment variable is not set'),
+      ]),
+    );
+  });
+  it('should produce a warning for anthropic if env key is not set', () => {
+    expect(reportProviderAPIKeyWarnings([anthropicID])).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('ANTHROPIC_API_KEY environment variable is not set'),
+      ]),
+    );
+  });
+  it('should produce multiple warnings for applicable providers if env keys are not set', () => {
+    expect(reportProviderAPIKeyWarnings([openaiID, anthropicID])).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('OPENAI_API_KEY environment variable is not set'),
+        expect.stringContaining('ANTHROPIC_API_KEY environment variable is not set'),
+      ]),
+    );
+  });
+  it('should be able to accept an object input so long as it has a valid id field', () => {
+    expect(reportProviderAPIKeyWarnings([{ id: openaiID }, anthropicID])).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('OPENAI_API_KEY environment variable is not set'),
+        expect.stringContaining('ANTHROPIC_API_KEY environment variable is not set'),
+      ]),
+    );
+  });
+  it('should produce only warnings for applicable providers if the env keys are not set', () => {
+    mockProcessEnv({ OPENAI_API_KEY: '<my-api-key>' });
+    expect(reportProviderAPIKeyWarnings([openaiID, anthropicID])).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('ANTHROPIC_API_KEY environment variable is not set'),
+      ]),
+    );
+  });
+});
+
+describe('createDummyFiles', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = '/fake/temp/dir';
+    mockConfirm.mockResolvedValue(true);
+    mockFs.existsSync.mockReturnValue(false);
+    mockFs.writeFileSync.mockImplementation(() => undefined);
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('should generate a valid YAML configuration file that matches TestSuiteConfigSchema', async () => {
+    await createDummyFiles(tempDir, false);
+
+    const configCall = mockFs.writeFileSync.mock.calls.find((call: any[]) =>
+      call[0].toString().endsWith('promptfooconfig.yaml'),
+    );
+    const readmeCall = mockFs.writeFileSync.mock.calls.find((call: any[]) =>
+      call[0].toString().endsWith('README.md'),
+    );
+
+    expect(configCall).toBeDefined();
+    expect(readmeCall).toBeDefined();
+
+    const configContent = configCall?.[1] as string;
+    expect(configContent).toBeDefined();
+
+    const parsedConfig = yaml.load(configContent);
+    const validationResult = TestSuiteConfigSchema.safeParse(parsedConfig);
+
+    expect(validationResult.success).toBe(true);
+
+    // Assert that validation was successful and config is defined
+    expect(validationResult.data).toBeDefined();
+
+    const config = validationResult.data!;
+    expect(config.prompts).toHaveLength(2);
+    expect(config.providers).toHaveLength(2);
+    expect(config.providers).toContain('openai:gpt-5-mini');
+    expect(config.providers).toContain('openai:gpt-5');
+  });
+
+  it('should generate valid YAML configuration for RAG setup', async () => {
+    mockSelect
+      .mockResolvedValueOnce('rag')
+      .mockResolvedValueOnce('python')
+      .mockResolvedValueOnce('openai:gpt-4o');
+
+    await createDummyFiles(tempDir, true);
+
+    const configCall = mockFs.writeFileSync.mock.calls.find((call: any[]) =>
+      call[0].toString().endsWith('promptfooconfig.yaml'),
+    );
+    const contextCall = mockFs.writeFileSync.mock.calls.find((call: any[]) =>
+      call[0].toString().endsWith('context.py'),
+    );
+
+    expect(configCall).toBeDefined();
+    expect(contextCall).toBeDefined();
+
+    const configContent = configCall?.[1] as string;
+    expect(configContent).toBeDefined();
+
+    const parsedConfig = yaml.load(configContent);
+    const validationResult = TestSuiteConfigSchema.safeParse(parsedConfig);
+
+    expect(validationResult.success).toBe(true);
+
+    // Assert that validation was successful and config is defined
+    expect(validationResult.data).toBeDefined();
+
+    const config = validationResult.data!;
+    expect(config.tests).toBeDefined();
+    expect(Array.isArray(config.tests)).toBe(true);
+
+    const tests = config.tests as any[];
+    expect(tests.length).toBeGreaterThan(0);
+
+    const firstTest = tests[0];
+    expect(firstTest).toBeTruthy();
+    expect(typeof firstTest).toBe('object');
+    expect(firstTest).toHaveProperty('vars');
+
+    const { vars } = firstTest;
+    expect(typeof vars).toBe('object');
+    expect(vars).toHaveProperty('inquiry');
+    expect(vars).toHaveProperty('context');
+
+    expect(mockSelect).toHaveBeenCalledTimes(3);
+    expect(mockCheckbox).toHaveBeenCalledTimes(0);
+    expect(mockConfirm).toHaveBeenCalledTimes(0);
+  });
+
+  it('offers current Gemini Flash models during interactive onboarding', async () => {
+    const googleModels = [
+      { id: 'vertex:gemini-3.7-flash', config: { region: 'global' } },
+      { id: 'vertex:gemini-3.6-flash', config: { region: 'global' } },
+      { id: 'vertex:gemini-3.5-flash-lite', config: { region: 'global' } },
+      'vertex:gemini-3.1-pro-preview',
+      'vertex:gemini-2.5-pro',
+    ];
+    mockSelect.mockResolvedValueOnce('compare').mockResolvedValueOnce(googleModels);
+
+    await createDummyFiles(tempDir, true);
+
+    expect(mockSelect).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        choices: expect.arrayContaining([
+          expect.objectContaining({
+            name: '[Google] Gemini 3.7 Flash, 3.6 Flash, 3.5 Flash-Lite, ...',
+            value: googleModels,
+          }),
+        ]),
+      }),
+    );
+
+    const configCall = mockFs.writeFileSync.mock.calls.find((call: any[]) =>
+      call[0].toString().endsWith('promptfooconfig.yaml'),
+    );
+    const config = yaml.load(configCall?.[1] as string) as { providers: typeof googleModels };
+
+    expect(config.providers).toEqual(googleModels);
+  });
+
+  it('offers supported Anthropic models instead of retired Opus 4.1', async () => {
+    mockSelect
+      .mockResolvedValueOnce('compare')
+      .mockResolvedValueOnce(['anthropic:messages:claude-opus-4-6']);
+
+    await createDummyFiles(tempDir, true);
+
+    const providerPrompt = mockSelect.mock.calls.find(
+      ([options]) => options.message === 'Which model provider would you like to use?',
+    );
+    const anthropicChoice = providerPrompt?.[0].choices.find((choice: { name: string }) =>
+      choice.name.startsWith('[Anthropic]'),
+    );
+
+    expect(anthropicChoice?.value).toContain('anthropic:messages:claude-opus-4-6');
+    expect(anthropicChoice?.value).not.toContain('anthropic:messages:claude-opus-4-1-20250805');
+  });
+
+  it('should prompt for confirmation when files exist', async () => {
+    mockFs.existsSync.mockImplementation((path: string) => path.includes('promptfooconfig.yaml'));
+
+    mockConfirm.mockResolvedValueOnce(true);
+    mockSelect.mockResolvedValueOnce('compare').mockResolvedValueOnce('openai:gpt-4o');
+
+    await createDummyFiles(tempDir, true);
+
+    expect(mockConfirm).toHaveBeenCalledTimes(1);
+    expect(mockConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('already exist'),
+      }),
+    );
+  });
+});
+
+describe('initializeProject', () => {
+  let originalExitCode: number | string | null | undefined;
+
+  beforeEach(() => {
+    originalExitCode = process.exitCode;
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    process.exitCode = originalExitCode;
+  });
+
+  it('should return after prompt cancellation without terminating the host process', async () => {
+    mockSelect.mockRejectedValueOnce(new ExitPromptError());
+
+    await expect(initializeProject(null, true)).resolves.toBeUndefined();
+
+    expect(process.exitCode).toBe(130);
+  });
+
+  it('should return after prompt abort without terminating the host process', async () => {
+    mockSelect.mockRejectedValueOnce(new AbortPromptError());
+
+    await expect(initializeProject(null, true)).resolves.toBeUndefined();
+
+    expect(process.exitCode).toBe(130);
+  });
+
+  it('should print current-directory next steps for the redteam path', async () => {
+    // `promptfoo init` with no directory arg, choosing "Run a red team evaluation".
+    mockSelect.mockResolvedValueOnce('redteam');
+
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger);
+
+    await initializeProject(null, true);
+
+    const messages = infoSpy.mock.calls.map((call) => String(call[0]));
+
+    // Regression: the redteam branch dropped `outDirectory`, so the "Next steps"
+    // output interpolated `undefined` instead of using the current-directory flow.
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Setup complete! Next steps:'),
+        expect.stringContaining('to evaluate your prompts'),
+        expect.stringContaining('to view results in your browser'),
+      ]),
+    );
+    expect(messages.some((msg) => msg.includes('undefined'))).toBe(false);
+  });
+});

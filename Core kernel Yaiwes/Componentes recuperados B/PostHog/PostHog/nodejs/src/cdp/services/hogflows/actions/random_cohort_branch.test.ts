@@ -1,0 +1,153 @@
+import { FixtureHogFlowBuilder } from '~/cdp/_tests/builders/hogflow.builder'
+import { createExampleHogFlowInvocation } from '~/cdp/_tests/fixtures-hogflows'
+import { HogFlowAction } from '~/cdp/schema/hogflow'
+import { CyclotronJobInvocationHogFlow } from '~/cdp/types'
+
+import { findActionById, findActionByType } from '../hogflow-utils'
+import { getRandomCohort } from './random_cohort_branch'
+
+describe('getRandomCohort', () => {
+    let action: Extract<HogFlowAction, { type: 'random_cohort_branch' }>
+    let invocation: CyclotronJobInvocationHogFlow
+
+    beforeEach(() => {
+        jest.useFakeTimers()
+        jest.spyOn(Math, 'random')
+
+        const hogFlow = new FixtureHogFlowBuilder()
+            .withWorkflow({
+                actions: {
+                    random_cohort_branch: {
+                        type: 'random_cohort_branch',
+                        config: {
+                            cohorts: [{ percentage: 30 }, { percentage: 40 }, { percentage: 30 }],
+                        },
+                    },
+                    cohort_a: {
+                        type: 'delay',
+                        config: { delay_duration: '2h' },
+                    },
+                    cohort_b: {
+                        type: 'delay',
+                        config: { delay_duration: '2h' },
+                    },
+                    cohort_c: {
+                        type: 'delay',
+                        config: { delay_duration: '2h' },
+                    },
+                },
+                edges: [
+                    {
+                        from: 'random_cohort_branch',
+                        to: 'cohort_a',
+                        type: 'branch',
+                        index: 0,
+                    },
+                    {
+                        from: 'random_cohort_branch',
+                        to: 'cohort_b',
+                        type: 'branch',
+                        index: 1,
+                    },
+                    {
+                        from: 'random_cohort_branch',
+                        to: 'cohort_c',
+                        type: 'branch',
+                        index: 2,
+                    },
+                ],
+            })
+            .build()
+
+        action = findActionByType(hogFlow, 'random_cohort_branch')!
+        invocation = createExampleHogFlowInvocation(hogFlow)
+    })
+
+    it('should select first cohort when random is in first range', () => {
+        ;(Math.random as jest.Mock).mockReturnValue(0.2) // 20% - in first cohort range
+        const result = getRandomCohort(invocation, action)
+        expect(result).toEqual(findActionById(invocation.hogFlow, 'cohort_a'))
+    })
+
+    it('should select second cohort when random is in second range', () => {
+        ;(Math.random as jest.Mock).mockReturnValue(0.4) // 40% - in second cohort range
+        const result = getRandomCohort(invocation, action)
+        expect(result).toEqual(findActionById(invocation.hogFlow, 'cohort_b'))
+    })
+
+    it('should select third cohort when random is in third range', () => {
+        ;(Math.random as jest.Mock).mockReturnValue(0.8) // 80% - in third cohort range
+        const result = getRandomCohort(invocation, action)
+        expect(result).toEqual(findActionById(invocation.hogFlow, 'cohort_c'))
+    })
+
+    it('should handle edge cases at boundaries', () => {
+        ;(Math.random as jest.Mock).mockReturnValue(0.3) // Exactly at first boundary
+        const result = getRandomCohort(invocation, action)
+        expect(result).toEqual(findActionById(invocation.hogFlow, 'cohort_a'))
+        ;(Math.random as jest.Mock).mockReturnValue(0.7) // Exactly at second boundary
+        const result2 = getRandomCohort(invocation, action)
+        expect(result2).toEqual(findActionById(invocation.hogFlow, 'cohort_b'))
+    })
+
+    it.each([
+        ['missing', undefined],
+        ['empty', []],
+        ['not an array', { percentage: 50 }],
+        ['all zero', [{ percentage: 0 }, { percentage: 0 }]],
+    ])('should fall through the continue edge when cohorts is %s', (_name, cohorts) => {
+        const hogFlow = new FixtureHogFlowBuilder()
+            .withWorkflow({
+                actions: {
+                    broken_branch: {
+                        type: 'random_cohort_branch',
+                        config: { cohorts: [] },
+                    },
+                    after: {
+                        type: 'delay',
+                        config: { delay_duration: '2h' },
+                    },
+                },
+                edges: [
+                    {
+                        from: 'broken_branch',
+                        to: 'after',
+                        type: 'continue',
+                    },
+                ],
+            })
+            .build()
+        const brokenAction = findActionByType(hogFlow, 'random_cohort_branch')!
+        ;(brokenAction.config as any).cohorts = cohorts
+
+        const result = getRandomCohort(createExampleHogFlowInvocation(hogFlow), brokenAction)
+        expect(result).toEqual(findActionById(hogFlow, 'after'))
+    })
+
+    it('should handle single cohort', () => {
+        action.config.cohorts = [{ percentage: 100 }]
+        ;(Math.random as jest.Mock).mockReturnValue(0.9)
+        const result = getRandomCohort(invocation, action)
+        expect(result).toEqual(findActionById(invocation.hogFlow, 'cohort_a'))
+    })
+
+    it('should handle uneven percentages', () => {
+        action.config.cohorts = [{ percentage: 25 }, { percentage: 75 }]
+        ;(Math.random as jest.Mock).mockReturnValue(0.5) // 50% - in second cohort range
+        const result = getRandomCohort(invocation, action)
+        expect(result).toEqual(findActionById(invocation.hogFlow, 'cohort_b'))
+    })
+
+    it.each([
+        ['first', 0.49, 'cohort_a'],
+        ['second', 0.51, 'cohort_b'],
+    ])(
+        'should keep an even split proportional when percentages dont add up to 100 (%s half)',
+        (_name, random, expected) => {
+            // Two cohorts at 30% each are a 50/50 split, not 30/30/40-to-the-last-cohort.
+            action.config.cohorts = [{ percentage: 30 }, { percentage: 30 }]
+            ;(Math.random as jest.Mock).mockReturnValue(random)
+            expect(getRandomCohort(invocation, action)).toEqual(findActionById(invocation.hogFlow, expected))
+        }
+    )
+})

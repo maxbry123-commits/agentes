@@ -1,0 +1,76 @@
+{
+  "items": {
+    "C47-003": {
+      "publish": {
+        "verdict": "ALREADY_PRESENT_EXACT_SOURCE_VERIFIED"
+      },
+      "slug": "Hermes-Agent",
+      "source_repo": "NousResearch/hermes-agent",
+      "source_subdir": null,
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-004": {
+      "publish": {
+        "verdict": "ALREADY_PRESENT_EXACT_SOURCE_VERIFIED"
+      },
+      "slug": "OpenClaw",
+      "source_repo": "openclaw/openclaw",
+      "source_subdir": null,
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-009": {
+      "publish": {
+        "verdict": "ALREADY_PRESENT_EXACT_SOURCE_VERIFIED"
+      },
+      "slug": "Life-Harness",
+      "source_repo": "Tianshi-Xu/Life-Harness",
+      "source_subdir": null,
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-011": {
+      "publish": {
+        "verdict": "ALREADY_PRESENT_EXACT_SOURCE_VERIFIED"
+      },
+      "slug": "ZERA",
+      "source_repo": "younatics/zera-agent",
+      "source_subdir": null,
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-036": {
+      "extracted_tree": {
+        "bytes": 28566984,
+        "files": 96,
+        "sha256": "de3c215734fca3c1b123cd566a05634b8ef390316d974515ea63c94e78ca4424"
+      },
+      "lfs_pointer_count": 0,
+      "normalizations": 0,
+      "publish": {
+        "commit": "8512f35936d768a201520250a6f45ba1fe360707",
+        "tree": {
+          "bytes": 28566984,
+          "files": 96,
+          "sha256": "de3c215734fca3c1b123cd566a05634b8ef390316d974515ea63c94e78ca4424"
+        },
+        "verdict": "PUBLISHED_EXACT_SOURCE_AND_DEEP_READBACK_VERIFIED"
+      },
+      "slug": "LlamaFirewall",
+      "source_commit": "4be64c3a24442b51c76175e6ec67722cc3f5fe38",
+      "source_repo": "meta-llama/PurpleLlama",
+      "source_subdir": "LlamaFirewall",
+      "source_tree": {
+        "bytes": 28566984,
+        "files": 96,
+        "sha256": "de3c215734fca3c1b123cd566a05634b8ef390316d974515ea63c94e78ca4424"
+      },
+      "status": "VERIFIED_CLOSED"
+    },
+    "OLD20-AUTOGEN": {
+      "error": "PUSH_RETRIES_EXHAUSTED",
+      "slug": "AutoGen-Core",
+      "source_repo": "microsoft/autogen",
+      "source_subdir": null,
+      "status": "FAILED"
+    }
+  },
+  "schema": "yaiwes.kernel.catalog47.final-gap-repair-v3-state/v1"
+}

@@ -1,0 +1,346 @@
+// Package expressions provides the ability to inspect and evaluate arbitrary
+// user-defined expressions.  We use the Cel-Go package as a runtime to implement
+// computationally bounded, non-turing complete expressions with a familiar c-like
+// syntax.
+//
+// Unlike cel-go's defaults, this package handles unknowns similarly to null values,
+// and allows arbitrary attributes within expressions without errors.  We also
+// provide basic type coercion allowing eg. int <> float comparisons, which errors
+// within cel by default.
+//
+// Expressions can be inspected to determine the variables that they reference,
+// partially evaluated with missing data, and report timestamps used within the
+// expression for future reference (eg. recomputing state at that time).
+package expressions
+
+import (
+	"context"
+	"maps"
+	"time"
+
+	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/interpreter"
+	"github.com/inngest/expr"
+	"github.com/inngest/inngest/pkg/expressions/exprenv"
+	"github.com/karlseguin/ccache/v2"
+	"github.com/pkg/errors"
+)
+
+var (
+	CacheExtendTime = time.Minute * 30
+	CacheTTL        = time.Minute * 30
+	// cache is a global cache of precompiled expressions.
+	cache *ccache.Cache
+
+	// On average, 20 compiled expressions fit into 1mb of ram.
+	CacheMaxSize int64 = 50_000
+
+	exprCompiler expr.CELCompiler
+	treeParser   expr.TreeParser
+)
+
+func init() {
+	cache = ccache.New(ccache.Configure().MaxSize(CacheMaxSize))
+	if e, err := exprenv.Env(); err == nil {
+		exprCompiler = expr.NewCachingCompiler(e, cache)
+		treeParser = expr.NewTreeParser(exprCompiler)
+	}
+}
+
+func CompilerSingleton() expr.CELCompiler {
+	return exprCompiler
+}
+
+func ParserSingleton() expr.TreeParser {
+	return treeParser
+}
+
+var (
+	ErrNoResult      = errors.New("expression did not return true or false")
+	ErrInvalidResult = errors.New("expression errored")
+)
+
+// Evaluator represents a cacheable, goroutine safe manager for evaluating a single
+// precompiled expression with arbitrary data.
+type Evaluator interface {
+	// Evaluate tests the incoming Data against the expression that is
+	// stored within the BooleanEvaluator implementation.
+	//
+	// Attributes that are present within the expression but missing from the
+	// data should be treated as null values;  the expression must not error.
+	Evaluate(ctx context.Context, data *Data) (interface{}, error)
+
+	// UsedAttributes returns the attributes that are referenced within the
+	// expression.
+	UsedAttributes(ctx context.Context) *UsedAttributes
+
+	// FilteredAttributes filters the given data to contain only attributes
+	// referenced from the expression.
+	FilteredAttributes(ctx context.Context, data *Data) *Data
+}
+
+// BooleanEvaluator representsn Evaluator which evaluates an expression returning
+// booleans only.
+type BooleanEvaluator interface {
+	// Evaluate tests the incoming Data against the expression that is
+	// stored within the BooleanEvaluator implementation.
+	//
+	// Attributes that are present within the expression but missing from the
+	// data should be treated as null values;  the expression must not error.
+	Evaluate(ctx context.Context, data *Data) (bool, error)
+
+	// UsedAttributes returns the attributes that are referenced within the
+	// expression.
+	UsedAttributes(ctx context.Context) *UsedAttributes
+
+	// FilteredAttributes filters the given data to contain only attributes
+	// referenced from the expression.
+	FilteredAttributes(ctx context.Context, data *Data) *Data
+}
+
+func ExprEvaluator(ctx context.Context, e expr.Evaluable, input map[string]any) (bool, error) {
+	eval, err := NewBooleanEvaluator(ctx, e.GetExpression())
+	if err != nil {
+		return false, err
+	}
+	data := NewData(input)
+	ok, err := eval.Evaluate(ctx, data)
+	return ok, err
+}
+
+// Evaluate is a helper function to create a new, cached expression evaluator to evaluate
+// the given data immediately.
+func Evaluate(ctx context.Context, expression string, input map[string]interface{}) (interface{}, error) {
+	eval, err := NewExpressionEvaluator(ctx, expression)
+	if err != nil {
+		return false, err
+	}
+	data := NewData(input)
+	return eval.Evaluate(ctx, data)
+}
+
+func EvaluateBoolean(ctx context.Context, expression string, input map[string]interface{}) (bool, error) {
+	eval, err := NewBooleanEvaluator(ctx, expression)
+	if err != nil {
+		return false, err
+	}
+	data := NewData(input)
+	return eval.Evaluate(ctx, data)
+}
+
+// NewExpressionEvaluator returns a new BooleanEvaluator instance for a given expression. The
+// instance can be used across many goroutines to evaluate the expression against any
+// data. The Evaluable instance is loaded from the cache, or is cached if not found.
+//
+// NOTE: This does NOT validate that the expression uses known variables.  Validation is SLOW,
+// NOT THREAD SAFE:  It is expected that you call Validate() separaetly.  We do NOT bundle it
+// here because evaluating expressions needs to be fast in the hot path.
+func NewExpressionEvaluator(ctx context.Context, expression string) (Evaluator, error) {
+	// Use the lifting expression parser in order to compile our env,
+	// if it's not nil.
+	if exprCompiler != nil {
+		// Cache the full evaluator (including compiled program) so that repeated
+		// calls with the same expression string reuse the same cel.Program.
+		cacheKey := "lifted:" + expression
+		if cached := cache.Get(cacheKey); cached != nil {
+			cached.Extend(CacheExtendTime)
+			return cached.Value().(*expressionEvaluator), nil
+		}
+
+		ast, issues, vars := exprCompiler.Parse(expression)
+		if issues != nil {
+			return nil, NewCompileError(issues.Err())
+		}
+		e, err := exprenv.Env()
+		if err != nil {
+			return nil, err
+		}
+		var lifted map[string]any
+		if vars != nil {
+			lifted = vars.Map()
+		}
+		eval := &expressionEvaluator{
+			ast:        ast,
+			env:        e,
+			expression: expression,
+			liftedVars: lifted,
+		}
+		if err := eval.parseAttributes(ctx); err != nil {
+			return nil, err
+		}
+		prog, err := buildProgram(ast, e, true)
+		if err != nil {
+			return nil, err
+		}
+		eval.prog = prog
+		cache.Set(cacheKey, eval, CacheTTL)
+		return eval, nil
+	}
+
+	// Use default parsing, if the exprCompiler isn't specified.
+	return cachedCompile(ctx, expression)
+}
+
+func cachedCompile(ctx context.Context, expression string) (*expressionEvaluator, error) {
+	// NOTE: We use an "eval:" prefix to avoid any conflicts with the `exprCompiler` singleton which
+	// may use the expression as a key.
+	if eval := cache.Get("eval:" + expression); eval != nil {
+		eval.Extend(CacheExtendTime)
+		return eval.Value().(*expressionEvaluator), nil
+	}
+
+	e, err := exprenv.Env()
+	if err != nil {
+		return nil, err
+	}
+	ast, issues := e.Parse(expression)
+	if issues != nil {
+		return nil, NewCompileError(issues.Err())
+	}
+	eval := &expressionEvaluator{
+		ast:        ast,
+		env:        e,
+		expression: expression,
+	}
+	if err := eval.parseAttributes(ctx); err != nil {
+		return nil, err
+	}
+	prog, err := buildProgram(ast, e, true)
+	if err != nil {
+		return nil, err
+	}
+	eval.prog = prog
+	cache.Set("eval:"+expression, eval, CacheTTL)
+	return eval, nil
+}
+
+func NewBooleanEvaluator(ctx context.Context, expression string) (BooleanEvaluator, error) {
+	e, err := NewExpressionEvaluator(ctx, expression)
+	return booleanEvaluator{Evaluator: e}, err
+}
+
+type booleanEvaluator struct {
+	Evaluator
+}
+
+func (b booleanEvaluator) Evaluate(ctx context.Context, data *Data) (bool, error) {
+	val, err := b.Evaluator.Evaluate(ctx, data)
+	if err != nil {
+		return false, err
+	}
+	result, ok := val.(bool)
+	if !ok {
+		return false, errors.Wrapf(ErrInvalidResult, "returned type %T (%s)", val, val)
+	}
+	return result, err
+}
+
+type expressionEvaluator struct {
+	ast *cel.Ast
+	env *cel.Env
+
+	// expression is the raw expression
+	expression string
+
+	// liftedVars are vars lifted from the expression, if parsed with a lifting
+	// parser.
+	liftedVars map[string]any
+
+	// attrs determines which attributes are referenced within the expression.
+	// Used to build PartialActivations and to optimistically load only necessary data.
+	attrs *UsedAttributes
+
+	// prog is the compiled, data-independent cel.Program built once and reused across
+	// all evaluations of this expression.  Safe for concurrent use.
+	prog *celProgram
+
+	// fullPaths and patterns are pre-computed from attrs once and reused on every
+	// Evaluate call.  fullPaths[i] and patterns[i] refer to the same attribute path.
+	fullPaths [][]string
+	patterns  []*interpreter.AttributePattern
+}
+
+// Evaluate evaluates the cached expression against the provided data.
+func (e *expressionEvaluator) Evaluate(ctx context.Context, data *Data) (interface{}, error) {
+	if data == nil {
+		return false, nil
+	}
+
+	if len(e.liftedVars) > 0 {
+		// Keep evaluator-specific vars isolated while sharing immutable nested event data.
+		withVars := make(map[string]any, len(data.data)+1)
+		maps.Copy(withVars, data.data)
+		withVars["vars"] = e.liftedVars
+		data = &Data{data: withVars}
+	}
+
+	act, err := data.partialWithPatterns(ctx, e.fullPaths, e.patterns)
+	if err != nil {
+		return nil, err
+	}
+
+	return eval(e.prog, act)
+}
+
+// UsedAttributes returns the attributes used within the expression.
+func (e *expressionEvaluator) UsedAttributes(ctx context.Context) *UsedAttributes {
+	return e.attrs
+}
+
+// FilteredAttributes returns a new Data pointer with only the attributes
+// used within the expression.
+func (e *expressionEvaluator) FilteredAttributes(ctx context.Context, d *Data) *Data {
+	if d == nil {
+		return nil
+	}
+
+	filtered := map[string]interface{}{}
+
+	current := filtered
+	stack := e.fullPaths
+	for len(stack) > 0 {
+		path := stack[0]
+		stack = stack[1:]
+
+		val, ok := d.Get(ctx, path)
+		if !ok {
+			continue
+		}
+
+		for n, part := range path {
+			if n == len(path)-1 {
+				// This is the value.
+				current[part] = val
+				continue
+			}
+
+			if _, ok := current[part]; !ok {
+				current[part] = map[string]interface{}{}
+			}
+			current = current[part].(map[string]interface{})
+		}
+
+		current = filtered
+	}
+
+	// It is safe to set data directly here, as we've manually
+	// created a map containing raw values from a previously set
+	// Data field.  This prevents us from needlesly mapifying
+	// data from a constructor.
+	return &Data{data: filtered}
+}
+
+// ParseAttributes returns the attributes used within the expression.
+func (e *expressionEvaluator) parseAttributes(ctx context.Context) error {
+	if e.attrs != nil {
+		return nil
+	}
+
+	attrs, err := parseUsedAttributes(ctx, e.ast)
+	if err != nil {
+		return err
+	}
+	e.attrs = attrs
+	e.fullPaths, e.patterns = precomputePatterns(attrs)
+	return nil
+}

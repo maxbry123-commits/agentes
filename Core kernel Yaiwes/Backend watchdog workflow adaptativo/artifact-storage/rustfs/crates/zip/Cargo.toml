@@ -1,0 +1,62 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[package]
+name = "rustfs-zip"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+homepage.workspace = true
+description = "Archive format detection and async stream decoders for RustFS."
+keywords = ["zip", "compression", "rustfs", "Minio"]
+categories = ["web-programming", "development-tools", "compression"]
+documentation = "https://docs.rs/rustfs-zip/latest/rustfs_zip/"
+
+[lib]
+doctest = false
+
+[features]
+default = []
+hotpath = ["hotpath/hotpath", "hotpath/tokio", "rustfs-rio/hotpath"]
+hotpath-alloc = ["hotpath", "hotpath/hotpath-alloc", "rustfs-rio/hotpath-alloc"]
+hotpath-cpu = ["hotpath", "hotpath/hotpath-cpu", "rustfs-rio/hotpath-cpu"]
+
+[dependencies]
+hotpath.workspace = true
+async-compression = { workspace = true, features = [
+    "tokio",
+    "bzip2",
+    "gzip",
+    "lz4",
+    "zlib",
+    "zstd",
+    "xz",
+] }
+rustfs-rio.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "rt"] }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+astral-tokio-tar = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tar-codec = { workspace = true }
+tar-framing = { workspace = true }
+
+[lints]
+workspace = true

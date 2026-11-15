@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report an issue or suggest a change
+    url: https://github.com/totalmarkdown/agent-md-specs/issues/new
+    about: This repo is an auto-synced mirror. Please open issues on the main agent-md-specs repository.
+  - name: Join the discussion
+    url: https://github.com/totalmarkdown/agent-md-specs/discussions
+    about: Ask questions, share ideas, and connect with the community.

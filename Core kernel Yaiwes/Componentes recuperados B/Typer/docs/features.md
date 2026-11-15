@@ -1,0 +1,70 @@
+# Features
+
+## Design based on **FastAPI**
+
+<a href="https://fastapi.tiangolo.com"><img src="https://fastapi.tiangolo.com/img/logo-margin/logo-teal.png" style="width: 20%;"></a>
+
+**Typer** is [FastAPI](https://fastapi.tiangolo.com)'s little sibling.
+
+It follows the same design and ideas. If you know **FastAPI**, you already know **Typer**... more or less.
+
+## Just Modern Python
+
+It's all based on standard **Python type** declarations. No new syntax to learn. Just standard modern Python.
+
+If you need a 2 minute refresher of how to use Python types (even if you don't use FastAPI or Typer), check the FastAPI tutorial section: [Python types intro](https://fastapi.tiangolo.com/python-types/).
+
+You will also see a 20 seconds refresher on the section [Tutorial - User Guide: First Steps](tutorial/first-steps.md).
+
+## Editor support
+
+**Typer** was designed to be easy and intuitive to use, to ensure the best development experience. With autocompletion everywhere.
+
+You will rarely need to come back to the docs.
+
+Here's how your editor might help you:
+
+* in [Visual Studio Code](https://code.visualstudio.com/):
+
+![editor support](img/vscode-completion.png)
+
+* in [PyCharm](https://www.jetbrains.com/pycharm/):
+
+![editor support](img/pycharm-completion.png)
+
+You will get completion for everything. That's something no other CLI library provides right now.
+
+No more guessing what type was that variable, if it could be `None`, etc.
+
+### Short
+
+It has sensible **defaults** for everything, with optional configurations everywhere. All the parameters can be fine-tuned to do what you need, customize the help, callbacks per parameter, make them required or not, etc.
+
+But by default, it all **"just works"**.
+
+## User friendly CLI apps
+
+The resulting CLI apps created with **Typer** have the nice features of many "pro" command line programs you probably already love.
+
+* Automatic help options for the main CLI program and all its subcommands.
+* Automatic command and subcommand structure handling (you will see more about subcommands in the Tutorial - User Guide).
+* Automatic completion for the CLI app in all operating systems, in all the shells (Bash, Zsh, Fish, PowerShell), so that the final user of your app can just hit <kbd>TAB</kbd> and get the available options or subcommands. *
+
+/// note | * Auto completion
+
+Auto completion works when you create a package (installable with `pip`). Or when using the `typer` command.
+
+**Typer** uses `shellingham` to auto-detect the current shell when installing completion.
+
+**Typer** will automatically create 2 *CLI options*:
+
+* `--install-completion`: Install completion for the current shell.
+* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
+
+///
+
+## Tested
+
+* 100% <abbr title="The amount of code that is automatically tested">test coverage</abbr>.
+* 100% <abbr title="Python type annotations, with this your editor and external tools can give you better support">type annotated</abbr> code base.
+* Used in production applications.

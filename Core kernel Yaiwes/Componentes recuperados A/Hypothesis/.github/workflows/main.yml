@@ -1,0 +1,354 @@
+name: Hypothesis CI
+
+env:
+  # Tell pytest and other tools to produce coloured terminal output.
+  # Make sure this is also in the "passenv" section of the tox config.
+  PY_COLORS: 1
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel in-progress PR builds if another commit is pushed.
+# On non-PR builds, fall back to the globally-unique run_id and don't cancel.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  basic:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        task:
+          - tox-cover
+          - tox-nocover
+          - tox-rest
+          - check-whole-repo-tests
+          - check-types-hypothesis
+          - lint
+          - check-format
+      fail-fast: false
+    env:
+      PYTHON_VERSION: "3.14"
+      # These jobs all run on 3.14, where coverage.py uses sys.monitoring and so
+      # costs us very little.  Tasks which don't use tox just won't measure any.
+      COVERAGE_PROCESS_START: ${{ github.workspace }}/hypothesis/pyproject.toml
+      COVERAGE_FILE: ${{ github.workspace }}/hypothesis/.coverage
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: "Install base for Python ${{ env.PYTHON_VERSION }}"
+      uses: ./.github/actions/install-base
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        task: ${{ matrix.task }}
+    - name: Install tox
+      if: ${{ startsWith(matrix.task, 'tox-') }}
+      run: |
+        pip install --upgrade setuptools pip wheel
+        pip install tox
+    - name: Run tests
+      run: |
+        export TASK=${{ matrix.task }}
+        if [[ $TASK == tox-* ]]; then
+           TOX_TASK="${TASK#tox-}"
+           cd hypothesis
+           tox -e $TOX_TASK
+        else
+          ./build.sh
+        fi
+    - name: Upload any coverage data
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: ${{ always() }}
+      with:
+        name: coverage-data-${{ matrix.task }}
+        include-hidden-files: true
+        # only some of the jobs in this matrix produce coverage output.
+        if-no-files-found: ignore
+        path: hypothesis/.coverage*
+
+  req:
+    needs: [basic]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        task:
+          - check-documentation
+          - check-types-api
+          - check-coverage
+          - check-conjecture-coverage
+          - check-snapshots
+          - check-release-smoke
+          - check-py310-cover
+          - check-py310-nocover
+          - check-py310-niche
+          # - check-py310-pyjion  # see notes in tox.ini
+          - check-py311-cover
+          - check-py311-nocover
+          - check-py311-niche
+          - check-pypy311-cover
+          - check-py312-cover
+          - check-py312-nocover
+          - check-py312-niche
+          - check-py313-cover
+          - check-py313-nocover
+          - check-py313-niche
+          # niche tests also collect coverage on 3.14; see the run step below.
+          - check-py314-niche
+          - check-py315-cover
+          - check-py315-nocover
+          - check-py315t-cover
+          - check-py315t-nocover
+          - check-quality
+          - check-pytest9
+          - check-pytest84
+          - check-pytest74
+          - check-py311-pytest62
+          - check-django60
+          - check-py313-pandas22
+          - check-py312-pandas21
+          - check-py311-pandas20
+          - check-py311-pandas15
+          - check-py310-pandas14
+          - check-py310-pandas13
+          - check-abi3
+          - check-abi3t
+          - check-rust-tests
+          ## FIXME: actions update means Python builds without eg _bz2, which was required
+          # - check-py310-pandas12
+          # - check-py310-pandas11
+      fail-fast: false
+    env:
+      PYTHON_VERSION: "3.14"
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: "Install base for Python ${{ env.PYTHON_VERSION }}"
+      uses: ./.github/actions/install-base
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        task: ${{ matrix.task }}
+    - name: Run tests
+      run: |
+        export TASK=${{ matrix.task }}
+        if [[ $TASK == check-py314-niche ]]; then
+          # Collect (sys.monitoring-based) coverage from this job too.
+          export COVERAGE_PROCESS_START=${{ github.workspace }}/hypothesis/pyproject.toml
+          export COVERAGE_FILE=${{ github.workspace }}/hypothesis/.coverage
+        fi
+        if [[ $TASK == check-crosshair-custom-* ]]; then
+          GROUP="${TASK#check-crosshair-custom-}"
+          ./build.sh check-crosshair-custom -- -n auto $(cd hypothesis && echo tests/$GROUP | xargs -n1 echo | grep -Ev "_py312|_py314" | xargs)
+        else
+          ./build.sh
+        fi
+    - name: Upload coverage data
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # Invoke the magic `always` function to run on both success and failure.
+      # check-django60 and check-py314-niche also collect coverage; see
+      # [testenv:django] in tox.ini and the run step above.
+      if: ${{ always() && (endsWith(matrix.task, '-coverage') || matrix.task == 'check-django60' || matrix.task == 'check-py314-niche') }}
+      with:
+        name: coverage-data-${{ matrix.task }}
+        include-hidden-files: true
+        path: |
+          hypothesis/.coverage*
+          hypothesis/branch-check*
+
+  nonreq:
+    needs: [basic]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        task:
+          - check-py314-cover
+          - check-py314-nocover
+          - check-py314t-cover
+          - check-py314t-nocover
+          - check-py314t-niche
+          # 3.15 niche is waiting on scipy and lark to support 3.15
+          # - check-py315-niche
+          # - check-py315t-niche
+          - check-django52
+          ## `-cover` is too slow under crosshair; use a custom split
+          - check-crosshair-custom-cover/test_[a-d]*
+          - check-crosshair-custom-cover/test_[e-i]*
+          - check-crosshair-custom-cover/test_[j-r]*
+          - check-crosshair-custom-cover/test_[s-z]*
+          - check-crosshair-custom-pytest/test_*
+          - check-crosshair-custom-nocover/test_[a-d]*
+          - check-crosshair-custom-nocover/test_[e-i]*
+          - check-crosshair-custom-nocover/test_[j-r]*
+          - check-crosshair-custom-nocover/test_[s-z]*
+          # - check-crosshair-niche
+          - check-threading
+          - check-py310-oldestnumpy
+          - check-numpy-nightly
+      fail-fast: false
+    env:
+      PYTHON_VERSION: "3.14"
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: "Install base for Python ${{ env.PYTHON_VERSION }}"
+      uses: ./.github/actions/install-base
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        task: ${{ matrix.task }}
+    - name: Run tests
+      run: |
+        export TASK=${{ matrix.task }}
+        if [[ $TASK == check-crosshair-custom-* ]]; then
+          GROUP="${TASK#check-crosshair-custom-}"
+          ./build.sh check-crosshair-custom -- -n auto $(cd hypothesis && echo tests/$GROUP | xargs -n1 echo | grep -Ev "_py312|_py314" | xargs)
+        else
+          ./build.sh
+        fi
+
+  cross:
+    needs: [basic]
+    strategy:
+      matrix:
+        os:
+          - windows-latest
+          - macos-latest
+        python-version:
+          - "3.11"
+          - "3.14"
+        python-architecture:
+          - null
+          - "x86"
+        task:
+          - cover
+          - nocover
+          - rest
+          - alt-nocover
+          - alt-rest
+        exclude:
+          - { os: macos-latest, python-architecture: "x86" }
+          - { python-version: "3.14", python-architecture: "x86" }
+          - { python-version: "3.11", task: nocover }
+          - { python-version: "3.11", task: rest }
+          - { python-version: "3.14", task: alt-nocover }
+          - { python-version: "3.14", task: alt-rest }
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    env:
+      # Override default from tox.ini
+      PYTHONWARNDEFAULTENCODING: ""
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: "Install base for Python ${{ matrix.python-version }} ${{ matrix.python-architecture }}"
+      uses: ./.github/actions/install-base
+      with:
+        python-version: ${{ matrix.python-version }}
+        python-architecture: ${{ matrix.python-architecture }}
+        task: ${{ matrix.task }}
+    - name: Install tox
+      run: |
+        pip install --upgrade setuptools pip wheel
+        pip install tox
+    - name: Run tests
+      working-directory: ./hypothesis
+      run: |
+        tox -e ${{ matrix.task }}
+
+  test-pyodide:
+    needs: [basic]
+    runs-on: ubuntu-latest
+    env:
+      NODE_VERSION: 22
+      PYTHON_VERSION: "3.14"
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: "Install base for Python ${{ env.PYTHON_VERSION }}"
+      uses: ./.github/actions/install-base
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        task: check-pyodide
+    - name: Set up Node
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    - name: Run tests
+      run: ./build.sh check-pyodide
+
+  coverage-report:
+    needs: [basic, req]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+        # Deep enough to diff the PR merge commit against its base parent.
+        fetch-depth: 2
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.14"
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        pattern: coverage-data-*
+        path: coverage-data
+    - run: |
+        # PRs which change no python-test-relevant files skip most check-*
+        # tasks entirely (see `if_changed` in hypothesistooling and BUILD_FILES
+        # therein), so several jobs contribute no coverage data and the
+        # combined report can't reach 100%.  Report it anyway, but only
+        # enforce the threshold when the data is complete.
+        FAIL_UNDER=100
+        if [[ "$GITHUB_EVENT_NAME" == pull_request ]] && \
+           ! git diff --name-only HEAD^1 HEAD | \
+             grep -qE '^(hypothesis/(src|tests|rust|scripts|pyproject\.toml|tox\.ini)|tooling/|requirements/|\.github/)'; then
+          echo "Python tests were skipped for this PR, so coverage data is incomplete."
+          FAIL_UNDER=0
+        fi
+        pip install coverage
+        cd hypothesis
+        python -m coverage combine ../coverage-data/*/.coverage*
+        # We set `source = ["hypothesis"]` in [tool.coverage.run] in pyproject.toml,
+        # which means `coverage report` will look for a directory named hypothesis.
+        # cd into the right dir to make that happen.
+        cd src
+        python -m coverage report --rcfile=../pyproject.toml --data-file=../.coverage \
+          --fail-under=$FAIL_UNDER
+
+  check-required:
+    if: always()
+    needs: [basic, req, cross, coverage-report]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check required jobs
+      uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+      with:
+        jobs: ${{ toJSON(needs) }}
+
+  release:
+    if: "github.event_name == 'push' && github.repository == 'HypothesisWorks/hypothesis'"
+    needs: [check-required]
+    # granted to the caller so the nested publish job can request an OIDC
+    # token for PyPI trusted publishing; contents:read lets the build jobs check out.
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/release.yml
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}

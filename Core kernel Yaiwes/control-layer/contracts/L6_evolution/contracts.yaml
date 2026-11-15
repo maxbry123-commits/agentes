@@ -1,0 +1,41 @@
+# L6 evolution / promotion
+- id: C51
+  capa: L6
+  define: Resolución de capability
+  aplica_en: [MOUNT_EXTENSION]
+  severity: media
+  priority: 70
+  implementado: true
+  impl_ref: control-layer/registry/method_registry.py
+- id: C52
+  capa: L6
+  define: Provenance de cambio
+  aplica_en: [MOUNT_EXTENSION]
+  severity: alta
+  priority: 80
+  implementado: true
+  impl_ref: control-layer/sheriff/shadow.py
+- id: C53
+  capa: L6
+  define: Test gate antes de promote
+  aplica_en: [MOUNT_EXTENSION]
+  severity: alta
+  priority: 85
+  implementado: true
+  impl_ref: control-layer/sheriff/shadow.py
+- id: C54
+  capa: L6
+  define: Trust score mínimo
+  aplica_en: [MOUNT_EXTENSION]
+  severity: alta
+  priority: 82
+  implementado: true
+  impl_ref: control-layer/sheriff/shadow.py
+- id: C55
+  capa: L6
+  define: Promotion shadow (ORANGE path)
+  aplica_en: [MOUNT_EXTENSION]
+  severity: alta
+  priority: 90
+  implementado: true
+  impl_ref: control-layer/sheriff/shadow.py

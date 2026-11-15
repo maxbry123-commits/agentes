@@ -1,0 +1,37 @@
+{
+  "operations": {
+    "GET /tags/{resourceArn}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "resourceArn",
+          "resource": "Tag",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/tags",
+          "resource": "Tag",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Tag": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    }
+  }
+}

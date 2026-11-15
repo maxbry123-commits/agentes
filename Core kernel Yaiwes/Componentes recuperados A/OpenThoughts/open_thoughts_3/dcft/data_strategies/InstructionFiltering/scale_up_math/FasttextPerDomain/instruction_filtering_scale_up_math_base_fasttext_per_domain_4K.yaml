@@ -1,0 +1,13 @@
+operators:
+- id: load_preexisting
+  config:
+    type: load_preexisting    
+    framework_name: instruction_filtering_scale_up_math_base_fasttext_per_domain
+- id: sample_dataset_final
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 4_000
+  input_ids:
+  - load_preexisting

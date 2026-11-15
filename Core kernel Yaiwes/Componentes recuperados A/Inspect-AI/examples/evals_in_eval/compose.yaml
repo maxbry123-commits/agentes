@@ -1,0 +1,32 @@
+services:
+  # Both services intentionally use Compose's default network. They must
+  # communicate with each other, and the nested Docker daemon requires Internet
+  # access to pull sandbox images used by the inner evaluations.
+  default:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # Connect to the dind sidecar's Docker daemon
+      - DOCKER_HOST=tcp://docker:2375
+    working_dir: /workspace
+    command: tail -f /dev/null
+    depends_on:
+      docker:
+        condition: service_healthy
+
+  docker:
+    # Rootless Docker limits control of the nested daemon to an unprivileged
+    # user in this sidecar. The sidecar still requires privileged mode, so this
+    # example is not suitable for adversarial or untrusted agents (see README).
+    image: docker:dind-rootless
+    privileged: true
+    environment:
+      # Disable TLS for the connection confined to this Compose network.
+      # The evaluated agent intentionally receives unauthenticated daemon access.
+      - DOCKER_TLS_CERTDIR=
+    healthcheck:
+      test: ["CMD", "docker", "--host=tcp://localhost:2375", "info"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "Dagster",
+    "path": "examples/assets_pandas_type_metadata/data/all_stocks_5yr.csv",
+    "chunks_dir": "Dagster/examples/assets_pandas_type_metadata/data/all_stocks_5yr.csv.chunks",
+    "bytes": 29580549,
+    "chunk_bytes": 8388608
+  }
+]

@@ -1,0 +1,26 @@
+# Compiled python code
+*.pyc
+
+# tox
+.tox
+
+.python-version
+
+# Build directories
+build/
+dist/
+*.egg-info/
+.eggs/
+.pyprojectx/
+
+# Pycharm directories
+.idea
+.ropeproject/
+*.iml
+
+# Visual Studio Code
+/.vscode/
+
+# VirtualEnv
+/venv/
+*~

@@ -1,0 +1,48 @@
+---
+title: container_instance
+sidebarTitle: container_instance
+---
+
+# `prefect_azure.container_instance`
+
+
+
+Helpers for the Azure Container Instance worker.
+
+Use a work pool of type `azure-container-instance` and an Azure Container
+Instance worker to run flow runs in Azure Container Instances.
+
+Examples:
+    ```bash
+    prefect work-pool create --type azure-container-instance my-aci-work-pool
+    prefect worker start --pool my-aci-work-pool --type azure-container-instance
+    ```
+
+
+## Classes
+
+### `ContainerGroupProvisioningState` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-azure/prefect_azure/container_instance.py#L33" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+
+Terminal provisioning states for ACI container groups. Per the Azure docs,
+the states in this Enum are the only ones that can be relied on as dependencies.
+
+
+### `ContainerRunState` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-azure/prefect_azure/container_instance.py#L43" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+
+Terminal run states for ACI containers.
+
+
+### `ACRManagedIdentity` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-azure/prefect_azure/container_instance.py#L52" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+
+Use a Managed Identity to access Azure Container registry. Requires the
+user-assigned managed identity be available to the ACI container group.
+
+
+### `AzureContainerInstanceJobResult` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-azure/prefect_azure/container_instance.py#L74" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+
+Legacy result type retained for compatibility with earlier integrations.
+

@@ -1,0 +1,3 @@
+# TACC keeper-26 refill 2026-07-03 — swebench preset — next ⏳ a3 tier rows 271, 274
+laion/a3-rl-laion_exp_rpt_codenet-python-v2
+laion/a3-rl-laion_exp_rpt_methods2test-large-v2

@@ -1,0 +1,389 @@
+import asyncio
+import logging
+
+from cognee.shared.logging_utils import get_logger
+from typing import List, Optional
+import numpy as np
+import math
+import re
+from tenacity import (
+    retry,
+    stop_after_delay,
+    wait_exponential_jitter,
+    retry_if_not_exception_type,
+    before_sleep_log,
+)
+import litellm
+import os
+from urllib.parse import urlparse
+import httpx
+from cognee.infrastructure.databases.vector.embeddings.EmbeddingEngine import EmbeddingEngine
+from cognee.infrastructure.databases.exceptions import (
+    EmbeddingContextWindowTooSmallError,
+    EmbeddingException,
+)
+
+from cognee.infrastructure.llm.tokenizer.resolver import resolve_embedding_tokenizer
+from cognee.shared.rate_limiting import embedding_rate_limiter_context_manager
+from cognee.infrastructure.databases.vector.embeddings.utils import (
+    sanitize_embedding_text_inputs,
+    handle_embedding_response,
+)
+
+litellm.set_verbose = False
+logger = get_logger("LiteLLMEmbeddingEngine")
+
+# Over-length embedding input: litellm maps chat "context length" 400s to
+# ContextWindowExceededError, but the embeddings API returns a plain
+# BadRequestError (e.g. OpenAI 400 "maximum input length is 8192 tokens"). Match
+# those by message so the split/pool recovery below can handle them too. Kept
+# narrow to length/token-limit phrasings so genuinely-bad requests still fail fast.
+_EMBED_LENGTH_ERROR_RE = re.compile(
+    r"maximum\s+input\s+length|instance\(s\)\s+is\s+allowed\s+per\s+prediction",
+    re.IGNORECASE,
+)
+
+# Providers whose embedding endpoints reject the OpenAI "dimensions" param
+# (used to truncate the native output vector size). litellm will happily
+# forward "dimensions" for these providers, but the underlying API returns a
+# 400 because the actual NIM models don't support arbitrary output resizing.
+# Detected from either the configured `provider` or a "<provider>/model"
+# style model string, since litellm derives the provider from either.
+_PROVIDERS_WITHOUT_DIMENSIONS_SUPPORT = {"nvidia_nim"}
+
+
+def _uses_nvidia_nim(provider: Optional[str], model: Optional[str]) -> bool:
+    """Whether this engine is actually talking to NVIDIA NIM.
+
+    Note: Cognee's `provider` attribute is metadata used locally (e.g. for
+    tokenizer selection) and is never forwarded to litellm.aembedding(), so it
+    does not determine which provider litellm actually routes to. litellm
+    infers that itself from a "<provider>/model" style prefix on the model
+    string (e.g. "nvidia_nim/nv-embedqa-e5-v5"). Both are checked here so the
+    dimensions param is omitted whichever one signals NVIDIA NIM.
+    """
+    if provider and provider.lower() in _PROVIDERS_WITHOUT_DIMENSIONS_SUPPORT:
+        return True
+    if (
+        model
+        and "/" in model
+        and model.split("/", 1)[0].lower() in _PROVIDERS_WITHOUT_DIMENSIONS_SUPPORT
+    ):
+        return True
+    return False
+
+
+class LiteLLMEmbeddingEngine(EmbeddingEngine):
+    """
+    Engine for embedding text using a specific LLM model, supporting mock and actual
+    embedding calls.
+
+    Public methods:
+    - embed_text: Embed a list of strings into vector representations.
+    - get_vector_size: Retrieve the size of the embedding vectors.
+    - get_tokenizer: Load the appropriate tokenizer for the specified model.
+    """
+
+    api_key: str
+    endpoint: str
+    api_version: str
+    provider: str
+    model: str
+    dimensions: int
+    mock: bool
+
+    MAX_RETRIES = 5
+
+    def __init__(
+        self,
+        model: Optional[str] = "openai/text-embedding-3-large",
+        provider: str = "openai",
+        dimensions: Optional[int] = 3072,
+        api_key: str = None,
+        endpoint: str = None,
+        api_version: str = None,
+        max_completion_tokens: int = 512,
+        batch_size: int = 100,
+        input_type: Optional[str] = None,
+    ):
+        self.api_key = api_key
+        self.endpoint = endpoint
+        self.api_version = api_version
+        self.provider = provider
+        self.model = model
+        self.dimensions = dimensions
+        self.max_completion_tokens = max_completion_tokens
+        self.tokenizer = self.get_tokenizer()
+        self.retry_count = 0
+        self.batch_size = batch_size
+        # Required by some providers (e.g. NVIDIA NIM's nv-embed family) to
+        # distinguish query vs. passage/document embeddings. Has no effect on
+        # providers that don't recognize the field (e.g. plain OpenAI).
+        self.input_type = input_type
+        self._uses_nvidia_nim = _uses_nvidia_nim(self.provider, self.model)
+
+        enable_mocking = os.getenv("MOCK_EMBEDDING", "false")
+        if isinstance(enable_mocking, bool):
+            enable_mocking = str(enable_mocking).lower()
+        self.mock = enable_mocking in ("true", "1", "yes")
+
+        # Validate provided custom embedding endpoint early to avoid long hangs later
+        if self.endpoint:
+            try:
+                parsed = urlparse(self.endpoint)
+            except Exception:
+                parsed = None
+            if not parsed or parsed.scheme not in ("http", "https") or not parsed.netloc:
+                logger.error(
+                    "Invalid EMBEDDING_ENDPOINT configured: '%s'. Expected a URL starting with http:// or https://",
+                    str(self.endpoint),
+                )
+                raise EmbeddingException(
+                    "Invalid EMBEDDING_ENDPOINT. Please set a valid URL (e.g., https://host:port) "
+                    "via environment variable EMBEDDING_ENDPOINT."
+                )
+
+    @retry(
+        stop=stop_after_delay(128),
+        wait=wait_exponential_jitter(2, 128),
+        # Skip the retry chain for terminal error classes. Authentication /
+        # authorization / not-found errors will never succeed on a retry, so
+        # the previous behaviour of running the full backoff ladder wasted
+        # ~2 minutes of user wall clock on a mis-typed API key. Superset of
+        # the LLM adapter exclusion set (adds PermissionDeniedError); see
+        # cognee/infrastructure/llm/structured_output_framework/litellm_instructor/llm/openai/adapter.py.
+        retry=retry_if_not_exception_type(
+            (
+                EmbeddingContextWindowTooSmallError,
+                litellm.exceptions.NotFoundError,
+                litellm.exceptions.AuthenticationError,
+                litellm.exceptions.PermissionDeniedError,
+                asyncio.CancelledError,
+            )
+        ),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )
+    async def embed_text(self, text: List[str]) -> List[List[float]]:
+        """
+        Embed a list of text strings into vector representations.
+
+        If the input exceeds the model's context window, the method will recursively split the
+        input and combine the results. It handles both mock and live embedding scenarios,
+        logging errors for any encountered exceptions, and raising specific exceptions for
+        context window issues and embedding failures.
+
+        Parameters:
+        -----------
+
+            - text (List[str]): A list of strings to be embedded.
+
+        Returns:
+        --------
+
+            - List[List[float]]: A list of vectors representing the embedded texts.
+        """
+
+        sanitized_text_input = sanitize_embedding_text_inputs(text)
+
+        try:
+            if self.mock:
+                response = {
+                    "data": [{"embedding": [0.0] * self.dimensions} for _ in sanitized_text_input]
+                }
+                return [data["embedding"] for data in response["data"]]
+            else:
+                async with embedding_rate_limiter_context_manager():
+                    embedding_kwargs = {
+                        "model": self.model,
+                        "input": sanitized_text_input,
+                        "api_key": self.api_key,
+                        "api_base": self.endpoint,
+                        "api_version": self.api_version,
+                    }
+                    # Older LiteLLM releases serialize an omitted encoding format as null,
+                    # which OpenRouter rejects (it only accepts "float"/"base64"). Cognee
+                    # always consumes float vectors, so make the valid format explicit for
+                    # every OpenRouter route: the "openrouter/" model prefix, an explicit
+                    # provider, or a custom endpoint aimed at openrouter.ai. The last case
+                    # (an unprefixed model + endpoint) is driven through litellm's OpenAI
+                    # handler -- the branch that historically injected the null -- so it is
+                    # the one that still needs the guard on current litellm. We keep this
+                    # scoped to OpenRouter because providers such as gemini/bedrock/vertex_ai
+                    # reject encoding_format and cognee does not enable litellm.drop_params.
+                    routed_to_openrouter = (
+                        (self.provider or "").lower() == "openrouter"
+                        or (self.model or "").lower().startswith("openrouter/")
+                        or "openrouter.ai" in (self.endpoint or "").lower()
+                    )
+                    if routed_to_openrouter:
+                        embedding_kwargs["encoding_format"] = "float"
+
+                    # Pass through target embedding dimensions when supported.
+                    # Some providers (e.g. NVIDIA NIM) reject this param outright,
+                    # so it's omitted for those rather than sent and rejected.
+                    if self.dimensions is not None and not self._uses_nvidia_nim:
+                        embedding_kwargs["dimensions"] = self.dimensions
+
+                    # NVIDIA NIM (and similar providers) require an input_type
+                    # field ("query" / "passage") that OpenAI's API doesn't have.
+                    # litellm forwards it via extra_body for providers that
+                    # declare support for it (see litellm's NvidiaNimEmbeddingConfig).
+                    if self.input_type:
+                        embedding_kwargs["input_type"] = self.input_type
+
+                    # Ensure each attempt does not hang indefinitely
+                    # Ensure each attempt does not hang indefinitely. The
+                    # deadline is TOTAL per attempt and starts before any
+                    # network I/O, so under large loads a request can spend
+                    # most of it queued client-side; 300s absorbs that while
+                    # still catching a genuinely hung request (matches the
+                    # OpenAI-compatible engine's deadline).
+                    response = await asyncio.wait_for(
+                        litellm.aembedding(**embedding_kwargs),
+                        timeout=300.0,
+                    )
+
+                embedding_response = [data["embedding"] for data in response.data]
+                return handle_embedding_response(text, embedding_response, self.dimensions)
+
+        except litellm.exceptions.BadRequestError as error:
+            # ContextWindowExceededError subclasses BadRequestError. litellm raises
+            # it for chat context-length errors, but the embeddings API returns a
+            # plain BadRequestError for over-length input (OpenAI 400: "maximum input
+            # length is 8192 tokens"; Vertex AI 400: "2048 instance(s) is allowed per
+            # prediction"). Recover (split + pool) for both; re-raise any
+            # other BadRequest unchanged so genuinely bad requests still fail fast.
+            if not (
+                isinstance(error, litellm.exceptions.ContextWindowExceededError)
+                or _EMBED_LENGTH_ERROR_RE.search(str(error))
+            ):
+                raise
+            if isinstance(text, list) and len(text) > 1:
+                mid = math.ceil(len(text) / 2)
+                left, right = text[:mid], text[mid:]
+                left_vecs, right_vecs = await asyncio.gather(
+                    self.embed_text(left),
+                    self.embed_text(right),
+                )
+                return left_vecs + right_vecs
+
+                # If caller passed ONE oversize string split the string itself into
+                # half so we can process it
+            if isinstance(text, list) and len(text) == 1:
+                logger.debug(f"Pooling embeddings of text string with size: {len(text[0])}")
+                s = text[0]
+                third = len(s) // 3
+                if third == 0:
+                    raise EmbeddingContextWindowTooSmallError from error
+                # We are using thirds to intentionally have overlap between split parts
+                # for better embedding calculation
+                left_part, right_part = s[: third * 2], s[third:]
+
+                # Recursively embed the split parts in parallel
+                (left_vec,), (right_vec,) = await asyncio.gather(
+                    self.embed_text([left_part]),
+                    self.embed_text([right_part]),
+                )
+
+                # POOL the two embeddings into one
+                pooled = (np.array(left_vec) + np.array(right_vec)) / 2
+                return [pooled.tolist()]
+
+            logger.error("Embedding input exceeds the model's max length: %s", str(error))
+            raise error
+
+        except asyncio.TimeoutError as e:
+            # Per-attempt timeout – likely an unreachable endpoint
+            logger.error(
+                "Embedding endpoint timed out. EMBEDDING_ENDPOINT='%s'. "
+                "Verify that the endpoint is reachable and correct.",
+                str(self.endpoint),
+            )
+            raise EmbeddingException(
+                "Embedding request timed out. Check EMBEDDING_ENDPOINT connectivity."
+            ) from e
+
+        except (httpx.ConnectError, httpx.ReadTimeout) as e:
+            logger.error(
+                "Failed to connect to embedding endpoint. EMBEDDING_ENDPOINT='%s'. "
+                "Ensure the URL is correct and the server is running.",
+                str(self.endpoint),
+            )
+            raise EmbeddingException(
+                "Cannot connect to embedding endpoint. Check EMBEDDING_ENDPOINT."
+            ) from e
+
+        except (
+            litellm.exceptions.AuthenticationError,
+            litellm.exceptions.PermissionDeniedError,
+        ):
+            # Terminal auth failures must reach tenacity unwrapped so
+            # ``retry_if_not_exception_type`` can short-circuit the backoff
+            # ladder. Deliberately diverges from the EmbeddingException
+            # contract of the other branches: keeping the litellm class (and
+            # its message) intact lets the CLI's first-run remediation match
+            # it. (CancelledError needs no branch here — as a BaseException it
+            # already bypasses the handlers below and propagates unwrapped.)
+            raise
+
+        except (
+            litellm.exceptions.BadRequestError,
+            litellm.exceptions.NotFoundError,
+        ) as e:
+            logger.error(f"Embedding error with model {self.model}: {str(e)}")
+            raise EmbeddingException(f"Failed to index data points using model {self.model}") from e
+
+        except Exception as error:
+            # Fall back to a clear, actionable message for connectivity/misconfiguration issues
+            logger.error(
+                "Error embedding text: %s. EMBEDDING_ENDPOINT='%s'.",
+                str(error),
+                str(self.endpoint),
+            )
+            raise EmbeddingException(
+                "Embedding failed due to an unexpected error. Verify EMBEDDING_ENDPOINT and provider settings."
+            ) from error
+
+    def get_vector_size(self) -> int:
+        """
+        Retrieve the dimensionality of the embedding vectors.
+
+        Returns:
+        --------
+
+            - int: The size (dimensionality) of the embedding vectors.
+        """
+        return self.dimensions
+
+    def get_batch_size(self) -> int:
+        """
+        Return the desired batch size for embedding calls
+
+        Returns:
+
+        """
+        return self.batch_size
+
+    def get_tokenizer(self):
+        """
+        Load and return the appropriate tokenizer for the specified model based on the provider.
+
+        Delegates to :func:`resolve_embedding_tokenizer` so the model to tokenizer
+        mapping (and mismatch warnings) live in one place (issue #3646).
+
+        Returns:
+        --------
+
+            The tokenizer instance compatible with the model.
+        """
+        logger.debug(f"Loading tokenizer for model {self.model}...")
+        # Strip the vLLM routing prefix so the bare HuggingFace repo is resolvable.
+        model = self.model.replace("hosted_vllm/", "")
+        tokenizer = resolve_embedding_tokenizer(
+            provider=self.provider,
+            model=model,
+            max_completion_tokens=self.max_completion_tokens,
+        )
+        logger.debug(f"Tokenizer loaded for model: {self.model}")
+        return tokenizer

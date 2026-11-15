@@ -1,0 +1,317 @@
+/-
+Copyright (c) 2024 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Leonardo de Moura
+-/
+module
+prelude
+public import Lean.Meta.Basic
+import Init.While
+public section
+namespace Lean.Meta
+/-!
+Helper functions for recognizing builtin literal values.
+This module focus on recognizing the standard representation used in Lean for these literals.
+It also provides support for the following exceptional cases.
+- Raw natural numbers (i.e., natural numbers which are not encoded using `OfNat.ofNat`).
+- Bit-vectors encoded using `OfNat.ofNat` and `BitVec.ofNat`.
+- Negative integers encoded using raw natural numbers.
+- Characters encoded `Char.ofNat n` where `n` can be a raw natural number or an `OfNat.ofNat`.
+- Nested `Expr.mdata`.
+-/
+
+/-- Returns `some n` if `e` is a raw natural number, i.e., it is of the form `.lit (.natVal n)`. -/
+def getRawNatValue? (e : Expr) : Option Nat :=
+  match e.consumeMData with
+  | .lit (.natVal n) => some n
+  | _ => none
+
+/-- Return `some (n, type)` if `e` is an `OfNat.ofNat`-application encoding `n` for a type with name `typeDeclName`. -/
+def getOfNatValue? (e : Expr) (typeDeclName : Name) : MetaM (Option (Nat × Expr)) := OptionT.run do
+  let_expr OfNat.ofNat type n _ ← e | failure
+  let type ← whnfD type
+  guard <| type.getAppFn.isConstOf typeDeclName
+  let .lit (.natVal n) := n.consumeMData | failure
+  return (n, type)
+
+/-- Return `some n` if `e` is a raw natural number or an `OfNat.ofNat`-application encoding `n`. -/
+def getNatValue? (e : Expr) : MetaM (Option Nat) := do
+  let e := e.consumeMData
+  if let some n := getRawNatValue? e then
+    return some n
+  let some (n, _) ← getOfNatValue? e ``Nat | return none
+  return some n
+
+/-- Return `some i` if `e` `OfNat.ofNat`-application encoding an integer, or `Neg.neg`-application of one. -/
+def getIntValue? (e : Expr) : MetaM (Option Int) := do
+  if let some (n, _) ← getOfNatValue? e ``Int then
+    return some n
+  let_expr Neg.neg _ _ a ← e | return none
+  let some (n, _) ← getOfNatValue? a ``Int | return none
+  return some (-↑n)
+
+/--
+Return `some i` if `e` `OfNat.ofNat`-application encoding a rational, or `Neg.neg`-application of one,
+or a division.
+-/
+def getRatValue? (e : Expr) : MetaM (Option Rat) := do
+  match_expr e with
+  | HDiv.hDiv _ _ _ _ a b =>
+    let some n ← getRatValueNum? a | return none
+    let some (d, _) ← getOfNatValue? b ``Rat | return none
+    return some (n / (d : Rat))
+  | _ => getRatValueNum? e
+where
+  getRatValueNum? (e : Expr) : MetaM (Option Rat) := do
+    if let some (n, _) ← getOfNatValue? e ``Rat then
+      return some (n : Rat)
+    let_expr Neg.neg _ _ a ← e | return none
+    let some (n, _) ← getOfNatValue? a ``Rat | return none
+    return some (- (n : Rat))
+
+/-- Return `some c` if `e` is a `Char.ofNat`-application that encodes the character `c`. -/
+def getCharValue? (e : Expr) : MetaM (Option Char) := do
+  let_expr Char.ofNat n ← e | return none
+  let some n ← getNatValue? n | return none
+  return some (Char.ofNat n)
+
+/-- Return `some s` if `e` is of the form `.lit (.strVal s)`. -/
+def getStringValue? (e : Expr) : (Option String) :=
+  match e with
+  | .lit (.strVal s) => some s
+  | _ => none
+
+/-- Return `some ⟨n, v⟩` if `e` is an `OfNat.ofNat` application encoding a `Fin n` with value `v` -/
+def getFinValue? (e : Expr) : MetaM (Option ((n : Nat) × Fin n)) := OptionT.run do
+  let (v, type) ← getOfNatValue? e ``Fin
+  let n ← getNatValue? (← whnfD type.appArg!)
+  match n with
+  | 0 => failure
+  | m+1 => return ⟨m+1, Fin.ofNat _ v⟩
+
+/--
+Return `some ⟨n, v⟩` if `e` is:
+- an `OfNat.ofNat` application
+- a `BitVec.ofNat` application
+- a `BitVec.ofNatLT` application
+that encode a `BitVec n` with value `v`.
+-/
+def getBitVecValue? (e : Expr) : MetaM (Option ((n : Nat) × BitVec n)) := OptionT.run do
+  match_expr e with
+  | BitVec.ofNat nExpr vExpr =>
+    let n ← getNatValue? nExpr
+    let v ← getNatValue? vExpr
+    return ⟨n, BitVec.ofNat n v⟩
+  | BitVec.ofNatLT nExpr vExpr _ =>
+    let n ← getNatValue? nExpr
+    let v ← getNatValue? vExpr
+    return ⟨n, BitVec.ofNat n v⟩
+  | _ =>
+    let (v, type) ← getOfNatValue? e ``BitVec
+    let n ← getNatValue? (← whnfD type.appArg!)
+    return ⟨n, BitVec.ofNat n v⟩
+
+/--
+Returns the modulus of the wrapping numeric type `α` (`n` for `Fin n`, `2^w` for the
+fixed-width types) if it is known. `USize`/`ISize` are not included: their widths are
+platform-dependent.
+-/
+def getLitValueModulus? (α : Expr) : MetaM (Option Nat) := do
+  match_expr α with
+  | Fin n => getNatValue? n
+  | BitVec w =>
+    let some w ← getNatValue? w | return none
+    return some (2 ^ w)
+  | UInt8 => return some (2 ^ 8)
+  | UInt16 => return some (2 ^ 16)
+  | UInt32 => return some (2 ^ 32)
+  | UInt64 => return some (2 ^ 64)
+  | Int8 => return some (2 ^ 8)
+  | Int16 => return some (2 ^ 16)
+  | Int32 => return some (2 ^ 32)
+  | Int64 => return some (2 ^ 64)
+  | _ => return none
+
+/-- Return `some n` if `e` is an `OfNat.ofNat`-application encoding the `UInt8` with value `n`. -/
+def getUInt8Value? (e : Expr) : MetaM (Option UInt8) := OptionT.run do
+  let (n, _) ← getOfNatValue? e ``UInt8
+  return UInt8.ofNat n
+
+/-- Return `some n` if `e` is an `OfNat.ofNat`-application encoding the `UInt16` with value `n`. -/
+def getUInt16Value? (e : Expr) : MetaM (Option UInt16) := OptionT.run do
+  let (n, _) ← getOfNatValue? e ``UInt16
+  return UInt16.ofNat n
+
+/-- Return `some n` if `e` is an `OfNat.ofNat`-application encoding the `UInt32` with value `n`. -/
+def getUInt32Value? (e : Expr) : MetaM (Option UInt32) := OptionT.run do
+  let (n, _) ← getOfNatValue? e ``UInt32
+  return UInt32.ofNat n
+
+/-- Return `some n` if `e` is an `OfNat.ofNat`-application encoding the `UInt64` with value `n`. -/
+def getUInt64Value? (e : Expr) : MetaM (Option UInt64) := OptionT.run do
+  let (n, _) ← getOfNatValue? e ``UInt64
+  return UInt64.ofNat n
+
+/-- Return `some b` if `e` is the boolean literal `true` or `false`. -/
+private def getBoolLit? (e : Expr) : Option Bool :=
+  match e.consumeMData with
+  | .const ``Bool.true _  => some true
+  | .const ``Bool.false _ => some false
+  | _ => none
+
+/-- Recognize a non-negated `Float` literal: an `OfScientific` or `OfNat` application. -/
+private def getFloatLit? (e : Expr) : MetaM (Option Float) := OptionT.run do
+  match_expr e with
+  | OfScientific.ofScientific type _ m s exp =>
+    guard ((← whnfD type).isConstOf ``Float)
+    let some s := getBoolLit? s | failure
+    return Float.ofScientific (← getNatValue? m) s (← getNatValue? exp)
+  | _ =>
+    let (n, _) ← getOfNatValue? e ``Float
+    return Float.ofNat n
+
+/--
+Return `some v` if `e` is a `Float` literal: an `OfScientific` or `OfNat` application, or `Neg.neg`
+of either (e.g. `-1.5`).
+-/
+def getFloatValue? (e : Expr) : MetaM (Option Float) := do
+  if let some v ← getFloatLit? e then return some v
+  let_expr Neg.neg _ _ a ← e | return none
+  let some v ← getFloatLit? a | return none
+  return some (-v)
+
+/-- Recognize a non-negated `Float32` literal: an `OfScientific` or `OfNat` application. -/
+private def getFloat32Lit? (e : Expr) : MetaM (Option Float32) := OptionT.run do
+  match_expr e with
+  | OfScientific.ofScientific type _ m s exp =>
+    guard ((← whnfD type).isConstOf ``Float32)
+    let some s := getBoolLit? s | failure
+    return Float32.ofScientific (← getNatValue? m) s (← getNatValue? exp)
+  | _ =>
+    let (n, _) ← getOfNatValue? e ``Float32
+    return Float32.ofNat n
+
+/--
+Return `some v` if `e` is a `Float32` literal: an `OfScientific` or `OfNat` application, or `Neg.neg`
+of either (e.g. `-1.5`).
+-/
+def getFloat32Value? (e : Expr) : MetaM (Option Float32) := do
+  if let some v ← getFloat32Lit? e then return some v
+  let_expr Neg.neg _ _ a ← e | return none
+  let some v ← getFloat32Lit? a | return none
+  return some (-v)
+
+-- TODO: extensibility
+
+/--
+If `e` is a literal value, ensure it is encoded using the standard representation.
+Otherwise, just return `e`.
+-/
+def normLitValue (e : Expr) : MetaM Expr := do
+  let e ← instantiateMVars e
+  if let some n ← getNatValue? e then return toExpr n
+  if let some n ← getIntValue? e then return toExpr n
+  if let some ⟨_, n⟩ ← getFinValue? e then return toExpr n
+  if let some ⟨_, n⟩ ← getBitVecValue? e then return toExpr n
+  if let some s := getStringValue? e then return toExpr s
+  if let some c ← getCharValue? e then return toExpr c
+  if let some n ← getUInt8Value? e then return toExpr n
+  if let some n ← getUInt16Value? e then return toExpr n
+  if let some n ← getUInt32Value? e then return toExpr n
+  if let some n ← getUInt64Value? e then return toExpr n
+  -- `Float`/`Float32` literals are left untouched: there is no `ToExpr` instance for them, and their
+  -- only canonical form would be `Float.ofBits`, which is less legible than the original literal.
+  return e
+
+/--
+Returns `true` if `e` is a literal value.
+-/
+def isLitValue (e : Expr) : MetaM Bool := do
+  let e ← instantiateMVars e
+  if (← getNatValue? e).isSome then return true
+  if (← getIntValue? e).isSome then return true
+  if (← getFinValue? e).isSome then return true
+  if (← getBitVecValue? e).isSome then return true
+  if (getStringValue? e).isSome then return true
+  if (← getCharValue? e).isSome then return true
+  if (← getUInt8Value? e).isSome then return true
+  if (← getUInt16Value? e).isSome then return true
+  if (← getUInt32Value? e).isSome then return true
+  if (← getUInt64Value? e).isSome then return true
+  if (← getFloatValue? e).isSome then return true
+  if (← getFloat32Value? e).isSome then return true
+  return false
+
+/--
+If `e` is a `Nat`, `Int`, or `Fin` literal value, converts it into a constructor application.
+Otherwise, just return `e`.
+-/
+-- TODO: support other builtin literals if needed
+def litToCtor (e : Expr) : MetaM Expr := do
+  let e ← instantiateMVars e
+  if let some n ← getNatValue? e then
+    if n = 0 then
+      return mkConst ``Nat.zero
+    else
+      return .app (mkConst ``Nat.succ) (toExpr (n-1))
+  if let some n ← getIntValue? e then
+    if n < 0 then
+      return .app (mkConst ``Int.negSucc) (toExpr (- (n+1)).toNat)
+    else
+      return .app (mkConst ``Int.ofNat) (toExpr n.toNat)
+  if let some ⟨n, v⟩ ← getFinValue? e then
+    let i := toExpr v.val
+    let n := toExpr n
+    -- Remark: we construct the proof manually here to avoid a cyclic dependency.
+    let p := mkApp4 (mkConst ``LT.lt [0]) (mkConst ``Nat) (mkConst ``instLTNat) i n
+    let h := mkApp3 (mkConst ``of_decide_eq_true) p
+      (mkApp2 (mkConst ``Nat.decLt) i n)
+      eagerReflBoolTrue
+    return mkApp3 (mkConst ``Fin.mk) n i h
+  return e
+
+/--
+Check if an expression is a list literal (i.e. a nested chain of `List.cons`, ending at a `List.nil`),
+where each element is "recognised" by a given function `f : Expr → MetaM (Option α)`,
+and return the array of recognised values.
+-/
+partial def getListLitOf? (e : Expr) (f : Expr → MetaM (Option α)) : MetaM (Option (Array α)) := do
+  let mut e ← instantiateMVars e.consumeMData
+  let mut r := #[]
+  while true do
+    match_expr e with
+    | List.nil _ => break
+    | List.cons _ a as => do
+      let some a ← f a | return none
+      r := r.push a
+      e := as
+    | _ => return none
+  return some r
+
+/--
+Check if an expression is a list literal (i.e. a nested chain of `List.cons`, ending at a `List.nil`),
+returning the array of `Expr` values.
+-/
+def getListLit? (e : Expr) : MetaM (Option (Array Expr)) := getListLitOf? e fun s => return some s
+
+/--
+Check if an expression is an array literal
+(i.e. `List.toArray` applied to a nested chain of `List.cons`, ending at a `List.nil`),
+where each element is "recognised" by a given function `f : Expr → MetaM (Option α)`,
+and return the array of recognised values.
+-/
+def getArrayLitOf? (e : Expr) (f : Expr → MetaM (Option α)) : MetaM (Option (Array α)) := do
+  let e ← instantiateMVars e.consumeMData
+  match_expr e with
+  | List.toArray _ as => getListLitOf? as f
+  | _ => return none
+
+/--
+Check if an expression is an array literal
+(i.e. `List.toArray` applied to a nested chain of `List.cons`, ending at a `List.nil`),
+returning the array of `Expr` values.
+-/
+def getArrayLit? (e : Expr) : MetaM (Option (Array Expr)) := getArrayLitOf? e fun s => return some s
+
+
+end Lean.Meta

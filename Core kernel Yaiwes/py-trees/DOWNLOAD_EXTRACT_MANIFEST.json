@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 8976036,
+  "bundle_sha256": "63ac3ff6eac86d9ddb0cbb3c2edb00dfcd8e6489b5521897d8952aebda93b450",
+  "extracted_tree": {
+    "bytes": 9918818,
+    "files": 187,
+    "sha256": "8a0b8a55b0a5820fdf6c89ef3c44578e989d6f3073619f64d328c9c9ffaa6a48"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 8976036,
+      "name": "py-trees.bundle.zip.part-0001",
+      "sha256": "63ac3ff6eac86d9ddb0cbb3c2edb00dfcd8e6489b5521897d8952aebda93b450"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "py-trees",
+  "source_bytes": 9918818,
+  "source_commit": "ac17fd85c7bb3939c9573f51a0216417ada1ccef",
+  "source_files": 187,
+  "source_ref": "HEAD",
+  "source_repo": "https://github.com/splintered-reality/py_trees.git",
+  "source_tree": {
+    "bytes": 9918818,
+    "files": 187,
+    "sha256": "8a0b8a55b0a5820fdf6c89ef3c44578e989d6f3073619f64d328c9c9ffaa6a48"
+  }
+}

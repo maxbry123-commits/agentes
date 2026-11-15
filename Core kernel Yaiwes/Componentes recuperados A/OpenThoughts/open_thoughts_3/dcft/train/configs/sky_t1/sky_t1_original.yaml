@@ -1,0 +1,16 @@
+include_hp: dcft/train/hp_settings/hritik_no_model.yaml
+model_name_or_path: "meta-llama/Llama-3.1-8B"
+
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/sky_t1_original
+template: llama3
+
+per_device_train_batch_size: 8      # Can change depending on hardware
+gradient_accumulation_steps: 8      # Can change depending on number of GPUs
+
+output_dir: "./experiments/train/checkpoints/sky_t1_original"
+run_name: sky-t1-original
+hub_model_id: mlfoundations-dev/sky-t1-original
+report_to: wandb
+push_to_db: true
+push_to_hub: true

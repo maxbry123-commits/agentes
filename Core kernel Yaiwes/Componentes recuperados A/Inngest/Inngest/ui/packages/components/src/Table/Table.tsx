@@ -1,0 +1,325 @@
+import { Fragment, useMemo } from 'react';
+import { Skeleton } from '@inngest/components/Skeleton';
+import { cn } from '@inngest/components/utils/classNames';
+import { RiSortAsc, RiSortDesc } from '@remixicon/react';
+import {
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+  type ColumnDef,
+  type OnChangeFn,
+  type Row,
+  type SortingState,
+} from '@tanstack/react-table';
+
+interface WithId {
+  id: string;
+}
+
+type ExpandableTableProps<T> = {
+  renderSubComponent: (props: { row: Row<T> }) => React.ReactElement;
+  expandedIDs: string[];
+};
+
+type BaseTableProps<T> = {
+  data: T[] | undefined;
+  sorting?: SortingState;
+  setSorting?: OnChangeFn<SortingState>;
+  isLoading?: boolean;
+  columns: ColumnDef<T, any>[];
+  onRowClick?: (row: Row<T>) => void;
+  onRowMouseEnter?: (row: Row<T>) => void;
+  onRowMouseLeave?: () => void;
+  isRowHighlighted?: (row: Row<T>) => boolean;
+  onCellClick?: (rowIndex: number, columnId: string, value: unknown) => void;
+  getRowHref?: (row: Row<T>) => string | undefined;
+  blankState?: React.ReactNode;
+  cellClassName?: string;
+  enableColumnSizing?: boolean;
+  enableColumnDynamicSizing?: boolean;
+  selectedCell?: { rowIndex: number; columnId: string } | null;
+  noHeader?: boolean;
+  // 'default' (a filled bg-tableHeader bar, the historical look) or
+  // 'subtle' (no fill, just a thin bottom border — header text is
+  // unchanged) — for tables sitting inside an already-bordered card, where
+  // a second filled header bar reads as visual noise rather than a useful
+  // separator.
+  headerStyle?: 'default' | 'subtle';
+  // 'default' (42px rows, 36px header) or 'compact' (32px rows, 28px
+  // header) — for tables with many short rows (e.g. a top-N ranking) where
+  // the default row height reads as excess whitespace.
+  density?: 'default' | 'compact';
+};
+
+type TableProps<T> = BaseTableProps<T> &
+  (T extends WithId
+    ? Partial<ExpandableTableProps<T>>
+    : { renderSubComponent?: never; expandedIDs?: never });
+
+export function Table<T>({
+  data = [],
+  isLoading,
+  sorting,
+  setSorting,
+  renderSubComponent,
+  onRowClick,
+  onRowMouseEnter,
+  onRowMouseLeave,
+  isRowHighlighted,
+  onCellClick,
+  getRowHref,
+  blankState,
+  columns,
+  expandedIDs = [],
+  cellClassName,
+  selectedCell,
+  enableColumnSizing = false,
+  enableColumnDynamicSizing = false,
+  noHeader = false,
+  headerStyle = 'default',
+  density = 'default',
+}: TableProps<T>) {
+  // Render empty lines for skeletons when data is loading
+  const tableData = useMemo(() => {
+    if (isLoading) {
+      return Array(columns.length)
+        .fill(null)
+        .map((_, index) => {
+          return {
+            ...loadingRow,
+
+            // Need an ID to avoid "missing key" errors when rendering rows
+            id: index,
+          };
+        }) as unknown as T[]; // Casting is bad but we need to do this for the loading skeleton
+    }
+
+    return data;
+  }, [isLoading, data]);
+
+  const tableColumns = useMemo(
+    () =>
+      isLoading
+        ? columns.map((column) => ({
+            ...column,
+            cell: () => <Skeleton className="my-2 block h-3" />,
+          }))
+        : columns,
+    [isLoading, columns]
+  );
+
+  const table = useReactTable({
+    data: tableData,
+    columns: tableColumns,
+    getCoreRowModel: getCoreRowModel(),
+    manualSorting: true,
+    onSortingChange: setSorting,
+    state: {
+      sorting,
+    },
+  });
+
+  const tableStyles = enableColumnSizing ? 'table-fixed' : 'w-full';
+  const tableHeadStyles = cn(
+    'sticky top-0 z-[2]',
+    headerStyle === 'subtle' ? 'bg-canvasBase border-subtle border-b' : 'bg-tableHeader',
+  );
+  const tableColumnStyles = 'px-4';
+  const headerRowHeight = density === 'compact' ? 'h-7' : 'h-9';
+  const bodyRowHeight = density === 'compact' ? 'h-8' : 'h-[42px]';
+  const expandedRowSideBorder =
+    'before:bg-surfaceMuted relative before:absolute before:bottom-0 before:left-0 before:top-0 before:w-0.5';
+
+  const isEmpty = data.length < 1 && !isLoading;
+
+  // Type guard to check if a row has an id property
+  const hasId = <T,>(obj: T): obj is T & WithId => {
+    return typeof (obj as any).id === 'string';
+  };
+
+  return (
+    <div className="">
+      <table className={cn(tableStyles)}>
+        {!noHeader && (
+          <thead className={tableHeadStyles}>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id} className={headerRowHeight}>
+                {headerGroup.headers.map((header) => {
+                  const isIconOnlyColumn = header.column.columnDef.header === undefined;
+                  return (
+                    <th
+                      key={header.id}
+                      className={cn(
+                        isIconOnlyColumn ? '' : tableColumnStyles,
+                        'text-muted whitespace-nowrap text-left text-xs',
+                        // 'subtle' mode weights its header text heavier
+                        // (semibold, not medium) since there's no filled
+                        // header bar left to otherwise set the row apart.
+                        headerStyle === 'subtle' ? 'font-semibold' : 'font-medium',
+                        enableColumnSizing ? 'overflow-hidden text-ellipsis' : ''
+                      )}
+                      style={
+                        enableColumnSizing
+                          ? {
+                              width: header.getSize(),
+                              minWidth: header.getSize(),
+                              maxWidth: header.getSize(),
+                            }
+                          : enableColumnDynamicSizing
+                          ? {
+                              minWidth: header.column.columnDef.minSize,
+                              maxWidth:
+                                table.getTotalSize() -
+                                header.column.getStart() -
+                                header.column.getAfter(),
+                            }
+                          : undefined
+                      }
+                    >
+                      {header.isPlaceholder ? null : (
+                        <div
+                          className={cn(
+                            header.column.getCanSort()
+                              ? 'flex cursor-pointer select-none items-center gap-1'
+                              : header.column.getIsSorted()
+                              ? 'flex items-center gap-1'
+                              : '',
+                            enableColumnSizing ? 'min-w-0 overflow-hidden text-ellipsis' : ''
+                          )}
+                          onClick={header.column.getToggleSortingHandler()}
+                        >
+                          <span className={enableColumnSizing ? 'min-w-0 truncate' : ''}>
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </span>
+                          {{
+                            asc: <RiSortAsc className="text-light h-4 w-4 shrink-0" />,
+                            desc: <RiSortDesc className="text-light h-4 w-4 shrink-0" />,
+                          }[header.column.getIsSorted() as string] ?? null}
+                        </div>
+                      )}
+                    </th>
+                  );
+                })}
+              </tr>
+            ))}
+          </thead>
+        )}
+        <tbody>
+          {isEmpty && (
+            <tr>
+              <td
+                className={cn('text-muted text-center text-sm font-normal', bodyRowHeight)}
+                colSpan={table.getVisibleFlatColumns().length}
+              >
+                {blankState}
+              </td>
+            </tr>
+          )}
+          {!isEmpty &&
+            table.getRowModel().rows.map((row) => (
+              <Fragment key={row.id}>
+                <tr
+                  role={getRowHref ? 'link' : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  aria-label={getRowHref ? 'View details' : undefined}
+                  className={cn(
+                    hasId(row.original) && expandedIDs.includes(row.original.id)
+                      ? bodyRowHeight
+                      : cn('border-light box-border border-b', bodyRowHeight),
+                    onRowClick ? 'hover:bg-canvasSubtle cursor-pointer' : '',
+                    onRowMouseEnter ? 'hover:bg-canvasSubtle' : '',
+                    isRowHighlighted?.(row) ? 'bg-canvasSubtle' : '',
+                  )}
+                  onMouseEnter={onRowMouseEnter ? () => onRowMouseEnter(row) : undefined}
+                  onMouseLeave={onRowMouseLeave}
+                  onClick={(e) => {
+                    const modalsContainer = document.getElementById('modals');
+                    const hasModals = modalsContainer && modalsContainer.children.length > 0;
+                    if (hasModals) return;
+
+                    const url = getRowHref?.(row);
+                    if (url && (e.metaKey || e.ctrlKey || e.button === 1)) {
+                      // Simulate native link behavior
+                      window.open(url, '_blank');
+                      return;
+                    }
+                    onRowClick?.(row);
+                  }}
+                >
+                  {row.getVisibleCells().map((cell, i) => {
+                    const isIconOnlyColumn = cell.column.columnDef.header === undefined;
+                    return (
+                      <td
+                        key={cell.id}
+                        data-selected={
+                          selectedCell &&
+                          row.index === selectedCell.rowIndex &&
+                          cell.column.id === selectedCell.columnId
+                            ? 'true'
+                            : undefined
+                        }
+                        className={cn(
+                          i === 0 && hasId(row.original) && expandedIDs.includes(row.original.id)
+                            ? expandedRowSideBorder
+                            : '',
+                          isIconOnlyColumn ? '' : tableColumnStyles,
+                          cellClassName ?? '',
+                          onCellClick && !onRowClick ? 'cursor-pointer' : '',
+                          selectedCell &&
+                            row.index === selectedCell.rowIndex &&
+                            cell.column.id === selectedCell.columnId
+                            ? 'ring-2 ring-inset ring-[rgb(var(--color-border-active))]'
+                            : ''
+                        )}
+                        style={
+                          enableColumnSizing
+                            ? {
+                                width: cell.column.getSize(),
+                                minWidth: cell.column.getSize(),
+                                maxWidth: cell.column.getSize(),
+                              }
+                            : enableColumnDynamicSizing
+                            ? {
+                                minWidth: cell.column.columnDef.minSize,
+                                maxWidth:
+                                  table.getTotalSize() -
+                                  cell.column.getStart() -
+                                  cell.column.getAfter(),
+                              }
+                            : undefined
+                        }
+                        onClick={
+                          onCellClick && !onRowClick
+                            ? () => onCellClick(row.index, cell.column.id, cell.getValue())
+                            : undefined
+                        }
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    );
+                  })}
+                </tr>
+                {hasId(row.original) &&
+                  expandedIDs.includes(row.original.id) &&
+                  renderSubComponent &&
+                  !isLoading && (
+                    <tr>
+                      <td
+                        colSpan={row.getVisibleCells().length}
+                        className={cn(expandedRowSideBorder, 'border-light border-b')}
+                      >
+                        {renderSubComponent({ row })}
+                      </td>
+                    </tr>
+                  )}
+              </Fragment>
+            ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const loadingRow = {
+  isLoadingRow: true,
+} as const;

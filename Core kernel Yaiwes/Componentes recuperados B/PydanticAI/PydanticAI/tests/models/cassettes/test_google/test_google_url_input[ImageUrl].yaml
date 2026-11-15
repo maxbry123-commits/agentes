@@ -1,0 +1,70 @@
+interactions:
+  - request:
+      headers:
+        accept:
+          - "*/*"
+        accept-encoding:
+          - gzip, deflate
+        connection:
+          - keep-alive
+        content-length:
+          - "267"
+        content-type:
+          - application/json
+        host:
+          - aiplatform.googleapis.com
+      method: POST
+      parsed_body:
+        contents:
+          - parts:
+              - text: What is the main content of this URL?
+              - fileData:
+                  file_uri: https://upload.wikimedia.org/wikipedia/commons/6/6a/Www.wikipedia_screenshot_%282021%29.png
+                  mime_type: image/png
+            role: user
+        generationConfig: {}
+      uri: https://aiplatform.googleapis.com/v1beta1/projects/pydantic-ai/locations/global/publishers/google/models/gemini-2.0-flash:generateContent
+    response:
+      headers:
+        alt-svc:
+          - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+        content-length:
+          - "974"
+        content-type:
+          - application/json; charset=UTF-8
+        transfer-encoding:
+          - chunked
+        vary:
+          - Origin
+          - X-Origin
+          - Referer
+      parsed_body:
+        candidates:
+          - avgLogprobs: -0.5529902487090139
+            content:
+              parts:
+                - text:
+                    The URL's main content is the landing page of Wikipedia, showcasing the available language editions with
+                    article counts, a search bar, and links to other Wikimedia projects.
+              role: model
+            finishReason: STOP
+        createTime: "2025-05-31T21:26:25.776828Z"
+        modelVersion: gemini-2.0-flash
+        responseId: AXQ7aPy0L-PPnvgPkLyl8Qg
+        usageMetadata:
+          candidatesTokenCount: 33
+          candidatesTokensDetails:
+            - modality: TEXT
+              tokenCount: 33
+          promptTokenCount: 2589
+          promptTokensDetails:
+            - modality: TEXT
+              tokenCount: 9
+            - modality: IMAGE
+              tokenCount: 2580
+          totalTokenCount: 2622
+          trafficType: ON_DEMAND
+      status:
+        code: 200
+        message: OK
+version: 1

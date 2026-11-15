@@ -1,0 +1,77 @@
+---
+title: Grafana
+description: "Using VictoriaMetrics with Grafana via Prometheus or VM datasource plugin."
+weight: 1
+menu:
+  docs:
+    parent: "integrations-vm"
+    identifier: "integrations-grafana-vm"
+    weight: 1
+---
+
+VictoriaMetrics integrates with Grafana using either [Prometheus datasource](https://grafana.com/docs/grafana/latest/datasources/prometheus/)
+or [VictoriaMetrics datasource](https://grafana.com/grafana/plugins/victoriametrics-metrics-datasource/) plugins.
+
+Resources:
+* [VictoriaMetrics Grafana demo playground](https://play-grafana.victoriametrics.com)
+* [VictoriaMetrics and Grafana in docker-compose environment](https://github.com/VictoriaMetrics/VictoriaMetrics/tree/master/deployment/docker#docker-compose-environment-for-victoriametrics)
+
+## VictoriaMetrics datasource
+
+Create [VictoriaMetrics datasource](https://grafana.com/grafana/plugins/victoriametrics-metrics-datasource/)
+in Grafana with the following URL for single-server:
+```
+
+http://<victoriametrics-addr>:8428
+```
+_Replace `<victoriametrics-addr>` with the VictoriaMetrics hostname or IP address._
+
+For the cluster version, use `vmselect` address:
+```
+http://<vmselect-addr>:8481/select/<tenant>/prometheus
+```
+_Replace `<vmselect-addr>` with the hostname or IP address of vmselect service._ 
+
+If you have more than 1 vmselect, configure [load-balancing](https://docs.victoriametrics.com/victoriametrics/cluster-victoriametrics/#cluster-setup).
+Replace `<tenant>` based on your [multitenancy settings](https://docs.victoriametrics.com/victoriametrics/cluster-victoriametrics/#multitenancy).
+
+Once connected, you can start building graphs and dashboards using [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/)
+or [MetricsQL](https://docs.victoriametrics.com/victoriametrics/metricsql/).
+
+VictoriaMetrics datasource is publicly available on [GitHub](https://github.com/VictoriaMetrics/victoriametrics-datasource).
+See more in [plugin docs](https://docs.victoriametrics.com/victoriametrics/integrations/grafana/datasource/).
+
+_Creating a datasource may require [specific permissions](https://grafana.com/docs/grafana/latest/administration/data-source-management/).
+If you don't see an option to create a data source - try contacting system administrator._
+
+
+## Prometheus datasource
+
+Create [Prometheus datasource](https://grafana.com/docs/grafana/latest/datasources/prometheus/configure/)
+in Grafana. Follow the same connection instructions as for [VictoriaMetrics datasource](#VictoriaMetrics-datasource).
+
+In the "Performance" section set the Prometheus type to "Prometheus" and the Prometheus version to at least "2.24.x".
+This allows Grafana to use a more efficient API to get label values:
+
+![Datasource](datasource-prometheus.webp)
+
+Once connected, you can build graphs and dashboards using [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/).
+
+_Creating a datasource may require [specific permissions](https://grafana.com/docs/grafana/latest/administration/data-source-management/).
+If you don't see an option to create a data source - try contacting system administrator._
+
+If you run [vmalert](https://docs.victoriametrics.com/victoriametrics/vmalert/) and want to see its rules in [Grafana Alerting UI](https://grafana.com/docs/grafana/latest/alerting/),
+then set configure `-vmalert.proxyURL` on VictoriaMetrics [single-node](https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#vmalert)
+or [vmselect in cluster version](https://docs.victoriametrics.com/victoriametrics/cluster-victoriametrics/#vmalert).
+
+## Multi-tenant access with vmauth and OIDC
+
+[vmauth](https://docs.victoriametrics.com/victoriametrics/vmauth/) can proxy Grafana datasource requests and enforce
+per-user multi-tenant access using [JWT tokens](https://en.wikipedia.org/wiki/JSON_Web_Token) {{% available_from "v1.138.0" %}} from an OIDC provider.
+
+When Grafana is configured with OAuth, enable `Forward OAuth identity` on the datasource so Grafana forwards the user's
+JWT to vmauth with each query. vmauth validates the token and uses the `vm_access` claim to route requests to the
+correct tenant or apply label filters — users only see metrics belonging to their tenant.
+
+See the full walkthrough in the guide [Multi-Tenant Access with Grafana & OIDC](https://docs.victoriametrics.com/guides/grafana-vmauth-openid-configuration/)
+and [JWT token auth proxy](https://docs.victoriametrics.com/victoriametrics/vmauth/#jwt-token-auth-proxy).

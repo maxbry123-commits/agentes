@@ -1,0 +1,40 @@
+name: s1_ablation_length_filtering_1k
+operators:
+  - id: load_math_stratos
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/math_stratos_scale_judged_and_annotated
+      split: train
+      columns: 
+        - problem
+        - reasoning
+        - deepseek_solution
+
+  - id: length_filter
+    config:
+      type: function
+      function: data_strategies.S1Ablation.utils.filter_longest_entries
+      function_config:
+        filter_column: deepseek_solution
+        num_keep: 1000
+    input_ids:
+      - load_math_stratos
+
+  - id: convert_to_sharegpt
+    config:
+      type: function
+      function: data_strategies.S1Ablation.utils.convert_to_share_gpt
+      function_config:
+        user_column: problem
+    input_ids:
+      - length_filter
+  
+  - id: remove_columns
+    config: 
+      type: function
+      function: data_strategies.commons.remove_columns
+      function_config:
+        columns: [problem, reasoning,deepseek_solution]
+    input_ids:
+      - convert_to_sharegpt
+

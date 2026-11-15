@@ -1,0 +1,1208 @@
+from __future__ import annotations as _annotations
+
+import asyncio
+import contextlib
+import contextvars
+import functools
+import importlib
+import os
+import sys
+import threading
+from collections.abc import AsyncIterator
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from importlib.metadata import distributions
+from typing import Any
+
+import anyio
+import pytest
+
+import pydantic_ai._utils as utils_module
+from pydantic_ai import Agent, UserError
+from pydantic_ai._utils import (
+    UNSET,
+    PeekableAsyncStream,
+    await_maybe,
+    check_object_json_schema,
+    dataclasses_no_defaults_repr,
+    format_inlined_text_file,
+    get_first_param_type,
+    group_by_temporal,
+    is_async_callable,
+    merge_json_schema_defs,
+    replace_no_init,
+    run_in_executor,
+    strip_markdown_fences,
+    using_thread_executor,
+)
+from pydantic_ai.models.test import TestModel
+
+from ._inline_snapshot import snapshot
+from .conftest import undrivable_event_loop
+from .models.mock_async_stream import MockAsyncStream
+
+pytestmark = pytest.mark.anyio
+
+
+async def test_await_maybe():
+    async def _coro() -> int:
+        return 1
+
+    # A plain (non-awaitable) value is returned unchanged.
+    assert await await_maybe(1) == 1
+    # A coroutine (however it was produced — e.g. a plain `def` returning one) is awaited.
+    assert await await_maybe(_coro()) == 1
+
+
+def test_get_first_param_type_annotation_type_error():
+    """An annotation that can't be evaluated at all stays a silent `None`, unlike an unresolvable name."""
+
+    def function(value: int) -> None:
+        pass
+
+    # Not every resolution failure is a `NameError`: this one raises `TypeError` when evaluated.
+    function.__annotations__['value'] = 'int | 5'
+
+    assert get_first_param_type(function) is None
+
+
+@pytest.mark.parametrize(
+    'interval,expected',
+    [
+        (None, snapshot([[1], [2], [3]])),
+        (0, snapshot([[1], [2], [3]])),
+        (0.02, snapshot([[1], [2], [3]])),
+        (0.04, snapshot([[1, 2], [3]])),
+        (0.1, snapshot([[1, 2, 3]])),
+    ],
+)
+async def test_group_by_temporal(interval: float | None, expected: list[list[int]]):
+    async def yield_groups() -> AsyncIterator[int]:
+        yield 1
+        await asyncio.sleep(0.02)
+        yield 2
+        await asyncio.sleep(0.02)
+        yield 3
+        await asyncio.sleep(0.02)
+
+    async with group_by_temporal(yield_groups(), soft_max_interval=interval) as groups_iter:
+        groups: list[list[int]] = [g async for g in groups_iter]
+        assert groups == expected
+
+
+async def test_group_by_temporal_first_window_starts_on_first_item():
+    """The debounce window must start when the first item arrives, not when iteration begins.
+
+    Regression test for #5946. A slow first item — e.g. the latency before a model's first
+    streamed token — used to have its window measured from iteration start, so the window
+    elapsed before the item arrived and it was emitted in a group of its own. Here the first
+    item is delayed well past the window, yet must still group with a second item that arrives
+    within the window of the first: correct output is `[[1, 2]]`, the bug produced `[[1], [2]]`.
+    """
+    interval = 0.05
+
+    async def yield_groups() -> AsyncIterator[int]:
+        await asyncio.sleep(interval * 3)  # first item arrives long after iteration started
+        yield 1
+        await asyncio.sleep(interval / 5)  # second item arrives well within the first item's window
+        yield 2
+
+    async with group_by_temporal(yield_groups(), soft_max_interval=interval) as groups_iter:
+        groups: list[list[int]] = [g async for g in groups_iter]
+        assert groups == [[1, 2]]
+
+
+def test_check_object_json_schema():
+    object_schema = {'type': 'object', 'properties': {'a': {'type': 'string'}}}
+    assert check_object_json_schema(object_schema) == object_schema
+
+    assert check_object_json_schema(
+        {
+            '$defs': {
+                'JsonModel': {
+                    'properties': {
+                        'type': {'title': 'Type', 'type': 'string'},
+                        'items': {'anyOf': [{'type': 'string'}, {'type': 'null'}]},
+                    },
+                    'required': ['type', 'items'],
+                    'title': 'JsonModel',
+                    'type': 'object',
+                }
+            },
+            '$ref': '#/$defs/JsonModel',
+        }
+    ) == {
+        'properties': {
+            'items': {'anyOf': [{'type': 'string'}, {'type': 'null'}]},
+            'type': {'title': 'Type', 'type': 'string'},
+        },
+        'required': ['type', 'items'],
+        'title': 'JsonModel',
+        'type': 'object',
+    }
+
+    # Can't remove the recursive ref here:
+    assert check_object_json_schema(
+        {
+            '$defs': {
+                'JsonModel': {
+                    'properties': {
+                        'type': {'title': 'Type', 'type': 'string'},
+                        'items': {'anyOf': [{'$ref': '#/$defs/JsonModel'}, {'type': 'null'}]},
+                    },
+                    'required': ['type', 'items'],
+                    'title': 'JsonModel',
+                    'type': 'object',
+                }
+            },
+            '$ref': '#/$defs/JsonModel',
+        }
+    ) == {
+        '$defs': {
+            'JsonModel': {
+                'properties': {
+                    'items': {'anyOf': [{'$ref': '#/$defs/JsonModel'}, {'type': 'null'}]},
+                    'type': {'title': 'Type', 'type': 'string'},
+                },
+                'required': ['type', 'items'],
+                'title': 'JsonModel',
+                'type': 'object',
+            }
+        },
+        '$ref': '#/$defs/JsonModel',
+    }
+
+    array_schema = {'type': 'array', 'items': {'type': 'string'}}
+    with pytest.raises(UserError, match=r'^Schema must be an object$'):
+        check_object_json_schema(array_schema)
+
+
+@pytest.mark.parametrize('peek_first', [True, False])
+@pytest.mark.anyio
+async def test_peekable_async_stream(peek_first: bool):
+    async_stream = MockAsyncStream(iter([1, 2, 3]))
+    peekable_async_stream: PeekableAsyncStream[int, MockAsyncStream[int]] = PeekableAsyncStream(async_stream)
+
+    items: list[int] = []
+
+    # We need to both peek before starting the stream, and not, to achieve full coverage
+    if peek_first:
+        assert not await peekable_async_stream.is_exhausted()
+        assert await peekable_async_stream.peek() == 1
+
+    async for item in peekable_async_stream:
+        items.append(item)
+
+        # The next line is included mostly for the sake of achieving coverage
+        assert await peekable_async_stream.peek() == (item + 1 if item < 3 else UNSET)
+
+    assert await peekable_async_stream.is_exhausted()
+    assert await peekable_async_stream.peek() is UNSET
+    assert items == [1, 2, 3]
+
+
+async def test_peekable_async_stream_aclose_before_iteration():
+    class AsyncIteratorNoClose:
+        def __aiter__(self) -> AsyncIteratorNoClose:
+            return self  # pragma: no cover
+
+        async def __anext__(self) -> int:
+            raise StopAsyncIteration  # pragma: no cover
+
+    peekable_async_stream: PeekableAsyncStream[int, AsyncIteratorNoClose] = PeekableAsyncStream(AsyncIteratorNoClose())
+    await peekable_async_stream.aclose()
+
+    assert await peekable_async_stream.is_exhausted()
+
+
+@pytest.mark.parametrize('peek_pull', [False, True])
+async def test_peekable_async_stream_aclose_cancels_in_flight_pull(peek_pull: bool):
+    """Closing independently of a stalled pull must finalize the source without cancelling its consumer."""
+    pull_started = anyio.Event()
+    finalized = anyio.Event()
+    followup_ran = anyio.Event()
+
+    async def source() -> AsyncIterator[int]:
+        try:
+            yield 1
+            pull_started.set()
+            await asyncio.sleep(30)
+        finally:
+            finalized.set()
+
+    stream: PeekableAsyncStream[int, AsyncIterator[int]] = PeekableAsyncStream(source())
+    assert await anext(stream) == 1
+
+    async def consume() -> None:
+        if peek_pull:
+            assert await stream.peek() is UNSET
+        else:
+            with pytest.raises(StopAsyncIteration):
+                await anext(stream)
+        followup_ran.set()
+
+    pull = asyncio.create_task(consume())
+    await pull_started.wait()
+
+    with anyio.fail_after(5):
+        await stream.aclose()
+        await finalized.wait()
+        await pull
+
+    assert followup_ran.is_set()
+    assert not pull.cancelled()
+
+
+@pytest.mark.anyio
+async def test_peekable_async_stream_aclose_cancels_all_in_flight_pulls():
+    pull_started = anyio.Event()
+    source_closed = anyio.Event()
+    peek_done = anyio.Event()
+    next_done = anyio.Event()
+
+    async def source() -> AsyncIterator[int]:
+        try:
+            pull_started.set()
+            await anyio.sleep_forever()
+            yield 1  # pragma: no cover
+        finally:
+            source_closed.set()
+
+    stream: PeekableAsyncStream[int, AsyncIterator[int]] = PeekableAsyncStream(source())
+
+    async def peek() -> None:
+        assert await stream.peek() is UNSET
+        peek_done.set()
+
+    async def pull() -> None:
+        with pytest.raises(StopAsyncIteration):
+            await anext(stream)
+        next_done.set()
+
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(peek)
+        await pull_started.wait()
+        task_group.start_soon(pull)
+        await anyio.sleep(0)
+        assert len(stream._pull_scopes) == 2  # pyright: ignore[reportPrivateUsage]
+        with anyio.fail_after(1):
+            await stream.aclose()
+            await source_closed.wait()
+            await peek_done.wait()
+            await next_done.wait()
+
+
+def test_run_until_complete_cleans_up_own_task_on_interrupt():
+    """A `KeyboardInterrupt` during `run_until_complete` must drive our own coroutine's cleanup
+    (closing model streams and HTTP connections via its `async with`/`finally` blocks) and leave no
+    pending task, without cancelling other tasks on the caller-owned loop.
+
+    This is a unit test rather than a public-API/VCR test because it requires a real interrupt to
+    arrive mid-`run_until_complete` while the coroutine is suspended, which can't be triggered
+    reliably through the public API; we simulate the interrupt by patching the loop.
+    """
+    cleaned: list[str] = []
+
+    async def coro() -> None:
+        try:
+            await asyncio.Event().wait()  # suspends forever
+        finally:
+            cleaned.append('cleaned')
+
+    loop = utils_module.get_event_loop()
+
+    # An unrelated task on the (caller-owned) loop that must survive: the reporter's `all_tasks()`
+    # sledgehammer would cancel this, ours must not.
+    async def bystander() -> None:
+        await asyncio.Event().wait()
+
+    bystander_task = loop.create_task(bystander())
+    tasks_before = asyncio.all_tasks(loop)
+
+    real_run_until_complete = loop.run_until_complete
+    calls = 0
+
+    def interrupt_once(future: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            # Let our task (and the bystander) start and suspend, then simulate Ctrl-C reaching the
+            # caller of `run_until_complete`.
+            loop.call_soon(loop.stop)
+            loop.run_forever()
+            raise KeyboardInterrupt
+        return real_run_until_complete(future)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(loop, 'run_until_complete', interrupt_once)
+        with pytest.raises(KeyboardInterrupt):
+            utils_module.run_until_complete(coro())
+
+    assert cleaned == ['cleaned']  # our coroutine's cleanup ran
+    assert not bystander_task.cancelled()  # the unrelated task was left alone
+    assert asyncio.all_tasks(loop) == tasks_before  # our task didn't leak, nothing else was touched
+
+    bystander_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        loop.run_until_complete(bystander_task)
+
+
+def test_run_sync_on_undrivable_event_loop():
+    """`run_sync()` on an event loop that can't be driven by the caller raises a clear `UserError`.
+
+    Temporal's workflow event loop is like this: it never implements `run_until_complete()`. Before this was
+    detected, `agent.run_sync()` inside a workflow raised the bare `NotImplementedError` CPython's abstract
+    method raises, which Temporal doesn't recognize as a deterministic failure, so it retried the workflow
+    task forever and the caller hung. See https://github.com/pydantic/pydantic-ai/issues/6899.
+    """
+    agent = Agent(TestModel())
+
+    with undrivable_event_loop():
+        with pytest.raises(UserError) as exc_info:
+            agent.run_sync('Hello')
+
+    assert str(exc_info.value) == snapshot(
+        'The current event loop (UndrivableEventLoop) does not implement `run_until_complete()`, which synchronous methods need in order to run their asynchronous implementation. This is the case inside a Temporal workflow, whose event loop can only be driven by Temporal itself. Use the asynchronous method instead, e.g. `await agent.run()` rather than `agent.run_sync()`.'
+    )
+
+
+def test_run_sync_propagates_not_implemented_error_from_tool():
+    """A `NotImplementedError` raised by user code must not be relabelled as an event loop `UserError`."""
+    agent = Agent(TestModel())
+
+    @agent.tool_plain
+    def my_tool() -> str:
+        raise NotImplementedError('Not implemented by the user')
+
+    with pytest.raises(NotImplementedError) as exc_info:
+        agent.run_sync('Hello')
+
+    assert type(exc_info.value) is NotImplementedError
+    assert str(exc_info.value) == snapshot('Not implemented by the user')
+
+
+def test_package_versions(capsys: pytest.CaptureFixture[str]):
+    if os.getenv('CI'):
+        with capsys.disabled():  # pragma: lax no cover
+            print('\npackage versions:')
+            packages = sorted((package.metadata['Name'], package.version) for package in distributions())
+            for name, version in packages:
+                print(f'{name:30} {version}')
+
+
+async def test_run_in_executor_with_contextvars() -> None:
+    ctx_var = contextvars.ContextVar('test_var', default='default')
+    ctx_var.set('original_value')
+
+    result = await run_in_executor(ctx_var.get)
+    assert result == ctx_var.get()
+
+    ctx_var.set('new_value')
+    result = await run_in_executor(ctx_var.get)
+    assert result == ctx_var.get()
+
+    # show that the old version did not work
+    old_result = asyncio.get_running_loop().run_in_executor(None, ctx_var.get)
+    assert old_result != ctx_var.get()
+
+
+async def test_run_in_executor_with_disable_threads() -> None:
+    from pydantic_ai._utils import disable_threads
+
+    calls: list[str] = []
+
+    def sync_func() -> str:
+        calls.append('called')
+        return 'result'
+
+    # Without disable_threads, should use threading
+    result = await run_in_executor(sync_func)
+    assert result == 'result'
+    assert calls == ['called']
+
+    # With disable_threads enabled, should execute directly
+    calls.clear()
+    with disable_threads():
+        result = await run_in_executor(sync_func)
+        assert result == 'result'
+        assert calls == ['called']
+
+
+async def test_run_in_executor_with_custom_executor() -> None:
+    main_thread = threading.current_thread()
+
+    def sync_func() -> threading.Thread:
+        return threading.current_thread()
+
+    executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='custom-pool')
+    try:
+        with using_thread_executor(executor):
+            result = await run_in_executor(sync_func)
+            assert result is not main_thread
+            assert result.name.startswith('custom-pool')
+    finally:
+        executor.shutdown(wait=True)
+
+
+async def test_run_in_executor_custom_executor_preserves_context_vars() -> None:
+    ctx_var = contextvars.ContextVar('test_var', default='default')
+    ctx_var.set('custom_value')
+
+    executor = ThreadPoolExecutor(max_workers=2)
+    try:
+        with using_thread_executor(executor):
+            result = await run_in_executor(ctx_var.get)
+            assert result == 'custom_value'
+    finally:
+        executor.shutdown(wait=True)
+
+
+async def test_disable_threads_takes_priority_over_custom_executor() -> None:
+    from pydantic_ai._utils import disable_threads
+
+    main_thread = threading.current_thread()
+
+    def check_thread() -> threading.Thread:
+        return threading.current_thread()
+
+    executor = ThreadPoolExecutor(max_workers=2)
+    try:
+        with using_thread_executor(executor):
+            with disable_threads():
+                result = await run_in_executor(check_thread)
+                assert result is main_thread
+    finally:
+        executor.shutdown(wait=True)
+
+
+async def test_disable_threads_defaults_false_on_non_emscripten(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, 'platform', 'linux')
+    importlib.reload(utils_module)
+    try:
+        main_thread = threading.current_thread()
+
+        def check_thread() -> threading.Thread:
+            return threading.current_thread()
+
+        result = await utils_module.run_in_executor(check_thread)
+        assert result is not main_thread
+    finally:
+        importlib.reload(utils_module)
+
+
+async def test_run_in_executor_runs_inline_by_default_on_emscripten(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, 'platform', 'emscripten')
+    importlib.reload(utils_module)
+    try:
+        main_thread = threading.current_thread()
+
+        def check_thread() -> threading.Thread:
+            return threading.current_thread()
+
+        result = await utils_module.run_in_executor(check_thread)
+        assert result is main_thread
+    finally:
+        monkeypatch.setattr(sys, 'platform', 'linux')
+        importlib.reload(utils_module)
+
+
+def test_is_async_callable():
+    def sync_func(): ...  # pragma: no branch
+
+    assert is_async_callable(sync_func) is False
+
+    async def async_func(): ...  # pragma: no branch
+
+    assert is_async_callable(async_func) is True
+
+    class AsyncCallable:
+        async def __call__(self): ...  # pragma: no branch
+
+    partial_async_callable = functools.partial(AsyncCallable())
+    assert is_async_callable(partial_async_callable) is True
+
+
+def test_merge_json_schema_defs():
+    foo_bar_schema = {
+        '$defs': {
+            'Bar': {
+                'description': 'Bar description',
+                'properties': {'bar': {'type': 'string'}},
+                'required': ['bar'],
+                'title': 'Bar',
+                'type': 'object',
+            },
+            'Foo': {
+                'description': 'Foo description',
+                'properties': {'foo': {'type': 'string'}},
+                'required': ['foo'],
+                'title': 'Foo',
+                'type': 'object',
+            },
+        },
+        'properties': {'foo': {'$ref': '#/$defs/Foo'}, 'bar': {'$ref': '#/$defs/Bar'}},
+        'required': ['foo', 'bar'],
+        'type': 'object',
+        'title': 'FooBar',
+    }
+
+    foo_bar_baz_schema = {
+        '$defs': {
+            'Baz': {
+                'description': 'Baz description',
+                'properties': {'baz': {'type': 'string'}},
+                'required': ['baz'],
+                'title': 'Baz',
+                'type': 'object',
+            },
+            'Foo': {
+                'description': 'Foo description. Note that this is different from the Foo in foo_bar_schema!',
+                'properties': {'foo': {'type': 'int'}},
+                'required': ['foo'],
+                'title': 'Foo',
+                'type': 'object',
+            },
+            'Bar': {
+                'description': 'Bar description',
+                'properties': {'bar': {'type': 'string'}},
+                'required': ['bar'],
+                'title': 'Bar',
+                'type': 'object',
+            },
+        },
+        'properties': {'foo': {'$ref': '#/$defs/Foo'}, 'baz': {'$ref': '#/$defs/Baz'}, 'bar': {'$ref': '#/$defs/Bar'}},
+        'required': ['foo', 'baz', 'bar'],
+        'type': 'object',
+        'title': 'FooBarBaz',
+    }
+
+    # A schema with no title that will cause numeric suffixes
+    no_title_schema = {
+        '$defs': {
+            'Foo': {
+                'description': 'Another different Foo',
+                'properties': {'foo': {'type': 'boolean'}},
+                'required': ['foo'],
+                'title': 'Foo',
+                'type': 'object',
+            },
+            'Bar': {
+                'description': 'Another different Bar',
+                'properties': {'bar': {'type': 'number'}},
+                'required': ['bar'],
+                'title': 'Bar',
+                'type': 'object',
+            },
+        },
+        'properties': {'foo': {'$ref': '#/$defs/Foo'}, 'bar': {'$ref': '#/$defs/Bar'}},
+        'required': ['foo', 'bar'],
+        'type': 'object',
+    }
+
+    # Another schema with no title that will cause more numeric suffixes
+    another_no_title_schema = {
+        '$defs': {
+            'Foo': {
+                'description': 'Yet another different Foo',
+                'properties': {'foo': {'type': 'array'}},
+                'required': ['foo'],
+                'title': 'Foo',
+                'type': 'object',
+            },
+            'Bar': {
+                'description': 'Yet another different Bar',
+                'properties': {'bar': {'type': 'object'}},
+                'required': ['bar'],
+                'title': 'Bar',
+                'type': 'object',
+            },
+        },
+        'properties': {'foo': {'$ref': '#/$defs/Foo'}, 'bar': {'$ref': '#/$defs/Bar'}},
+        'required': ['foo', 'bar'],
+        'type': 'object',
+    }
+
+    # Schema with nested properties, array items, prefixItems, and anyOf/oneOf
+    complex_schema = {
+        '$defs': {
+            'Nested': {
+                'description': 'A nested type',
+                'properties': {'nested': {'type': 'string'}},
+                'required': ['nested'],
+                'title': 'Nested',
+                'type': 'object',
+            },
+            'ArrayItem': {
+                'description': 'An array item type',
+                'properties': {'item': {'type': 'string'}},
+                'required': ['item'],
+                'title': 'ArrayItem',
+                'type': 'object',
+            },
+            'UnionType': {
+                'description': 'A union type',
+                'properties': {'union': {'type': 'string'}},
+                'required': ['union'],
+                'title': 'UnionType',
+                'type': 'object',
+            },
+        },
+        'properties': {
+            'nested_props': {
+                'type': 'object',
+                'properties': {
+                    'deep_nested': {'$ref': '#/$defs/Nested'},
+                },
+            },
+            'array_with_items': {
+                'type': 'array',
+                'items': {'$ref': '#/$defs/ArrayItem'},
+            },
+            'array_with_prefix': {
+                'type': 'array',
+                'prefixItems': [
+                    {'$ref': '#/$defs/ArrayItem'},
+                    {'$ref': '#/$defs/Nested'},
+                ],
+            },
+            'union_anyOf': {
+                'anyOf': [
+                    {'$ref': '#/$defs/UnionType'},
+                    {'$ref': '#/$defs/Nested'},
+                ],
+            },
+            'union_oneOf': {
+                'oneOf': [
+                    {'$ref': '#/$defs/UnionType'},
+                    {'$ref': '#/$defs/ArrayItem'},
+                ],
+            },
+        },
+        'type': 'object',
+        'title': 'ComplexSchema',
+    }
+
+    schemas = [foo_bar_schema, foo_bar_baz_schema, no_title_schema, another_no_title_schema, complex_schema]
+    rewritten_schemas, all_defs = merge_json_schema_defs(schemas)
+    assert all_defs == snapshot(
+        {
+            'Bar': {
+                'description': 'Bar description',
+                'properties': {'bar': {'type': 'string'}},
+                'required': ['bar'],
+                'title': 'Bar',
+                'type': 'object',
+            },
+            'Foo': {
+                'description': 'Foo description',
+                'properties': {'foo': {'type': 'string'}},
+                'required': ['foo'],
+                'title': 'Foo',
+                'type': 'object',
+            },
+            'Baz': {
+                'description': 'Baz description',
+                'properties': {'baz': {'type': 'string'}},
+                'required': ['baz'],
+                'title': 'Baz',
+                'type': 'object',
+            },
+            'FooBarBaz_Foo_1': {
+                'description': 'Foo description. Note that this is different from the Foo in foo_bar_schema!',
+                'properties': {'foo': {'type': 'int'}},
+                'required': ['foo'],
+                'title': 'Foo',
+                'type': 'object',
+            },
+            'Foo_1': {
+                'description': 'Another different Foo',
+                'properties': {'foo': {'type': 'boolean'}},
+                'required': ['foo'],
+                'title': 'Foo',
+                'type': 'object',
+            },
+            'Bar_1': {
+                'description': 'Another different Bar',
+                'properties': {'bar': {'type': 'number'}},
+                'required': ['bar'],
+                'title': 'Bar',
+                'type': 'object',
+            },
+            'Foo_2': {
+                'description': 'Yet another different Foo',
+                'properties': {'foo': {'type': 'array'}},
+                'required': ['foo'],
+                'title': 'Foo',
+                'type': 'object',
+            },
+            'Bar_2': {
+                'description': 'Yet another different Bar',
+                'properties': {'bar': {'type': 'object'}},
+                'required': ['bar'],
+                'title': 'Bar',
+                'type': 'object',
+            },
+            'Nested': {
+                'description': 'A nested type',
+                'properties': {'nested': {'type': 'string'}},
+                'required': ['nested'],
+                'title': 'Nested',
+                'type': 'object',
+            },
+            'ArrayItem': {
+                'description': 'An array item type',
+                'properties': {'item': {'type': 'string'}},
+                'required': ['item'],
+                'title': 'ArrayItem',
+                'type': 'object',
+            },
+            'UnionType': {
+                'description': 'A union type',
+                'properties': {'union': {'type': 'string'}},
+                'required': ['union'],
+                'title': 'UnionType',
+                'type': 'object',
+            },
+        }
+    )
+    assert rewritten_schemas == snapshot(
+        [
+            {
+                'properties': {'foo': {'$ref': '#/$defs/Foo'}, 'bar': {'$ref': '#/$defs/Bar'}},
+                'required': ['foo', 'bar'],
+                'type': 'object',
+                'title': 'FooBar',
+            },
+            {
+                'properties': {
+                    'foo': {'$ref': '#/$defs/FooBarBaz_Foo_1'},
+                    'baz': {'$ref': '#/$defs/Baz'},
+                    'bar': {'$ref': '#/$defs/Bar'},
+                },
+                'required': ['foo', 'baz', 'bar'],
+                'type': 'object',
+                'title': 'FooBarBaz',
+            },
+            {
+                'properties': {'foo': {'$ref': '#/$defs/Foo_1'}, 'bar': {'$ref': '#/$defs/Bar_1'}},
+                'required': ['foo', 'bar'],
+                'type': 'object',
+            },
+            {
+                'properties': {'foo': {'$ref': '#/$defs/Foo_2'}, 'bar': {'$ref': '#/$defs/Bar_2'}},
+                'required': ['foo', 'bar'],
+                'type': 'object',
+            },
+            {
+                'properties': {
+                    'nested_props': {
+                        'type': 'object',
+                        'properties': {
+                            'deep_nested': {'$ref': '#/$defs/Nested'},
+                        },
+                    },
+                    'array_with_items': {
+                        'type': 'array',
+                        'items': {'$ref': '#/$defs/ArrayItem'},
+                    },
+                    'array_with_prefix': {
+                        'type': 'array',
+                        'prefixItems': [
+                            {'$ref': '#/$defs/ArrayItem'},
+                            {'$ref': '#/$defs/Nested'},
+                        ],
+                    },
+                    'union_anyOf': {
+                        'anyOf': [
+                            {'$ref': '#/$defs/UnionType'},
+                            {'$ref': '#/$defs/Nested'},
+                        ],
+                    },
+                    'union_oneOf': {
+                        'oneOf': [
+                            {'$ref': '#/$defs/UnionType'},
+                            {'$ref': '#/$defs/ArrayItem'},
+                        ],
+                    },
+                },
+                'type': 'object',
+                'title': 'ComplexSchema',
+            },
+        ]
+    )
+
+
+def test_merge_json_schema_defs_internal_refs_in_renamed_defs():
+    """When defs are renamed due to collisions, internal $refs within those defs must also be updated."""
+    schema_a = {
+        '$defs': {
+            'Inner': {'type': 'object', 'properties': {'x': {'type': 'string'}}},
+            'Outer': {
+                'type': 'object',
+                'properties': {'inner': {'$ref': '#/$defs/Inner'}, 'extra_a': {'type': 'string'}},
+            },
+        },
+        'properties': {'outer': {'$ref': '#/$defs/Outer'}},
+        'type': 'object',
+        'title': 'SchemaA',
+    }
+    schema_b = {
+        '$defs': {
+            'Inner': {'type': 'object', 'properties': {'x': {'type': 'integer'}}},
+            'Outer': {
+                'type': 'object',
+                'properties': {'inner': {'$ref': '#/$defs/Inner'}, 'extra_b': {'type': 'number'}},
+            },
+        },
+        'properties': {'outer': {'$ref': '#/$defs/Outer'}},
+        'type': 'object',
+        'title': 'SchemaB',
+    }
+
+    rewritten_schemas, all_defs = merge_json_schema_defs([schema_a, schema_b])
+
+    # SchemaB's Outer was renamed to SchemaB_Outer_1, and its internal $ref to Inner
+    # must now point to SchemaB_Inner_1 (not the original Inner from SchemaA)
+    assert all_defs == snapshot(
+        {
+            'Inner': {'type': 'object', 'properties': {'x': {'type': 'string'}}},
+            'Outer': {
+                'type': 'object',
+                'properties': {'inner': {'$ref': '#/$defs/Inner'}, 'extra_a': {'type': 'string'}},
+            },
+            'SchemaB_Inner_1': {'type': 'object', 'properties': {'x': {'type': 'integer'}}},
+            'SchemaB_Outer_1': {
+                'type': 'object',
+                'properties': {'inner': {'$ref': '#/$defs/SchemaB_Inner_1'}, 'extra_b': {'type': 'number'}},
+            },
+        }
+    )
+    assert rewritten_schemas == snapshot(
+        [
+            {
+                'properties': {'outer': {'$ref': '#/$defs/Outer'}},
+                'type': 'object',
+                'title': 'SchemaA',
+            },
+            {
+                'properties': {'outer': {'$ref': '#/$defs/SchemaB_Outer_1'}},
+                'type': 'object',
+                'title': 'SchemaB',
+            },
+        ]
+    )
+
+
+def test_merge_json_schema_defs_non_renamed_def_refs_renamed_def():
+    """A non-renamed def that references a renamed def must also have its $refs updated."""
+    schema_a = {
+        '$defs': {
+            'Inner': {'type': 'object', 'properties': {'x': {'type': 'string'}}},
+        },
+        'properties': {'inner': {'$ref': '#/$defs/Inner'}},
+        'type': 'object',
+        'title': 'SchemaA',
+    }
+    schema_b = {
+        '$defs': {
+            'Inner': {'type': 'object', 'properties': {'x': {'type': 'integer'}}},
+            'Wrapper': {'type': 'object', 'properties': {'inner': {'$ref': '#/$defs/Inner'}}},
+        },
+        'properties': {'wrapper': {'$ref': '#/$defs/Wrapper'}},
+        'type': 'object',
+        'title': 'SchemaB',
+    }
+
+    rewritten_schemas, all_defs = merge_json_schema_defs([schema_a, schema_b])
+
+    # Wrapper is new (no collision), but its $ref to Inner must be rewritten
+    # to SchemaB_Inner_1 because SchemaB's Inner was renamed
+    assert all_defs == snapshot(
+        {
+            'Inner': {'type': 'object', 'properties': {'x': {'type': 'string'}}},
+            'SchemaB_Inner_1': {'type': 'object', 'properties': {'x': {'type': 'integer'}}},
+            'Wrapper': {
+                'type': 'object',
+                'properties': {'inner': {'$ref': '#/$defs/SchemaB_Inner_1'}},
+            },
+        }
+    )
+    assert rewritten_schemas == snapshot(
+        [
+            {
+                'properties': {'inner': {'$ref': '#/$defs/Inner'}},
+                'type': 'object',
+                'title': 'SchemaA',
+            },
+            {
+                'properties': {'wrapper': {'$ref': '#/$defs/Wrapper'}},
+                'type': 'object',
+                'title': 'SchemaB',
+            },
+        ]
+    )
+
+
+def test_merge_json_schema_defs_additional_properties_allof_not():
+    """$refs under additionalProperties, allOf, and not must be rewritten during merge."""
+    schema_a = {
+        '$defs': {
+            'Value': {'type': 'object', 'properties': {'v': {'type': 'string'}}},
+            'Base': {'type': 'object', 'properties': {'b': {'type': 'string'}}},
+            'Excluded': {'type': 'object', 'properties': {'e': {'type': 'string'}}},
+        },
+        'properties': {
+            'map': {'type': 'object', 'additionalProperties': {'$ref': '#/$defs/Value'}},
+            'composed': {'allOf': [{'$ref': '#/$defs/Base'}, {'$ref': '#/$defs/Value'}]},
+            'excluded': {'not': {'$ref': '#/$defs/Excluded'}},
+        },
+        'type': 'object',
+        'title': 'SchemaA',
+    }
+    schema_b = {
+        '$defs': {
+            'Value': {'type': 'object', 'properties': {'v': {'type': 'integer'}}},
+            'Base': {'type': 'object', 'properties': {'b': {'type': 'integer'}}},
+            'Excluded': {'type': 'object', 'properties': {'e': {'type': 'integer'}}},
+        },
+        'properties': {
+            'map': {'type': 'object', 'additionalProperties': {'$ref': '#/$defs/Value'}},
+            'composed': {'allOf': [{'$ref': '#/$defs/Base'}, {'$ref': '#/$defs/Value'}]},
+            'excluded': {'not': {'$ref': '#/$defs/Excluded'}},
+        },
+        'type': 'object',
+        'title': 'SchemaB',
+    }
+
+    rewritten_schemas, _ = merge_json_schema_defs([schema_a, schema_b])
+
+    # SchemaB's refs should all be rewritten to the renamed defs
+    assert rewritten_schemas[1] == snapshot(
+        {
+            'properties': {
+                'map': {'type': 'object', 'additionalProperties': {'$ref': '#/$defs/SchemaB_Value_1'}},
+                'composed': {'allOf': [{'$ref': '#/$defs/SchemaB_Base_1'}, {'$ref': '#/$defs/SchemaB_Value_1'}]},
+                'excluded': {'not': {'$ref': '#/$defs/SchemaB_Excluded_1'}},
+            },
+            'type': 'object',
+            'title': 'SchemaB',
+        }
+    )
+
+
+def test_merge_json_schema_defs_structurally_equal_with_different_ref_targets():
+    """Defs that are structurally equal but whose $refs resolve to different types need separate copies."""
+    schema_a = {
+        '$defs': {
+            'Inner': {'type': 'object', 'properties': {'x': {'type': 'string'}}},
+            'Wrapper': {'type': 'object', 'properties': {'inner': {'$ref': '#/$defs/Inner'}}},
+        },
+        'properties': {'wrapper': {'$ref': '#/$defs/Wrapper'}},
+        'type': 'object',
+        'title': 'SchemaA',
+    }
+    schema_b = {
+        '$defs': {
+            'Inner': {'type': 'object', 'properties': {'x': {'type': 'integer'}}},
+            'Wrapper': {'type': 'object', 'properties': {'inner': {'$ref': '#/$defs/Inner'}}},
+        },
+        'properties': {'wrapper': {'$ref': '#/$defs/Wrapper'}},
+        'type': 'object',
+        'title': 'SchemaB',
+    }
+
+    rewritten_schemas, all_defs = merge_json_schema_defs([schema_a, schema_b])
+
+    # Both Wrappers are structurally identical ({$ref: Inner}), but their Inner
+    # defs differ, so SchemaB needs its own Wrapper copy with updated refs.
+    assert all_defs == snapshot(
+        {
+            'Inner': {'type': 'object', 'properties': {'x': {'type': 'string'}}},
+            'Wrapper': {'type': 'object', 'properties': {'inner': {'$ref': '#/$defs/Inner'}}},
+            'SchemaB_Inner_1': {'type': 'object', 'properties': {'x': {'type': 'integer'}}},
+            'SchemaB_Wrapper_1': {
+                'type': 'object',
+                'properties': {'inner': {'$ref': '#/$defs/SchemaB_Inner_1'}},
+            },
+        }
+    )
+    assert rewritten_schemas == snapshot(
+        [
+            {
+                'properties': {'wrapper': {'$ref': '#/$defs/Wrapper'}},
+                'type': 'object',
+                'title': 'SchemaA',
+            },
+            {
+                'properties': {'wrapper': {'$ref': '#/$defs/SchemaB_Wrapper_1'}},
+                'type': 'object',
+                'title': 'SchemaB',
+            },
+        ]
+    )
+
+
+def test_strip_markdown_fences():
+    assert strip_markdown_fences('{"foo": "bar"}') == '{"foo": "bar"}'
+    assert strip_markdown_fences('```json\n{"foo": "bar"}\n```') == '{"foo": "bar"}'
+    assert strip_markdown_fences('```json\r\n{"foo": "bar"}\r\n```') == '{"foo": "bar"}'
+    assert strip_markdown_fences('```json\n{\n  "foo": "bar"\n}') == '{\n  "foo": "bar"\n}'
+    assert (
+        strip_markdown_fences('{"foo": "```json\\n{"foo": "bar"}\\n```"}')
+        == '{"foo": "```json\\n{"foo": "bar"}\\n```"}'
+    )
+    assert (
+        strip_markdown_fences('Here is some beautiful JSON:\n\n```\n{"foo": "bar"}\n``` Nice right?')
+        == '{"foo": "bar"}'
+    )
+    assert strip_markdown_fences('No JSON to be found') == 'No JSON to be found'
+    # Content after closing fence with braces should not be captured (issue #4397)
+    assert strip_markdown_fences('```json\n{"a": 1}\n```\nContext: {"b": 2}') == '{"a": 1}'
+    assert (
+        strip_markdown_fences('```json\n{"result": "pass"}\n```\nThis matches schema {"type": "object"}')
+        == '{"result": "pass"}'
+    )
+    # Nested JSON objects should still be fully captured
+    assert strip_markdown_fences('```json\n{"nested": {"key": "value"}}\n```') == '{"nested": {"key": "value"}}'
+    assert strip_markdown_fences('```json\n{"a": {"b": {"c": 1}}}\n```') == '{"a": {"b": {"c": 1}}}'
+
+
+class _AmbiguousBool:
+    """Mimics the result of a numpy array comparison: its truth value is ambiguous."""
+
+    def __bool__(self) -> bool:
+        raise ValueError('The truth value of an array with more than one element is ambiguous.')
+
+
+class _ArrayLike:
+    """Mimics a numpy array: `!=` returns a value whose `bool()` raises, instead of a plain bool."""
+
+    def __ne__(self, other: object) -> Any:
+        return _AmbiguousBool()
+
+    def __repr__(self) -> str:
+        return 'ArrayLike()'
+
+
+@dataclass(repr=False)
+class _HasRequiredField:
+    content: Any
+
+    __repr__ = dataclasses_no_defaults_repr
+
+
+@dataclass(repr=False)
+class _HasDefaultField:
+    content: Any = None
+
+    __repr__ = dataclasses_no_defaults_repr
+
+
+class _CountingIntListFactory:
+    """A `default_factory` that records how many times it is called, to prove `repr()` never calls it."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self) -> list[int]:
+        self.calls += 1
+        return []
+
+
+_items_factory = _CountingIntListFactory()
+
+
+@dataclass(repr=False)
+class _HasMixedFields:
+    required: int
+    flag: bool = False
+    items: list[int] = field(default_factory=_items_factory)
+
+    __repr__ = dataclasses_no_defaults_repr
+
+
+def test_dataclasses_no_defaults_repr_non_bool_ne():
+    """repr() must not raise when a field holds a value whose `!=` returns a non-bool (e.g. a numpy array).
+
+    Regression test for #6415: `repr()` of message parts crashed with `ValueError` when a field
+    such as `ToolReturnPart.content` held a numpy array. Covers both branches of the helper: a
+    required field (no default) and a field with an explicit default that holds such a value.
+
+    This is a plain unit test rather than a public-API/VCR test because it exercises the pure
+    `dataclasses_no_defaults_repr` helper in memory and makes no model or network requests.
+    """
+    # Required field: value is always shown, and the ambiguous `!=` result must not be evaluated.
+    assert repr(_HasRequiredField(content=_ArrayLike())) == '_HasRequiredField(content=ArrayLike())'
+    # Explicit-default field holding the same value: the guarded comparison falls back to showing it.
+    assert repr(_HasDefaultField(content=_ArrayLike())) == '_HasDefaultField(content=ArrayLike())'
+
+
+def test_dataclasses_no_defaults_repr_omits_defaults():
+    """Fields equal to an explicit default are omitted; differing and factory-backed fields are shown.
+
+    Also asserts `repr()` never calls the `default_factory`: some factories are impure (e.g. `uuid7()`,
+    `now_utc()`), so materializing them during `repr()` would consume randomness/time or mutate state.
+
+    This is a plain unit test rather than a public-API/VCR test because it exercises the pure
+    `dataclasses_no_defaults_repr` helper in memory and makes no model or network requests.
+    """
+    # `flag` equals its default and is omitted; `items` has only a `default_factory` so it is always shown.
+    instance = _HasMixedFields(required=1)
+    _items_factory.calls = 0  # reset the count incurred while constructing the instance above
+    assert repr(instance) == '_HasMixedFields(required=1, items=[])'
+    assert _items_factory.calls == 0  # repr must not invoke the default_factory
+
+    # `flag` differs from its default and is shown.
+    instance = _HasMixedFields(required=1, flag=True)
+    _items_factory.calls = 0
+    assert repr(instance) == '_HasMixedFields(required=1, flag=True, items=[])'
+    assert _items_factory.calls == 0
+
+
+def test_format_inlined_text_file() -> None:
+    result = format_inlined_text_file('hello\nworld', media_type='text/plain', identifier='abc123')
+    assert result == (
+        '-----BEGIN FILE id="abc123" type="text/plain"-----\nhello\nworld\n-----END FILE id="abc123"-----'
+    )
+    assert 'text/plain' in result
+    assert 'abc123' in result
+
+
+def test_replace_no_init() -> None:
+    """`replace_no_init` swaps declared fields on a copy without touching `__init__`.
+
+    Unit test rather than public-API driven because the misuse branch (an unknown field
+    name) is unreachable through the capability call sites that use the helper.
+    """
+
+    @dataclass
+    class Config:
+        name: str
+        tags: list[str] = field(default_factory=list[str])
+
+    original = Config(name='a', tags=['x'])
+    replaced = replace_no_init(original, name='b')
+
+    assert replaced is not original
+    assert (replaced.name, original.name) == ('b', 'a')
+    assert replaced.tags is original.tags, 'unchanged fields are carried over by reference, matching `replace`'
+
+    with pytest.raises(TypeError, match=r'Invalid field name\(s\) for Config: nom, tag'):
+        replace_no_init(original, nom='b', tag=['y'])
+
+    @dataclass(frozen=True)
+    class FrozenConfig:
+        name: str
+
+    frozen = FrozenConfig(name='a')
+    replaced_frozen = replace_no_init(frozen, name='b')
+    assert (replaced_frozen.name, frozen.name) == ('b', 'a'), 'frozen instances are supported, like `replace`'
+
+    class SelfCopyingConfig(Config):
+        def __copy__(self) -> SelfCopyingConfig:
+            return self
+
+    self_copying = SelfCopyingConfig(name='a')
+    with pytest.raises(TypeError, match='its `__copy__` does not return a new instance'):
+        replace_no_init(self_copying, name='b')
+    assert self_copying.name == 'a', 'the original must not be mutated in place'

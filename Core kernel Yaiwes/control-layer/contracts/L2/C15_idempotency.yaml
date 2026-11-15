@@ -1,0 +1,18 @@
+# C15 — L2. B1 SALIDA4
+id: C15
+layer: L2
+name: idempotency
+implementado: true
+critical: false
+description: "Clave de idempotencia de operación"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C15 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - idempotency_check
+evidence:
+  type: idempotency_marker
+  required: false

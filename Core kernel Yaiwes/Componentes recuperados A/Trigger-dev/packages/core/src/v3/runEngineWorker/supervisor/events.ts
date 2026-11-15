@@ -1,0 +1,51 @@
+import type { TaskRunExecutionResult } from "../../schemas/common.js";
+import type { DequeuedMessage, StartRunAttemptResult } from "../../schemas/runEngine.js";
+
+export type WorkerEvents = {
+  runQueueMessage: [
+    {
+      time: Date;
+      message: DequeuedMessage;
+      dequeueResponseMs?: number;
+      pollingIntervalMs?: number;
+    },
+  ];
+  requestRunAttemptStart: [
+    {
+      time: Date;
+      run: {
+        friendlyId: string;
+      };
+      snapshot: {
+        friendlyId: string;
+      };
+    },
+  ];
+  runAttemptStarted: [
+    {
+      time: Date;
+    } & StartRunAttemptResult & {
+        envVars: Record<string, string>;
+      },
+  ];
+  runAttemptCompleted: [
+    {
+      time: Date;
+      run: {
+        friendlyId: string;
+      };
+      snapshot: {
+        friendlyId: string;
+      };
+      completion: TaskRunExecutionResult;
+    },
+  ];
+  runNotification: [
+    {
+      time: Date;
+      run: {
+        friendlyId: string;
+      };
+    },
+  ];
+};

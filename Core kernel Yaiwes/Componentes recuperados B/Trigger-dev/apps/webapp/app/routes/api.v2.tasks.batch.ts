@@ -1,0 +1,213 @@
+import { json } from "@remix-run/server-runtime";
+import type { BatchTriggerTaskV3Response } from "@trigger.dev/core/v3";
+import { BatchTriggerTaskV3RequestBody, generateJWT } from "@trigger.dev/core/v3";
+import { env } from "~/env.server";
+import { runStore } from "~/v3/runStore.server";
+import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { getOneTimeUseToken } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
+import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  handleRequestIdempotency,
+  saveRequestIdempotency,
+} from "~/utils/requestIdempotency.server";
+import { scopeRequestIdempotencyKey } from "~/utils/requestIdempotencyKey";
+import { canWriteParentRun } from "~/utils/parentRunAuthorization.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { BatchProcessingStrategy } from "~/v3/services/batchTriggerV3.server";
+import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
+import { sanitizeTriggerSource } from "~/utils/triggerSource";
+import { clientSafeErrorMessage } from "~/utils/prismaErrors";
+import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
+import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
+import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
+
+const { action, loader } = createActionApiRoute(
+  {
+    headers: HeadersSchema.extend({
+      "batch-processing-strategy": BatchProcessingStrategy.nullish(),
+    }),
+    body: BatchTriggerTaskV3RequestBody,
+    allowJWT: true,
+    maxContentLength: env.BATCH_TASK_PAYLOAD_MAXIMUM_SIZE,
+    authorization: {
+      action: "batchTrigger",
+      // Each item in the batch is a distinct task — every one must be
+      // authorized, not just any one of them. `everyResource` flips
+      // the auth check to AND semantics so a JWT scoped to taskA can't
+      // submit a batch that also includes taskB / taskC.
+      resource: (_, __, ___, body) =>
+        everyResource(
+          Array.from(new Set(body.items.map((i) => i.task))).map((id) => ({
+            type: "tasks",
+            id,
+          }))
+        ),
+    },
+    corsStrategy: "all",
+  },
+  async ({ body, headers, params, authentication, ability }) => {
+    if (!body.items.length) {
+      return json({ error: "Batch cannot be triggered with no items" }, { status: 400 });
+    }
+
+    if (
+      !(await canWriteParentRun(
+        ability,
+        authentication.environment.id,
+        authentication.environment.organizationId,
+        body.parentRunId
+      ))
+    ) {
+      return json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    // Check the there are fewer than MAX_BATCH_V2_TRIGGER_ITEMS items
+    if (body.items.length > env.MAX_BATCH_V2_TRIGGER_ITEMS) {
+      return json(
+        {
+          error: `Batch size of ${body.items.length} is too large. Maximum allowed batch size is ${env.MAX_BATCH_V2_TRIGGER_ITEMS}.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const {
+      "trigger-version": triggerVersion,
+      "x-trigger-span-parent-as-link": spanParentAsLink,
+      "x-trigger-worker": isFromWorker,
+      "x-trigger-client": triggerClient,
+      "x-trigger-engine-version": _engineVersion,
+      "batch-processing-strategy": batchProcessingStrategy,
+      "x-trigger-request-idempotency-key": requestIdempotencyKey,
+      "x-trigger-realtime-streams-version": realtimeStreamsVersion,
+      "x-trigger-source": triggerSourceHeader,
+      traceparent,
+      tracestate,
+    } = headers;
+
+    const oneTimeUseToken = await getOneTimeUseToken(authentication);
+
+    logger.debug("Batch trigger request", {
+      triggerVersion,
+      spanParentAsLink,
+      isFromWorker,
+      triggerClient,
+      traceparent,
+      tracestate,
+      batchProcessingStrategy,
+      requestIdempotencyKey,
+    });
+
+    const scopedIdempotencyKey = scopeRequestIdempotencyKey(requestIdempotencyKey, [
+      authentication.environment.id,
+      ...Array.from(new Set(body.items.map((item) => item.task))).sort(),
+    ]);
+    const cachedResponse = await handleRequestIdempotency(scopedIdempotencyKey, {
+      requestType: "batch-trigger",
+      findCachedEntity: async (cachedRequestId) => {
+        const batch = await runStore.findBatchTaskRunById(cachedRequestId);
+        if (!batch || batch.runtimeEnvironmentId !== authentication.environment.id) return null;
+        return batch;
+      },
+      buildResponse: (cachedBatch) => ({
+        id: cachedBatch.friendlyId,
+        runCount: cachedBatch.runCount,
+      }),
+      buildResponseHeaders: async (responseBody, cachedEntity) => {
+        return await responseHeaders(responseBody, authentication.environment);
+      },
+    });
+
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+
+    const traceContext = isFromWorker
+      ? { traceparent, tracestate }
+      : { external: { traceparent, tracestate } };
+
+    // Note: SDK v4.3+ uses the 2-phase batch API (POST /api/v3/batches + streaming items)
+    // This endpoint is for backwards compatibility with older SDK versions
+    const service = new RunEngineBatchTriggerService(batchProcessingStrategy ?? undefined);
+
+    service.onBatchTaskRunCreated.attachOnce(async (batch) => {
+      await saveRequestIdempotency(scopedIdempotencyKey, "batch-trigger", batch.id);
+    });
+
+    try {
+      const batch = await service.call(authentication.environment, body, {
+        triggerVersion: triggerVersion ?? undefined,
+        traceContext,
+        spanParentAsLink: spanParentAsLink === 1,
+        oneTimeUseToken,
+        realtimeStreamsVersion: determineRealtimeStreamsVersion(
+          realtimeStreamsVersion ?? undefined,
+          authentication.environment.organization.streamBasinName
+        ),
+        triggerSource: isFromWorker ? "sdk" : (sanitizeTriggerSource(triggerSourceHeader) ?? "api"),
+        triggerAction: "trigger",
+      });
+
+      const $responseHeaders = await responseHeaders(batch, authentication.environment);
+
+      return json(batch, {
+        status: 202,
+        headers: $responseHeaders,
+      });
+    } catch (error) {
+      // Customer-facing validation/quota failures (invalid batch shape,
+      // entitlements exhausted). The handler returns 422 with the message;
+      // system handles it gracefully, no alert needed.
+      if (error instanceof ServiceValidationError) {
+        logger.warn("Batch trigger error", { error: error.message });
+        return json({ error: error.message }, { status: 422 });
+      }
+      if (error instanceof OutOfEntitlementError) {
+        logger.warn("Batch trigger error", { error: error.message });
+        return json({ error: error.message }, { status: 422 });
+      }
+
+      logger.error("Batch trigger error", {
+        error: {
+          message: (error as Error).message,
+          stack: (error as Error).stack,
+        },
+      });
+
+      if (error instanceof Error) {
+        return json(
+          { error: clientSafeErrorMessage(error) },
+          { status: 500, headers: { "x-should-retry": "false" } }
+        );
+      }
+
+      return json({ error: "Something went wrong" }, { status: 500 });
+    }
+  }
+);
+
+async function responseHeaders(
+  batch: BatchTriggerTaskV3Response,
+  environment: AuthenticatedEnvironment
+): Promise<Record<string, string>> {
+  const claims = {
+    sub: environment.id,
+    pub: true,
+    scopes: [`read:batch:${batch.id}`],
+  };
+
+  const jwt = await generateJWT({
+    secretKey: extractJwtSigningSecretKey(environment),
+    payload: claims,
+    expirationTime: "1h",
+  });
+
+  return {
+    "x-trigger-jwt-claims": JSON.stringify({ sub: environment.id, pub: true }),
+    "x-trigger-jwt": jwt,
+  };
+}
+
+export { action, loader };

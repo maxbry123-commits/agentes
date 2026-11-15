@@ -1,0 +1,752 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami
+  namespace: default
+
+spec:
+  clusterIP: 10.10.10.1
+  ports:
+    - name: web2
+      protocol: TCP
+      port: 8000
+      targetPort: web2
+    - name: web
+      protocol: TCP
+      port: 80
+      targetPort: web
+  selector:
+    app: containous
+    task: whoami
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoami-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoami
+
+addressType: IPv4
+ports:
+  - name: web
+    port: 80
+  - name: web2
+    port: 8080
+endpoints:
+  - addresses:
+      - 10.10.0.1
+      - 10.10.0.2
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-bar
+  namespace: bar
+
+spec:
+  ports:
+    - name: web2
+      protocol: TCP
+      port: 8000
+      targetPort: web2
+    - name: web
+      protocol: TCP
+      port: 80
+      targetPort: web
+  selector:
+    app: containous
+    task: whoami
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoami-bar-abc
+  namespace: bar
+  labels:
+    kubernetes.io/service-name: whoami-bar
+
+addressType: IPv4
+ports:
+  - name: web
+    port: 80
+  - name: web2
+    port: 8000
+endpoints:
+  - addresses:
+      - 10.10.0.11
+      - 10.10.0.12
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami2
+  namespace: default
+
+spec:
+  ports:
+    - name: web
+      protocol: TCP
+      port: 8080
+      appProtocol: http
+      targetPort: web
+  selector:
+    app: containous
+    task: whoami2
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoami2-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoami2
+
+addressType: IPv4
+ports:
+  - name: web
+    port: 8080
+endpoints:
+  - addresses:
+      - 10.10.0.3
+      - 10.10.0.4
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoamitls
+  namespace: default
+
+spec:
+  ports:
+    - name: websecure
+      protocol: TCP
+      appProtocol: https
+      port: 443
+      targetPort: websecure
+  selector:
+    app: containous
+    task: whoami2
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoamitls-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoamitls
+
+addressType: IPv4
+ports:
+  - name: websecure
+    port: 8443
+endpoints:
+  - addresses:
+      - 10.10.0.5
+      - 10.10.0.6
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami3
+  namespace: default
+
+spec:
+  ports:
+    - name: websecure2
+      port: 8443
+      targetPort: websecure2
+  selector:
+    app: containous
+    task: whoami3
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoami3-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoami3
+
+addressType: IPv4
+ports:
+  - name: websecure2
+    port: 8443
+endpoints:
+  - addresses:
+      - 10.10.0.7
+      - 10.10.0.8
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-svc
+  namespace: default
+spec:
+  externalName: external.domain
+  type: ExternalName
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-svc-with-http
+  namespace: default
+spec:
+  externalName: external.domain
+  type: ExternalName
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-svc-with-https
+  namespace: default
+spec:
+  externalName: external.domain
+  type: ExternalName
+  ports:
+    - name: https
+      protocol: TCP
+      port: 443
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoamitcp-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoamitcp
+
+addressType: IPv4
+ports:
+  - name: tcp-1
+    protocol: TCP
+    port: 9000
+  - name: tcp-2
+    protocol: TCP
+    port: 10000
+endpoints:
+  - addresses:
+      - 10.10.0.9
+      - 10.10.0.10
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoamitcp
+  namespace: default
+
+spec:
+  clusterIP: 10.10.10.1
+  ports:
+    - protocol: TCP
+      port: 9000
+      name: tcp-1
+    - protocol: TCP
+      port: 10000
+      name: tcp-2
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoamitcp-bar-abc
+  namespace: bar
+  labels:
+    kubernetes.io/service-name: whoamitcp-bar
+
+addressType: IPv4
+ports:
+  - name: tcp-1
+    protocol: TCP
+    port: 9000
+  - name: tcp-2
+    protocol: TCP
+    port: 10000
+endpoints:
+  - addresses:
+      - 10.10.0.13
+      - 10.10.0.14
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoamitcp-bar
+  namespace: bar
+
+spec:
+  ports:
+    - protocol: TCP
+      port: 9000
+      name: tcp-1
+    - protocol: TCP
+      port: 10000
+      name: tcp-2
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: status-address
+  namespace: default
+
+status:
+  loadBalancer:
+    ingress:
+      - hostname: foo.bar
+      - ip: 1.2.3.4
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoami-h2c
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoami-h2c
+
+addressType: IPv4
+ports:
+  - name: h2c
+    protocol: TCP
+    port: 80
+endpoints:
+  - addresses:
+      - 10.10.0.13
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-h2c
+  namespace: default
+
+spec:
+  ports:
+    - protocol: TCP
+      port: 80
+      name: h2c
+      appProtocol: kubernetes.io/h2c
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoami-ws
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoami-ws
+
+addressType: IPv4
+ports:
+  - name: ws
+    protocol: TCP
+    port: 80
+endpoints:
+  - addresses:
+      - 10.10.0.14
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-ws
+  namespace: default
+
+spec:
+  ports:
+    - protocol: TCP
+      port: 80
+      name: ws
+      appProtocol: kubernetes.io/ws
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoami-wss
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoami-wss
+
+addressType: IPv4
+ports:
+  - name: wss
+    protocol: TCP
+    port: 80
+endpoints:
+  - addresses:
+      - 10.10.0.15
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-wss
+  namespace: default
+
+spec:
+  ports:
+    - protocol: TCP
+      port: 80
+      name: wss
+      appProtocol: kubernetes.io/wss
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoami-HTTPS-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoami-HTTPS
+
+addressType: IPv4
+ports:
+  - name: websecure
+    port: 8443
+endpoints:
+  - addresses:
+      - 10.10.0.16
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-HTTPS
+  namespace: default
+
+spec:
+  ports:
+    - name: websecure
+      protocol: TCP
+      appProtocol: HTTPS
+      port: 443
+      targetPort: websecure
+  selector:
+    app: containous
+    task: whoami-HTTPS
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoami-HTTP-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoami-HTTP
+
+addressType: IPv4
+ports:
+  - name: web
+    port: 8080
+endpoints:
+  - addresses:
+      - 10.10.0.17
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-HTTP
+  namespace: default
+
+spec:
+  ports:
+    - name: web
+      protocol: TCP
+      port: 80
+      appProtocol: HTTP
+      targetPort: web
+  selector:
+    app: containous
+    task: whoami-HTTP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-native
+  namespace: default
+  annotations:
+    traefik.io/service.nativelb: "true"
+spec:
+  clusterIP: 10.10.10.1
+  ports:
+    - name: web2
+      protocol: TCP
+      port: 8000
+      targetPort: web2
+    - name: web
+      protocol: TCP
+      port: 80
+      targetPort: web
+  selector:
+    app: containous
+    task: whoami
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoamitcp-native
+  namespace: default
+  annotations:
+    traefik.io/service.nativelb: "true"
+
+spec:
+  clusterIP: 10.10.10.1
+  ports:
+    - protocol: TCP
+      port: 9000
+      name: tcp-1
+    - protocol: TCP
+      port: 10000
+      name: tcp-2
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-native-disabled
+  namespace: default
+  annotations:
+    traefik.io/service.nativelb: "false"
+spec:
+  clusterIP: 10.10.10.2
+  ports:
+    - name: web
+      protocol: TCP
+      port: 80
+      targetPort: web
+  selector:
+    app: containous
+    task: whoami
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoami-native-disabled-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoami-native-disabled
+addressType: IPv4
+ports:
+  - name: web
+    port: 80
+endpoints:
+  - addresses:
+      - 10.10.0.20
+      - 10.10.0.21
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoamitcp-native-disabled
+  namespace: default
+  annotations:
+    traefik.io/service.nativelb: "false"
+spec:
+  clusterIP: 10.10.10.3
+  ports:
+    - protocol: TCP
+      port: 9000
+      name: tcp-1
+    - protocol: TCP
+      port: 10000
+      name: tcp-2
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoamitcp-native-disabled-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoamitcp-native-disabled
+addressType: IPv4
+ports:
+  - name: tcp-1
+    protocol: TCP
+    port: 9000
+  - name: tcp-2
+    protocol: TCP
+    port: 10000
+endpoints:
+  - addresses:
+      - 10.10.0.30
+      - 10.10.0.31
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-nil-port-name
+  namespace: default
+
+spec:
+  ports:
+    - name: web
+      protocol: TCP
+      port: 80
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoami-nil-port-name-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoami-nil-port-name
+
+addressType: IPv4
+ports:
+  - port: 80
+endpoints:
+  - addresses:
+      - 10.10.0.1
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-nil-port-value
+  namespace: default
+
+spec:
+  ports:
+    - name: web
+      protocol: TCP
+      port: 80
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoami-nil-port-value-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoami-nil-port-value
+
+addressType: IPv4
+ports:
+  - name: web
+endpoints:
+  - addresses:
+      - 10.10.0.1
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoamitcp-nil-port-name
+  namespace: default
+
+spec:
+  ports:
+    - name: myapp
+      protocol: TCP
+      port: 9000
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoamitcp-nil-port-name-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoamitcp-nil-port-name
+
+addressType: IPv4
+ports:
+  - protocol: TCP
+    port: 9000
+endpoints:
+  - addresses:
+      - 10.10.0.1
+    conditions:
+      ready: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoamitcp-nil-port-value
+  namespace: default
+
+spec:
+  ports:
+    - name: myapp
+      protocol: TCP
+      port: 9000
+
+---
+kind: EndpointSlice
+apiVersion: discovery.k8s.io/v1
+metadata:
+  name: whoamitcp-nil-port-value-abc
+  namespace: default
+  labels:
+    kubernetes.io/service-name: whoamitcp-nil-port-value
+
+addressType: IPv4
+ports:
+  - name: myapp
+    protocol: TCP
+endpoints:
+  - addresses:
+      - 10.10.0.1
+    conditions:
+      ready: true

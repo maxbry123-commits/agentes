@@ -1,0 +1,239 @@
+operators:
+- id: seed_math_automath_1000000
+  config:
+    type: load_preexisting
+    framework_name: seed_math_automath_1000000
+- id: drop_columns_automath_1000000
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_automath_1000000
+- id: add_source_automath
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "automath"
+  input_ids:
+  - drop_columns_automath_1000000
+- id: filter_out_proofs_automath_1000000
+  config: 
+    type: function
+    function: data_strategies.MultipleSamples.utils.filter_out_proofs
+    function_config:
+      problem_column: instruction_seed
+  input_ids:
+    - add_source_automath
+- id: sample_dataset_automath
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 4_000
+  input_ids:
+  - filter_out_proofs_automath_1000000
+
+- id: seed_math_nvidia_math_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_math_nvidia_math_exploit
+- id: drop_columns_nvidia_math_exploit
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_nvidia_math_exploit
+- id: add_source_nvidia_math
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "nvidia_math"
+  input_ids:
+  - drop_columns_nvidia_math_exploit
+- id: filter_out_proofs_nvidia_math
+  config: 
+    type: function
+    function: data_strategies.MultipleSamples.utils.filter_out_proofs
+    function_config:
+      problem_column: instruction_seed
+  input_ids:
+    - add_source_nvidia_math
+- id: sample_dataset_nvidia_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 4_000
+  input_ids:
+  - filter_out_proofs_nvidia_math
+
+
+- id: seed_math_tiger_lab_math_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_math_tiger_lab_math_exploit
+- id: drop_columns_tiger_lab_math_exploit
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_tiger_lab_math_exploit
+- id: add_source_tiger_lab_math
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "tiger_lab_math"
+  input_ids:
+  - drop_columns_tiger_lab_math_exploit
+- id: filter_out_proofs_tiger_lab_math
+  config: 
+    type: function
+    function: data_strategies.MultipleSamples.utils.filter_out_proofs
+    function_config:
+      problem_column: instruction_seed
+  input_ids:
+    - add_source_tiger_lab_math
+- id: sample_dataset_tiger_lab_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 4_000
+  input_ids:
+  - filter_out_proofs_tiger_lab_math
+
+- id: seed_math_tiger_math_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_math_tiger_math_exploit
+- id: drop_columns_tiger_math_exploit
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_tiger_math_exploit
+- id: add_source_tiger_math
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "tiger_math"
+  input_ids:
+  - drop_columns_tiger_math_exploit
+- id: filter_out_proofs_tiger_math
+  config: 
+    type: function
+    function: data_strategies.MultipleSamples.utils.filter_out_proofs
+    function_config:
+      problem_column: instruction_seed
+  input_ids:
+    - add_source_tiger_math
+- id: sample_dataset_tiger_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 4_000
+  input_ids:
+  - filter_out_proofs_tiger_math
+- id: sample_dataset_all
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 16_000
+  input_ids:
+    - sample_dataset_tiger_math
+    - sample_dataset_automath
+    - sample_dataset_nvidia_math
+    - sample_dataset_tiger_lab_math
+
+- id: rename_instruction
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        instruction_seed: problem
+  input_ids:
+  - sample_dataset_all
+
+- id: dedup_topics
+  config:
+    type: function
+    function: data_strategies.commons.dedup_on_columns
+    function_config:
+      dedup_columns:
+        - problem
+  input_ids:
+    - rename_instruction
+- id: add_row_ids
+  config:
+    type: function
+    function: data_strategies.commons.add_row_ids
+    function_config:
+      column_name: id
+  input_ids:
+    - dedup_topics
+- id: duplicate
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.duplicate_rows
+    function_config:
+      n_copies: 12
+  input_ids:
+    - add_row_ids
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: problem
+    model: deepseek-reasoner
+    batch: False
+    temperature: 1.0
+    require_all_responses: false
+    backend: openai
+    backend_params:
+      max_requests_per_minute: 2_500
+      max_tokens_per_minute: 1_000_000_000
+      api_key: API_KEY
+      base_url: "https://api.deepseek.com/"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - duplicate
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1_distill_70b
+- id: merge_together
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.merge_duplicate_rows
+    function_config:
+      diff_columns: 
+        - final_reasoning_trace
+        - id
+  input_ids:
+    - convert_reasoning_trace_to_final

@@ -1,0 +1,32 @@
+operators:
+  - id: load_alpaca
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/evol_tt_5s
+      split: train
+  - id: sample_dataset
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 125  # 1.25% of 10000 target from stage 1
+    input_ids:
+      - load_alpaca
+  - id: add_qwen_model
+    config:
+      type: gpu_function
+      sharded: true
+      num_shards: 4
+      function: data_strategies.TestTime.qwen_prm.compute_batch_rewards
+      function_config:
+        steps_column: completion
+        query_column: evolved_instruction
+<<<<<<< HEAD
+        model_name: Qwen/Qwen2.5-Math-PRM-7B
+    input_ids:
+      - sample_dataset
+=======
+        model_name: Qwen/Qwen2.5-Math-PRM-72B
+    input_ids:
+      - sample_dataset
+>>>>>>> 6b72cc26 (working)

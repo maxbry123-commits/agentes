@@ -1,0 +1,2 @@
+# TACC keeper-31 refill 2026-07-03 — tb2 preset — next ⏳ a3 tier row 287 (mix_h2_language_proportional)
+laion/a3-rl-DCAgent_mix_h2_language_proportional-65-8B

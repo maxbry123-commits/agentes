@@ -1,0 +1,40 @@
+operators:
+  - id: load_hf_source
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/stratos_unverified_mix
+      split: train
+  - id: sample_dataset
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 10_000
+    input_ids:
+      - load_hf_source
+  - id: extract_problem
+    config:
+      type: function
+      function: data_strategies.DistillR1.utils.extract_question
+    input_ids:
+      - sample_dataset
+  - id: annotate
+    config:
+      type: completions
+      map: chat
+      map_config:
+        user_message_column: problem
+        output_column: task
+      model: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+      backend: "openai"
+      batch: False
+      generation_params:
+        max_tokens: 32000
+      backend_params:
+        api_key: 1sasCrQPrQkQhlsowcNMo7xJGN3jbSnP
+        request_timeout: 3600
+        max_concurrent_requests: 200
+        invalid_finish_reasons: ['content_filter']
+        base_url: "https://api.deepinfra.com/v1/openai"
+    input_ids:
+      - extract_problem

@@ -1,0 +1,36 @@
+name: Python Tests
+
+
+on:
+  pull_request:
+    branches: ["main", "penfever/working"]
+  push:
+    branches: ["main", "penfever/working"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python pin 3.12
+
+      - name: Install locked CI test environment
+        run: uv sync --group dev --python 3.12
+
+      - name: Run CI-safe unit tests (tests/)
+        run: uv run pytest tests/ -q

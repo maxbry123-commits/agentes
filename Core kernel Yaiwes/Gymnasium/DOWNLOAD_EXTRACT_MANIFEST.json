@@ -1,0 +1,78 @@
+{
+  "bundle_bytes": 118074059,
+  "bundle_sha256": "88a8af2f2bde5d38f1627ccfbe35cfb5be8c438833b895097b09ed0bf5c025d1",
+  "extracted_tree": {
+    "bytes": 130193912,
+    "files": 713,
+    "sha256": "13972814dd456fb27b0da30b87351379302fbdd2654451611fe3e3876620e143"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "Gymnasium.bundle.zip.part-0001",
+      "sha256": "b48accc66216ce511b8504014ca3555fff1b1f5491aad3d260e9428bd640844a"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Gymnasium.bundle.zip.part-0002",
+      "sha256": "d450639b4aa3275ecf3cbd52bc59da36a7ca8160cf9ccc76305b0fc61ec56a85"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Gymnasium.bundle.zip.part-0003",
+      "sha256": "b542925f433c86f010a7e20f2989beb020f3568e8d5df346bd5787e4fe4b5d40"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Gymnasium.bundle.zip.part-0004",
+      "sha256": "fe61e3cc2d0a61b9049c9a2ed47c65229fa160d651ec0b79d2a932783fdf1f3d"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Gymnasium.bundle.zip.part-0005",
+      "sha256": "ddfa5d32b7e9c64e92b355db854e8eb290a459bd5bfa735fa19b0919eee2c725"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Gymnasium.bundle.zip.part-0006",
+      "sha256": "d2fec6e2e821a1d7f698e1218bf2fa2e42d9cc510a8698d9d11f77216dfb1d7b"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Gymnasium.bundle.zip.part-0007",
+      "sha256": "18fd7180143e3f0ac816b4274229a85c386bb57d84a9a2cfa758c63d18fe55f4"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Gymnasium.bundle.zip.part-0008",
+      "sha256": "aa0b006a8064b3b4b818436b6ae18c88de9e47f0f726bb539daaf85f062dd636"
+    },
+    {
+      "bytes": 12582912,
+      "name": "Gymnasium.bundle.zip.part-0009",
+      "sha256": "7cb8b27baa0d65bd4865be58fa218865cf2ab70b7ed0f30872d21a045acc3bd4"
+    },
+    {
+      "bytes": 4827851,
+      "name": "Gymnasium.bundle.zip.part-0010",
+      "sha256": "d8ff84b1c5472276b6967362df7c8759eb510abf31f5514e09e22ba96f4287a5"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Gymnasium",
+  "source_bytes": 130193912,
+  "source_commit": "ec4715dda7cda0b36e2cd80af4c6bbff7e8a4fee",
+  "source_files": 713,
+  "source_ref": "HEAD",
+  "source_repo": "Farama-Foundation/Gymnasium",
+  "source_tree": {
+    "bytes": 130193912,
+    "files": 713,
+    "sha256": "13972814dd456fb27b0da30b87351379302fbdd2654451611fe3e3876620e143"
+  }
+}

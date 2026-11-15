@@ -1,0 +1,55 @@
+name: 🚀 Pydantic V2 Feature request
+description: 'Suggest a new feature for Pydantic V2 (NOTE: and we only making critical bug fixes to Pydantic V1)'
+labels: [feature request]
+
+body:
+  - type: markdown
+    attributes:
+      value: Thank you for contributing to pydantic! ✊
+
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Initial Checks
+      description: |
+        Just a few checks to make sure you need to create a feature request.
+
+        _Sorry to sound so draconian 👿; but every second spent replying to issues is time not spent improving pydantic 🙇._
+      options:
+        - label: I have searched Google & GitHub for similar requests and couldn't find anything
+          required: true
+        - label: I have read and followed [the docs](https://pydantic.dev/docs/validation/latest/get-started/) and still think this feature is missing
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: |
+        Please give as much detail as possible about the feature you would like to suggest. 🙏
+
+        You might like to add:
+        * A demo of how code might look when using the feature
+        * Your use case(s) for the feature
+        * Why the feature should be added to pydantic (as opposed to another library or just implemented in your code)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: affected-components
+    attributes:
+      label: Affected Components
+      description: Which of the following parts of pydantic does this feature affect?
+      # keep this lis in sync with bug.yml
+      options:
+        - label: '[Compatibility between releases](https://pydantic.dev/docs/validation/latest/get-started/changelog/)'
+        - label: '[Data validation/parsing](https://pydantic.dev/docs/validation/latest/concepts/models/#basic-model-usage)'
+        - label: '[Data serialization](https://pydantic.dev/docs/validation/latest/concepts/serialization/) - `.model_dump()` and `.model_dump_json()`'
+        - label: '[JSON Schema](https://pydantic.dev/docs/validation/latest/concepts/json_schema/)'
+        - label: '[Dataclasses](https://pydantic.dev/docs/validation/latest/concepts/dataclasses/)'
+        - label: '[Model Config](https://pydantic.dev/docs/validation/latest/concepts/config/)'
+        - label: '[Field Types](https://pydantic.dev/docs/validation/latest/api/pydantic/types/) - adding or changing a particular data type'
+        - label: '[Function validation decorator](https://pydantic.dev/docs/validation/latest/concepts/validation_decorator/)'
+        - label: '[Generic Models](https://pydantic.dev/docs/validation/latest/concepts/models/#generic-models)'
+        - label: '[Other Model behaviour](https://pydantic.dev/docs/validation/latest/concepts/models/) - `model_construct()`, pickling, private attributes, ORM mode'
+        - label: '[Plugins](https://pydantic.dev/docs/validation/latest/integrations/dev-tools/mypy/) and integration with other tools - mypy, FastAPI, python-devtools, Hypothesis, VS Code, PyCharm, etc.'

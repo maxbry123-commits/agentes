@@ -1,0 +1,135 @@
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+
+# Purpose of this module
+
+This module shows a simple retrieval augmented generation (RAG) example using
+Apache Hamilton. It shows you how you might structure your code with Apache Hamilton to
+create a simple RAG pipeline.
+
+This example uses [FAISS](https://engineering.fb.com/2017/03/29/data-infrastructure/faiss-a-library-for-efficient-similarity-search/) + an in memory vector store with multi-provider LLM support.
+It supports **OpenAI** (default) and **[MiniMax](https://www.minimax.io/)** as LLM providers,
+switchable via Hamilton's `@config.when` pattern.
+The implementation of the FAISS vector store uses the LangChain wrapper around it.
+That's because this was the simplest way to get this example up without requiring
+someone having to host and manage a proper vector store.
+
+## Example Usage
+
+### Inputs
+These are the defined inputs.
+
+ - *input_texts*: A list of strings. Each string will be encoded into a vector and stored in the vector store.
+ - *question*: A string. This is the question you want to ask the LLM, and vector store which will provide context.
+ - *top_k*: An integer. This is the number of vectors to retrieve from the vector store. Defaults to 5.
+
+### Overrides
+With Apache Hamilton you can easily override a function and provide a value for it. For example if you're
+iterating you might just want to override these two values before modifying the functions:
+
+ - *context*: if you want to skip going to the vector store and provide the context directly, you can do so by providing this override.
+ - *rag_prompt*: if you want to provide the prompt to pass to the LLM, pass it in as an override.
+
+### Execution
+You can ask to get back any result of an intermediate function by providing the function name in the `execute` call.
+Here we just ask for the final result, but if you wanted to, you could ask for outputs of any of the functions, which
+you can then introspect or log for debugging/evaluation purposes. Note if you want more platform integrations,
+you can add adapters that will do this automatically for you, e.g. like we have the `PrintLn` adapter here.
+
+**Using OpenAI (default):**
+```python
+# import the module
+from hamilton import driver
+from hamilton import lifecycle
+dr = (
+    driver.Builder()
+    .with_modules(faiss_rag)
+    .with_config({})  # defaults to OpenAI
+    # this prints the inputs and outputs of each step.
+    .with_adapters(lifecycle.PrintLn(verbosity=2))
+    .build()
+)
+result = dr.execute(
+    ["rag_response"],
+    inputs={
+        "input_texts": [
+            "harrison worked at kensho",
+            "stefan worked at Stitch Fix",
+        ],
+        "question": "where did stefan work?",
+    },
+)
+print(result)
+```
+
+**Using MiniMax:**
+
+Set `MINIMAX_API_KEY` in your environment, then pass `{"provider": "minimax"}` in the config:
+```python
+from hamilton import driver, lifecycle
+dr = (
+    driver.Builder()
+    .with_modules(faiss_rag)
+    .with_config({"provider": "minimax"})
+    .with_adapters(lifecycle.PrintLn(verbosity=2))
+    .build()
+)
+result = dr.execute(
+    ["rag_response"],
+    inputs={
+        "input_texts": [
+            "harrison worked at kensho",
+            "stefan worked at Stitch Fix",
+        ],
+        "question": "where did stefan work?",
+    },
+)
+print(result)
+```
+MiniMax uses the [MiniMax-M3](https://www.minimax.io/) model with a 512K context context window
+via an OpenAI-compatible API endpoint.
+
+# How to extend this module
+What you'd most likely want to do is:
+
+1. Change the vector store (and how embeddings are generated).
+2. Change the LLM provider.
+3. Change the context and prompt.
+
+With (1) you can import any vector store/library that you want. You should draw out
+the process you would like, and that should then map to Apache Hamilton functions.
+With (2) you can import any LLM provider that you want, just use `@config.when` if you
+want to switch between multiple providers. OpenAI and MiniMax are already supported.
+With (3) you can add more functions that create parts of the prompt.
+
+# Configuration Options
+
+| Config Key | Values | Description |
+|-----------|--------|-------------|
+| `provider` | `"minimax"` | Use MiniMax M3 as the LLM. Requires `MINIMAX_API_KEY` env var. |
+| *(empty)* | | Default: uses OpenAI. Requires `OPENAI_API_KEY` env var. |
+
+# Limitations
+
+You need to have the appropriate API key in your environment:
+- **OpenAI** (default): `OPENAI_API_KEY`
+- **MiniMax**: `MINIMAX_API_KEY`
+
+The code does not check the context length, so it may fail if the context passed is too long
+for the LLM you send it to.

@@ -1,0 +1,223 @@
+name: Release Build
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-launcher:
+    name: Build Cognithor.exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish Cognithor.exe
+        run: |
+          dotnet publish launcher/Cognithor/Cognithor.csproj `
+            -c Release -r win-x64 --self-contained `
+            -p:PublishSingleFile=true `
+            -p:PublishTrimmed=true `
+            -p:TrimMode=partial `
+            -o publish/launcher
+
+      - name: Upload launcher artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher
+          path: publish/launcher/Cognithor.exe
+
+  build-flutter-web:
+    name: Build Flutter Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+
+      - name: Generate l10n + Build web
+        working-directory: flutter_app
+        run: |
+          flutter pub get
+          flutter gen-l10n
+          flutter build web --release --no-tree-shake-icons
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-web
+          path: flutter_app/build/web/
+
+  build-flutter-desktop:
+    name: Build Flutter Desktop
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+
+      - name: Resolve deps + strip broken native plugin + build
+        working-directory: flutter_app
+        run: |
+          flutter pub get
+          flutter gen-l10n
+
+          # speech_to_text_windows v1.0.0+beta.8 native code fails in CI.
+          # Strip from generated files AFTER pub get, then build with --no-pub
+          # so Flutter doesn't regenerate them.
+          $reg = "windows\flutter\generated_plugin_registrant.cc"
+          $content = Get-Content $reg -Raw
+          $content = $content -replace '#include <speech_to_text_windows/speech_to_text_windows\.h>\r?\n', ''
+          $content = $content -replace '\s*SpeechToTextWindowsRegisterWithRegistrar\(\s*\r?\n\s*registry->GetRegistrarForPlugin\("SpeechToTextWindows"\)\);?\r?\n', ''
+          Set-Content $reg $content
+          Write-Host "Stripped SpeechToTextWindows from registrant"
+
+          $cmake = "windows\flutter\generated_plugins.cmake"
+          (Get-Content $cmake) | Where-Object { $_ -notmatch 'speech_to_text_windows' } | Set-Content $cmake
+          Write-Host "Stripped speech_to_text_windows from cmake"
+
+          flutter build windows --release --no-pub
+
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-desktop
+          path: flutter_app/build/windows/x64/runner/Release/
+
+  build-installer:
+    name: Build Windows Installer
+    runs-on: windows-latest
+    needs: [build-launcher, build-flutter-web, build-flutter-desktop]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download launcher artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: launcher
+          path: installer/build/
+
+      - name: Download Flutter web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: flutter-web
+          path: installer/build/flutter_web/
+
+      - name: Download Flutter desktop artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: flutter-desktop
+          path: installer/build/flutter_desktop/
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Install hatchling
+        run: pip install hatchling
+
+      - name: Build embedded Python + installer
+        run: python installer/build_installer.py --skip-flutter --skip-launcher-exe
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: installer/dist/CognithorSetup-*.exe
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-installer, build-launcher, build-flutter-web]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so we can compute the previous tag
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Rename launcher asset for clarity
+        # Cognithor.exe is the .NET launcher shell alone (no bundled Python /
+        # Flutter), not the full installer. On the public release page the
+        # name "Cognithor.exe" next to "CognithorSetup-*.exe" confused users
+        # who didn't know which to download. Rename so the purpose and
+        # version are obvious, matching the existing CognithorSetup-* pattern.
+        run: mv artifacts/launcher/Cognithor.exe "artifacts/launcher/CognithorLauncher-${{ steps.version.outputs.version }}.exe"
+
+      - name: Generate release notes
+        id: notes
+        shell: bash
+        run: |
+          # Previous tag (skip the current one). Falls back to first commit
+          # if this is the first tag in the repo.
+          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || git rev-list --max-parents=0 HEAD | tail -1)
+          CURRENT="${GITHUB_REF_NAME}"
+          REPO_URL="https://github.com/${GITHUB_REPOSITORY}"
+
+          {
+            echo "## What's Changed"
+            echo ""
+            echo "### Features"
+            git log "${PREV}..${CURRENT}" --pretty=format:"- %s (%h)" --grep="^feat" 2>/dev/null || true
+            echo ""
+            echo ""
+            echo "### Fixes"
+            git log "${PREV}..${CURRENT}" --pretty=format:"- %s (%h)" --grep="^fix" 2>/dev/null || true
+            echo ""
+            echo ""
+            echo "### Other"
+            git log "${PREV}..${CURRENT}" --pretty=format:"- %s (%h)" --invert-grep --grep="^feat" --grep="^fix" 2>/dev/null | head -40 || true
+            echo ""
+            echo ""
+            echo "---"
+            echo ""
+            echo "**Full Changelog**: ${REPO_URL}/compare/${PREV}...${CURRENT}"
+          } > release_notes.md
+
+          cat release_notes.md
+          {
+            echo "body<<RELEASE_NOTES_EOF"
+            cat release_notes.md
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Cognithor ${{ steps.version.outputs.version }}
+          # We build our own notes explicitly. Previously `generate_release_notes: true`
+          # prepended a fresh "Full Changelog" line on every workflow re-run — ending up
+          # with N duplicate lines for N runs (see v0.92.2). Pinning an explicit body +
+          # append_body=false guarantees idempotent re-runs.
+          body: ${{ steps.notes.outputs.body }}
+          append_body: false
+          generate_release_notes: false
+          files: |
+            artifacts/installer/CognithorSetup-*.exe
+            artifacts/launcher/CognithorLauncher-*.exe

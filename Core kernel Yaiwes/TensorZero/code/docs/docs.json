@@ -1,0 +1,446 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "TensorZero Docs",
+  "description": "TensorZero is an open-source stack for industrial-grade LLM applications that unifies an LLM gateway, observability, optimization, evaluation, and experimentation.",
+  "colors": {
+    "primary": "#FF4F00",
+    "light": "#FFB56D",
+    "dark": "#FF4F00"
+  },
+  "favicon": "/favicon.svg",
+  "contextual": {
+    "options": ["copy", "view", "chatgpt", "claude"]
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Introduction",
+            "pages": [
+              "index",
+              "quickstart",
+              "vision-and-roadmap",
+              "faq",
+              {
+                "group": "Comparison",
+                "pages": [
+                  "comparison/dspy",
+                  "comparison/kong",
+                  "comparison/langchain",
+                  "comparison/langfuse",
+                  "comparison/litellm",
+                  "comparison/openpipe",
+                  "comparison/openrouter",
+                  "comparison/portkey"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Gateway",
+            "pages": [
+              "gateway/index",
+              "gateway/call-any-llm",
+              "gateway/call-the-openai-responses-api",
+              "gateway/configure-models-and-providers",
+              "gateway/configure-functions-and-variants",
+              "gateway/create-a-prompt-template",
+              "gateway/generate-structured-outputs",
+              "gateway/call-llms-with-image-and-file-inputs",
+              "gateway/generate-embeddings",
+              "gateway/guides/batch-inference",
+              "gateway/guides/episodes",
+              "gateway/guides/inference-caching",
+              "gateway/guides/inference-time-optimizations",
+              "gateway/guides/metrics-feedback",
+              "gateway/guides/retries-fallbacks",
+              "gateway/guides/tool-use",
+              "gateway/benchmarks",
+              "gateway/configuration-reference",
+              "gateway/data-model",
+              {
+                "group": "API Reference",
+                "expanded": true,
+                "pages": [
+                  "gateway/api-reference/inference",
+                  "gateway/api-reference/inference-openai-compatible",
+                  "gateway/api-reference/feedback",
+                  "gateway/api-reference/batch-inference",
+                  "gateway/api-reference/datasets-datapoints"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Observability",
+            "pages": ["observability/query-historical-inferences"]
+          },
+          {
+            "group": "Optimization",
+            "pages": [
+              "optimization/index",
+              "optimization/dynamic-in-context-learning-dicl",
+              "optimization/gepa",
+              "optimization/supervised-fine-tuning-sft"
+            ]
+          },
+          {
+            "group": "Evaluations",
+            "pages": [
+              "evaluations/index",
+              {
+                "group": "Inference Evaluations",
+                "expanded": true,
+                "pages": [
+                  "evaluations/inference-evaluations/tutorial",
+                  "evaluations/inference-evaluations/configuration-reference",
+                  "evaluations/inference-evaluations/cli-reference"
+                ]
+              },
+              {
+                "group": "Workflow Evaluations",
+                "expanded": true,
+                "pages": [
+                  "evaluations/workflow-evaluations/tutorial",
+                  "evaluations/workflow-evaluations/api-reference"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Experimentation",
+            "pages": [
+              "experimentation/run-adaptive-ab-tests",
+              "experimentation/run-static-ab-tests",
+              "experimentation/scope-experiments-with-namespaces"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/tensorzero-gateway",
+              "deployment/tensorzero-ui",
+              "deployment/postgres",
+              "deployment/clickhouse",
+              "deployment/valkey-redis",
+              "deployment/tensorzero-autopilot",
+              "deployment/upgrade-tensorzero",
+              "deployment/optimize-latency-and-throughput"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/manage-credentials",
+              "operations/set-up-auth-for-tensorzero",
+              "operations/enforce-custom-rate-limits",
+              "operations/track-usage-and-cost",
+              "operations/centralize-auth-rate-limits-and-more",
+              "operations/organize-your-configuration",
+              "operations/export-opentelemetry-traces",
+              "operations/export-prometheus-metrics",
+              "operations/extend-tensorzero"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Integrations",
+        "groups": [
+          {
+            "group": "Model Providers",
+            "pages": [
+              "integrations/model-providers/index",
+              "integrations/model-providers/anthropic",
+              "integrations/model-providers/aws-bedrock",
+              "integrations/model-providers/aws-sagemaker",
+              "integrations/model-providers/azure",
+              "integrations/model-providers/deepseek",
+              "integrations/model-providers/fireworks",
+              "integrations/model-providers/gcp-vertex-ai-anthropic",
+              "integrations/model-providers/gcp-vertex-ai-gemini",
+              "integrations/model-providers/google-ai-studio-gemini",
+              "integrations/model-providers/groq",
+              "integrations/model-providers/hyperbolic",
+              "integrations/model-providers/mistral",
+              "integrations/model-providers/openai-compatible",
+              "integrations/model-providers/openai",
+              "integrations/model-providers/openrouter",
+              "integrations/model-providers/sglang",
+              "integrations/model-providers/tgi",
+              "integrations/model-providers/together",
+              "integrations/model-providers/vllm",
+              "integrations/model-providers/xai"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Documentation",
+          "href": "https://www.tensorzero.com/docs",
+          "icon": "book-open-cover"
+        },
+        {
+          "anchor": "Blog",
+          "href": "https://www.tensorzero.com/blog",
+          "icon": "newspaper"
+        },
+        {
+          "anchor": "Slack",
+          "href": "https://www.tensorzero.com/slack",
+          "icon": "slack"
+        },
+        {
+          "anchor": "Discord",
+          "href": "https://www.tensorzero.com/discord",
+          "icon": "discord"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://www.tensorzero.com/"
+  },
+  "navbar": {
+    "links": [],
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/tensorzero/tensorzero"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/tensorzero/tensorzero",
+      "x": "https://x.com/tensorzero",
+      "linkedin": "https://linkedin.com/company/tensorzero",
+      "slack": "https://www.tensorzero.com/slack",
+      "discord": "https://www.tensorzero.com/discord"
+    }
+  },
+  "redirects": [
+    {
+      "source": "/evaluations/cli-reference",
+      "destination": "/evaluations/inference-evaluations/cli-reference"
+    },
+    {
+      "source": "/evaluations/cli-reference/",
+      "destination": "/evaluations/inference-evaluations/cli-reference"
+    },
+    {
+      "source": "/evaluations/configuration-reference",
+      "destination": "/evaluations/inference-evaluations/configuration-reference"
+    },
+    {
+      "source": "/evaluations/configuration-reference/",
+      "destination": "/evaluations/inference-evaluations/configuration-reference"
+    },
+    {
+      "source": "/evaluations/tutorial",
+      "destination": "/evaluations/inference-evaluations/tutorial"
+    },
+    {
+      "source": "/evaluations/tutorial/",
+      "destination": "/evaluations/inference-evaluations/tutorial"
+    },
+    {
+      "source": "/gateway/api-reference",
+      "destination": "/gateway/api-reference/inference"
+    },
+    {
+      "source": "/gateway/api-reference/",
+      "destination": "/gateway/api-reference/inference"
+    },
+    {
+      "source": "/gateway/call-an-llm",
+      "destination": "/gateway/call-any-llm"
+    },
+    {
+      "source": "/gateway/quickstart",
+      "destination": "/quickstart"
+    },
+    {
+      "source": "/gateway/quickstart/",
+      "destination": "/quickstart"
+    },
+    {
+      "source": "/vision-roadmap",
+      "destination": "/vision-and-roadmap"
+    },
+    {
+      "source": "/gateway/guides/performance-latency",
+      "destination": "/deployment/optimize-latency-and-throughput"
+    },
+    {
+      "source": "/gateway/guides/performance-latency/",
+      "destination": "/deployment/optimize-latency-and-throughput"
+    },
+    {
+      "source": "/gateway/guides/experimentation",
+      "destination": "/experimentation/run-static-ab-tests"
+    },
+    {
+      "source": "/gateway/guides/experimentation/",
+      "destination": "/experimentation/run-static-ab-tests"
+    },
+    {
+      "source": "/experimentation/run-ab-tests",
+      "destination": "/experimentation/run-static-ab-tests"
+    },
+    {
+      "source": "/experimentation/run-ab-tests/",
+      "destination": "/experimentation/run-static-ab-tests"
+    },
+    {
+      "source": "/gateway/deployment",
+      "destination": "/deployment/tensorzero-gateway"
+    },
+    {
+      "source": "/gateway/deployment/",
+      "destination": "/deployment/tensorzero-gateway"
+    },
+    {
+      "source": "/ui/deployment",
+      "destination": "/deployment/tensorzero-ui"
+    },
+    {
+      "source": "/ui/deployment/",
+      "destination": "/deployment/tensorzero-ui"
+    },
+    {
+      "source": "/gateway/guides/credential-management",
+      "destination": "/operations/manage-credentials"
+    },
+    {
+      "source": "/gateway/guides/credential-management/",
+      "destination": "/operations/manage-credentials"
+    },
+    {
+      "source": "/gateway/api-reference/auxiliary-endpoints/",
+      "destination": "/operations/export-prometheus-metrics"
+    },
+    {
+      "source": "/gateway/api-reference/auxiliary-endpoints",
+      "destination": "/operations/export-prometheus-metrics"
+    },
+    {
+      "source": "/gateway/guides/opentelemetry-otlp",
+      "destination": "/operations/export-opentelemetry-traces"
+    },
+    {
+      "source": "/gateway/guides/opentelemetry-otlp/",
+      "destination": "/operations/export-opentelemetry-traces"
+    },
+    {
+      "source": "/gateway/guides/extending-tensorzero",
+      "destination": "/operations/extend-tensorzero"
+    },
+    {
+      "source": "/gateway/guides/extending-tensorzero/",
+      "destination": "/operations/extend-tensorzero"
+    },
+    {
+      "source": "/gateway/integrations",
+      "destination": "/integrations/model-providers"
+    },
+    {
+      "source": "/gateway/integrations/",
+      "destination": "/integrations/model-providers"
+    },
+    {
+      "source": "/gateway/guides/providers/:provider*",
+      "destination": "/integrations/model-providers/:provider*"
+    },
+    {
+      "source": "/gateway/guides/providers/:provider*/",
+      "destination": "/integrations/model-providers/:provider*"
+    },
+    {
+      "source": "/gateway/guides/prompt-templates-schemas",
+      "destination": "/gateway/create-a-prompt-template"
+    },
+    {
+      "source": "/gateway/guides/prompt-templates-schemas/",
+      "destination": "/gateway/create-a-prompt-template"
+    },
+    {
+      "source": "/gateway/guides/multimodal-inference",
+      "destination": "/gateway/call-llms-with-image-and-file-inputs"
+    },
+    {
+      "source": "/gateway/guides/multimodal-inference/",
+      "destination": "/gateway/call-llms-with-image-and-file-inputs"
+    },
+    {
+      "source": "/evaluations/static-evaluations/cli-reference",
+      "destination": "/evaluations/inference-evaluations/cli-reference"
+    },
+    {
+      "source": "/evaluations/static-evaluations/cli-reference/",
+      "destination": "/evaluations/inference-evaluations/cli-reference"
+    },
+    {
+      "source": "/evaluations/static-evaluations/configuration-reference",
+      "destination": "/evaluations/inference-evaluations/configuration-reference"
+    },
+    {
+      "source": "/evaluations/static-evaluations/configuration-reference/",
+      "destination": "/evaluations/inference-evaluations/configuration-reference"
+    },
+    {
+      "source": "/evaluations/static-evaluations/tutorial",
+      "destination": "/evaluations/inference-evaluations/tutorial"
+    },
+    {
+      "source": "/evaluations/static-evaluations/tutorial/",
+      "destination": "/evaluations/inference-evaluations/tutorial"
+    },
+    {
+      "source": "/evaluations/dynamic-evaluations/tutorial",
+      "destination": "/evaluations/workflow-evaluations/tutorial"
+    },
+    {
+      "source": "/evaluations/dynamic-evaluations/tutorial/",
+      "destination": "/evaluations/workflow-evaluations/tutorial"
+    },
+    {
+      "source": "/evaluations/dynamic-evaluations/api-reference",
+      "destination": "/evaluations/workflow-evaluations/api-reference"
+    },
+    {
+      "source": "/evaluations/dynamic-evaluations/api-reference/",
+      "destination": "/evaluations/workflow-evaluations/api-reference"
+    },
+    {
+      "source": "/gateway/tutorial",
+      "destination": "/quickstart"
+    },
+    {
+      "source": "/gateway/tutorial/",
+      "destination": "/quickstart"
+    },
+    {
+      "source": "/gateway/guides/streaming-inference",
+      "destination": "/gateway"
+    },
+    {
+      "source": "/gateway/guides/streaming-inference/",
+      "destination": "/gateway"
+    },
+    {
+      "source": "/gateway/clients",
+      "destination": "/gateway"
+    },
+    {
+      "source": "/gateway/clients/",
+      "destination": "/gateway"
+    }
+  ]
+}

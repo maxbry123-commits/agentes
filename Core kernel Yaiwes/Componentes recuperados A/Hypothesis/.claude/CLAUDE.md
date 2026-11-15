@@ -1,0 +1,53 @@
+# Hypothesis Development Guide
+
+## Essential Reading
+
+**Always read `CONTRIBUTING.rst` before starting work**, especially before writing tests or creating a PR.
+
+## Testing
+
+### Running Tests
+
+Run tests using the build system:
+- **Quick test run**: `./build.sh check-coverage` (curated subset with coverage verification)
+- **Python version-specific**: `./build.sh check-py311` (replace with target version)
+- **Fine-grained control**: `./build.sh tox py311-custom 3.11.3 -- [pytest args]`
+- **Direct pytest** (after setup): `pytest hypothesis/tests/cover/`
+
+### Writing Tests
+
+**Never use `.example()` method in tests.** Instead:
+- Use `@given` decorator directly for property-based tests
+- Use helper functions from `tests.common.debug`:
+  - `minimal()` - find minimal failing example
+  - `find_any()` - find any example matching condition
+  - `assert_all_examples()` - verify all examples match predicate
+  - `assert_simple_property()` - verify simple properties with few examples
+  - `check_can_generate_examples()` - verify strategy can generate without error
+
+## Changelog & Pull Requests
+
+When creating a PR that changes `hypothesis/src/`:
+1. Create `hypothesis/RELEASE.rst` with `RELEASE_TYPE: patch` (bugfixes) or `minor` (features)
+2. See `RELEASE-sample.rst` for examples
+3. **Imitate the style in `changelog.rst`** for consistency - read a few recent entries and match their phrasing and length
+4. Follow all changelog instructions in `CONTRIBUTING.rst`
+5. Specific additional guidelines:
+  * Do not over-specify built-in exceptions. For example, "fix <x>, which previously raised an error" is generally better than  "fix <x>, which previously raised ``TypeError``.
+  * The changelog explains *what* changed for users, not *how* - leave implementation details to the commit message and code comments.
+
+**Note:** A RELEASE.rst is required if and only if the PR modifies files under `hypothesis/src/`. PRs touching only tests, docs (including `hypothesis/docs/`), the website, tooling, or CI config should **not** include a RELEASE.rst.
+
+## Before Committing
+
+1. Do a final edit pass on all code to ensure it is:
+   - **Concise** - remove unnecessary verbosity
+   - **Idiomatic** - follows Python and Hypothesis conventions
+   - **Minimally commented** - code should be self-documenting; only add comments where truly needed
+   - **Module-scope imports** - put imports at the top of the module wherever possible; only use function-local imports when needed to break a real import cycle or to lazy-load an optional dependency
+2. **Run `./build.sh format; ./build.sh lint`** immediately before committing to auto-format and lint code
+3. **Do not reference issues or PRs in commit messages** (e.g., avoid `Fixes #1234` or `See #5678`) - this clutters the issue timeline with unnecessary links
+
+## Before Pushing to a PR
+
+**Always run `./build.sh format` before `git push`.** The CI `check-format` job runs `shed` against every file your branch touches and asserts no diff — so if any tool other than the pinned `shed` (e.g. `ruff format`) has been used on those files, or if pre-existing lines in a touched file aren't already shed-formatted, the job fails. Running `./build.sh format` uses the pinned tool versions and is the only way to be sure the check will pass.

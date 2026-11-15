@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 7232663,
+  "bundle_sha256": "42da8f94f3459b2c56e504bd22edb7d03839b4b98e05c309635832f20e8ee0e4",
+  "extracted_tree": {
+    "bytes": 22462071,
+    "files": 363,
+    "sha256": "121c1d7b0dc3b45e26f1584f33b08727be1822191237424ed3c0d1a71955e19a"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 7232663,
+      "name": "Graphiti.bundle.zip.part-0001",
+      "sha256": "42da8f94f3459b2c56e504bd22edb7d03839b4b98e05c309635832f20e8ee0e4"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Graphiti",
+  "source_bytes": 22462071,
+  "source_commit": "c035afb7990b6077331a81e98b04efcfd9bf8184",
+  "source_files": 363,
+  "source_ref": "HEAD",
+  "source_repo": "getzep/graphiti",
+  "source_tree": {
+    "bytes": 22462071,
+    "files": 363,
+    "sha256": "121c1d7b0dc3b45e26f1584f33b08727be1822191237424ed3c0d1a71955e19a"
+  }
+}

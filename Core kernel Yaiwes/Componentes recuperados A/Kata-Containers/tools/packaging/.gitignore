@@ -1,0 +1,17 @@
+*.img
+*.initrd
+*.sha256
+*.tar.gz
+*.tar.xz
+*.gz
+*.dsc
+*.deb
+*.buildinfo
+*.changes
+debian.series
+parts/
+prime/
+sha256sums.asc
+stage/
+typescript
+kata-linux-*

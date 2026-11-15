@@ -1,0 +1,230 @@
+# Changelog
+
+## [2.0.1](https://github.com/gorules/zen/compare/zen-tmpl-v2.0.0...zen-tmpl-v2.0.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* improve READMEs across bindings ([#516](https://github.com/gorules/zen/issues/516)) ([692ca2f](https://github.com/gorules/zen/commit/692ca2fe6b503a42da6b311dbefdf603a3ae5df4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 2.0.0 to 2.0.1
+
+## [2.0.0](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.13...zen-tmpl-v2.0.0) (2026-08-20)
+
+
+### Bug Fixes
+
+* panic hardening ([#509](https://github.com/gorules/zen/issues/509)) ([792e77a](https://github.com/gorules/zen/commit/792e77a82e531fc437b536b1e42b73a610f02ae0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.13 to 2.0.0
+
+## [1.0.0-beta.13](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.12...zen-tmpl-v1.0.0-beta.13) (2026-08-18)
+
+
+### Miscellaneous
+
+* **zen-tmpl:** Synchronize core versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.12 to 1.0.0-beta.13
+
+## [1.0.0-beta.12](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.11...zen-tmpl-v1.0.0-beta.12) (2026-08-07)
+
+
+### Performance
+
+* general performance improvements ([#500](https://github.com/gorules/zen/issues/500)) ([fe43b4c](https://github.com/gorules/zen/commit/fe43b4c1d71fb28c247ffb0ebd9e332d34f5f907))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.11 to 1.0.0-beta.12
+
+## [1.0.0-beta.11](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.10...zen-tmpl-v1.0.0-beta.11) (2026-07-26)
+
+
+### Miscellaneous
+
+* **zen-tmpl:** Synchronize core versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.10 to 1.0.0-beta.11
+
+## [1.0.0-beta.10](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.9...zen-tmpl-v1.0.0-beta.10) (2026-07-24)
+
+
+### Miscellaneous
+
+* **zen-tmpl:** Synchronize core versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.9 to 1.0.0-beta.10
+
+## [1.0.0-beta.9](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.8...zen-tmpl-v1.0.0-beta.9) (2026-07-22)
+
+
+### Miscellaneous
+
+* **zen-tmpl:** Synchronize core versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.8 to 1.0.0-beta.9
+
+## [1.0.0-beta.8](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.7...zen-tmpl-v1.0.0-beta.8) (2026-07-22)
+
+
+### Miscellaneous
+
+* **zen-tmpl:** Synchronize core versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.7 to 1.0.0-beta.8
+
+## [1.0.0-beta.7](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.6...zen-tmpl-v1.0.0-beta.7) (2026-07-20)
+
+
+### Miscellaneous
+
+* **zen-tmpl:** Synchronize core versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.6 to 1.0.0-beta.7
+
+## [1.0.0-beta.6](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.5...zen-tmpl-v1.0.0-beta.6) (2026-07-16)
+
+
+### Miscellaneous
+
+* **zen-tmpl:** Synchronize core versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.5 to 1.0.0-beta.6
+
+## [1.0.0-beta.5](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.4...zen-tmpl-v1.0.0-beta.5) (2026-07-10)
+
+
+### Miscellaneous
+
+* **zen-tmpl:** Synchronize core versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.4 to 1.0.0-beta.5
+
+## [1.0.0-beta.4](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.3...zen-tmpl-v1.0.0-beta.4) (2026-07-08)
+
+
+### Miscellaneous
+
+* **zen-tmpl:** Synchronize core versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.3 to 1.0.0-beta.4
+
+## [1.0.0-beta.3](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.2...zen-tmpl-v1.0.0-beta.3) (2026-07-07)
+
+
+### Miscellaneous
+
+* **zen-tmpl:** Synchronize core versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.2 to 1.0.0-beta.3
+
+## [1.0.0-beta.2](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.1...zen-tmpl-v1.0.0-beta.2) (2026-06-26)
+
+
+### Miscellaneous
+
+* **zen-tmpl:** Synchronize core versions
+
+## [1.0.0-beta.1](https://github.com/gorules/zen/compare/zen-tmpl-v1.0.0-beta.0...zen-tmpl-v1.0.0-beta.1) (2026-06-25)
+
+
+### Miscellaneous
+
+* **zen-tmpl:** Synchronize core versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 1.0.0-beta.0 to 1.0.0-beta.1
+
+## [1.0.0-beta.0](https://github.com/gorules/zen/compare/zen-tmpl-v0.55.1...zen-tmpl-v1.0.0-beta.0) (2026-06-25)
+
+
+### Features
+
+* configurable arbitrary precision ([#433](https://github.com/gorules/zen/issues/433)) ([46688a4](https://github.com/gorules/zen/commit/46688a4d4ce72f23db22b4397827b28529a5d71d))
+* custom node ([#138](https://github.com/gorules/zen/issues/138)) ([daecf90](https://github.com/gorules/zen/commit/daecf901e6576df0ddd9d24dbc2aed6774b4599f))
+* expression chain ([#166](https://github.com/gorules/zen/issues/166)) ([6271d8a](https://github.com/gorules/zen/commit/6271d8ab1aa232d0f52c3eb1f513df62650f63ad))
+* expression static analysis ([#449](https://github.com/gorules/zen/issues/449)) ([602d214](https://github.com/gorules/zen/commit/602d214b9648964c032cdd2b414b0c40e22c6414))
+* improve stack resiliency ([#357](https://github.com/gorules/zen/issues/357)) ([173d7bc](https://github.com/gorules/zen/commit/173d7bcb7956a4b4c66173d7cbec3e3a4d4386c4))
+* rc variable ([#246](https://github.com/gorules/zen/issues/246)) ([9159816](https://github.com/gorules/zen/commit/91598166ce912b8d8f53441d5e9fa8a02bf9855a))
+* wasm support ([#404](https://github.com/gorules/zen/issues/404)) ([922a262](https://github.com/gorules/zen/commit/922a262e989ea914e7ed3ccde52f27d31b6b2c39))
+
+
+### Bug Fixes
+
+* disable default features tmpl ([#362](https://github.com/gorules/zen/issues/362)) ([aca131c](https://github.com/gorules/zen/commit/aca131cf4cfbc8c951e8ba8824fe87cefde71022))
+* rename templates crate ([#140](https://github.com/gorules/zen/issues/140)) ([ebba323](https://github.com/gorules/zen/commit/ebba3233668779fa510a7d059c027eea43137929))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * zen-expression bumped from 0.55.1 to 1.0.0-beta.0

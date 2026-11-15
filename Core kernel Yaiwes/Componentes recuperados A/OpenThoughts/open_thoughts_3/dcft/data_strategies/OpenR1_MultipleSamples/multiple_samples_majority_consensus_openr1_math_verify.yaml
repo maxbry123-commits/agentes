@@ -1,0 +1,114 @@
+operators:
+  - id: get_openr1_hf
+    config:
+      type: hf_source
+      dataset: open-r1/OpenR1-Math-Raw
+      split: train
+  - id: sample_dataset
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 100_000 
+    input_ids:
+    - get_openr1_hf
+  - id: select_rows_without_proof
+    config:
+      type: function
+      sharded: true
+      num_shards: 64
+      function: data_strategies.commons.select_rows_without
+      function_config:
+        conditions:
+          answer: "proof"
+    input_ids:
+      - sample_dataset
+  - id: expand_generation
+    config:
+      type: high_memory_function
+      memory: 600
+      sharded: true
+      num_shards: 64
+      function: data_strategies.OpenR1_MultipleSamples.utils.apply_expand_generation
+    input_ids:
+      - sample_dataset
+  # - id: remove_columns
+  #   config:
+  #     type: function
+  #     sharded: true
+  #     num_shards: 32
+  #     function: data_strategies.commons.remove_columns
+  #     function_config:
+  #       columns:
+  #         - generations
+  #   input_ids:
+  #     - expand_generation
+  # - id: extract_math_answer
+  #   config:
+  #     type: high_memory_function
+  #     memory: 200
+  #     sharded: true
+  #     num_shards: 32
+  #     function: data_strategies.MultipleSamples.utils.extract_with_math_verify_safe
+  #     function_config:
+  #       input_column: generation
+  #       output_column: generation_extracted_answer
+  #   input_ids:
+  #     - remove_columns
+  # - id: merge_together
+  #   config:
+  #     type: high_memory_function
+  #     memory: 500
+  #     function: data_strategies.TestTime.generator.merge_duplicate_rows
+  #     function_config:
+  #       diff_columns: 
+  #         - generation
+  #         - generation_extracted_answer
+  #   input_ids:
+  #     - extract_math_answer
+  # - id: consensus_verification
+  #   config:
+  #     type: function
+  #     sharded: true
+  #     num_shards: 32
+  #     function: data_strategies.MultipleSamples.utils.majority_consensus
+  #     function_config:
+  #       response_column: generation
+  #       verified_response_column: verified_generation
+  #       extracted_answer_column: generation_extracted_answer
+  #   input_ids:
+  #   - merge_together
+  # - id: remove_columns_after_consensus
+  #   config:
+  #     type: function
+  #     sharded: true
+  #     num_shards: 32
+  #     function: data_strategies.commons.remove_columns
+  #     function_config:
+  #       columns:
+  #         - _majority_responses
+  #   input_ids:
+  #     - consensus_verification
+  # - id: convert_to_sharegpt
+  #   config:
+  #     type: function
+  #     sharded: true
+  #     num_shards: 32
+  #     function: data_strategies.commons.convert_instruction_response_to_sharegpt
+  #     function_config:
+  #       input_instruction_column: problem
+  #       input_response_column: verified_generation
+  #       output_sharegpt_column: conversations
+  #   input_ids:
+  #     - remove_columns_after_consensus
+
+  # - id: load_preexisting_all_proofs
+  #   config:
+  #     type: load_preexisting
+  #     framework_name: open_r1_hf_get_all_proofs
+  # - id: mix
+  #   config:
+  #     type: mix
+  #   input_ids:
+  #     - load_preexisting_all_proofs
+  #     - convert_to_sharegpt

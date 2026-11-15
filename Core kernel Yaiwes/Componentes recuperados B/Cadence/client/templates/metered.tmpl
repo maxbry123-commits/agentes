@@ -1,0 +1,87 @@
+import (
+	"context"
+	"strings"
+	"time"
+
+	"go.uber.org/yarpc"
+    "github.com/uber/cadence/common/constants"
+	"github.com/uber/cadence/common/metrics"
+	"github.com/uber/cadence/common/types"
+)
+
+{{$clientName := (index .Vars "client")}}
+{{ $decorator := (printf "%s%s" (down $clientName) .Interface.Name) }}
+{{ $Decorator := (printf "%s%s" $clientName .Interface.Name) }}
+
+// {{$decorator}} implements {{.Interface.Type}} interface instrumented with retries
+type {{$decorator}} struct {
+    client        {{.Interface.Type}}
+    metricsClient metrics.Client
+}
+
+// New{{$Decorator}} creates a new instance of {{$decorator}} with retry policy
+func New{{$Decorator}}(client {{.Interface.Type}}, metricsClient metrics.Client) {{.Interface.Type}} {
+    return &{{$decorator}}{
+        client:        client,
+        metricsClient: metricsClient,
+    }
+}
+
+{{range $method := .Interface.Methods}}
+func (c *{{$decorator}}) {{$method.Declaration}} {
+    {{- $scopeName:=printf "metrics.%sClient%sScope" $clientName $method.Name }}
+	retryCount := getRetryCountFromContext({{(index $method.Params 0).Name}})
+
+	var scope metrics.Scope
+	if retryCount == -1 {
+		scope = c.metricsClient.Scope({{$scopeName}})
+	} else {
+		scope = c.metricsClient.Scope({{$scopeName}}, metrics.IsRetryTag(retryCount > 0))
+	}
+
+	scope.IncCounter(metrics.CadenceClientRequests)
+
+    {{- if eq $clientName "Matching" }}
+    c.emitForwardedFromStats(scope, {{(index $method.Params 1).Name}})
+    {{ end }}
+
+	clientLatencyStart := time.Now()
+	sw := scope.StartTimer(metrics.CadenceClientLatency)
+	{{$method.ResultsNames}} = c.client.{{$method.Call}}
+	sw.Stop()
+	scope.ExponentialHistogram(metrics.CadenceClientLatencyHistogram, time.Since(clientLatencyStart))
+
+	if err != nil {
+		scope.IncCounter(metrics.CadenceClientFailures)
+	}
+	return {{$method.ResultsNames}}
+}
+{{end}}
+
+{{- if eq $clientName "Matching" }}
+type forwardedRequest interface {
+    GetForwardedFrom() string
+    GetTaskList() *types.TaskList
+}
+
+func (c *{{$decorator}}) emitForwardedFromStats(scope metrics.Scope, req any) {
+    p, ok := req.(forwardedRequest)
+    if !ok || p.GetTaskList() == nil {
+        return
+    }
+
+    taskList := p.GetTaskList()
+    forwardedFrom := p.GetForwardedFrom()
+
+    isChildPartition := strings.HasPrefix(taskList.GetName(), constants.ReservedTaskListPrefix)
+    if forwardedFrom != ""{
+        scope.IncCounter(metrics.MatchingClientForwardedCounter)
+        return
+    }
+
+    if isChildPartition {
+        scope.IncCounter(metrics.MatchingClientInvalidTaskListName)
+    }
+    return
+}
+{{ end -}}

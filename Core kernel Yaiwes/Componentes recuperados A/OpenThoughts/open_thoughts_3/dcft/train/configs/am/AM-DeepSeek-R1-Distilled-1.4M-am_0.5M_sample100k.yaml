@@ -1,0 +1,20 @@
+include_hp: dcft/train/hp_settings/paper/reasoning_large.yaml
+
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/AM-DeepSeek-R1-Distilled-1.4M-am_0.5M_sample100k
+messages: messages
+formatting: sharegpt
+role_tag: role
+content_tag: content
+user_tag: user
+assistant_tag: assistant
+
+per_device_train_batch_size: 1      # Can change depending on hardware
+gradient_accumulation_steps: 16      # Can change depending on number of GPUs
+
+output_dir: "/data4/dcft/experiments/train/checkpoints/AM-DeepSeek-R1-Distilled-1.4M-am_0.5M_sample100k"
+run_name: AM-DeepSeek-R1-Distilled-1.4M-am_0.5M_sample100k
+hub_model_id: mlfoundations-dev/AM-DeepSeek-R1-Distilled-1.4M-am_0.5M_sample100k
+report_to: wandb
+push_to_db: true
+push_to_hub: true

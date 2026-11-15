@@ -1,0 +1,533 @@
+{
+  "created_at": 1789357759,
+  "items": {
+    "01-temporal": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 2757737,
+        "bundle_sha256": "10253f5a727e7d3a3e7f0a75014885ab2daa39ed010ba70f4ed40f614a1e8ca7",
+        "elapsed_seconds": 26.64,
+        "extracted_tree": {
+          "bytes": 12923008,
+          "files": 796,
+          "sha256": "a2b6efccb696bfe5ffacb94984de7fa19ce1604969c7b769caacb9042454c800"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 2757737,
+            "name": "Temporal.bundle.zip.part-0001",
+            "sha256": "10253f5a727e7d3a3e7f0a75014885ab2daa39ed010ba70f4ed40f614a1e8ca7"
+          }
+        ],
+        "publish": {
+          "commit": "a5d4cd703e1c6dd80476096e5dddd7629b5d91a8",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "Temporal",
+        "source_bytes": 12923008,
+        "source_commit": "ab25ed693f7ec77589346e66c98db299a8c9c9fe",
+        "source_files": 796,
+        "source_ref": "HEAD",
+        "source_repo": "temporalio/sdk-python",
+        "source_tree": {
+          "bytes": 12923008,
+          "files": 796,
+          "sha256": "a2b6efccb696bfe5ffacb94984de7fa19ce1604969c7b769caacb9042454c800"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "Temporal",
+      "source_repo": "temporalio/sdk-python",
+      "status": "VERIFIED_CLOSED"
+    },
+    "02-langgraph": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/LangGraph\n",
+      "slug": "LangGraph",
+      "source_repo": "langchain-ai/langgraph",
+      "status": "FAILED"
+    },
+    "03-prefect": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/Prefect\n",
+      "slug": "Prefect",
+      "source_repo": "PrefectHQ/prefect",
+      "status": "FAILED"
+    },
+    "04-networkx": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 57, in scan_tree\n    if special: raise RuntimeError('SOURCE_SPECIAL_FILE_GAP:'+','.join(special[:30]))\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_SPECIAL_FILE_GAP:benchmarks/pyproject.toml\n",
+      "slug": "NetworkX",
+      "source_repo": "networkx/networkx",
+      "status": "FAILED"
+    },
+    "05-airflow": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 57, in scan_tree\n    if special: raise RuntimeError('SOURCE_SPECIAL_FILE_GAP:'+','.join(special[:30]))\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_SPECIAL_FILE_GAP:.claude/skills/aip-user-stories,.claude/skills/airflow-translations,.claude/skills/prepare-providers-documentation,.claude/skills/upgrade-fab-provider,.github/skills/aip-user-stories,.github/skills/airflow-translations,.github/skills/prepare-providers-documentation,.github/skills/upgrade-fab-provider,CLAUDE.md,airflow-core/src/airflow/_shared/configuration,airflow-core/src/airflow/_shared/dagnode,airflow-core/src/airflow/_shared/listeners,airflow-core/src/airflow/_shared/logging,airflow-core/src/airflow/_shared/module_loading,airflow-core/src/airflow/_shared/observability,airflow-core/src/airflow/_shared/plugins_manager,airflow-core/src/airflow/_shared/providers_discovery,airflow-core/src/airflow/_shared/secrets_backend,airflow-core/src/airflow/_shared/secrets_masker,airflow-core/src/airflow/_shared/serialization,airflow-core/src/airflow/_shared/state,airflow-core/src/airflow/_shared/template_rendering,airflow-core/src/airflow/_shared/timezones,java-sdk/example/gradle.properties,java-sdk/scala_spark_example/gradle.properties,registry/CLAUDE.md,task-sdk/src/airflow/sdk/_shared/AGENTS.md,task-sdk/src/airflow/sdk/_shared/README.md,task-sdk/src/airflow/sdk/_shared/configuration,task-sdk/src/airflow/sdk/_shared/dagnode\n",
+      "slug": "Apache-Airflow",
+      "source_repo": "apache/airflow",
+      "status": "FAILED"
+    },
+    "06-dagster": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 57, in scan_tree\n    if special: raise RuntimeError('SOURCE_SPECIAL_FILE_GAP:'+','.join(special[:30]))\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_SPECIAL_FILE_GAP:.github/styles,README.md\n",
+      "slug": "Dagster",
+      "source_repo": "dagster-io/dagster",
+      "status": "FAILED"
+    },
+    "07-litellm": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 57, in scan_tree\n    if special: raise RuntimeError('SOURCE_SPECIAL_FILE_GAP:'+','.join(special[:30]))\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_SPECIAL_FILE_GAP:litellm/proxy/enterprise\n",
+      "slug": "LiteLLM",
+      "source_repo": "BerriAI/litellm",
+      "status": "FAILED"
+    },
+    "08-routellm": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 5380681,
+        "bundle_sha256": "9d3b6bc88fa9deb99095f749a1d0dbdc73f390ca835b5667105f469403de18c1",
+        "elapsed_seconds": 27.34,
+        "extracted_tree": {
+          "bytes": 16791607,
+          "files": 108,
+          "sha256": "dd6c19f77746d6a7f4ac568eafba1d897e41feb7bfdd04005aea1f767b87b35a"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 5380681,
+            "name": "RouteLLM.bundle.zip.part-0001",
+            "sha256": "9d3b6bc88fa9deb99095f749a1d0dbdc73f390ca835b5667105f469403de18c1"
+          }
+        ],
+        "publish": {
+          "commit": "35e1c822616b8840e778ef6ab107f95adb9af95a",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "RouteLLM",
+        "source_bytes": 16791607,
+        "source_commit": "0b64fdafe049e596a3f5657c219329f24af24198",
+        "source_files": 108,
+        "source_ref": "HEAD",
+        "source_repo": "lm-sys/RouteLLM",
+        "source_tree": {
+          "bytes": 16791607,
+          "files": 108,
+          "sha256": "dd6c19f77746d6a7f4ac568eafba1d897e41feb7bfdd04005aea1f767b87b35a"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "RouteLLM",
+      "source_repo": "lm-sys/RouteLLM",
+      "status": "VERIFIED_CLOSED"
+    },
+    "09-tensorzero": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 57, in scan_tree\n    if special: raise RuntimeError('SOURCE_SPECIAL_FILE_GAP:'+','.join(special[:30]))\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_SPECIAL_FILE_GAP:crates/tensorzero-core/tests/e2e/config-in-db/cache-clickhouse.gateway.toml,crates/tensorzero-core/tests/e2e/config-in-db/cache-valkey.gateway.toml,crates/tensorzero-core/tests/e2e/config-in-db/postgres.gateway.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.evaluations.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.anthropic_beta.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.cache_test.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.dynamic_json.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.extract_entities.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.image_judger.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.json_math.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.json_mode_tool.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.json_success.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.weather_helper.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.functions.write_haiku.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.models.toml,crates/tensorzero-core/tests/e2e/config-in-db/tensorzero.provider_types.toml,crates/tensorzero-python/.sqlx,examples/docs/guides/optimization/supervised-fine-tuning-sft/ner.py\n",
+      "slug": "TensorZero",
+      "source_repo": "tensorzero/tensorzero",
+      "status": "FAILED"
+    },
+    "10-ray": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 57, in scan_tree\n    if special: raise RuntimeError('SOURCE_SPECIAL_FILE_GAP:'+','.join(special[:30]))\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_SPECIAL_FILE_GAP:.buildkite/macos.rayci.yml,.buildkite/macos/always.rules.test.txt,.buildkite/macos/always.rules.txt,.buildkite/macos/test.rules.test.txt,.buildkite/macos/test.rules.txt,.buildkite/release/_forge.rayci.yml,.buildkite/release/_images.rayci.yml,.buildkite/release/_wheel-build.rayci.yml,ci/ray_ci/bisect/macos_ci.sh,doc/requirements-doc.lock.txt,python/ray/rllib,python/requirements_compiled_py3.10.txt,python/requirements_compiled_py3.11.txt,python/requirements_compiled_py3.12.txt,python/requirements_compiled_py3.13.txt,release/air_examples/dolly_v2_lightning_fsdp_finetuning/lightning-llm-finetuning-7b.ipynb,release/air_examples/dolly_v2_lightning_fsdp_finetuning/test_myst_doc.py,release/air_examples/dreambooth/dreambooth,release/air_examples/dreambooth/dreambooth_run.sh,release/air_examples/gptj_deepspeed_finetuning/gptj_deepspeed_fine_tuning.ipynb,release/air_examples/opt_deepspeed_batch_inference/test_myst_doc.py,release/air_examples/vicuna_13b_lightning_deepspeed_finetuning/test_myst_doc.py,release/air_examples/vicuna_13b_lightning_deepspeed_finetuning/vicuna_13b_lightning_deepspeed_finetune.ipynb,release/nightly_tests/multimodal_inference_benchmarks/benchmark.py,release/ray_release/byod/requirements_compiled.txt,release/ray_release/configs/oss_config.yaml,release/requirements-doc.txt,release/rllib_tests/example_algorithms,release/train_tests/benchmark/setup_chaos.py,release/train_tests/multinode_persistence/test_v1_persistence.py\n",
+      "slug": "Ray",
+      "source_repo": "ray-project/ray",
+      "status": "FAILED"
+    },
+    "11-dask": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 57, in scan_tree\n    if special: raise RuntimeError('SOURCE_SPECIAL_FILE_GAP:'+','.join(special[:30]))\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_SPECIAL_FILE_GAP:.claude,CLAUDE.md\n",
+      "slug": "Dask-Distributed",
+      "source_repo": "dask/distributed",
+      "status": "FAILED"
+    },
+    "13-agentscope": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 8544043,
+        "bundle_sha256": "fa9e2ae601afd536874dd97fd9c6b6721c6d37fe23815178c87eeac47028ee34",
+        "elapsed_seconds": 28.6,
+        "extracted_tree": {
+          "bytes": 16025085,
+          "files": 1090,
+          "sha256": "888a33e93679f7eaae0d8b0b4964bafc1656c9e6a2def5655ae2b5b65e3855ae"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 8544043,
+            "name": "AgentScope.bundle.zip.part-0001",
+            "sha256": "fa9e2ae601afd536874dd97fd9c6b6721c6d37fe23815178c87eeac47028ee34"
+          }
+        ],
+        "publish": {
+          "commit": "dafd0f809fbf3615705ad59ef488f691c2939b13",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "AgentScope",
+        "source_bytes": 16025085,
+        "source_commit": "07f881e7f9283ea22fab840365610ab874270bd0",
+        "source_files": 1090,
+        "source_ref": "HEAD",
+        "source_repo": "agentscope-ai/agentscope",
+        "source_tree": {
+          "bytes": 16025085,
+          "files": 1090,
+          "sha256": "888a33e93679f7eaae0d8b0b4964bafc1656c9e6a2def5655ae2b5b65e3855ae"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "AgentScope",
+      "source_repo": "agentscope-ai/agentscope",
+      "status": "VERIFIED_CLOSED"
+    },
+    "14-camel": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 121300686,
+        "bundle_sha256": "92e123309e0c3ad14dd84006226d83dae6a1bccdadb2f0f4365c1e4c72a87492",
+        "elapsed_seconds": 69.22,
+        "extracted_tree": {
+          "bytes": 151969848,
+          "files": 2243,
+          "sha256": "e9af10dc82fde95d315823a95d3a6426f04aa186e5d30a9d4c431d29f40bbab4"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 12582912,
+            "name": "CAMEL.bundle.zip.part-0001",
+            "sha256": "e3eeaecae998ad6f15aa1b1eab1ef0b9f668c977b6321b715dc4a81796daf884"
+          },
+          {
+            "bytes": 12582912,
+            "name": "CAMEL.bundle.zip.part-0002",
+            "sha256": "06cd5f31251674745bdee73888dbd081395eca70076db671d0417ba231740bc9"
+          },
+          {
+            "bytes": 12582912,
+            "name": "CAMEL.bundle.zip.part-0003",
+            "sha256": "741fd24b213bf32ffff09ebd547f10be28600a091edb4f59d3b97fa665d1d80d"
+          },
+          {
+            "bytes": 12582912,
+            "name": "CAMEL.bundle.zip.part-0004",
+            "sha256": "4a91f3098368a1f3ef74f582d84906f1907e703095cf4a8b418fc3615d4fc9a2"
+          },
+          {
+            "bytes": 12582912,
+            "name": "CAMEL.bundle.zip.part-0005",
+            "sha256": "d02d9f9616f9beabf92c46a60d0bbe4b403f7c0a93c8ce991b8fc8a3cfa0e6b2"
+          },
+          {
+            "bytes": 12582912,
+            "name": "CAMEL.bundle.zip.part-0006",
+            "sha256": "f58ddb0a7cdf50683371d198133f244aa225dd208772cd91cc9991a759aad7b6"
+          },
+          {
+            "bytes": 12582912,
+            "name": "CAMEL.bundle.zip.part-0007",
+            "sha256": "0143feb8fcd8bec641f253fa5ba888a87f7b957e3fec428404351f4e4234df06"
+          },
+          {
+            "bytes": 12582912,
+            "name": "CAMEL.bundle.zip.part-0008",
+            "sha256": "3acfdb81c1bf14347c04e76949a000e4ebe34ab190d2b7fc0dfd3c9fd599f8bb"
+          },
+          {
+            "bytes": 12582912,
+            "name": "CAMEL.bundle.zip.part-0009",
+            "sha256": "d46da8f2894d56c96da0a500222d7a7245d4b464798de58be45f7e74affe2c8e"
+          },
+          {
+            "bytes": 8054478,
+            "name": "CAMEL.bundle.zip.part-0010",
+            "sha256": "3ba9cd65634ec2d2cf707af7a3ecf81f5fb9d8263f7d96597f04f4df8044aec2"
+          }
+        ],
+        "publish": {
+          "commit": "16ac37f8bea54b19f7739da1784a011ba84edb87",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "CAMEL",
+        "source_bytes": 151969848,
+        "source_commit": "8c791b7b9cf7deab56cb5a92818c34499af9097f",
+        "source_files": 2243,
+        "source_ref": "HEAD",
+        "source_repo": "camel-ai/camel",
+        "source_tree": {
+          "bytes": 151969848,
+          "files": 2243,
+          "sha256": "e9af10dc82fde95d315823a95d3a6426f04aa186e5d30a9d4c431d29f40bbab4"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "CAMEL",
+      "source_repo": "camel-ai/camel",
+      "status": "VERIFIED_CLOSED"
+    },
+    "15-autogen": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 152, in main\n    work=pathlib.Path(td); src,commit=acquire(work); rows,src_bytes=scan_tree(src); src_tree=tree_hash(src)\n                                                                    ^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 56, in scan_tree\n    if ptr: raise RuntimeError('SOURCE_LFS_POINTER_GAP:'+','.join(ptr[:30]))\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: SOURCE_LFS_POINTER_GAP:dotnet/website/images/articles/DynamicGroupChat/dynamicChat.gif,dotnet/website/images/articles/PrintMessageMiddleware/streamingoutput.gif,dotnet/website/images/articles/SequentialGroupChat/SearcherSummarizer.gif\n",
+      "slug": "AutoGen-Core",
+      "source_repo": "microsoft/autogen",
+      "status": "FAILED"
+    },
+    "16-gymnasium": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 118074059,
+        "bundle_sha256": "88a8af2f2bde5d38f1627ccfbe35cfb5be8c438833b895097b09ed0bf5c025d1",
+        "elapsed_seconds": 64.6,
+        "extracted_tree": {
+          "bytes": 130193912,
+          "files": 713,
+          "sha256": "13972814dd456fb27b0da30b87351379302fbdd2654451611fe3e3876620e143"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 12582912,
+            "name": "Gymnasium.bundle.zip.part-0001",
+            "sha256": "b48accc66216ce511b8504014ca3555fff1b1f5491aad3d260e9428bd640844a"
+          },
+          {
+            "bytes": 12582912,
+            "name": "Gymnasium.bundle.zip.part-0002",
+            "sha256": "d450639b4aa3275ecf3cbd52bc59da36a7ca8160cf9ccc76305b0fc61ec56a85"
+          },
+          {
+            "bytes": 12582912,
+            "name": "Gymnasium.bundle.zip.part-0003",
+            "sha256": "b542925f433c86f010a7e20f2989beb020f3568e8d5df346bd5787e4fe4b5d40"
+          },
+          {
+            "bytes": 12582912,
+            "name": "Gymnasium.bundle.zip.part-0004",
+            "sha256": "fe61e3cc2d0a61b9049c9a2ed47c65229fa160d651ec0b79d2a932783fdf1f3d"
+          },
+          {
+            "bytes": 12582912,
+            "name": "Gymnasium.bundle.zip.part-0005",
+            "sha256": "ddfa5d32b7e9c64e92b355db854e8eb290a459bd5bfa735fa19b0919eee2c725"
+          },
+          {
+            "bytes": 12582912,
+            "name": "Gymnasium.bundle.zip.part-0006",
+            "sha256": "d2fec6e2e821a1d7f698e1218bf2fa2e42d9cc510a8698d9d11f77216dfb1d7b"
+          },
+          {
+            "bytes": 12582912,
+            "name": "Gymnasium.bundle.zip.part-0007",
+            "sha256": "18fd7180143e3f0ac816b4274229a85c386bb57d84a9a2cfa758c63d18fe55f4"
+          },
+          {
+            "bytes": 12582912,
+            "name": "Gymnasium.bundle.zip.part-0008",
+            "sha256": "aa0b006a8064b3b4b818436b6ae18c88de9e47f0f726bb539daaf85f062dd636"
+          },
+          {
+            "bytes": 12582912,
+            "name": "Gymnasium.bundle.zip.part-0009",
+            "sha256": "7cb8b27baa0d65bd4865be58fa218865cf2ab70b7ed0f30872d21a045acc3bd4"
+          },
+          {
+            "bytes": 4827851,
+            "name": "Gymnasium.bundle.zip.part-0010",
+            "sha256": "d8ff84b1c5472276b6967362df7c8759eb510abf31f5514e09e22ba96f4287a5"
+          }
+        ],
+        "publish": {
+          "commit": "a900421bcf9eb22fedfd3990fbd4243eb121b92e",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "Gymnasium",
+        "source_bytes": 130193912,
+        "source_commit": "ec4715dda7cda0b36e2cd80af4c6bbff7e8a4fee",
+        "source_files": 713,
+        "source_ref": "HEAD",
+        "source_repo": "Farama-Foundation/Gymnasium",
+        "source_tree": {
+          "bytes": 130193912,
+          "files": 713,
+          "sha256": "13972814dd456fb27b0da30b87351379302fbdd2654451611fe3e3876620e143"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "Gymnasium",
+      "source_repo": "Farama-Foundation/Gymnasium",
+      "status": "VERIFIED_CLOSED"
+    },
+    "17-pettingzoo": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/PettingZoo\n",
+      "slug": "PettingZoo",
+      "source_repo": "Farama-Foundation/PettingZoo",
+      "status": "FAILED"
+    },
+    "18-mesa": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 810667,
+        "bundle_sha256": "efd4e9cee13ee4b73f0f9947b81f62030e4cd0ca9b95aaee5f67f670da47f494",
+        "elapsed_seconds": 24.79,
+        "extracted_tree": {
+          "bytes": 2221608,
+          "files": 244,
+          "sha256": "9d8139d369becca8a3cd1b036e49bb042915102ae0c6c819464aee419de5e06e"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 810667,
+            "name": "Mesa.bundle.zip.part-0001",
+            "sha256": "efd4e9cee13ee4b73f0f9947b81f62030e4cd0ca9b95aaee5f67f670da47f494"
+          }
+        ],
+        "publish": {
+          "commit": "2228263f2ac12632759dc54ce5e5c7430e64657e",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "Mesa",
+        "source_bytes": 2221608,
+        "source_commit": "a5dfcd6ad2bb7863a00d8735649d4c3ebaf014f8",
+        "source_files": 244,
+        "source_ref": "HEAD",
+        "source_repo": "mesa/mesa",
+        "source_tree": {
+          "bytes": 2221608,
+          "files": 244,
+          "sha256": "9d8139d369becca8a3cd1b036e49bb042915102ae0c6c819464aee419de5e06e"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "Mesa",
+      "source_repo": "mesa/mesa",
+      "status": "VERIFIED_CLOSED"
+    },
+    "19-graphiti": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 7232663,
+        "bundle_sha256": "42da8f94f3459b2c56e504bd22edb7d03839b4b98e05c309635832f20e8ee0e4",
+        "elapsed_seconds": 28.99,
+        "extracted_tree": {
+          "bytes": 22462071,
+          "files": 363,
+          "sha256": "121c1d7b0dc3b45e26f1584f33b08727be1822191237424ed3c0d1a71955e19a"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 7232663,
+            "name": "Graphiti.bundle.zip.part-0001",
+            "sha256": "42da8f94f3459b2c56e504bd22edb7d03839b4b98e05c309635832f20e8ee0e4"
+          }
+        ],
+        "publish": {
+          "commit": "3f7dfbbb58a74588157bfd27c60f07d461e71fdf",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "Graphiti",
+        "source_bytes": 22462071,
+        "source_commit": "c035afb7990b6077331a81e98b04efcfd9bf8184",
+        "source_files": 363,
+        "source_ref": "HEAD",
+        "source_repo": "getzep/graphiti",
+        "source_tree": {
+          "bytes": 22462071,
+          "files": 363,
+          "sha256": "121c1d7b0dc3b45e26f1584f33b08727be1822191237424ed3c0d1a71955e19a"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "Graphiti",
+      "source_repo": "getzep/graphiti",
+      "status": "VERIFIED_CLOSED"
+    },
+    "20-letta": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 23601,
+        "bundle_sha256": "e01aa8cb8aea0cb69f0f3d961a19c1ccc012efc05a4d160ec431db3e028d32d1",
+        "elapsed_seconds": 23.56,
+        "extracted_tree": {
+          "bytes": 60623,
+          "files": 12,
+          "sha256": "d20e9c384633fa8417c5f652ee8dc7115cd1ecf6a4ba1789d4e3887be5250b94"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 23601,
+            "name": "Letta.bundle.zip.part-0001",
+            "sha256": "e01aa8cb8aea0cb69f0f3d961a19c1ccc012efc05a4d160ec431db3e028d32d1"
+          }
+        ],
+        "publish": {
+          "commit": "96cd10b4fece55f27fba2771cadde486eadfd006",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "Letta",
+        "source_bytes": 60623,
+        "source_commit": "5bcdd177d70fa2b31a754cfcd801e77b2e1ab16a",
+        "source_files": 12,
+        "source_ref": "HEAD",
+        "source_repo": "letta-ai/letta",
+        "source_tree": {
+          "bytes": 60623,
+          "files": 12,
+          "sha256": "d20e9c384633fa8417c5f652ee8dc7115cd1ecf6a4ba1789d4e3887be5250b94"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "Letta",
+      "source_repo": "letta-ai/letta",
+      "status": "VERIFIED_CLOSED"
+    }
+  },
+  "schema": "yaiwes.frontend.download-extract-queue.v1"
+}

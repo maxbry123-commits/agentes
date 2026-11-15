@@ -1,0 +1,45 @@
+{
+  "schema_version": "2.0",
+  "artifact_id": "wordflow.extension.audit_forensic",
+  "name": "audit_forensic",
+  "version": "1.0.0",
+  "abi_version": "2.0",
+  "extension_type": "audit",
+  "kernel_min": "0.1.0",
+  "mount_mode": "sidecar",
+  "load_priority": 50,
+  "llm_control": "DENY",
+  "entrypoint": "engine.entrypoint:run_audit",
+  "description": "Forensic audit — EvidencePacket → P0-P3 matrices → 3-layer verdict",
+  "depends_on": [],
+  "contrato": {
+    "expone": [
+      "run_audit",
+      "verdict_engine",
+      "packet_normalizer"
+    ],
+    "consume": [
+      "EvidencePacket"
+    ]
+  },
+  "ejecucion": {
+    "transport": "stdio",
+    "sandbox": "container",
+    "parallel_max": 1
+  },
+  "seguridad": {
+    "token_in_logs": false,
+    "fail_closed": true,
+    "silence_is_not_pass": true
+  },
+  "contracts": [
+    "contracts/C_AUDIT_PACKET.yaml",
+    "contracts/C_AUDIT_VERDICT.yaml",
+    "contracts/C_AUDIT_CLAIM.yaml",
+    "contracts/C_AUDIT_EVIDENCE.yaml",
+    "contracts/C_AUDIT_DOC_TRACE.yaml"
+  ],
+  "policies": {
+    "verdict": "policies/verdict_policy.yaml"
+  }
+}

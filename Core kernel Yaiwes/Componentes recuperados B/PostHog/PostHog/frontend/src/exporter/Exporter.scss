@@ -1,0 +1,78 @@
+@import '../styles/mixins';
+@import '../styles/global';
+
+body.ExporterBody {
+    overflow: initial;
+}
+
+.Exporter {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding: 1rem;
+
+    &--recording {
+        height: 100vh;
+        max-height: 100vh;
+    }
+
+    // A metric export is a compact card, not a full-page insight — drop the viewport-height floor so the
+    // exporter wraps the card tightly instead of padding it out to 100vh.
+    &--metric {
+        min-height: 0;
+    }
+
+    &--heatmap {
+        padding: 0;
+
+        ::-webkit-scrollbar {
+            display: none;
+        }
+    }
+
+    .SharedDashboard-header {
+        .SharedDashboard-header-team {
+            margin-top: 0.25rem;
+        }
+
+        @include screen($md) {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 50%) minmax(0, 1fr);
+            align-items: center;
+
+            .SharedDashboard-header-title {
+                grid-column: 2;
+                text-align: center;
+            }
+
+            .SharedDashboard-header-team {
+                grid-column: 3;
+                justify-self: end;
+                margin-top: 0;
+            }
+        }
+    }
+}
+
+html.export-type-image {
+    // We don't want scrollbars to show in image captures
+    ::-webkit-scrollbar {
+        display: none;
+    }
+
+    body {
+        // Put our bundled fonts high on the list so rendered images are the same no matter which platform renders them.
+        font-family:
+            'Emoji Flags Polyfill', RoundHog, Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif,
+            'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+    }
+}
+
+html.export-type-embed {
+    overflow: hidden;
+    overflow-y: auto;
+
+    .Exporter {
+        padding: 0;
+    }
+}

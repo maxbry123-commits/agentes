@@ -1,0 +1,219 @@
+operators: 
+- id: seed_math_automath_1000000
+  config:
+    type: load_preexisting
+    framework_name: seed_math_automath_1000000
+- id: drop_columns_automath_1000000
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_automath_1000000
+- id: add_source_automath
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "automath"
+  input_ids:
+  - drop_columns_automath_1000000
+- id: filter_out_proofs_automath_1000000
+  config: 
+    type: function
+    function: data_strategies.MultipleSamples.utils.filter_out_proofs
+    function_config:
+      problem_column: instruction_seed
+  input_ids:
+    - add_source_automath
+- id: sample_dataset_automath
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_limited
+    function_config:
+      num_samples: 4_000
+  input_ids:
+  - filter_out_proofs_automath_1000000
+
+- id: seed_math_nvidia_math_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_math_nvidia_math_exploit
+- id: drop_columns_nvidia_math_exploit
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_nvidia_math_exploit
+- id: add_source_nvidia_math
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "nvidia_math"
+  input_ids:
+  - drop_columns_nvidia_math_exploit
+- id: filter_out_proofs_nvidia_math
+  config: 
+    type: function
+    function: data_strategies.MultipleSamples.utils.filter_out_proofs
+    function_config:
+      problem_column: instruction_seed
+  input_ids:
+    - add_source_nvidia_math
+- id: sample_dataset_nvidia_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_limited
+    function_config:
+      num_samples: 4_000
+  input_ids:
+  - filter_out_proofs_nvidia_math
+
+
+- id: seed_math_tiger_lab_math_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_math_tiger_lab_math_exploit
+- id: drop_columns_tiger_lab_math_exploit
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_tiger_lab_math_exploit
+- id: add_source_tiger_lab_math
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "tiger_lab_math"
+  input_ids:
+  - drop_columns_tiger_lab_math_exploit
+- id: filter_out_proofs_tiger_lab_math
+  config: 
+    type: function
+    function: data_strategies.MultipleSamples.utils.filter_out_proofs
+    function_config:
+      problem_column: instruction_seed
+  input_ids:
+    - add_source_tiger_lab_math
+- id: sample_dataset_tiger_lab_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_limited
+    function_config:
+      num_samples: 4_000
+  input_ids:
+  - filter_out_proofs_tiger_lab_math
+
+- id: seed_math_tiger_math_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_math_tiger_math_exploit
+- id: drop_columns_tiger_math_exploit
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_tiger_math_exploit
+- id: add_source_tiger_math
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "tiger_math"
+  input_ids:
+  - drop_columns_tiger_math_exploit
+- id: filter_out_proofs_tiger_math
+  config: 
+    type: function
+    function: data_strategies.MultipleSamples.utils.filter_out_proofs
+    function_config:
+      problem_column: instruction_seed
+  input_ids:
+    - add_source_tiger_math
+- id: sample_dataset_tiger_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_limited
+    function_config:
+      num_samples: 4_000
+  input_ids:
+  - filter_out_proofs_tiger_math
+- id: sample_dataset_all
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_limited
+    function_config:
+      num_samples: 6000
+  input_ids:
+    - sample_dataset_tiger_math
+    - sample_dataset_automath
+    - sample_dataset_nvidia_math
+    - sample_dataset_tiger_lab_math
+- id: duplicate
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.duplicate_rows
+    function_config:
+      n_copies: 1
+  input_ids:
+    - sample_dataset_all
+- id: annotate
+  config:
+    type: completions
+    map: chat
+    map_config:
+      user_message_column: instruction_seed
+      output_column: r1_distill_70b_response
+    model: "together_ai/deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+    batch: False
+    temperature: 1.0
+    backend_params:
+      max_requests_per_minute: 250
+      max_tokens_per_minute: 500_000
+      invalid_finish_reasons: ['content_filter']
+    generation_params:
+      max_tokens: 32_000
+  input_ids:
+    - duplicate
+- id: merge_together
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.merge_duplicate_rows
+    function_config:
+      diff_columns: 
+        - r1_distill_70b_response
+        - r1_distill_70b_extracted_answer
+  input_ids:
+    - annotate
+- id: all_verification
+  config:
+    type: function
+    function: data_strategies.MultipleSamples.utils.all_verification
+    function_config:
+      response_column: r1_distill_70b_response
+      verified_response_column: verified_r1_distill_70b_response
+  input_ids:
+  - merge_together
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: verified_r1_distill_70b_response
+      output_sharegpt_column: conversations
+  input_ids:
+    - all_verification

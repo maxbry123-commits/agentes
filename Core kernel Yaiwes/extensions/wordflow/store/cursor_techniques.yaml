@@ -1,0 +1,43 @@
+# Cursor techniques catalog hooks — A-WF-10
+version: "1.0"
+techniques:
+  - id: CT-01
+    name: plan_first
+    description: "Plan mínimo tokens antes de código"
+    hook: "before_execute"
+  - id: CT-02
+    name: one_task_one_commit
+    description: "1 tarea = 1 salida = 1 commit"
+    hook: "after_step"
+  - id: CT-03
+    name: read_before_edit
+    description: "Leer archivo antes de patch"
+    hook: "before_edit"
+  - id: CT-04
+    name: loc_cap
+    description: "≤300 LOC por archivo"
+    hook: "before_write"
+  - id: CT-05
+    name: test_before_push
+    description: "Correr tests locales antes de push"
+    hook: "before_push"
+  - id: CT-06
+    name: no_from_scratch
+    description: "Adaptar/fusionar; no inventar sin source"
+    hook: "before_write"
+  - id: CT-07
+    name: evidence_packet
+    description: "Emitir EvidencePacket al cerrar bloque"
+    hook: "on_complete"
+  - id: CT-08
+    name: fail_closed
+    description: "Ante duda REJECT/FAIL"
+    hook: "on_gate"
+  - id: CT-09
+    name: never_mvp
+    description: "quality_bar never_MVP → criterios obligatorios"
+    hook: "on_sentinel"
+  - id: CT-10
+    name: secret_scan
+    description: "Rechazar secrets en input/meta"
+    hook: "on_normalize"

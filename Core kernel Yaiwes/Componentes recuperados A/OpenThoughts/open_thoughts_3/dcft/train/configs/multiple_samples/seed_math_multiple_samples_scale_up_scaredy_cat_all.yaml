@@ -1,0 +1,20 @@
+include_hp: dcft/train/hp_settings/reasoning.yaml
+
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/seed_math_multiple_samples_scale_up_scaredy_cat_all
+messages: conversations
+formatting: sharegpt
+role_tag: from
+content_tag: value
+user_tag: human
+assistant_tag: gpt
+
+per_device_train_batch_size: 1      # Can change depending on hardware
+gradient_accumulation_steps: 12      # Can change depending on number of GPUs
+
+output_dir: "/data4/dcft/experiments/train/checkpoints/seed_math_multiple_samples_scale_up_scaredy_cat_all"
+run_name: seed_math_multiple_samples_scale_up_scaredy_cat_all
+hub_model_id: mlfoundations-dev/seed_math_multiple_samples_scale_up_scaredy_cat_all
+report_to: wandb
+push_to_db: true
+push_to_hub: true

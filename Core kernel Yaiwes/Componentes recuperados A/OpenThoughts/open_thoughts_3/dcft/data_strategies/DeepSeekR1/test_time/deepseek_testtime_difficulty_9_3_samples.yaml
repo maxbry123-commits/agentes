@@ -1,0 +1,106 @@
+operators:
+  - id: load_stratos_math_with_difficulty
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/math_stratos_scale_judged_and_annotated_with_difficulty
+      split: train
+  - id: select_difficulty_9
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          difficulty: 9
+    input_ids:
+      - load_stratos_math_with_difficulty
+  - id: select_incorrect_ones
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          correct: false
+    input_ids:
+      - select_difficulty_9
+  - id: sample_incorrect
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 1000 # Is this enough to see a difference?
+    input_ids:
+      - select_incorrect_ones
+  - id: duplicate
+    config:
+      type: function
+      function: data_strategies.TestTime.generator.duplicate_rows
+      function_config:
+        n_copies: 3
+    input_ids:
+      - sample_incorrect
+  - id: annotate_instruction
+    config:
+      type: completions
+      map: deepseek_reasoner
+      require_all_responses: false
+      map_config:
+        input_problem_column: problem
+        output_deepseek_solution_column: extra_deepseek_solution
+        output_reasoning_column: extra_deepseek_reasoning
+      model: deepseek-reasoner
+      top_p: 0.95
+      batch: False
+    input_ids:
+      - duplicate
+  - id: judge
+    config:
+      type: completions
+      map: deepseek_judge
+      model: gpt-4o-mini
+      ground_truth_column: ground_truth_solution
+      answer_column: extra_deepseek_solution
+      output_correct_column: extra_correct
+      output_reasoning_column: extra_judge_reasoning
+    input_ids:
+      - annotate_instruction
+  - id: merge_together
+    config:
+      type: high_memory_function
+      memory: 300
+      function: data_strategies.TestTime.generator.merge_duplicate_rows
+      function_config:
+        diff_columns: 
+          - extra_deepseek_solution
+          - extra_deepseek_reasoning
+          - extra_correct
+          - extra_judge_reasoning
+    input_ids:
+      - judge
+  - id: choose_first_correct
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.test_time.utils.choose_first_correct
+      function_config:
+        input_column: extra_deepseek_solution
+        input_is_correct_column: extra_correct
+        output_column: reasoning
+    input_ids:
+      - merge_together
+  - id: filter_none
+    config:
+      type: function
+      function: data_strategies.commons.filter_out_falsey_values
+      function_config:
+        filter_column: reasoning
+    input_ids:
+      - choose_first_correct
+  - id: convert_to_sharegpt
+    config:
+      type: function
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: problem
+        input_response_column: reasoning
+        output_sharegpt_column: conversations
+    input_ids:
+      - filter_none

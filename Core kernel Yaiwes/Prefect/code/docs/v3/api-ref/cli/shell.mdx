@@ -1,0 +1,149 @@
+---
+title: " "
+sidebarTitle: prefect shell
+---
+
+# `prefect shell`
+
+
+
+```command
+prefect shell [OPTIONS] COMMAND [ARGS]...
+```
+
+
+
+<Info>
+Serve and watch shell commands as Prefect flows.
+</Info>
+
+
+
+
+
+
+
+
+## `prefect shell watch`
+
+
+
+```command
+prefect shell watch [OPTIONS] COMMAND
+```
+
+
+
+<Info>
+Execute a shell command and observe it as a Prefect flow.
+</Info>
+
+
+
+
+
+
+<AccordionGroup>
+
+
+<Accordion title="Arguments" defaultOpen>
+<ResponseField name="COMMAND" type="string" required>
+</ResponseField>
+</Accordion>
+
+
+
+<Accordion title="Options" defaultOpen>
+
+<ResponseField name="--log-output">
+    Log output to Prefect.
+</ResponseField>
+
+<ResponseField name="--flow-run-name">
+    Name of the flow run.
+</ResponseField>
+
+<ResponseField name="--flow-name">
+    Name of the flow.
+</ResponseField>
+
+<ResponseField name="--stream-stdout">
+    Stream output.
+</ResponseField>
+
+<ResponseField name="--tag">
+    Tags for the flow run (repeatable).
+</ResponseField>
+
+</Accordion>
+
+</AccordionGroup>
+
+
+
+## `prefect shell serve`
+
+
+
+```command
+prefect shell serve [OPTIONS] COMMAND
+```
+
+
+
+<Info>
+Create and serve a deployment that runs a shell command.
+</Info>
+
+
+
+
+
+
+<AccordionGroup>
+
+
+<Accordion title="Arguments" defaultOpen>
+<ResponseField name="COMMAND" type="string" required>
+</ResponseField>
+</Accordion>
+
+
+
+<Accordion title="Options" defaultOpen>
+
+<ResponseField name="--flow-name">
+    Name of the flow.
+</ResponseField>
+
+<ResponseField name="--deployment-name">
+    Name of the deployment.
+</ResponseField>
+
+<ResponseField name="--tag">
+    Deployment tags (repeatable).
+</ResponseField>
+
+<ResponseField name="--stream-stdout">
+    Stream output.
+</ResponseField>
+
+<ResponseField name="--cron-schedule">
+    Cron schedule.
+</ResponseField>
+
+<ResponseField name="--timezone">
+    Timezone for the schedule.
+</ResponseField>
+
+<ResponseField name="--concurrency-limit">
+    Max concurrent flow runs.
+</ResponseField>
+
+<ResponseField name="--run-once">
+    Run once instead of forever.
+</ResponseField>
+
+</Accordion>
+
+</AccordionGroup>

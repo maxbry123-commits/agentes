@@ -1,0 +1,39 @@
+operators:
+- id: load_hf_math
+  config:
+    type: hf_source
+    dataset: nvidia/Llama-Nemotron-Post-Training-Dataset-v1
+    split: math
+- id: load_hf_code
+  config:
+    type: hf_source
+    dataset: nvidia/Llama-Nemotron-Post-Training-Dataset-v1
+    split: code
+- id: decontaminate
+  config:
+    type: cpu_function
+    sharded: true
+    num_shards: 32
+    num_cpus: 80
+    function:  data_strategies.DeepSeekR1.utils.decontaminate_table
+    function_config:
+      column: input
+      eval_datasets:
+        - HuggingFaceH4/MATH-500
+        - Maxwell-Jia/AIME_2024
+        - AI-MO/aimo-validation-amc
+        - livecodebench/code_generation_lite
+      eval_columns:
+        - problem
+        - Problem
+        - problem
+        - question_content
+      eval_splits:
+        - test
+        - train
+        - train
+        - test
+      similarity_threshold: 95.0
+  input_ids:
+  - load_hf_math
+  - load_hf_code

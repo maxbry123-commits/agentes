@@ -1,0 +1,245 @@
+version: "2"
+run:
+  concurrency: 4
+  build-tags:
+    - unit
+    - allcomponents
+    - subtlecrypto
+  issues-exit-code: 1
+  tests: true
+output:
+  formats:
+    tab:
+      path: stdout
+      print-linter-name: true
+      colors: false
+linters:
+  default: all
+  disable:
+    - asasalint
+    - canonicalheader
+    - containedctx
+    - contextcheck
+    - cyclop
+    - dupl
+    - err113
+    - errcheck
+    - errchkjson
+    - errorlint
+    - exhaustive
+    - exhaustruct
+    - fatcontext
+    - forcetypeassert
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - gocyclo
+    - godot
+    - godox
+    - gomoddirectives
+    - inamedparam
+    - ireturn
+    - lll
+    - maintidx
+    - mnd
+    - musttag
+    - nestif
+    - nilnil
+    - nlreturn
+    - noctx
+    - nonamedreturns
+    - paralleltest
+    - predeclared
+    - rowserrcheck
+    - sqlclosecheck
+    - tagalign
+    - tagliatelle
+    - testpackage
+    - thelper
+    - tparallel
+    - unparam
+    - varnamelen
+    - wastedassign
+    - wrapcheck
+    - wsl
+    # TODO Enforce the below new v2 linters later
+    - embeddedstructfieldcheck
+    - funcorder
+    - godoclint
+    - noinlineerr
+    - wsl_v5
+  settings:
+    depguard:
+      rules:
+        master:
+          deny:
+            - pkg: github.com/Sirupsen/logrus
+              desc: must use github.com/dapr/kit/logger
+            - pkg: github.com/agrea/ptr
+              desc: must use github.com/dapr/kit/ptr
+            - pkg: go.uber.org/atomic
+              desc: must use sync/atomic
+            - pkg: golang.org/x/net/context
+              desc: must use context
+            - pkg: github.com/pkg/errors
+              desc: must use standard library (errors package and/or fmt.Errorf)
+            - pkg: github.com/go-chi/chi$
+              desc: must use github.com/go-chi/chi/v5
+            - pkg: github.com/cenkalti/backoff$
+              desc: must use github.com/cenkalti/backoff/v4
+            - pkg: github.com/cenkalti/backoff/v2
+              desc: must use github.com/cenkalti/backoff/v4
+            - pkg: github.com/cenkalti/backoff/v3
+              desc: must use github.com/cenkalti/backoff/v4
+            - pkg: github.com/benbjohnson/clock
+              desc: must use k8s.io/utils/clock
+            - pkg: github.com/ghodss/yaml
+              desc: must use sigs.k8s.io/yaml
+            - pkg: gopkg.in/yaml.v2
+              desc: must use gopkg.in/yaml.v3
+            - pkg: github.com/golang-jwt/jwt
+              desc: must use github.com/lestrrat-go/jwx/v2
+            - pkg: github.com/golang-jwt/jwt/v2
+              desc: must use github.com/lestrrat-go/jwx/v2
+            - pkg: github.com/golang-jwt/jwt/v3
+              desc: must use github.com/lestrrat-go/jwx/v2
+            - pkg: github.com/golang-jwt/jwt/v4
+              desc: must use github.com/lestrrat-go/jwx/v2
+            - pkg: github.com/gogo/status
+              desc: must use google.golang.org/grpc/status
+            - pkg: github.com/gogo/protobuf
+              desc: must use google.golang.org/protobuf
+            - pkg: github.com/lestrrat-go/jwx/jwa
+              desc: must use github.com/lestrrat-go/jwx/v2
+            - pkg: github.com/lestrrat-go/jwx/jwt
+              desc: must use github.com/lestrrat-go/jwx/v2
+            - pkg: github.com/labstack/gommon/log
+              desc: must use github.com/dapr/kit/logger
+            - pkg: github.com/gobuffalo/logger
+              desc: must use github.com/dapr/kit/logger
+            - pkg: k8s.io/utils/pointer
+              desc: must use github.com/dapr/kit/ptr
+            - pkg: k8s.io/utils/ptr
+              desc: must use github.com/dapr/kit/ptr
+    dogsled:
+      max-blank-identifiers: 2
+    gosec:
+      excludes:
+        - G703 # Path traversal via taint analysis (false positives)
+        - G704 # SSRF via taint analysis (false positives)
+        - G705 # XSS via taint analysis (false positives)
+        - G706 # Log injection via taint analysis (false positives)
+    dupl:
+      threshold: 100
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+      exclude-functions:
+        - fmt:.*
+        - io/ioutil:^Read.*
+    funlen:
+      lines: 60
+      statements: 40
+    gocognit:
+      min-complexity: 10
+    goconst:
+      min-len: 3
+      min-occurrences: 5
+    gocritic:
+      disabled-checks:
+        - regexpMust
+        - rangeValCopy
+        - hugeParam
+        - ifElseChain
+        - singleCaseSwitch
+        - exitAfterDefer
+      enabled-tags:
+        - performance
+      settings:
+        captLocal:
+          paramsOnly: true
+    gocyclo:
+      min-complexity: 10
+    godot:
+      scope: all
+      exclude:
+        - nosec
+      capital: false
+    godox:
+      keywords:
+        - NOTE
+        - OPTIMIZE
+        - HACK
+    govet:
+      enable:
+        - atomicalign
+        - shadow
+      enable-all: false
+      disable-all: false
+      settings:
+        printf:
+          funcs:
+            - (github.com/golangci/golangci-lint/pkg/logutils.Log).Infof
+            - (github.com/golangci/golangci-lint/pkg/logutils.Log).Warnf
+            - (github.com/golangci/golangci-lint/pkg/logutils.Log).Errorf
+            - (github.com/golangci/golangci-lint/pkg/logutils.Log).Fatalf
+    lll:
+      line-length: 120
+      tab-width: 1
+    misspell:
+      ignore-rules:
+        - someword
+    nakedret:
+      max-func-lines: 30
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+    revive:
+      confidence: 0.8
+    whitespace:
+      multi-if: false
+      multi-func: false
+    wsl:
+      strict-append: true
+      allow-assign-and-call: true
+      allow-multiline-assign: true
+      force-case-trailing-whitespace: 1
+      allow-cuddle-declarations: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - ^pkg.*client.*clientset.*versioned.*
+      - ^pkg.*client.*informers.*externalversions.*
+      - ^pkg.*proto.*
+      - pkg/proto
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/dapr/
+  exclusions:
+    generated: lax
+    paths:
+      - ^pkg.*client.*clientset.*versioned.*
+      - ^pkg.*client.*informers.*externalversions.*
+      - ^pkg.*proto.*
+      - pkg/proto
+      - third_party$
+      - builtin$
+      - examples$

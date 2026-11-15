@@ -1,0 +1,186 @@
+"""Keyword-based guardrail for detecting banned terms in text.
+
+This module provides a guardrail for detecting specific keywords or phrases in text.
+It uses case-insensitive matching against a configurable list of keywords.
+
+Classes:
+    KeywordCfg: Pydantic config model for specifying banned keywords.
+
+Functions:
+    match_keywords: Match forbidden keywords in a given text sample.
+    keywords: Guardrail check_fn for detecting banned terms in user input.
+
+Configuration Parameters:
+    This guardrail uses the following configuration parameters:
+
+    - `keywords` (list[str]): A list of keywords or phrases to detect. Matching is case-insensitive.
+        Example: ["confidential", "internal use only", "do not share"]
+
+Example:
+```python
+    >>> config = KeywordCfg(keywords=["confidential", "internal use only"])
+    >>> result = await match_keywords(None, "This is confidential information", config)
+    >>> result.tripwire_triggered
+    True
+```
+"""
+
+from __future__ import annotations
+
+import re
+from functools import lru_cache
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from guardrails.registry import default_spec_registry
+from guardrails.spec import GuardrailSpecMetadata
+from guardrails.types import GuardrailResult
+
+__all__ = ["KeywordCfg", "keywords", "match_keywords"]
+
+_TRAILING_PUNCTUATION_RE = re.compile(r"[.,!?;:]+$")
+
+
+class KeywordCfg(BaseModel):
+    """Configuration schema for banned keyword matching.
+
+    This Pydantic model is used to specify a list of keywords that will be
+    flagged if detected in the analyzed text.
+
+    Attributes:
+        keywords (list[str]): List of forbidden keywords to flag if found.
+    """
+
+    keywords: list[str] = Field(
+        ...,
+        min_length=1,
+        description="Banned keywords to match in text.",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("keywords")
+    @classmethod
+    def reject_empty_sanitized_keywords(cls, keywords: list[str]) -> list[str]:
+        """Reject keywords that become empty after sanitization.
+
+        Args:
+            keywords: Configured keywords to validate.
+
+        Returns:
+            The validated keywords unchanged.
+
+        Raises:
+            ValueError: If any keyword becomes empty after trailing punctuation
+                is removed.
+        """
+        if any(_TRAILING_PUNCTUATION_RE.sub("", keyword) == "" for keyword in keywords):
+            raise ValueError("Keywords cannot be empty after trailing punctuation is removed")
+        return keywords
+
+
+# TODO: Use AhoCorasick algorithm instead
+@lru_cache(maxsize=256)
+def _compile_pattern(keywords: tuple[str, ...]) -> re.Pattern[str]:
+    """Compile and cache a case‐insensitive regex.
+
+    The regex matches any keyword as a separate word
+    (i.e. "foo" won't match "food", but will match "Foo").
+
+    Args:
+        keywords (tuple[str, ...]): Tuple of keywords to build the pattern.
+
+    Returns:
+        re.Pattern[str]: Compiled regex pattern to match any given keyword.
+    """
+    # Build individual patterns with conditional boundary assertions
+    # Only apply (?<!\w) if keyword starts with word char, (?!\w) if it ends with word char
+    patterns = []
+    for keyword in keywords:
+        escaped = re.escape(keyword)
+        # Check first and last character of the original keyword for word character status
+        starts_with_word_char = keyword and (keyword[0].isalnum() or keyword[0] == "_")
+        ends_with_word_char = keyword and (keyword[-1].isalnum() or keyword[-1] == "_")
+
+        prefix = r"(?<!\w)" if starts_with_word_char else ""
+        suffix = r"(?!\w)" if ends_with_word_char else ""
+        patterns.append(f"{prefix}{escaped}{suffix}")
+
+    # (?<!\w) and (?!\w) use Unicode-aware lookbehind/lookahead to enforce word boundaries.
+    pattern_text = "(?:" + "|".join(patterns) + ")"
+
+    return re.compile(pattern_text, re.IGNORECASE)
+
+
+def match_keywords(
+    data: str,
+    config: KeywordCfg,
+    guardrail_name: str,
+) -> GuardrailResult:
+    """Detect banned keywords in the provided text.
+
+    Matches text against the configured keywords and returns a `GuardrailResult`
+    indicating whether any forbidden keyword was found.
+
+    Args:
+        data (str): Input text to analyze.
+        config (KeywordCfg): Configuration specifying which keywords to detect.
+        guardrail_name (str): Name of the guardrail for result metadata.
+
+    Returns:
+        GuardrailResult: Result containing match details and status.
+    """
+    # Sanitize keywords by stripping trailing punctuation
+    sanitized_keywords = [_TRAILING_PUNCTUATION_RE.sub("", keyword) for keyword in config.keywords]
+
+    pat = _compile_pattern(tuple(sorted(sanitized_keywords)))
+    matches = [m.group(0) for m in pat.finditer(data)]
+    seen: set[str] = set()
+    # Take unique matches, ignoring case
+    unique = []
+    for m in matches:
+        if m.lower() not in seen:
+            unique.append(m)
+            seen.add(m.lower())
+    return GuardrailResult(
+        tripwire_triggered=bool(unique),
+        info={
+            "guardrail_name": guardrail_name,
+            "matched": unique,
+            "checked": config.keywords,
+            "sanitized_keywords": sanitized_keywords,
+        },
+    )
+
+
+async def keywords(
+    ctx: Any,
+    data: str,
+    config: KeywordCfg,
+) -> GuardrailResult:
+    """Guardrail function to check for banned keywords in user text.
+
+    This is the main check_fn for keyword-based moderation guardrails.
+    It flags the input if any forbidden keyword is found.
+
+    Args:
+        ctx (Any): Context object (not used in this implementation).
+        data (str): Input text to validate.
+        config (KeywordCfg): Configuration with list of banned keywords.
+
+    Returns:
+        GuardrailResult: Indicates whether any banned keyword was detected.
+    """
+    _ = ctx
+
+    return match_keywords(data, config, guardrail_name="Keyword Filter")
+
+
+default_spec_registry.register(
+    name="Keyword Filter",
+    check_fn=keywords,
+    description="Triggers when any keyword appears in text.",
+    media_type="text/plain",
+    metadata=GuardrailSpecMetadata(engine="RegEx"),
+)

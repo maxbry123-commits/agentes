@@ -1,0 +1,62 @@
+name: 'Setup Go with Limited Cache'
+description: 'A composite action that installs golang, but with a caching strategy that only updates the cache on main branch.'
+inputs:
+  go-version:
+    description: 'The Go version to download (if necessary) and use. Supports semver spec and ranges. Be sure to enclose this option in single quotation marks.'
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    # On self-hosted runners, the env.ImageOS variable may not be set correctly, which can cause issues with the cache key.
+    # We need to handle this case to ensure the cache key is consistent.
+    - name: Set ImageOS
+      if: ${{ runner.os == 'Linux' && env.ImageOS == '' }}
+      shell: bash
+      # Key is ubuntu<MAJOR>, as there is not other linux os in GHA other than Ubuntu
+      run: echo "ImageOS=ubuntu$(lsb_release -rs | cut -d. -f1)" >> $GITHUB_ENV
+
+    - name: Find Latest Release Branch
+      shell: bash
+      run: |
+        LATEST_RELEASE_BRANCH=$(gh api repos/k3s-io/k3s/branches?per_page=100 --jq '[.[].name | select(startswith("release-"))] | sort_by(ltrimstr("release-") | tonumber) | last')
+        echo "LATEST_RELEASE_REF=refs/heads/$LATEST_RELEASE_BRANCH" | tee -a "$GITHUB_ENV"
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Setup Go
+      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+      with:
+        go-version: ${{ env.INPUT_GO_VERSION }}
+        go-version-file: 'go.mod'  # if go-version is not set, just use whatever version is in the go.mod file
+        cache: ${{ github.ref == 'refs/heads/main' || github.ref == env.LATEST_RELEASE_REF }}  # use default cache for main and most recent minor
+
+    - name: Prepare for go cache
+      if: github.ref != 'refs/heads/main' && github.ref != env.LATEST_RELEASE_REF  # use custom cache for older minors
+      shell: bash
+      run: |
+        echo "GO_CACHE=$(go env GOCACHE)" | tee -a "$GITHUB_ENV"
+        echo "GO_MODCACHE=$(go env GOMODCACHE)" | tee -a "$GITHUB_ENV"
+        echo "GO_VERSION=$(go env GOVERSION | tr -d 'go')" | tee -a "$GITHUB_ENV"
+
+    - name: Create arch key (Linux)
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: echo "ARCH_OPT=$(echo ${{ runner.arch }} | tr '[:upper:]' '[:lower:]')-${{ env.ImageOS }}" >> $GITHUB_ENV
+
+    - name: Create arch key (non-Linux)
+      if: ${{ runner.os != 'Linux' }}
+      shell: pwsh
+      run: echo "ARCH_OPT=$('${{ runner.arch }}'.ToLower())" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+    - name: Setup read-only cache
+      if: github.ref != 'refs/heads/main' && github.ref != env.LATEST_RELEASE_REF # use custom cache for older minors
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+      with:
+        path: |
+          ${{ env.GO_MODCACHE }}
+          ${{ env.GO_CACHE }}
+        # Match the cache key to the setup-go action https://github.com/actions/setup-go/blob/main/src/cache-restore.ts#L34
+        key: setup-go-${{ runner.os }}-${{ env.ARCH_OPT }}-go-${{ env.GO_VERSION }}-${{ hashFiles('go.sum') }}
+        restore-keys: |
+          setup-go-${{ runner.os }}-${{ env.ARCH_OPT }}-go-${{ env.GO_VERSION }}-

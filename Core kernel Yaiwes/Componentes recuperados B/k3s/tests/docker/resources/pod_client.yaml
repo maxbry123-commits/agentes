@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: client
+  name: client-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: client
+  template:
+    metadata:
+      labels:
+        app: client
+    spec:
+      containers:
+      - image: rancher/mirrored-library-busybox:1.37.0
+        args: ['sh', '-c', 'echo Welcome to nginx! > index.html; hostname > name.html; httpd -vvf']
+        imagePullPolicy: Always
+        name: client-wget
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - client
+            topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: client-wget
+  labels:
+    app: client
+    service: client-wget
+spec:
+  type: ClusterIP
+  selector:
+    app: client
+  ports:
+  - port: 8080

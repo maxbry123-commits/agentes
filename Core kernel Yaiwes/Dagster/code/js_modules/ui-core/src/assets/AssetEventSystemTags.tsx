@@ -1,0 +1,76 @@
+import {Box, ButtonLink, Icon, Text} from '@dagster-io/ui-components';
+
+import {AssetEventGroup} from './groupByPartition';
+import {useStateWithStorage} from '../hooks/useStateWithStorage';
+import {DagsterTag} from '../runs/RunTag';
+import styles from './css/AssetEventSystemTags.module.css';
+
+// There can be other keys in the event tags, but we want to show data and code version
+// at the top consistently regardless of their alphabetical / backend ordering.
+const ORDER = [
+  DagsterTag.AssetEventDataVersion.valueOf(),
+  DagsterTag.AssetEventDataVersionDeprecated.valueOf(),
+  DagsterTag.AssetEventCodeVersion.valueOf(),
+];
+
+export const AssetEventSystemTags = ({
+  event,
+  paddingLeft,
+  collapsible,
+}: {
+  event: AssetEventGroup['latest'] | null;
+  paddingLeft?: number;
+  collapsible?: boolean;
+}) => {
+  const [shown, setShown] = useStateWithStorage('show-asset-system-tags', Boolean);
+
+  if (collapsible && !shown) {
+    return (
+      <Text size={12}>
+        <ButtonLink onClick={() => setShown(true)}>
+          <Box flex={{alignItems: 'center'}}>
+            <span>Show tags ({event?.tags.length || 0})</span>
+            <Icon name="arrow_drop_down" style={{transform: 'rotate(0deg)'}} />
+          </Box>
+        </ButtonLink>
+      </Text>
+    );
+  }
+
+  return (
+    <>
+      <table className={styles.assetEventSystemTagsTable}>
+        <tbody>
+          {event?.tags.length ? (
+            [...event.tags]
+              .sort((a, b) => ORDER.indexOf(b.key) - ORDER.indexOf(a.key))
+              .map((t) => (
+                <tr key={t.key}>
+                  <td style={{paddingLeft}}>
+                    <Text size={14} family="mono">
+                      {t.key.replace(DagsterTag.Namespace, '')}
+                    </Text>
+                  </td>
+                  <td>{t.value}</td>
+                </tr>
+              ))
+          ) : (
+            <tr>
+              <td style={{paddingLeft}}>No tags to display.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {collapsible && (
+        <Text size={12}>
+          <ButtonLink onClick={() => setShown(false)}>
+            <Box flex={{alignItems: 'center'}}>
+              <span>Hide tags</span>
+              <Icon name="arrow_drop_down" style={{transform: 'rotate(180deg)'}} />
+            </Box>
+          </ButtonLink>
+        </Text>
+      )}
+    </>
+  );
+};

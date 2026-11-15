@@ -1,0 +1,259 @@
+{
+  "uuid": "fbfa6c9a379a7fbffaccd77b242de506",
+  "baseSpans": [],
+  "agentSpans": [
+    {
+      "uuid": "636d7ef68e4e3aa3",
+      "name": "tool_agent",
+      "status": "SUCCESS",
+      "type": "agent",
+      "startTime": "2026-06-01T16:36:26.609Z",
+      "endTime": "2026-06-01T16:36:28.610Z",
+      "input": [
+        {
+          "role": "user",
+          "content": "What is 7 multiplied by 8?"
+        }
+      ],
+      "output": "7 multiplied by 8 is 56.",
+      "integration": "PydanticAI",
+      "availableTools": [],
+      "agentHandoffs": []
+    }
+  ],
+  "llmSpans": [
+    {
+      "uuid": "9341e5d8b6f87ba2",
+      "name": "chat gpt-4o-mini",
+      "status": "SUCCESS",
+      "type": "llm",
+      "parentUuid": "636d7ef68e4e3aa3",
+      "startTime": "2026-06-01T16:36:27.895Z",
+      "endTime": "2026-06-01T16:36:28.609Z",
+      "input": [
+        {
+          "role": "system",
+          "content": "You are a calculator assistant. Use the calculate tool for math operations. Be concise."
+        },
+        {
+          "role": "user",
+          "content": "What is 7 multiplied by 8?"
+        },
+        {
+          "role": "assistant",
+          "content": {
+            "type": "tool_call",
+            "id": "call_Gn77M4ssS642gS3hM8IHhsjK",
+            "name": "calculate",
+            "arguments": "{\"operation\":\"multiply\",\"a\":7,\"b\":8}"
+          }
+        },
+        {
+          "role": "user",
+          "content": {
+            "type": "tool_call_response",
+            "id": "call_Gn77M4ssS642gS3hM8IHhsjK",
+            "name": "calculate",
+            "result": 56.0
+          }
+        },
+        {
+          "role": "Model Request Parameters",
+          "content": {
+            "function_tools": [
+              {
+                "name": "calculate",
+                "parameters_json_schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "operation": {
+                      "description": "The operation to perform (add, subtract, multiply, divide)",
+                      "type": "string"
+                    },
+                    "a": {
+                      "description": "First number",
+                      "type": "number"
+                    },
+                    "b": {
+                      "description": "Second number",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "operation",
+                    "a",
+                    "b"
+                  ],
+                  "type": "object"
+                },
+                "description": "<summary>Perform basic arithmetic operations.</summary>\n<returns>\n<description>The result of the operation</description>\n</returns>",
+                "outer_typed_dict_key": null,
+                "strict": true,
+                "sequential": false,
+                "kind": "function",
+                "metadata": null,
+                "timeout": null,
+                "defer_loading": false,
+                "unless_native": null,
+                "with_native": null,
+                "tool_kind": null,
+                "return_schema": null,
+                "include_return_schema": null
+              }
+            ],
+            "native_tools": [],
+            "output_mode": "text",
+            "output_object": null,
+            "output_tools": [],
+            "prompted_output_template": null,
+            "allow_text_output": true,
+            "allow_image_output": false,
+            "instruction_parts": null,
+            "thinking": null
+          }
+        }
+      ],
+      "output": [
+        {
+          "role": "assistant",
+          "content": "7 multiplied by 8 is 56."
+        }
+      ],
+      "integration": "PydanticAI",
+      "model": "gpt-4o-mini",
+      "provider": "OpenAI",
+      "inputTokenCount": 147.0,
+      "outputTokenCount": 10.0
+    },
+    {
+      "uuid": "de918bb7714b8ee4",
+      "name": "chat gpt-4o-mini",
+      "status": "SUCCESS",
+      "type": "llm",
+      "parentUuid": "636d7ef68e4e3aa3",
+      "startTime": "2026-06-01T16:36:26.611Z",
+      "endTime": "2026-06-01T16:36:27.892Z",
+      "input": [
+        {
+          "role": "system",
+          "content": "You are a calculator assistant. Use the calculate tool for math operations. Be concise."
+        },
+        {
+          "role": "user",
+          "content": "What is 7 multiplied by 8?"
+        },
+        {
+          "role": "Model Request Parameters",
+          "content": {
+            "function_tools": [
+              {
+                "name": "calculate",
+                "parameters_json_schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "operation": {
+                      "description": "The operation to perform (add, subtract, multiply, divide)",
+                      "type": "string"
+                    },
+                    "a": {
+                      "description": "First number",
+                      "type": "number"
+                    },
+                    "b": {
+                      "description": "Second number",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "operation",
+                    "a",
+                    "b"
+                  ],
+                  "type": "object"
+                },
+                "description": "<summary>Perform basic arithmetic operations.</summary>\n<returns>\n<description>The result of the operation</description>\n</returns>",
+                "outer_typed_dict_key": null,
+                "strict": true,
+                "sequential": false,
+                "kind": "function",
+                "metadata": null,
+                "timeout": null,
+                "defer_loading": false,
+                "unless_native": null,
+                "with_native": null,
+                "tool_kind": null,
+                "return_schema": null,
+                "include_return_schema": null
+              }
+            ],
+            "native_tools": [],
+            "output_mode": "text",
+            "output_object": null,
+            "output_tools": [],
+            "prompted_output_template": null,
+            "allow_text_output": true,
+            "allow_image_output": false,
+            "instruction_parts": null,
+            "thinking": null
+          }
+        }
+      ],
+      "output": [
+        {
+          "role": "assistant",
+          "content": {
+            "type": "tool_call",
+            "id": "call_Gn77M4ssS642gS3hM8IHhsjK",
+            "name": "calculate",
+            "arguments": "{\"operation\":\"multiply\",\"a\":7,\"b\":8}"
+          }
+        }
+      ],
+      "integration": "PydanticAI",
+      "model": "gpt-4o-mini",
+      "provider": "OpenAI",
+      "inputTokenCount": 116.0,
+      "outputTokenCount": 21.0
+    }
+  ],
+  "retrieverSpans": [],
+  "toolSpans": [
+    {
+      "uuid": "35c411ce825c9b4d",
+      "name": "calculate",
+      "status": "SUCCESS",
+      "type": "tool",
+      "parentUuid": "636d7ef68e4e3aa3",
+      "startTime": "2026-06-01T16:36:27.893Z",
+      "endTime": "2026-06-01T16:36:27.894Z",
+      "input": {
+        "operation": "multiply",
+        "a": 7,
+        "b": 8
+      },
+      "output": "56.0",
+      "integration": "PydanticAI"
+    }
+  ],
+  "startTime": "2026-06-01T16:36:26.609Z",
+  "endTime": "2026-06-01T16:36:28.610Z",
+  "name": "pydanticai-tool-test",
+  "metadata": {
+    "test_type": "tool"
+  },
+  "tags": [
+    "pydanticai",
+    "tool"
+  ],
+  "environment": "development",
+  "threadId": "tool-123",
+  "userId": "test-user",
+  "input": [
+    {
+      "role": "user",
+      "content": "What is 7 multiplied by 8?"
+    }
+  ],
+  "output": "7 multiplied by 8 is 56.",
+  "status": "SUCCESS"
+}

@@ -1,0 +1,31 @@
+# Pinned to specific versions so production builds (DMG/EXE/pkg) are
+# reproducible — same CLI version baked into every artifact regardless
+# of when the build runs. Bump these deliberately after dogfooding the
+# new behavior in dev.
+#   anthropic 0.97.0   — current latest as of 2026-04-28
+#   claude-agent-sdk 0.1.70 — bundles Claude Code CLI 2.1.122 (above
+#     the 2.1.90 deferred-tools cache-fix floor)
+#   pydantic 2.13.3    — required floor for mcp >=1.27
+anthropic==0.97.0
+claude-agent-sdk==0.1.70
+jsonschema==4.26.0
+fastapi[standard-no-fastapi-cloud-cli]==0.136.3
+pydantic==2.13.3
+typeguard==4.4.2
+python-dotenv==1.1.1
+Pillow==12.2.0
+httpx==0.28.1
+trafilatura==2.0.0
+# curl_cffi: Chrome TLS-fingerprint impersonation for the keyless search rungs. Measured 8/8 against DuckDuckGo where plain httpx scored 4/8 on the same queries; abi3 wheels for macos arm64/x64 and win_amd64. Guarded import, so a missing wheel degrades to httpx instead of breaking the backend.
+curl_cffi==0.15.0
+# pypdf: pull the text layer out of a fetched PDF. Pure python, no transitive deps; without it WebFetch posts raw %PDF binary into the model's context.
+pypdf==6.14.2
+# swarm-analytics: typed client for the product-analytics ingest; fire-and-forget so it never breaks the app.
+swarm-analytics==0.1.1
+# tzlocal: dev-mode fallback for resolving the user's IANA timezone when
+# Electron's OPENSWARM_TIMEZONE env var isn't set (i.e. `bash run.sh`).
+# Packaged builds get the env var directly so this is a safety net.
+tzlocal==5.3.1
+# Test deps (pytest, pytest-asyncio) live in requirements-dev.txt — they
+# never ship to production users and shaved ~3 MB / ~200 files off the
+# Mac DMG when removed from the prod env.

@@ -1,0 +1,267 @@
+{
+  "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
+  "index": 2,
+  "name": "Kestra",
+  "slug": "kestra",
+  "source_url": "https://github.com/kestra-io/kestra",
+  "source_commit": "874a29b0d86531e642aeaab172d1ca3d93a169e2",
+  "mode": "DOWNLOAD",
+  "delivery": "EXTRACTED_TREE_AFTER_PREFLIGHT",
+  "file_count": 5242,
+  "total_bytes": 42160937,
+  "max_blob": {
+    "path": "ui/src/assets/plugins/headband.svg",
+    "bytes": 5748579
+  },
+  "top_level_inventory": {
+    ".codespellrc": {
+      "files": 1,
+      "bytes": 378
+    },
+    ".devcontainer": {
+      "files": 4,
+      "bytes": 9560
+    },
+    ".editorconfig": {
+      "files": 1,
+      "bytes": 279
+    },
+    ".gitattributes": {
+      "files": 1,
+      "bytes": 158
+    },
+    ".github": {
+      "files": 34,
+      "bytes": 467916
+    },
+    ".gitignore": {
+      "files": 1,
+      "bytes": 1483
+    },
+    ".gitpod.yml": {
+      "files": 1,
+      "bytes": 141
+    },
+    ".prettierignore": {
+      "files": 1,
+      "bytes": 6
+    },
+    "AGENTS.md": {
+      "files": 1,
+      "bytes": 29761
+    },
+    "CLAUDE.md": {
+      "files": 1,
+      "bytes": 10
+    },
+    "Dockerfile": {
+      "files": 1,
+      "bytes": 399
+    },
+    "Dockerfile.base": {
+      "files": 1,
+      "bytes": 1601
+    },
+    "Dockerfile.pr": {
+      "files": 1,
+      "bytes": 148
+    },
+    "LICENSE": {
+      "files": 1,
+      "bytes": 10757
+    },
+    "Makefile": {
+      "files": 1,
+      "bytes": 10140
+    },
+    "README.md": {
+      "files": 1,
+      "bytes": 13869
+    },
+    "SECURITY.md": {
+      "files": 1,
+      "bytes": 1363
+    },
+    "build-and-start-e2e-tests.sh": {
+      "files": 1,
+      "bytes": 2070
+    },
+    "build.gradle": {
+      "files": 1,
+      "bytes": 32992
+    },
+    "charts": {
+      "files": 28,
+      "bytes": 118001
+    },
+    "cli": {
+      "files": 120,
+      "bytes": 624865
+    },
+    "codecov.yml": {
+      "files": 1,
+      "bytes": 1526
+    },
+    "core": {
+      "files": 2123,
+      "bytes": 13606504
+    },
+    "dev-tools": {
+      "files": 6,
+      "bytes": 7223
+    },
+    "docker": {
+      "files": 4,
+      "bytes": 49
+    },
+    "docker-compose-ci.yml": {
+      "files": 1,
+      "bytes": 1392
+    },
+    "docker-compose-dind.yml": {
+      "files": 1,
+      "bytes": 2447
+    },
+    "docker-compose.yml": {
+      "files": 1,
+      "bytes": 2227
+    },
+    "docs": {
+      "files": 2,
+      "bytes": 33900
+    },
+    "executor": {
+      "files": 49,
+      "bytes": 489512
+    },
+    "gradle": {
+      "files": 4,
+      "bytes": 53791
+    },
+    "gradle.properties": {
+      "files": 1,
+      "bytes": 234
+    },
+    "gradlew": {
+      "files": 1,
+      "bytes": 8656
+    },
+    "gradlew.bat": {
+      "files": 1,
+      "bytes": 2848
+    },
+    "indexer": {
+      "files": 3,
+      "bytes": 11498
+    },
+    "jdbc": {
+      "files": 91,
+      "bytes": 604231
+    },
+    "jdbc-h2": {
+      "files": 109,
+      "bytes": 148249
+    },
+    "jdbc-mysql": {
+      "files": 99,
+      "bytes": 135667
+    },
+    "jdbc-postgres": {
+      "files": 104,
+      "bytes": 140633
+    },
+    "jmh-benchmarks": {
+      "files": 4,
+      "bytes": 3918
+    },
+    "lombok.config": {
+      "files": 1,
+      "bytes": 238
+    },
+    "model": {
+      "files": 10,
+      "bytes": 12439
+    },
+    "owasp-dependency-suppressions.xml": {
+      "files": 1,
+      "bytes": 1202
+    },
+    "platform": {
+      "files": 1,
+      "bytes": 9591
+    },
+    "plugins": {
+      "files": 1,
+      "bytes": 0
+    },
+    "processor": {
+      "files": 7,
+      "bytes": 16196
+    },
+    "queue": {
+      "files": 30,
+      "bytes": 120631
+    },
+    "queue-jdbc": {
+      "files": 13,
+      "bytes": 43106
+    },
+    "repository-memory": {
+      "files": 7,
+      "bytes": 8272
+    },
+    "runner-memory": {
+      "files": 5,
+      "bytes": 2270
+    },
+    "scheduler": {
+      "files": 35,
+      "bytes": 298219
+    },
+    "script": {
+      "files": 31,
+      "bytes": 145929
+    },
+    "settings.gradle": {
+      "files": 1,
+      "bytes": 1243
+    },
+    "storage-local": {
+      "files": 7,
+      "bytes": 22282
+    },
+    "tests": {
+      "files": 30,
+      "bytes": 207949
+    },
+    "ui": {
+      "files": 1758,
+      "bytes": 21587460
+    },
+    "webserver": {
+      "files": 361,
+      "bytes": 2302865
+    },
+    "worker": {
+      "files": 64,
+      "bytes": 380098
+    },
+    "worker-controller": {
+      "files": 71,
+      "bytes": 420545
+    }
+  },
+  "licenses": [
+    {
+      "path": "LICENSE",
+      "sha256": "37b9304f833ec3cae4c08dfcf5a5b902a8b0a3550bc6ff9b177c011d76c1a7ee",
+      "bytes": 10757
+    }
+  ],
+  "lfs_pointer_count": 0,
+  "lfs_pointers": [],
+  "oversized_blob_count": 0,
+  "oversized_blobs": [],
+  "deterministic_tree_sha256": "b3609a2f11a35ae8a35401d64861f3d364e2cd5a62e4c518b181e5f3a3d9d9fc",
+  "status": "PREFLIGHT_PASS"
+}

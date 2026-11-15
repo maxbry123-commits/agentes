@@ -1,0 +1,44 @@
+# acquire_12 loop — E9. Deterministic source acquire. parallel_max=1
+version: "1.0"
+loop_id: acquire_12
+parallel_max: 1
+llm_control: DENY
+steps:
+  - id: A01
+    name: normalize_pin
+    required: true
+  - id: A02
+    name: registry_register
+    required: true
+  - id: A03
+    name: registry_resolve
+    required: true
+  - id: A04
+    name: build_fetch_plan
+    required: true
+  - id: A05
+    name: execute_fetch
+    required: false
+  - id: A06
+    name: license_gate
+    required: true
+  - id: A07
+    name: build_install_plan
+    required: true
+  - id: A08
+    name: provenance_record
+    required: false
+  - id: A09
+    name: tree_probe
+    required: false
+  - id: A10
+    name: checkpoint
+    required: true
+  - id: A11
+    name: evidence_stub
+    required: false
+  - id: A12
+    name: next_or_stop
+    required: true
+on_fail: stop
+on_license_stop: stop

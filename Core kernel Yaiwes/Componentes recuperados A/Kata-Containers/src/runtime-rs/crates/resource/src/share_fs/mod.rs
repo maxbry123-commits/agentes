@@ -1,0 +1,231 @@
+// Copyright (c) 2019-2022 Alibaba Cloud
+// Copyright (c) 2019-2026 Ant Group
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+//
+
+mod nydus;
+
+mod share_virtio_fs;
+pub use share_virtio_fs::rafs_mount;
+mod share_virtio_fs_inline;
+use share_virtio_fs_inline::ShareVirtioFsInline;
+mod share_virtio_fs_standalone;
+use share_virtio_fs_standalone::ShareVirtioFsStandalone;
+mod share_virtio_fs_nydus;
+pub use nydus::nydus_client::NydusClient;
+pub use nydus::nydus_daemon::{Nydusd, NydusdConfig};
+mod utils;
+use tokio::sync::Mutex;
+pub use utils::{
+    do_get_guest_path, do_get_guest_share_path, do_get_host_path, get_host_rw_shared_path,
+};
+mod virtio_fs_share_mount;
+pub use virtio_fs_share_mount::ephemeral_path;
+use virtio_fs_share_mount::VirtiofsShareMount;
+pub mod sandbox_bind_mounts;
+
+use std::{collections::HashMap, fmt::Debug, path::PathBuf, sync::Arc};
+
+use agent::Storage;
+use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
+use kata_types::{config::hypervisor::SharedFsInfo, prefix_with_rootless_dir};
+use oci_spec::runtime as oci;
+use tokio::sync::RwLock;
+
+use hypervisor::{device::device_manager::DeviceManager, Hypervisor};
+
+use crate::share_fs::share_virtio_fs_nydus::ShareVirtioFsNydus;
+
+const VIRTIO_FS: &str = "virtio-fs";
+pub const VIRTIO_FS_NYDUS: &str = "virtio-fs-nydus";
+const INLINE_VIRTIO_FS: &str = "inline-virtio-fs";
+
+const DEFAULT_KATA_HOST_SHARED_DIR: &str = "/run/kata-containers/shared/sandboxes/";
+
+/// default share fs (for example virtio-fs) mount path in the guest
+pub(crate) const DEFAULT_KATA_GUEST_SHARE_DIR: &str = "/run/kata-containers/shared/containers/";
+
+/// The virtiofs mount point in the guest for nydusd mode.
+/// In nydusd mode, virtiofs is mounted at `/run/kata-containers/shared/`
+const DEFAULT_KATA_GUEST_ROOT_DIR: &str = "/run/kata-containers/shared/";
+
+pub const PASSTHROUGH_FS_DIR: &str = "passthrough";
+const RAFS_DIR: &str = "rafs";
+
+pub fn kata_host_shared_dir() -> String {
+    prefix_with_rootless_dir(DEFAULT_KATA_HOST_SHARED_DIR)
+}
+
+pub fn kata_guest_share_dir() -> String {
+    prefix_with_rootless_dir(DEFAULT_KATA_GUEST_SHARE_DIR)
+}
+
+/// The virtiofs mount point in the guest for nydusd mode.
+pub fn kata_guest_nydus_root_dir() -> String {
+    prefix_with_rootless_dir(DEFAULT_KATA_GUEST_ROOT_DIR)
+}
+
+#[async_trait]
+pub trait ShareFs: Send + Sync {
+    fn get_share_fs_mount(&self) -> Arc<dyn ShareFsMount>;
+    async fn setup_device_before_start_vm(
+        &self,
+        h: &dyn Hypervisor,
+        d: &RwLock<DeviceManager>,
+    ) -> Result<()>;
+    async fn setup_device_after_start_vm(
+        &self,
+        h: &dyn Hypervisor,
+        d: &RwLock<DeviceManager>,
+    ) -> Result<()>;
+    async fn get_storages(&self) -> Result<Vec<Storage>>;
+    fn mounted_info_set(&self) -> Arc<Mutex<HashMap<String, MountedInfo>>>;
+
+    /// Stop the share fs daemon process (e.g., virtiofsd, nydusd).
+    /// Called during sandbox cleanup before cleaning up mounts.
+    /// Default implementation does nothing for inline modes that don't manage external daemons.
+    async fn stop(&self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// Trait for nydus-specific data-plane operations (standalone nydusd mode).
+/// This trait is implemented by ShareVirtioFsNydus and provides operations
+/// that are specific to the nydusd daemon's rafs mount capabilities.
+#[async_trait]
+pub trait NydusShareFs: Send + Sync {
+    /// Mount rafs through nydusd.
+    /// Returns the mount point path within the nydusd namespace.
+    async fn mount_rafs(&self, cid: &str, rafs_meta: &str, config: &str) -> Result<String>;
+
+    /// Umount rafs from nydusd.
+    /// Called during container cleanup.
+    async fn umount_rafs(&self, mountpoint: &str) -> Result<()>;
+}
+
+#[derive(Debug, Clone)]
+pub struct ShareFsRootfsConfig {
+    // TODO: for nydus v5/v6 need to update ShareFsMount
+    pub cid: String,
+    pub source: String,
+    pub target: String,
+    pub readonly: bool,
+    pub is_rafs: bool,
+}
+
+#[derive(Debug)]
+pub struct ShareFsVolumeConfig {
+    pub cid: String,
+    pub source: String,
+    pub target: String,
+    pub readonly: bool,
+    pub mount_options: Vec<String>,
+    pub mount: oci::Mount,
+    pub is_rafs: bool,
+}
+
+pub struct ShareFsMountResult {
+    pub guest_path: String,
+    pub storages: Vec<agent::Storage>,
+}
+
+/// Save mounted info for sandbox-level shared files.
+#[derive(Clone, Debug)]
+pub struct MountedInfo {
+    // Guest path
+    pub guest_path: PathBuf,
+    // Ref count of containers that uses this volume with read only permission
+    pub ro_ref_count: usize,
+    // Ref count of containers that uses this volume with read write permission
+    pub rw_ref_count: usize,
+}
+
+impl MountedInfo {
+    pub fn new(guest_path: PathBuf, readonly: bool) -> Self {
+        Self {
+            guest_path,
+            ro_ref_count: readonly.into(),
+            rw_ref_count: (!readonly).into(),
+        }
+    }
+
+    /// Check if the mount has read only permission
+    pub fn readonly(&self) -> bool {
+        self.rw_ref_count == 0
+    }
+
+    /// Ref count for all permissions
+    pub fn ref_count(&self) -> usize {
+        self.ro_ref_count + self.rw_ref_count
+    }
+
+    // File/dir name in the form of "sandbox-<uuid>-<file/dir name>"
+    pub fn file_name(&self) -> Result<String> {
+        match self.guest_path.file_name() {
+            Some(file_name) => match file_name.to_str() {
+                Some(file_name) => Ok(file_name.to_owned()),
+                None => Err(anyhow!("failed to get string from {:?}", file_name)),
+            },
+            None => Err(anyhow!(
+                "failed to get file name from the guest_path {:?}",
+                self.guest_path
+            )),
+        }
+    }
+}
+
+#[async_trait]
+pub trait ShareFsMount: Send + Sync {
+    async fn share_rootfs(&self, config: &ShareFsRootfsConfig) -> Result<ShareFsMountResult>;
+    async fn share_volume(&self, config: &ShareFsVolumeConfig) -> Result<ShareFsMountResult>;
+    /// Upgrade to readwrite permission
+    async fn upgrade_to_rw(&self, file_name: &str) -> Result<()>;
+    /// Downgrade to readonly permission
+    async fn downgrade_to_ro(&self, file_name: &str) -> Result<()>;
+    /// Umount the volume
+    async fn umount_volume(&self, file_name: &str) -> Result<()>;
+    /// Umount the rootfs
+    async fn umount_rootfs(&self, config: &ShareFsRootfsConfig) -> Result<()>;
+    /// Clean up share fs mount
+    async fn cleanup(&self, sid: &str) -> Result<()>;
+}
+
+/// Result of creating a new share fs instance.
+pub struct ShareFsInstance {
+    /// The share fs trait object (always present).
+    pub share_fs: Arc<dyn ShareFs>,
+    /// The nydus-specific trait object (present only in standalone nydus mode).
+    pub nydus_share_fs: Option<Arc<dyn NydusShareFs>>,
+}
+
+pub fn new(id: &str, config: &SharedFsInfo) -> Result<ShareFsInstance> {
+    let shared_fs = config.shared_fs.clone();
+    let shared_fs = shared_fs.unwrap_or_default();
+    match shared_fs.as_str() {
+        INLINE_VIRTIO_FS => Ok(ShareFsInstance {
+            share_fs: Arc::new(
+                ShareVirtioFsInline::new(id, config).context("new inline virtiofs")?,
+            ),
+            nydus_share_fs: None,
+        }),
+        VIRTIO_FS => Ok(ShareFsInstance {
+            share_fs: Arc::new(
+                ShareVirtioFsStandalone::new(id, config).context("new standalone virtiofs")?,
+            ),
+            nydus_share_fs: None,
+        }),
+        VIRTIO_FS_NYDUS => {
+            let nydus = Arc::new(
+                ShareVirtioFsNydus::new(id, config).context("new standalone nydus virtiofs")?,
+            );
+            Ok(ShareFsInstance {
+                share_fs: nydus.clone() as Arc<dyn ShareFs>,
+                nydus_share_fs: Some(nydus as Arc<dyn NydusShareFs>),
+            })
+        }
+        _ => Err(anyhow!("unsupported shared fs {:?}", &shared_fs)),
+    }
+}

@@ -1,0 +1,8 @@
+services:
+  whoami:
+    image: traefik/whoami:v1.12.0
+    labels:
+      traefik.http.routers.route1.rule: PathPrefix(`/foo`)
+      traefik.http.routers.route1.middlewares: passtls
+      traefik.http.routers.route1.tls: true
+      traefik.http.middlewares.passtls.passtlsclientcert.pem: true

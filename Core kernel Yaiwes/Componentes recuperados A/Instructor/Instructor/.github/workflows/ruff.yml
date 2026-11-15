@@ -1,0 +1,37 @@
+name: Ruff
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  WORKING_DIRECTORY: "."
+  CUSTOM_PACKAGES: "instructor examples tests"
+
+jobs:
+  Ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          python-version: "3.9"
+          cache-suffix: ruff-py39
+      - name: Set up Python
+        run: uv python install 3.9
+      - name: Install the project
+        run: uv sync --frozen --all-extras
+      - name: Ruff lint
+        run: uv run --frozen ruff check ${{ env.CUSTOM_PACKAGES }}
+      - name: Ruff format
+        run: uv run --frozen ruff format --check ${{ env.CUSTOM_PACKAGES }}

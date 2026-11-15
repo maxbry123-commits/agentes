@@ -1,0 +1,48 @@
+#!/bin/bash
+
+set -ex
+
+cd $(dirname $0)/..
+
+. ./scripts/version.sh
+
+CHARTS_URL=https://k3s.io/k3s-charts/assets
+CHARTS_DIR=build/static/charts
+RUNC_DIR=build/src/github.com/opencontainers/runc
+CONTAINERD_DIR=build/src/github.com/containerd/containerd
+HCSSHIM_DIR=build/src/github.com/microsoft/hcsshim
+DATA_DIR=build/data
+export TZ=UTC
+
+umask 022
+rm -rf ${CHARTS_DIR}
+rm -rf ${RUNC_DIR}
+rm -rf ${CONTAINERD_DIR}
+rm -rf ${HCSSHIM_DIR}
+mkdir -p ${CHARTS_DIR}
+mkdir -p ${DATA_DIR}
+
+case ${OS} in
+  linux)
+    git clone --single-branch --branch=${VERSION_RUNC} --depth=1 https://github.com/opencontainers/runc ${RUNC_DIR}
+    K3S_ROOT_TAR="k3s-root-${ARCH}.tar"
+    curl --compressed -sfL https://github.com/k3s-io/k3s-root/releases/download/${VERSION_ROOT}/${K3S_ROOT_TAR} -o ${K3S_ROOT_TAR}
+    echo "${K3S_ROOT_SHA256}  ${K3S_ROOT_TAR}" | sha256sum -c
+    tar xf "${K3S_ROOT_TAR}"
+    rm -f "${K3S_ROOT_TAR}" sha256sum-${ARCH}.txt
+    ;;
+  windows)
+    git clone --single-branch --branch=${VERSION_HCSSHIM} --depth=1 https://github.com/microsoft/hcsshim ${HCSSHIM_DIR}
+    ;;
+  *)
+    echo "[ERROR] unrecognized operating system: ${OS}"
+    exit 1
+    ;;
+esac
+
+git clone --single-branch --branch=${VERSION_CONTAINERD} --depth=1 https://${PKG_CONTAINERD_K3S%/v[0-9]*} ${CONTAINERD_DIR}
+
+for CHART_FILE in $(grep -rlF HelmChart manifests/ | xargs yq eval --no-doc .spec.chart | xargs -n1 basename); do
+  CHART_NAME=$(echo $CHART_FILE | grep -oE '^(-*[a-z])+')
+  curl -sfL ${CHARTS_URL}/${CHART_NAME}/${CHART_FILE} -o ${CHARTS_DIR}/${CHART_FILE}
+done

@@ -1,0 +1,24 @@
+FROM ubuntu:jammy
+
+RUN set -x \
+        && apt-get update \
+        && apt-get install -y --no-install-recommends \
+            wget \
+            git \
+            pkg-config \
+            zip \
+            g++ \
+            zlib1g-dev \
+            unzip \
+            python3 \
+            ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
+
+RUN wget -q https://github.com/bazelbuild/bazel/releases/download/7.3.2/bazel-7.3.2-installer-linux-x86_64.sh && \
+    chmod +x bazel-7.3.2-installer-linux-x86_64.sh && \
+    ./bazel-7.3.2-installer-linux-x86_64.sh && \
+    rm -f bazel-7.3.2-installer-linux-x86_64.sh
+
+RUN mkdir abseil-cpp && cd abseil-cpp \
+    && git init && git remote add origin https://github.com/abseil/abseil-cpp.git \
+    && git fetch --depth 1 origin 79e414672f447ac1b27f8cb27ad61df315a3792b && git checkout FETCH_HEAD

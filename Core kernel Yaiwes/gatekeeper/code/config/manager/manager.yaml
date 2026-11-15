@@ -1,0 +1,237 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller-manager
+    admission.gatekeeper.sh/ignore: no-self-managing
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.24
+  name: system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+  labels:
+    control-plane: controller-manager
+    gatekeeper.sh/operation: webhook
+spec:
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+      gatekeeper.sh/operation: webhook
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+        gatekeeper.sh/operation: webhook
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: gatekeeper.sh/operation
+                      operator: In
+                      values:
+                        - webhook
+                topologyKey: kubernetes.io/hostname
+      serviceAccountName: admin
+      automountServiceAccountToken: true
+      containers:
+        - command:
+            - /manager
+          args:
+            - "--port=8443"
+            - "--logtostderr"
+            - "--exempt-namespace=gatekeeper-system"
+            - "--operation=webhook"
+            - "--operation=mutation-webhook"
+            - "--disable-opa-builtin={http.send}"
+          image: openpolicyagent/gatekeeper:v3.24.0-beta.0
+          imagePullPolicy: Always
+          name: manager
+          ports:
+            - containerPort: 8888
+              name: metrics
+              protocol: TCP
+            - containerPort: 9090
+              name: healthz
+              protocol: TCP
+          env:
+            # used by Gatekeeper
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            # used by Gatekeeper
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # used by stackdriver
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            # used by stackdriver
+            - name: CONTAINER_NAME
+              value: "manager"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(NAMESPACE),k8s.container.name=$(CONTAINER_NAME)
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9090
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 9090
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsUser: 1000
+            runAsGroup: 999
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+      terminationGracePeriodSeconds: 60
+      nodeSelector:
+        kubernetes.io/os: linux
+      priorityClassName: system-cluster-critical
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit
+  namespace: system
+  labels:
+    control-plane: audit-controller
+    gatekeeper.sh/operation: audit
+spec:
+  selector:
+    matchLabels:
+      control-plane: audit-controller
+      gatekeeper.sh/operation: audit
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        control-plane: audit-controller
+        gatekeeper.sh/operation: audit
+    spec:
+      automountServiceAccountToken: true
+      containers:
+        - args:
+            - --operation=audit
+            - --operation=status
+            - --operation=mutation-status
+            - --operation=generate
+            - --logtostderr
+            - --disable-opa-builtin={http.send}
+            - --disable-cert-rotation
+          command:
+            - /manager
+          image: openpolicyagent/gatekeeper:v3.24.0-beta.0
+          env:
+            # used by Gatekeeper
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            # used by Gatekeeper
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # used by stackdriver
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            # used by stackdriver
+            - name: CONTAINER_NAME
+              value: "manager"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(NAMESPACE),k8s.container.name=$(CONTAINER_NAME)
+          imagePullPolicy: Always
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9090
+          name: manager
+          volumeMounts:
+          - mountPath: /tmp/audit
+            name: tmp-volume
+          ports:
+            - containerPort: 8888
+              name: metrics
+              protocol: TCP
+            - containerPort: 9090
+              name: healthz
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 9090
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 512Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsGroup: 999
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+      serviceAccountName: gatekeeper-admin
+      terminationGracePeriodSeconds: 60
+      nodeSelector:
+        kubernetes.io/os: linux
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+      priorityClassName: system-cluster-critical
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: critical-pods
+  namespace: system
+spec:
+  hard:
+    pods: "100"
+  scopeSelector:
+    matchExpressions:
+    - operator: In
+      scopeName: PriorityClass
+      values:
+      - system-cluster-critical

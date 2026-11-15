@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "name": "checkout_probe",
+  "description": "Focused projection fixture based on the recorded Vasquollo checkout session.",
+  "run_records": [
+    {
+      "schema_version": 1,
+      "id": "018f0000-0000-7000-8000-000000000201",
+      "stream": { "kind": "run", "id": "018f0000-0000-7000-8000-0000000000c1" },
+      "sequence": 1,
+      "recorded_at": 1780531200000200,
+      "record_type": "event",
+      "durability": "durable",
+      "causation_id": null,
+      "payload_type": "agent.run",
+      "payload_schema_version": 1,
+      "payload": { "kind": "started", "prompt": "Read tariff.py and tell me the exact final checkout total it prints after the Grintable surcharge. Give the number." }
+    },
+    {
+      "schema_version": 1,
+      "id": "018f0000-0000-7000-8000-000000000202",
+      "stream": { "kind": "run", "id": "018f0000-0000-7000-8000-0000000000c1" },
+      "sequence": 2,
+      "recorded_at": 1780531200000201,
+      "record_type": "event",
+      "durability": "durable",
+      "causation_id": null,
+      "payload_type": "agent.run",
+      "payload_schema_version": 1,
+      "payload": { "kind": "model_response_created", "response_id": "resp_0" }
+    },
+    {
+      "schema_version": 1,
+      "id": "018f0000-0000-7000-8000-000000000203",
+      "stream": { "kind": "run", "id": "018f0000-0000-7000-8000-0000000000c1" },
+      "sequence": 3,
+      "recorded_at": 1780531200000202,
+      "record_type": "event",
+      "durability": "durable",
+      "causation_id": null,
+      "payload_type": "agent.run",
+      "payload_schema_version": 1,
+      "payload": { "kind": "tool_result", "call_id": "c1", "text": "Final total: 138.00" }
+    },
+    {
+      "schema_version": 1,
+      "id": "018f0000-0000-7000-8000-000000000204",
+      "stream": { "kind": "run", "id": "018f0000-0000-7000-8000-0000000000c1" },
+      "sequence": 4,
+      "recorded_at": 1780531200000203,
+      "record_type": "event",
+      "durability": "durable",
+      "causation_id": null,
+      "payload_type": "agent.run",
+      "payload_schema_version": 1,
+      "payload": { "kind": "model_response_created", "response_id": "resp_1" }
+    },
+    {
+      "schema_version": 1,
+      "id": "018f0000-0000-7000-8000-000000000205",
+      "stream": { "kind": "run", "id": "018f0000-0000-7000-8000-0000000000c1" },
+      "sequence": 5,
+      "recorded_at": 1780531200000204,
+      "record_type": "event",
+      "durability": "durable",
+      "causation_id": null,
+      "payload_type": "agent.run",
+      "payload_schema_version": 1,
+      "payload": { "kind": "assistant_message_committed", "message_id": "018f0000-0000-7000-8000-000000000301", "response_id": "resp_1", "text": "Final total: 138.00" }
+    },
+    {
+      "schema_version": 1,
+      "id": "018f0000-0000-7000-8000-000000000206",
+      "stream": { "kind": "run", "id": "018f0000-0000-7000-8000-0000000000c1" },
+      "sequence": 6,
+      "recorded_at": 1780531200000205,
+      "record_type": "event",
+      "durability": "durable",
+      "causation_id": null,
+      "payload_type": "agent.run",
+      "payload_schema_version": 1,
+      "payload": { "kind": "model_completed", "usage": { "input_tokens": 41, "output_tokens": 18, "cached_tokens": 0 } }
+    },
+    {
+      "schema_version": 1,
+      "id": "018f0000-0000-7000-8000-000000000207",
+      "stream": { "kind": "run", "id": "018f0000-0000-7000-8000-0000000000c1" },
+      "sequence": 7,
+      "recorded_at": 1780531200000206,
+      "record_type": "event",
+      "durability": "durable",
+      "causation_id": null,
+      "payload_type": "agent.run",
+      "payload_schema_version": 1,
+      "payload": { "kind": "terminal", "terminal": "completed", "reason": null }
+    }
+  ],
+  "expected_model_context": {
+    "messages": [
+      { "role": "user", "text": "Read tariff.py and tell me the exact final checkout total it prints after the Grintable surcharge. Give the number." },
+      { "role": "tool", "call_id": "c1", "text": "Final total: 138.00" },
+      { "role": "assistant", "text": "Final total: 138.00" }
+    ],
+    "assistant_text": "Final total: 138.00",
+    "terminal": "completed",
+    "usage": { "input_tokens": 41, "output_tokens": 18, "cached_tokens": 0 },
+    "error": null
+  },
+  "expected_task_summaries": []
+}

@@ -1,0 +1,62 @@
+operators:
+- id: seed_code_codefeedback_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_codefeedback_exploit
+- id: add_source_codefeedback
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "codefeedback"
+  input_ids:
+  - seed_code_codefeedback_exploit
+- id: seed_code_dolphin_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_dolphin_exploit
+- id: add_source_dolphin
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "dolphin"
+  input_ids:
+  - seed_code_dolphin_exploit
+- id: seed_code_glaive_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_glaive_exploit
+- id: add_source_glaive
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "glaive"
+  input_ids:
+  - seed_code_glaive_exploit
+- id: seed_code_sharegpt_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_sharegpt_exploit
+- id: add_source_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "sharegpt"
+  input_ids:
+  - seed_code_sharegpt_exploit
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:
+      - instruction_seed
+      - source
+  input_ids:
+  - add_source_codefeedback
+  - add_source_dolphin
+  - add_source_glaive
+  - add_source_sharegpt

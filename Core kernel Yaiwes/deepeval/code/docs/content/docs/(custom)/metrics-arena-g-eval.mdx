@@ -1,0 +1,237 @@
+---
+id: metrics-arena-g-eval
+title: Arena G-Eval
+sidebar_label: Arena G-Eval
+languages: [python, typescript]
+---
+<MetricTagsDisplayer singleTurn={true} custom={true} multimodal={true} />
+
+The arena G-Eval is an adopted version of `deepeval`'s popular [`GEval` metric](/docs/metrics-llm-evals) but for choosing which `LLMTestCase` performed better instead.
+
+:::info
+To ensure non-bias, `ArenaGEval` utilizes a blinded, randomized positioned, n-pairwise LLM-as-a-Judge approach to pick the best performing iteration of your LLM app by representing them as "contestants".
+:::
+
+## Required Arguments
+
+To use the `ArenaGEval` metric, you'll have to provide the following arguments when creating an [`ArenaTestCase`](/docs/evaluation-arena-test-cases):
+
+- `contestants`
+
+You'll also need to supply any additional arguments such as <Term py="expected_output" ts="expectedOutput"/> and `context` within the `LLMTestCase` of `contestants` if your evaluation criteria depends on these parameters.
+
+## Usage
+
+To create a custom metric that chooses the best `LLMTestCase`, simply instantiate a `ArenaGEval` class and define an evaluation criteria in everyday language:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import ArenaTestCase, LLMTestCase, SingleTurnParams, Contestant
+from deepeval.metrics import ArenaGEval
+from deepeval import compare
+
+a_test_case = ArenaTestCase(
+    contestants=[
+        Contestant(
+            name="GPT-4",
+            hyperparameters={"model": "gpt-4"},
+            test_case=LLMTestCase(
+                input="What is the capital of France?",
+                actual_output="Paris",
+            ),
+        ),
+        Contestant(
+            name="Claude-4",
+            hyperparameters={"model": "claude-4"},
+            test_case=LLMTestCase(
+                input="What is the capital of France?",
+                actual_output="Paris is the capital of France.",
+            ),
+        )
+    ]
+)
+metric = ArenaGEval(
+    name="Friendly",
+    criteria="Choose the winner of the more friendly contestant based on the input and actual output",
+    evaluation_params=[
+        SingleTurnParams.INPUT,
+        SingleTurnParams.ACTUAL_OUTPUT,
+    ],
+)
+
+compare(test_cases=[a_test_case], metric=metric)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import {
+  ArenaTestCase,
+  Contestant,
+  LLMTestCase,
+  SingleTurnParams,
+} from "deepeval/test-case";
+import { ArenaGEval } from "deepeval/metrics";
+import { compare } from "deepeval";
+
+const aTestCase = new ArenaTestCase({
+  contestants: [
+    new Contestant({
+      name: "GPT-4",
+      hyperparameters: { model: "gpt-4" },
+      testCase: new LLMTestCase({
+        input: "What is the capital of France?",
+        actualOutput: "Paris",
+      }),
+    }),
+    new Contestant({
+      name: "Claude-4",
+      hyperparameters: { model: "claude-4" },
+      testCase: new LLMTestCase({
+        input: "What is the capital of France?",
+        actualOutput: "Paris is the capital of France.",
+      }),
+    }),
+  ],
+});
+const metric = new ArenaGEval({
+  name: "Friendly",
+  criteria: "Choose the winner of the more friendly contestant based on the input and actual output",
+  evaluationParams: [
+    SingleTurnParams.INPUT,
+    SingleTurnParams.ACTUAL_OUTPUT,
+  ],
+});
+
+await compare([aTestCase], metric);
+```
+
+</Case>
+
+</Switch>
+
+<Switch>
+
+<Case id="python">
+
+There are **THREE** mandatory and **FOUR** optional parameters required when instantiating an `ArenaGEval` class:
+
+</Case>
+
+<Case id="typescript">
+
+There are **THREE** mandatory and **THREE** optional parameters required when instantiating an `ArenaGEval` class:
+
+</Case>
+
+</Switch>
+
+- `name`: name of metric. This will **not** affect the evaluation.
+- `criteria`: a description outlining the specific evaluation aspects for each test case.
+- <Term py="evaluation_params" ts="evaluationParams"/>: a list of type `SingleTurnParams`, include only the parameters that are relevant for evaluation..
+- [Optional] <Term py="evaluation_steps" ts="evaluationSteps"/>: a list of strings outlining the exact steps the LLM should take for evaluation. If <Term py="evaluation_steps" ts="evaluationSteps"/> is not provided, `ConversationalGEval` will generate a series of <Term py="evaluation_steps" ts="evaluationSteps"/> on your behalf based on the provided `criteria`. You can only provide either <Term py="evaluation_steps" ts="evaluationSteps"/> **OR** `criteria`, and not both.
+- [Optional] `model`: a string specifying which of OpenAI's GPT models to use, **OR** [any custom LLM model](/docs/metrics-introduction#using-a-custom-llm) of type `DeepEvalBaseLLM`. Defaulted to <DefaultLLMModel />.
+- <Only id="python">
+    [Optional] `async_mode`: a boolean which when set to `True`, enables [concurrent execution within the `measure()` method.](/docs/metrics-introduction#measuring-metrics-in-async) Defaulted to `True`.
+  </Only>
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+
+:::danger
+For accurate and valid results, only evaluation parameters that are mentioned in `criteria`/<Term py="evaluation_steps" ts="evaluationSteps"/> should be included as a member of <Term py="evaluation_params" ts="evaluationParams"/>.
+:::
+
+### As a standalone
+
+You can also run the `ArenaGEval` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(a_test_case)
+print(metric.winner, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+// ...
+
+await metric.measure(aTestCase);
+console.log(metric.winner, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+:::caution
+This is great for debugging or if you wish to build your own evaluation pipeline, but you will **NOT** get the benefits (testing reports, Confident AI platform) and all the optimizations (speed, computation) the `compare()` function offers.
+:::
+
+## How Is It Calculated?
+
+The `ArenaGEval` is an adapted version of [`GEval`](/docs/metrics-llm-evals), so alike `GEval`, the `ArenaGEval` metric is a two-step algorithm that first generates a series of <Term py="evaluation_steps" ts="evaluationSteps"/> using chain of thoughts (CoTs) based on the given `criteria`, before using the generated <Term py="evaluation_steps" ts="evaluationSteps"/> to determine the winner based on the <Term py="evaluation_params" ts="evaluationParams"/> presented in each `LLMTestCase`.
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question:
+        "When should I use `ArenaGEval` instead of scoring each output on its own?",
+      answer: (
+        <>
+          When the question is <em>relative</em>: which prompt, model, or config
+          is better. It compares <code>contestants</code> head-to-head and names
+          a winner — more reliable than comparing per-output{" "}
+          <a href="/docs/metrics-llm-evals">GEval</a> scores that may sit within
+          noise.
+        </>
+      ),
+    },
+    {
+      question: "How does it avoid position and verbosity bias?",
+      answer: (
+        <>
+          It uses a blinded, randomized-position, n-pairwise LLM-as-a-Judge
+          approach. Names and ordering are hidden and shuffled, so the judge
+          can't favor whichever output came first or was longer.
+        </>
+      ),
+    },
+    {
+      question: "Why is there no `score` or `threshold` on `ArenaGEval`?",
+      answer: (
+        <>
+          It ranks rather than passing a bar, so unlike <code>GEval</code> there's
+          no <code>threshold</code> or <Term py="strict_mode" ts="strictMode"/>. Read{" "}
+          <code>metric.winner</code> and <code>metric.reason</code>, not a numeric{" "}
+          <code>score</code>.
+        </>
+      ),
+    },
+    {
+      question: "How do I run a comparison across many contestants at once?",
+      answer: (
+        <>
+          Build an{" "}
+          <a href="/docs/evaluation-arena-test-cases">ArenaTestCase</a> with a
+          list of <code>Contestant</code>s (each wrapping an{" "}
+          <code>LLMTestCase</code> and <code>hyperparameters</code>) and pass it
+          to <code>compare()</code>. Use <code>measure()</code> for one-off runs.
+        </>
+      ),
+    },
+  ]}
+/>

@@ -1,0 +1,178 @@
+# Spec: Dynamic Evaluation
+
+## Status
+
+Implemented.
+
+## Scope
+
+This spec defines Dagu dynamic evaluation for fields that explicitly opt in.
+
+It does not make every shell syntax form part of the workflow language.
+
+## Goal
+
+Define what Dagu does when a field is marked dynamic-evaluated.
+
+In this spec set, dynamic evaluation is available only for fields that opt in
+explicitly, such as `params[].eval` and precondition `eval`.
+No other field executes this command-substitution syntax as Dagu field
+evaluation.
+
+## Input
+
+Input is a workflow YAML file accepted by the YAML schema spec.
+
+Dynamic-evaluation validation extends `dagu validate` when that validation is implemented.
+Validation parses dynamic-evaluation syntax, but it must not execute commands.
+
+Example:
+
+```yaml
+params:
+  - name: build_date
+    type: string
+    eval: `date +%Y%m%d`
+steps:
+  - name: print
+    run: echo ${params.build_date}
+```
+
+## Evaluation pipeline
+
+Dynamic evaluation runs these operations in order:
+
+- Resolve Dagu value references such as `${params.name}`.
+- Expand available environment variables according to the field's evaluation scope.
+- Execute command substitutions.
+
+Rules:
+
+- Dagu expands value references before executing command substitutions.
+- Dagu expands available environment variables such as `$HOME` and `${HOME}` according to the owning field's scope.
+- Dagu executes command substitutions written in backtick form or `$()` form.
+- Dagu inserts command stdout into the evaluated value after trimming surrounding whitespace.
+- Backtick text and `$()` text in fields other than dynamic-evaluated fields are not dynamic evaluation.
+- Dagu leaves them unchanged during dynamic evaluation.
+
+## Command Substitution Syntax
+
+Rules:
+
+- A backtick command starts with `` ` `` and ends with the next unescaped `` ` ``.
+- An escaped backtick is preserved literally.
+- An unclosed backtick is preserved literally.
+- A `$()` command starts with `$(` and ends with the next unescaped `)`.
+- An escaped `)` inside `$()` command text is preserved literally.
+- An unclosed `$()` command is preserved literally.
+- Command substitutions must not be nested.
+- The command text is passed to the configured shell.
+
+## Shell execution
+
+Command substitution bodies run through the configured shell.
+
+| Rule | Behavior |
+| --- | --- |
+| Shell | Dagu's configured default shell, the scoped `SHELL`, or the platform fallback selected by the implementation. |
+| Environment | The command inherits the evaluation scope available to the owning field. |
+| Return value | Stdout, trimmed of surrounding whitespace. |
+| Successful stderr | Captured and ignored. |
+| Timeout | The implementation applies a short bounded timeout. |
+| Sandbox | Dagu does not sandbox the command. |
+
+Command side effects are real side effects.
+If the command writes files, starts processes, or uses the network, those effects are outside the workflow result model.
+
+Dynamic evaluation itself does not write workflow events, run logs, artifacts, or result files.
+
+## Failures
+
+Rules:
+
+- A command substitution that exits with a non-zero status makes dynamic evaluation fail.
+- A command substitution that times out makes dynamic evaluation fail.
+- Each command substitution occurrence is evaluated independently.
+- Spec 003 defines field-specific fallbacks, such as `params[].eval` falling back to `default`.
+- Precondition `eval` has no fallback; a dynamic-evaluation failure is a precondition evaluation error.
+
+## Outputs
+
+When dynamic evaluation succeeds, Dagu inserts the evaluated value into the owning field.
+
+Backtick text and `$()` text outside dynamic-evaluated fields remain part of the evaluated value.
+A target runtime may still interpret them after Dagu starts that runtime.
+
+## Errors
+
+Passive notices:
+
+- A supported Dagu-owned value reference that cannot resolve must preserve the original reference text.
+- Explicit inspection surfaces must report a passive notice for that preserved reference.
+- Braced text that does not match a supported Dagu-owned reference form remains ordinary string content under Spec 003.
+- Preservation means Dagu leaves the original text unchanged.
+- Dagu does not escape preserved text for a later shell or script interpreter.
+
+Runtime errors:
+
+- A failed command substitution must fail before the owning field is consumed unless the owning field defines a fallback.
+- A timed-out command substitution must fail before the owning field is consumed unless the owning field defines a fallback.
+
+## Examples
+
+Parameter value from backtick substitution:
+
+```yaml
+params:
+  - name: today
+    type: string
+    eval: `printf 20260131`
+steps:
+  - name: print
+    run: echo ${params.today}
+```
+
+Parameter value from `$()` substitution:
+
+```yaml
+params:
+  - name: today
+    type: string
+    eval: $(printf 20260131)
+steps:
+  - name: print
+    run: echo ${params.today}
+```
+
+Parameter `eval` with Dagu references:
+
+```yaml
+params:
+  - name: environment
+    type: string
+    default: prod
+  - name: service_name
+    type: string
+    eval: `printf '%s-api' ${params.environment}`
+steps:
+  - name: print
+    run: echo ${params.service_name}
+```
+
+Precondition `eval` matched with `expected`:
+
+```yaml
+steps:
+  - name: gated
+    preconditions:
+      - eval: $(printf ready)
+        expected: ready
+    run: echo ready
+```
+
+Command substitution in ordinary value-resolved fields stays text for Dagu:
+
+```yaml
+env:
+  TODAY: $(date)
+```

@@ -1,0 +1,30 @@
+# -------- ignored ---------
+**/examples/** linguist-detectable=false
+api-contracts/** linguist-detectable=false
+.github/** linguist-detectable=false
+sdks/** linguist-detectable=false
+frontend/docs/** linguist-detectable=false
+frontend/app/** linguist-detectable=false
+
+# -------- generated ---------
+
+### sqlc
+pkg/repository/sqlcv1/**/*.sql.go linguist-generated=true
+
+### openapi
+api/v1/server/oas/gen/** linguist-generated=true
+frontend/app/src/lib/api/generated/** linguist-generated=true
+
+### docs
+frontend/docs/snippets/** linguist-generated=true
+
+### sdks
+sdks/python/hatchet-sdk/clients/rest/api/** linguist-generated=true
+sdks/python/hatchet-sdk/clients/rest/models/** linguist-generated=true
+sdks/python/hatchet-sdk/contracts/** linguist-generated=true
+sdks/typescript/src/clients/rest/generated/** linguist-generated=true
+sdks/typescript/src/protoc/** linguist-generated=true
+pkg/client/rest/gen.go linguist-generated=true
+
+### examples
+examples/** linguist-generated=true

@@ -1,0 +1,63 @@
+import React from 'react';
+import WeatherWidget from './WeatherWidget';
+import PlanWidget from './PlanWidget';
+import StatsWidget from './StatsWidget';
+import LinksWidget from './LinksWidget';
+import VendoredToolUi from '@toolui/VendoredToolUi';
+import type { ShowUiPayload } from './showUiPayload';
+import { useOpenUrlInBrowserCard } from './useOpenUrlInBrowserCard';
+
+/** One switch for every surface that renders a ShowUI payload (chat bubble, pill artifact); ambient = low-cost render for resting surfaces. */
+function ShowUiWidgetView({ payload, ambient }: { payload: ShowUiPayload; ambient?: boolean }): React.ReactElement | null {
+  const openUrl = useOpenUrlInBrowserCard();
+  if (payload.component === 'weather') return <WeatherWidget props={payload.props} ambient={ambient} />;
+  if (payload.component === 'plan') return <PlanWidget props={payload.props} />;
+  if (payload.component === 'stats') return <StatsWidget props={payload.props} />;
+  if (payload.component === 'links') return <LinksWidget props={payload.props} />;
+  if (payload.component === 'vendored') {
+    // The vendored contracts carry no question/title field, so agent-supplied ones silently vanish and a choice widget renders with no visible question; surface them as a host header (ENG-227).
+    const raw = (payload.props ?? {}) as Record<string, unknown>;
+    const title = [raw.title, raw.question, raw.prompt, raw.heading]
+      .find((v): v is string => typeof v === 'string' && v.trim().length > 0) ?? '';
+    const desc = typeof raw.description === 'string' && raw.description !== title ? raw.description : '';
+    // The vendored media components ship real navigation callbacks that were never passed, so a rendered post went nowhere and links opened UNDER a fullscreen chat (ENG-234).
+    const nav: Record<string, unknown> = {};
+    const postUrl = /^(x|linkedin|instagram)-post$/.test(payload.name) && typeof raw.url === 'string' ? raw.url : null;
+    if (payload.name === 'x-post' && postUrl) nav.onOpen = () => openUrl(postUrl);
+    if (payload.name === 'link-preview' || payload.name === 'image') nav.onNavigate = (href: string) => openUrl(href);
+    // A bare image (src only) is unclickable by contract; defaulting href to the source makes the click open the full-size original.
+    if (payload.name === 'image' && typeof raw.href !== 'string') {
+      const fallback = [raw.src, raw.url].find((v): v is string => typeof v === 'string');
+      if (fallback) nav.href = fallback;
+    }
+    let widget = <VendoredToolUi name={payload.name} props={payload.props} quietFail={ambient} extraProps={nav} />;
+    // The post components only wire clicks on their media, so a text-only post has no way to reach the actual post; the whole card opens it, like the platforms themselves (skipped on ambient pills, where a click means expand).
+    if (postUrl && !ambient) {
+      widget = (
+        <div
+          style={{ cursor: 'pointer' }}
+          onClickCapture={(e: React.MouseEvent) => {
+            const target = e.target as HTMLElement;
+            if (target.closest('button, a, input, textarea, [role=button]')) return;
+            openUrl(postUrl);
+          }}
+        >
+          {widget}
+        </div>
+      );
+    }
+    if (!title && !desc) return widget;
+    return (
+      <div>
+        <div style={{ marginBottom: 6, paddingLeft: 4, paddingRight: 4 }}>
+          {title && <div style={{ fontSize: '0.9375rem', fontWeight: 600, lineHeight: 1.35 }}>{title}</div>}
+          {desc && <div style={{ fontSize: '0.8125rem', opacity: 0.72, marginTop: 2, lineHeight: 1.4 }}>{desc}</div>}
+        </div>
+        {widget}
+      </div>
+    );
+  }
+  return null;
+}
+
+export default ShowUiWidgetView;

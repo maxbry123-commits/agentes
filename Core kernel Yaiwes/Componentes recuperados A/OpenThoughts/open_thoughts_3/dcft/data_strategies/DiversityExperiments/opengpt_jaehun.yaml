@@ -1,0 +1,26 @@
+operators:
+  - id: load_oh
+    config:
+      type: load_preexisting
+      framework_name: opengpt_gpt-4o-mini
+  - id: convert_format
+    config:
+      type: function
+      function: data_strategies.commons.convert_sharegpt_to_openai
+      function_config:
+        conversations_column: conversations
+        output_column: new_conversations
+    input_ids:
+      - load_oh
+  - id: calc_gradients
+    config:
+      type: gpu_function
+      sharded: true
+      num_gpus: 1
+      function: data_strategies.DiversityExperiments.diversity_metrics.calc_average_gradient
+      function_config:
+        conversation_column: new_conversations
+        model_name: HuggingFaceTB/SmolLM2-135M-Instruct
+    input_ids:
+      - convert_format
+  

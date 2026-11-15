@@ -1,0 +1,51 @@
+{
+  "name": "@useagent/backend",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "gateway": "bun run src/gateway.ts",
+    "migrate:release": "bun run scripts/migrate-release.ts",
+    "index:canonical-execution:apply": "bun run scripts/canonical-execution-index.ts apply",
+    "index:canonical-execution:verify": "bun run scripts/canonical-execution-index.ts verify",
+    "index:canonical-execution:drop": "bun run scripts/canonical-execution-index.ts drop",
+    "canary:v002-native-children": "bun run test/manual/native-children-release-canary.ts",
+    "test": "bun run test/prepare-db.ts && bun test --max-concurrency=1 --path-ignore-patterns='**/test/slack.test.ts' && bun run test/prepare-db.ts && bun test --max-concurrency=1 ./test/slack.test.ts",
+    "test:memory-matrix": "bun test src/memory/team-memory.test.ts src/memory/scope.test.ts test/finalize.test.ts test/capture-outbox.test.ts test/memory-tools.test.ts test/memory-two-sandbox.live.test.ts test/learning-outbox.test.ts test/knowledge-drafts.test.ts test/skill-proposals.test.ts",
+    "e2e": "bun run test/e2e/full-stack.ts",
+    "e2e:real": "bun run test/e2e/real-full-stack.ts",
+    "soak": "bun run test/e2e/soak/run.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.220",
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@daytona/sdk": "^0.203.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@oh-my-pi/pi-coding-agent": "18.0.3",
+    "@oomol-lab/connector": "1.1.0",
+    "@useagent/agent-client": "file:../packages/agent-client",
+    "@useagent/agent-harness": "file:../packages/agent-harness",
+    "@useagent/artifact-formats": "file:../packages/artifact-formats",
+    "@useagent/artifact-workspace": "file:../packages/artifact-workspace",
+    "@useagent/sandbox-contract": "file:../packages/sandbox-contract",
+    "better-auth": "^1.6.25",
+    "drizzle-orm": "^0.45.2",
+    "e2b": "2.38.3",
+    "hono": "^4.13.1",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "drizzle-kit": "^0.31.10",
+    "playwright-core": "^1.62.1"
+  },
+  "overrides": {
+    "esbuild": "0.25.12",
+    "fast-uri": "3.1.5",
+    "hono": "4.13.1",
+    "uuid": "11.1.1"
+  }
+}

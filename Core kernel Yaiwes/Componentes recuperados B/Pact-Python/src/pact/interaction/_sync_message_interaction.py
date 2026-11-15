@@ -1,0 +1,92 @@
+"""
+Synchronous message interaction.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pact_ffi
+from pact.interaction._base import Interaction
+
+if TYPE_CHECKING:
+    from typing_extensions import Self
+
+
+class SyncMessageInteraction(Interaction):
+    """
+    A synchronous message interaction.
+
+    This class defines a synchronous message interaction between a consumer and
+    a provider. As with [`HttpInteraction`][HttpInteraction], it
+    defines a specific request that the consumer makes to the provider, and the
+    response that the provider should return.
+    """
+
+    def __init__(self, pact_handle: pact_ffi.PactHandle, description: str) -> None:
+        """
+        Initialise a new Synchronous Message Interaction.
+
+        This function should not be called directly. Instead, an
+        AsyncMessageInteraction should be created using the
+        [`upon_receiving`][Pact.upon_receiving] method of a
+        [`Pact`][Pact] instance using the `"Sync"` interaction type.
+
+        Args:
+            pact_handle:
+                Handle for the Pact.
+
+            description:
+                Description of the interaction. This must be unique within the
+                Pact.
+        """
+        super().__init__(description)
+        self.__handle = pact_ffi.new_sync_message_interaction(
+            pact_handle,
+            description,
+        )
+        self.__interaction_part = pact_ffi.InteractionPart.REQUEST
+
+    @property
+    def _handle(self) -> pact_ffi.InteractionHandle:
+        """
+        Handle for the Interaction.
+
+        This is used internally by the library to pass the Interaction to the
+        underlying Pact library.
+        """
+        return self.__handle
+
+    @property
+    def _interaction_part(self) -> pact_ffi.InteractionPart:
+        return self.__interaction_part
+
+    def will_respond_with(self) -> Self:
+        """
+        Begin the response part of the interaction.
+
+        This method is a convenience method to separate the request and response
+        parts of the interaction. This function is analogous to the
+        [`HttpInteraction.will_respond_with()`][HttpInteraction.will_respond_with]
+        method, albeit more generic for synchronous message interactions.
+
+        For example, the following two snippets are equivalent:
+
+        ```python
+        Pact(...).upon_receiving("A sync request", interaction="Sync")
+            .with_body("request body", part="Request")
+            .with_body("response body", part="Response")
+        ```
+
+        ```python
+        Pact(...).upon_receiving("A sync request", interaction="Sync")
+            .with_body("request body")
+            .will_respond_with()
+            .with_body("response body")
+        ```
+
+        Returns:
+            The current instance of the interaction.
+        """
+        self.__interaction_part = pact_ffi.InteractionPart.RESPONSE
+        return self

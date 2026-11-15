@@ -1,0 +1,18 @@
+version: 1
+team: SEALS
+roles:
+  control:
+    component: control-layer/wordflow
+    authority: goals_budget_sheriff_events
+  ui_host:
+    component: OpenClaw
+    keep: [ui, tools, skills, mcp]
+    prune: [free_agent_loop, free_planner]
+  workers:
+    component: Hermes
+    keep: [workers, queue, execution_memory]
+    prune: [free_planner]
+  code_backend:
+    chain: [OpenCode, OpenHands, Codex, Claude-Code]
+  code_frontend:
+    chain: [Cline, OpenHands, OpenCode, Codex, Kimi-CLI, MiMo-Code]

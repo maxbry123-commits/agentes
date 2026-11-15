@@ -1,0 +1,7 @@
+Cannot use multiple authentication methods simultaneously.
+
+You have configured:
+  - [auth.basic] (generic basic authentication)
+  - [auth.openapi.*] or [auth.dynamic.openapi.*] (OpenAPI-aware authentication)
+
+Please choose one authentication method.

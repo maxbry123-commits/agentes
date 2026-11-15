@@ -1,0 +1,53 @@
+name: Extraction Sentinel Doctor 2026-09-03
+run-name: Extraction sentinel doctor • ${{ github.run_id }}
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: extraction-sentinel-doctor-main
+  cancel-in-progress: false
+
+jobs:
+  doctor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+
+      - name: Audit and dispatch only when Guardian is absent
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/extract_guardian_repair_20260903.py --audit-only | tee audit-result.json
+          read -r GAPS RETRYABLE BLOCKED <<< "$(python3 -c 'import json; d=json.load(open("audit-result.json")); c=d.get("counts",{}); print(c.get("remaining",len(d.get("remaining_gaps",[]))), c.get("retryable",len(d.get("retryable_gaps",[]))), c.get("blocked",len(d.get("blocked_gaps",[]))))')"
+          echo "REMAINING_GAPS=$GAPS RETRYABLE_GAPS=$RETRYABLE BLOCKED_GAPS=$BLOCKED"
+          if [ "$GAPS" -eq 0 ]; then
+            echo VERIFIED_CLOSED
+            exit 0
+          fi
+          if [ "$RETRYABLE" -eq 0 ]; then
+            echo "GAPS_PENDING_NONRETRYABLE blocked=$BLOCKED"
+            exit 73
+          fi
+          active="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=in_progress&per_page=100" --jq '[.workflow_runs[] | select(.path==".github/workflows/extraction-repair-guardian-20260903.yml")] | length')"
+          queued="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=queued&per_page=100" --jq '[.workflow_runs[] | select(.path==".github/workflows/extraction-repair-guardian-20260903.yml")] | length')"
+          echo "GUARDIAN_ACTIVE=$active GUARDIAN_QUEUED=$queued"
+          if [ "$active" -eq 0 ] && [ "$queued" -eq 0 ]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=extraction-repair-needed
+            echo "SENTINEL_DISPATCHED"
+          else
+            echo "SENTINEL_NOOP_GUARDIAN_PRESENT"
+          fi

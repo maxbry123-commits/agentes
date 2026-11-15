@@ -1,0 +1,21 @@
+interface PrefectLogoProps {
+	className?: string;
+}
+
+export function PrefectLogo({ className = "size-11" }: PrefectLogoProps) {
+	return (
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			fill="none"
+			viewBox="0 0 285 389"
+			className={className}
+			aria-label="Prefect Logo"
+		>
+			<title>Prefect Logo</title>
+			<path
+				fill="currentColor"
+				d="M255.517 66.2607L284.065 82.6895L285 83.2285V244.842L284.065 245.381L171.288 310.279V273.12L172.222 272.581L187.012 264.077L206.055 253.104L252.721 226.248V103.969L146.478 165.111V388.148L114.198 368.272V146.528L253.655 66.2607L254.586 65.7266L255.517 66.2607ZM198.418 33.3984L229.775 51.4453L89.3789 132.25V352.985L57.9873 333.655L57.1006 333.11V113.657L196.557 33.3984L197.487 32.8652L198.418 33.3984ZM141.318 0.533203L172.676 18.5791L32.2793 99.3848V317.817L0 297.942V80.8008L139.457 0.533203L140.388 0L141.318 0.533203Z"
+			/>
+		</svg>
+	);
+}

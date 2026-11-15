@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 2757737,
+  "bundle_sha256": "10253f5a727e7d3a3e7f0a75014885ab2daa39ed010ba70f4ed40f614a1e8ca7",
+  "extracted_tree": {
+    "bytes": 12923008,
+    "files": 796,
+    "sha256": "a2b6efccb696bfe5ffacb94984de7fa19ce1604969c7b769caacb9042454c800"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 2757737,
+      "name": "Temporal.bundle.zip.part-0001",
+      "sha256": "10253f5a727e7d3a3e7f0a75014885ab2daa39ed010ba70f4ed40f614a1e8ca7"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Temporal",
+  "source_bytes": 12923008,
+  "source_commit": "ab25ed693f7ec77589346e66c98db299a8c9c9fe",
+  "source_files": 796,
+  "source_ref": "HEAD",
+  "source_repo": "temporalio/sdk-python",
+  "source_tree": {
+    "bytes": 12923008,
+    "files": 796,
+    "sha256": "a2b6efccb696bfe5ffacb94984de7fa19ce1604969c7b769caacb9042454c800"
+  }
+}

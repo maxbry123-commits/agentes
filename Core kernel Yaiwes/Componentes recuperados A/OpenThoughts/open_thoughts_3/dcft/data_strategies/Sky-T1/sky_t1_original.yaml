@@ -1,0 +1,22 @@
+operators:
+- id: load_sky_t1
+  config:
+      type: hf_source
+      dataset: NovaSky-AI/Sky-T1_data_17k
+      split: train
+      columns: 
+        - system
+        - conversations
+
+- id: reformat_tags
+  config:
+    type: function
+    function: data_strategies._ExistingDatasets.utils.reformat_tags
+    function_config:
+      messages: conversations
+      role_tag: from
+      content_tag: value
+      user_tag: user
+      assistant_tag: assistant
+  input_ids:
+    - load_sky_t1

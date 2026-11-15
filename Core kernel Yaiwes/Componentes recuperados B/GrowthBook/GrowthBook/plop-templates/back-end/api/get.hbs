@@ -1,0 +1,15 @@
+import { get{{pascalCase object}}Validator } from "shared/validators";
+import { createApiRequestHandler } from "back-end/src/util/handler";
+
+export const get{{pascalCase object}} = createApiRequestHandler(get{{pascalCase object}}Validator)(
+  async (req) => {
+    const {{camelCase object}} = await req.context.models.{{camelCase object}}s.getById(req.params.id);
+    if (!{{camelCase object}}) {
+      throw new Error("Could not find {{camelCase object}} with that id");
+    }
+
+    return {
+      {{camelCase object}}: req.context.models.{{camelCase object}}s.toApiInterface({{camelCase object}}),
+    };
+  }
+);

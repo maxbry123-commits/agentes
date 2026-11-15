@@ -1,0 +1,17 @@
+# C66 — L7. B6 SALIDA4
+id: C66
+layer: L7
+name: metrics_export
+implementado: true
+critical: false
+description: "Export de métricas"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C66 aplica en capa L7"
+checks:
+  - metrics_export_check
+evidence:
+  type: metrics_export_marker
+  required: false

@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "Prometheus",
+    "path": "tsdb/testdata/20kseries.json",
+    "chunks_dir": "Prometheus/tsdb/testdata/20kseries.json.chunks",
+    "bytes": 10003571,
+    "chunk_bytes": 8388608
+  }
+]

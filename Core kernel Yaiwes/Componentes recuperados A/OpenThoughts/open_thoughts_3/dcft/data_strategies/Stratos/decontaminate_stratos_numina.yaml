@@ -1,0 +1,25 @@
+operators:
+  - id: load_numina
+    config:
+      type: hf_source
+      dataset: bespokelabs/sky-t1-numina-rejection-sampled
+      split: train
+  - id: decontaminate 
+    config:
+      type: cpu_function
+      num_cpus: 10
+      function: data_strategies.DeepSeekR1.utils.fuzzy_match_table
+      function_config:
+          column: problem
+          eval_datasets:
+            - HuggingFaceH4/MATH-500
+            - Maxwell-Jia/AIME_2024
+          eval_columns:
+            - problem
+            - Problem
+          eval_splits:
+            - test
+            - train
+          similarity_threshold: 95.0
+    input_ids:
+      - load_numina

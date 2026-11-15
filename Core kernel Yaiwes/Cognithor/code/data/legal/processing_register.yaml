@@ -1,0 +1,121 @@
+# Cognithor GDPR Processing Register (Art. 30 DSGVO)
+# Auto-generated: 2026-03-28
+# Version: 1.0
+
+processing_activities:
+  - name: chat_processing
+    purpose: Respond to user queries via PGE pipeline
+    legal_basis: consent
+    data_categories: [user_queries, chat_history]
+    recipients: [ollama_local]
+    retention_days: 180
+    erasure_action: full_delete
+    risk_level: medium
+
+  - name: cloud_llm_inference
+    purpose: Process complex queries via cloud AI providers
+    legal_basis: consent
+    data_categories: [user_queries, memory_context]
+    recipients: [anthropic, openai, groq, gemini, mistral, deepseek]
+    retention_days: 90
+    erasure_action: full_delete
+    risk_level: high
+
+  - name: memory_storage
+    purpose: Store episodic, semantic, procedural memories for context
+    legal_basis: consent
+    data_categories: [user_messages, extracted_facts, procedures]
+    recipients: [none_local_only]
+    retention_days: 90  # matches RetentionConfig.episodic_days
+    erasure_action: full_delete
+    risk_level: medium
+
+  - name: knowledge_graph
+    purpose: Build entity-relationship graph from conversations
+    legal_basis: consent
+    data_categories: [entities, relations, attributes]
+    recipients: [none_local_only]
+    retention_days: 0  # permanent
+    erasure_action: full_delete
+    risk_level: medium
+
+  - name: osint_investigation
+    purpose: Background research on persons/orgs (HIM module)
+    legal_basis: consent + legitimate_interest  # consent for request, legitimate interest for public data
+    data_categories: [public_profiles, claims, evidence, trust_scores]
+    recipients: [github_api, arxiv_api, web_search_engines]
+    retention_days: 30
+    erasure_action: full_delete
+    risk_level: high
+
+  - name: evolution_learning
+    purpose: Autonomous knowledge building during idle time
+    legal_basis: consent
+    data_categories: [web_content, extracted_entities, claims]
+    recipients: [searxng_local, brave_api, duckduckgo]
+    retention_days: 0  # permanent domain knowledge
+    erasure_action: full_delete
+    risk_level: medium
+
+  - name: security_monitoring
+    purpose: Detect abuse, credential leaks, injection attacks
+    legal_basis: legitimate_interest
+    data_categories: [tool_calls, risk_assessments, audit_trail]
+    recipients: [none_local_only]
+    retention_days: 365
+    erasure_action: anonymize
+    risk_level: low
+
+  - name: vault_storage
+    purpose: Obsidian-compatible knowledge vault
+    legal_basis: consent
+    data_categories: [notes, research_results, reports]
+    recipients: [none_local_only]
+    retention_days: 0  # permanent
+    erasure_action: full_delete
+    risk_level: low
+
+  - name: session_management
+    purpose: Track conversation sessions across channels
+    legal_basis: contract
+    data_categories: [session_ids, channel_info, message_counts]
+    recipients: [none_local_only]
+    retention_days: 180
+    erasure_action: full_delete
+    risk_level: low
+
+  - name: identity_layer
+    purpose: Cognitive personality and behavioral consistency
+    legal_basis: consent
+    data_categories: [personality_data, behavioral_patterns]
+    recipients: [none_local_only]
+    retention_days: 0  # permanent — system personality, not user PII
+    erasure_action: full_delete
+    risk_level: medium
+
+  - name: channel_metadata
+    purpose: Map user IDs to chat IDs for message routing (Telegram, Discord, etc.)
+    legal_basis: contract
+    data_categories: [user_ids, chat_ids, session_mappings]
+    recipients: [none_local_only]
+    retention_days: 180
+    erasure_action: full_delete
+    risk_level: low
+
+  - name: user_preferences
+    purpose: Learn and store user preferences (verbosity, language, style)
+    legal_basis: consent
+    data_categories: [preference_keys, preference_values, usage_patterns]
+    recipients: [none_local_only]
+    retention_days: 365
+    erasure_action: full_delete
+    risk_level: low
+
+  - name: a2a_protocol
+    purpose: Agent-to-Agent communication and task delegation
+    legal_basis: consent
+    data_categories: [task_descriptions, message_content, agent_ids]
+    recipients: [remote_agents_via_a2a]
+    retention_days: 90
+    erasure_action: full_delete
+    risk_level: high

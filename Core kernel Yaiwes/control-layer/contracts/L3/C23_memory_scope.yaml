@@ -1,0 +1,18 @@
+# C23 — L3. B2 SALIDA4
+id: C23
+layer: L3
+name: memory_scope
+implementado: true
+critical: false
+description: "Alcance de memoria por sesión/proyecto"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C23 aplica en capa L3"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - memory_scope_check
+evidence:
+  type: memory_scope_marker
+  required: false

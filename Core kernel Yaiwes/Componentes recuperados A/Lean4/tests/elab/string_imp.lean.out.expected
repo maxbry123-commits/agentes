@@ -1,0 +1,18 @@
+6
+"cd"
+""
+2
+{ byteIdx := 0 }
+{ byteIdx := 2 }
+{ byteIdx := 4 }
+String.Iterator.mk "αacc" { byteIdx := 2 }
+{ byteIdx := 6 }
+["0", ""]
+["0", ""]
+["ab", "ab"]
+["", "", "c", "cαα", "cα"]
+["αb", "bcαα", ""]
+["here", "is", "some", "text", ""]
+["here is ", " text "]
+["here is some text "]
+["", "bac", "c"]

@@ -1,0 +1,301 @@
+# Complexity Router
+
+A rule-based routing strategy that classifies requests by complexity and routes them to appropriate models - with zero API calls and sub-millisecond latency.
+
+## Overview
+
+Unlike the semantic `auto_router` which uses embedding-based matching, the `complexity_router` uses weighted rule-based scoring across multiple dimensions to classify request complexity. This approach:
+
+- **Zero external API calls** - all scoring is local
+- **Sub-millisecond latency** - typically <1ms per classification
+- **Predictable behavior** - rule-based scoring is deterministic
+- **Fully configurable** - weights, thresholds, and keyword lists can be customized
+
+## How It Works
+
+The router scores each request across 7 dimensions:
+
+| Dimension | Description | Weight |
+|-----------|-------------|--------|
+| `tokenCount` | Short prompts = simple, long = complex | 0.10 |
+| `codePresence` | Code keywords (function, class, etc.) | 0.30 |
+| `reasoningMarkers` | "step by step", "think through", etc. | 0.25 |
+| `technicalTerms` | Domain complexity indicators | 0.25 |
+| `simpleIndicators` | "what is", "define" (negative weight) | 0.05 |
+| `multiStepPatterns` | "first...then", numbered steps | 0.03 |
+| `questionComplexity` | Multiple question marks | 0.02 |
+
+The weighted sum is mapped to tiers using configurable boundaries:
+
+| Tier | Score Range | Boundary key below it | Typical Use |
+|------|-------------|-----------------------|-------------|
+| SIMPLE | < 0.15 | - | Basic questions, greetings |
+| MEDIUM | 0.15 - 0.35 | `simple_medium` | Standard queries |
+| COMPLEX | 0.35 - 0.60 | `medium_complex` | Technical, multi-part requests |
+| REASONING | > 0.60 | `complex_reasoning` | Chain-of-thought, analysis |
+
+Tier names are defaults you can rename with [`tier_labels`](#renaming-the-tiers). The three `tier_boundaries` keys are named after those defaults but they are scorer knobs, not tiers: each one names the gap between two rungs and is persisted by name on every routing decision, so they stay `simple_medium` / `medium_complex` / `complex_reasoning` no matter what you call the tiers. The column above tells a renamed deployment which knob it is turning.
+
+## Configuration
+
+### Basic Configuration
+
+```yaml
+model_list:
+  - model_name: smart-router
+    litellm_params:
+      model: auto_router/complexity_router
+      complexity_router_config:
+        tiers:
+          SIMPLE: gpt-4o-mini
+          MEDIUM: gpt-4o  
+          COMPLEX: claude-sonnet-4
+          REASONING: o1-preview
+```
+
+Each tier can also use a model entry with request parameter overrides. A tier value may be
+a model string, a single object, or a list mixing strings and objects. Object entries must
+contain a model name and may contain any LiteLLM request parameters. The model name must
+still resolve to a deployment in `model_list`; this configuration does not create one
+
+```yaml
+        tiers:
+          COMPLEX: opus
+          REASONING:
+            - model_name: opus
+              litellm_params:
+                reasoning_effort: xhigh
+            - abc
+```
+
+### Renaming the tiers
+
+`tier_labels` puts your own vocabulary on the four tiers:
+
+```yaml
+model_list:
+  - model_name: smart-router
+    litellm_params:
+      model: auto_router/complexity_router
+      complexity_router_config:
+        tier_labels:
+          SIMPLE: Cheap
+          MEDIUM: Standard
+          COMPLEX: Premium
+          REASONING: Deep
+        tiers:
+          SIMPLE: gpt-5-nano
+          MEDIUM: gpt-5-mini
+          COMPLEX: gpt-5
+          REASONING: o3
+```
+
+Labels are display-only. Every config key stays canonical, so `tiers`, `keyword_tier_rules[].tier`, and `tier_boundaries` are written exactly as they are without labels. A partial map is fine and any tier you leave out keeps its default name. Two tiers can't share a label, and a label can't be another tier's canonical name, since either would make a log row ambiguous.
+
+Where the names show up depends on your classifier. Under the default heuristic scorer they are cosmetic: the scorer maps a weighted score to a rung and never reads a tier name, so renaming changes what you see in the dashboard and your spend logs and nothing else. Under `classifier_type: llm` the labels are also the names in the rubric the classifier reasons with and the values it must return, so clearer names can sharpen its choices. Either way the names are operator-facing, and an API caller never sees them.
+
+Spend logs keep `routing_decision.tier` canonical so rows from before and after a rename stay comparable, and gain `routing_decision.tier_label` on the tiers you renamed.
+
+### Full Configuration
+
+```yaml
+model_list:
+  - model_name: smart-router
+    litellm_params:
+      model: auto_router/complexity_router
+      complexity_router_config:
+        # Display names for the tiers (optional, config keys stay canonical)
+        tier_labels:
+          SIMPLE: Cheap
+          MEDIUM: Standard
+          COMPLEX: Premium
+          REASONING: Deep
+
+        # Tier to model mapping
+        tiers:
+          SIMPLE: gpt-4o-mini
+          MEDIUM: gpt-4o  
+          COMPLEX: claude-sonnet-4
+          REASONING: o1-preview
+        
+        # Tier boundaries (normalized scores)
+        tier_boundaries:
+          simple_medium: 0.15
+          medium_complex: 0.35
+          complex_reasoning: 0.60
+        
+        # Token count thresholds
+        token_thresholds:
+          simple: 15    # Below this = "short" (default: 15)
+          complex: 400  # Above this = "long" (default: 400)
+        
+        # Dimension weights (must sum to ~1.0)
+        dimension_weights:
+          tokenCount: 0.10
+          codePresence: 0.30
+          reasoningMarkers: 0.25
+          technicalTerms: 0.25
+          simpleIndicators: 0.05
+          multiStepPatterns: 0.03
+          questionComplexity: 0.02
+        
+        # Override default keyword lists
+        code_keywords:
+          - function
+          - class
+          - def
+          - async
+          - database
+        
+        reasoning_keywords:
+          - step by step
+          - think through
+          - analyze
+        
+        # Fallback model if tier cannot be determined
+        default_model: gpt-4o
+
+        # Replace a routed model that cannot take image input (default: false)
+        modality_routing: true
+```
+
+## Usage
+
+Once configured, use the model name like any other:
+
+```python
+import litellm
+
+response = litellm.completion(
+    model="smart-router",  # Your complexity_router model name
+    messages=[{"role": "user", "content": "What is 2+2?"}]
+)
+# Routes to SIMPLE tier (gpt-4o-mini)
+
+response = litellm.completion(
+    model="smart-router",
+    messages=[{"role": "user", "content": "Think step by step: analyze the performance implications of implementing a distributed consensus algorithm for our microservices architecture."}]
+)
+# Routes to REASONING tier (o1-preview)
+```
+
+## Special Behaviors
+
+### Modality-based capability routing
+
+The classifier reads text alone, so a request carrying an image can classify cheap and land on a
+text-only model, which rejects it with a provider 400 no fallback catches. With
+`modality_routing: true`, one gate inspects every decided placement: when the routed model is
+explicitly declared `supports_vision: false` (deployment `model_info` first, the model cost map
+otherwise; unmapped names stay routable, and a multi-deployment group must accept on every
+deployment), the request is re-placed on the nearest HIGHER tier holding a capable model, with
+routing plugins still applied to the re-pick, then on `default_model` (never on plugin routers
+and never for a plan-floored decision), and otherwise rejected with a clear 400 naming the
+router. The walk only ever goes up, so a plan-mode floor cannot be undercut; a router whose only
+vision model sits below the decided tier gets the 400 and an actionable message instead.
+
+A same-tier re-pick keeps the decision's cause and adds `modality:image` to `signals`; a tier
+change or default takeover records `cause: modality_escalation` with the displaced placement
+(`modality_escalated_from:<TIER>` or `modality_displaced_default_model`). Escalations are never
+pinned by session affinity, and a KEPT session pin bypasses the gate entirely: a session pinned
+to a text-only model keeps it even when an image arrives.
+
+### Heuristic-first chaining
+
+`classifier_type: heuristic_first` runs the local scorer on every request and only calls the LLM
+classifier for the ones the scorer could not place cheaply. It takes the same classifier settings as
+`classifier_type: llm`, plus `heuristic_first_max_tier`:
+
+```yaml
+model_list:
+  - model_name: smart-router
+    litellm_params:
+      model: auto_router/complexity_router
+      complexity_router_config:
+        classifier_type: heuristic_first
+        heuristic_first_max_tier: SIMPLE
+        classifier_llm_config:
+          model: gpt-4o-mini
+        tiers:
+          SIMPLE: gpt-4o-mini
+          MEDIUM: gpt-4o
+          COMPLEX: claude-sonnet-4
+          REASONING: o1-preview
+```
+
+A request short-circuits, meaning it routes on the scorer's own tier with no classifier call, when
+two things hold: the scorer landed at or below `heuristic_first_max_tier`, and it produced at least
+one signal. Everything else goes to the classifier, which then decides as it normally would.
+
+The signal requirement is what keeps this from quietly routing everything to your cheapest model.
+A prompt where no dimension fires scores exactly 0.0, which is below `simple_medium`, so the score
+to tier mapping calls it SIMPLE by default rather than by evidence. Around half of general traffic
+scores that way. Those requests reach the classifier instead, which is the whole reason to configure
+one. Note the converse too: the score is not a confidence, and a prompt that fires a single weak
+signal and still lands under the boundary does short-circuit, so a lower threshold buys accuracy and
+a higher one buys savings.
+
+`heuristic_first_max_tier` names a built-in tier and may not name the highest one, since that would
+short-circuit everything and leave the classifier unreachable. Operator-defined tier sets
+(`tier_definitions`) are not supported here, because the scorer only produces the built-in tiers.
+When the classifier call fails, the fallback works exactly as it does under `classifier_type: llm`,
+except that the heuristic outcome is the one already computed rather than a second scoring pass.
+
+Spend logs record `routing_decision.cause` as `heuristic_first_short_circuit` when the classifier
+was skipped, and `llm_classifier` when it ran, so the two are told apart per request.
+
+### Reasoning Override
+
+If 2+ reasoning markers are detected in the user message, the request is promoted to the REASONING tier even when the weighted score maps lower, so complex reasoning tasks get the appropriate model. The promotion requires the score to reach `reasoning_override_min_score`, which tracks `tier_boundaries.simple_medium` unless set, so stock phrases on an otherwise trivial prompt cannot buy the top tier. Set it to `0` to promote on the markers alone.
+
+### System Prompt Handling
+
+Reasoning markers in the system prompt do **not** trigger the reasoning override. This prevents system prompts like "Think step by step before answering" from forcing all requests to the reasoning tier.
+
+### Harness Reminder Blocks
+
+Agent harnesses inject their own context into the conversation as ordinary message text. That text is plumbing, not something a human asked for, so the router strips complete reminder blocks before classifying and picking a tier. A turn that is nothing but a reminder block strips to empty and is skipped, and the router falls back to the last real ask instead
+
+By default a block is anything between `<system-reminder>` and `</system-reminder>`. `reminder_markers` replaces that with your harness's own delimiters. Many harnesses use a different envelope per agent type, so list every pair you emit:
+
+```yaml
+model_list:
+  - model_name: smart-router
+    litellm_params:
+      model: auto_router/complexity_router
+      complexity_router_config:
+        reminder_markers:
+          - open: "<<<BEGIN_CONTEXT>>>"
+            close: "<<<END_CONTEXT>>>"
+          - open: "[[SUBAGENT_CONTEXT_BEGIN]]"
+            close: "[[SUBAGENT_CONTEXT_END]]"
+```
+
+Setting `reminder_markers` replaces the built-in `<system-reminder>` pair rather than adding to it, so list that pair too if your harness also emits it. Matching is case-insensitive. Blocks that nest or overlap across pairs are stripped whole. An unclosed delimiter is not a block and is left in place, which keeps prose that merely mentions a delimiter from being eaten
+
+### Code Detection
+
+Technical code keywords are detected case-insensitively and include:
+- Language keywords: `function`, `class`, `def`, `const`, `let`, `var`
+- Operations: `import`, `export`, `return`, `async`, `await`
+- Infrastructure: `database`, `api`, `endpoint`, `docker`, `kubernetes`
+- Actions: `debug`, `implement`, `refactor`, `optimize`
+
+## Performance
+
+- **Classification time**: <1ms typical
+- **Memory usage**: Minimal (compiled regex patterns + keyword sets)
+- **No external dependencies**: Works offline with no API calls
+
+## Comparison with auto_router
+
+| Feature | complexity_router | auto_router |
+|---------|-------------------|-------------|
+| Classification | Rule-based scoring | Semantic embedding |
+| Latency | <1ms | ~100-500ms (embedding API) |
+| API Calls | None | Requires embedding model |
+| Training | None | Requires utterance examples |
+| Customization | Weights, keywords, thresholds | Utterance examples |
+| Best For | Cost optimization | Intent routing |
+
+Use `complexity_router` when you want to optimize costs by routing simple queries to cheaper models. Use `auto_router` when you need semantic intent matching (e.g., routing "customer support" queries to a specialized model).

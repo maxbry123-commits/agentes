@@ -1,0 +1,220 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+services:
+  node1:
+    image: ${RUSTFS_IMAGE:-rustfs/rustfs:local-4node}
+    build:
+      context: ../..
+      dockerfile: Dockerfile.source
+    hostname: node1
+    environment:
+      - RUSTFS_VOLUMES=${RUSTFS_VOLUMES:-http://node{1...4}:9000/data/rustfs{0...3}}
+      - RUSTFS_ADDRESS=:9000
+      - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY:-rustfsadmin-local}
+      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY:-rustfssecret-local}
+      - RUSTFS_OBS_ENDPOINT=${RUSTFS_OBS_ENDPOINT:-http://host.docker.internal:4318}
+      - RUSTFS_OBS_LOGGER_LEVEL=${RUSTFS_OBS_LOGGER_LEVEL:-info}
+      - RUSTFS_OBS_USE_STDOUT=${RUSTFS_OBS_USE_STDOUT:-false}
+      - RUSTFS_OBS_LOG_STDOUT_ENABLED=${RUSTFS_OBS_LOG_STDOUT_ENABLED:-false}
+      - RUSTFS_ISSUE3031_DIAG_ENABLE=${RUSTFS_ISSUE3031_DIAG_ENABLE:-false}
+      - RUSTFS_OBJECT_LOCK_ACQUIRE_TIMEOUT=${RUSTFS_OBJECT_LOCK_ACQUIRE_TIMEOUT:-5}
+      - RUSTFS_LOCK_ACQUIRE_TIMEOUT=${RUSTFS_LOCK_ACQUIRE_TIMEOUT:-5}
+      - RUSTFS_UNSAFE_BYPASS_DISK_CHECK=${RUSTFS_UNSAFE_BYPASS_DISK_CHECK:-true}
+      # Internode gRPC optimization knobs (grpc-optimization P0-P3). Defaults match the binary
+      # defaults, so leaving these unset is a no-op; the A/B driver exports them to toggle a stage.
+      - RUSTFS_INTERNODE_RPC_TCP_NODELAY=${RUSTFS_INTERNODE_RPC_TCP_NODELAY:-true}
+      - RUSTFS_INTERNODE_RPC_HTTP2_STREAM_WINDOW_SIZE=${RUSTFS_INTERNODE_RPC_HTTP2_STREAM_WINDOW_SIZE:-1048576}
+      - RUSTFS_INTERNODE_RPC_HTTP2_CONN_WINDOW_SIZE=${RUSTFS_INTERNODE_RPC_HTTP2_CONN_WINDOW_SIZE:-2097152}
+      - RUSTFS_INTERNODE_RPC_MAX_MESSAGE_SIZE=${RUSTFS_INTERNODE_RPC_MAX_MESSAGE_SIZE:-104857600}
+      - RUSTFS_INTERNODE_CHANNEL_ISOLATION=${RUSTFS_INTERNODE_CHANNEL_ISOLATION:-false}
+      - RUSTFS_INTERNODE_BULK_CHANNELS=${RUSTFS_INTERNODE_BULK_CHANNELS:-2}
+      - RUSTFS_INTERNODE_RPC_MSGPACK_ONLY=${RUSTFS_INTERNODE_RPC_MSGPACK_ONLY:-false}
+      - RUSTFS_INTERNODE_PREWARM=${RUSTFS_INTERNODE_PREWARM:-false}
+      - RUSTFS_INTERNODE_OFFLINE_BYPASS=${RUSTFS_INTERNODE_OFFLINE_BYPASS:-false}
+      - RUSTFS_INTERNODE_OFFLINE_REPROBE_SECS=${RUSTFS_INTERNODE_OFFLINE_REPROBE_SECS:-5}
+      - RUSTFS_INTERNODE_OFFLINE_FAILURE_THRESHOLD=${RUSTFS_INTERNODE_OFFLINE_FAILURE_THRESHOLD:-3}
+      - RUSTFS_INTERNODE_IDEMPOTENT_READ_RETRIES=${RUSTFS_INTERNODE_IDEMPOTENT_READ_RETRIES:-1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - node1_data_0:/data/rustfs0
+      - node1_data_1:/data/rustfs1
+      - node1_data_2:/data/rustfs2
+      - node1_data_3:/data/rustfs3
+    ports:
+      - "9000:9000"
+    networks:
+      - rustfs-cluster-net
+
+  node2:
+    image: ${RUSTFS_IMAGE:-rustfs/rustfs:local-4node}
+    build:
+      context: ../..
+      dockerfile: Dockerfile.source
+    hostname: node2
+    environment:
+      - RUSTFS_VOLUMES=${RUSTFS_VOLUMES:-http://node{1...4}:9000/data/rustfs{0...3}}
+      - RUSTFS_ADDRESS=:9000
+      - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY:-rustfsadmin-local}
+      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY:-rustfssecret-local}
+      - RUSTFS_OBS_ENDPOINT=${RUSTFS_OBS_ENDPOINT:-http://host.docker.internal:4318}
+      - RUSTFS_OBS_LOGGER_LEVEL=${RUSTFS_OBS_LOGGER_LEVEL:-info}
+      - RUSTFS_OBS_USE_STDOUT=${RUSTFS_OBS_USE_STDOUT:-false}
+      - RUSTFS_OBS_LOG_STDOUT_ENABLED=${RUSTFS_OBS_LOG_STDOUT_ENABLED:-false}
+      - RUSTFS_ISSUE3031_DIAG_ENABLE=${RUSTFS_ISSUE3031_DIAG_ENABLE:-false}
+      - RUSTFS_OBJECT_LOCK_ACQUIRE_TIMEOUT=${RUSTFS_OBJECT_LOCK_ACQUIRE_TIMEOUT:-5}
+      - RUSTFS_LOCK_ACQUIRE_TIMEOUT=${RUSTFS_LOCK_ACQUIRE_TIMEOUT:-5}
+      - RUSTFS_UNSAFE_BYPASS_DISK_CHECK=${RUSTFS_UNSAFE_BYPASS_DISK_CHECK:-true}
+      # Internode gRPC optimization knobs (grpc-optimization P0-P3). Defaults match the binary
+      # defaults, so leaving these unset is a no-op; the A/B driver exports them to toggle a stage.
+      - RUSTFS_INTERNODE_RPC_TCP_NODELAY=${RUSTFS_INTERNODE_RPC_TCP_NODELAY:-true}
+      - RUSTFS_INTERNODE_RPC_HTTP2_STREAM_WINDOW_SIZE=${RUSTFS_INTERNODE_RPC_HTTP2_STREAM_WINDOW_SIZE:-1048576}
+      - RUSTFS_INTERNODE_RPC_HTTP2_CONN_WINDOW_SIZE=${RUSTFS_INTERNODE_RPC_HTTP2_CONN_WINDOW_SIZE:-2097152}
+      - RUSTFS_INTERNODE_RPC_MAX_MESSAGE_SIZE=${RUSTFS_INTERNODE_RPC_MAX_MESSAGE_SIZE:-104857600}
+      - RUSTFS_INTERNODE_CHANNEL_ISOLATION=${RUSTFS_INTERNODE_CHANNEL_ISOLATION:-false}
+      - RUSTFS_INTERNODE_BULK_CHANNELS=${RUSTFS_INTERNODE_BULK_CHANNELS:-2}
+      - RUSTFS_INTERNODE_RPC_MSGPACK_ONLY=${RUSTFS_INTERNODE_RPC_MSGPACK_ONLY:-false}
+      - RUSTFS_INTERNODE_PREWARM=${RUSTFS_INTERNODE_PREWARM:-false}
+      - RUSTFS_INTERNODE_OFFLINE_BYPASS=${RUSTFS_INTERNODE_OFFLINE_BYPASS:-false}
+      - RUSTFS_INTERNODE_OFFLINE_REPROBE_SECS=${RUSTFS_INTERNODE_OFFLINE_REPROBE_SECS:-5}
+      - RUSTFS_INTERNODE_OFFLINE_FAILURE_THRESHOLD=${RUSTFS_INTERNODE_OFFLINE_FAILURE_THRESHOLD:-3}
+      - RUSTFS_INTERNODE_IDEMPOTENT_READ_RETRIES=${RUSTFS_INTERNODE_IDEMPOTENT_READ_RETRIES:-1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - node2_data_0:/data/rustfs0
+      - node2_data_1:/data/rustfs1
+      - node2_data_2:/data/rustfs2
+      - node2_data_3:/data/rustfs3
+    ports:
+      - "9001:9000"
+    networks:
+      - rustfs-cluster-net
+
+  node3:
+    image: ${RUSTFS_IMAGE:-rustfs/rustfs:local-4node}
+    build:
+      context: ../..
+      dockerfile: Dockerfile.source
+    hostname: node3
+    environment:
+      - RUSTFS_VOLUMES=${RUSTFS_VOLUMES:-http://node{1...4}:9000/data/rustfs{0...3}}
+      - RUSTFS_ADDRESS=:9000
+      - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY:-rustfsadmin-local}
+      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY:-rustfssecret-local}
+      - RUSTFS_OBS_ENDPOINT=${RUSTFS_OBS_ENDPOINT:-http://host.docker.internal:4318}
+      - RUSTFS_OBS_LOGGER_LEVEL=${RUSTFS_OBS_LOGGER_LEVEL:-info}
+      - RUSTFS_OBS_USE_STDOUT=${RUSTFS_OBS_USE_STDOUT:-false}
+      - RUSTFS_OBS_LOG_STDOUT_ENABLED=${RUSTFS_OBS_LOG_STDOUT_ENABLED:-false}
+      - RUSTFS_ISSUE3031_DIAG_ENABLE=${RUSTFS_ISSUE3031_DIAG_ENABLE:-false}
+      - RUSTFS_OBJECT_LOCK_ACQUIRE_TIMEOUT=${RUSTFS_OBJECT_LOCK_ACQUIRE_TIMEOUT:-5}
+      - RUSTFS_LOCK_ACQUIRE_TIMEOUT=${RUSTFS_LOCK_ACQUIRE_TIMEOUT:-5}
+      - RUSTFS_UNSAFE_BYPASS_DISK_CHECK=${RUSTFS_UNSAFE_BYPASS_DISK_CHECK:-true}
+      # Internode gRPC optimization knobs (grpc-optimization P0-P3). Defaults match the binary
+      # defaults, so leaving these unset is a no-op; the A/B driver exports them to toggle a stage.
+      - RUSTFS_INTERNODE_RPC_TCP_NODELAY=${RUSTFS_INTERNODE_RPC_TCP_NODELAY:-true}
+      - RUSTFS_INTERNODE_RPC_HTTP2_STREAM_WINDOW_SIZE=${RUSTFS_INTERNODE_RPC_HTTP2_STREAM_WINDOW_SIZE:-1048576}
+      - RUSTFS_INTERNODE_RPC_HTTP2_CONN_WINDOW_SIZE=${RUSTFS_INTERNODE_RPC_HTTP2_CONN_WINDOW_SIZE:-2097152}
+      - RUSTFS_INTERNODE_RPC_MAX_MESSAGE_SIZE=${RUSTFS_INTERNODE_RPC_MAX_MESSAGE_SIZE:-104857600}
+      - RUSTFS_INTERNODE_CHANNEL_ISOLATION=${RUSTFS_INTERNODE_CHANNEL_ISOLATION:-false}
+      - RUSTFS_INTERNODE_BULK_CHANNELS=${RUSTFS_INTERNODE_BULK_CHANNELS:-2}
+      - RUSTFS_INTERNODE_RPC_MSGPACK_ONLY=${RUSTFS_INTERNODE_RPC_MSGPACK_ONLY:-false}
+      - RUSTFS_INTERNODE_PREWARM=${RUSTFS_INTERNODE_PREWARM:-false}
+      - RUSTFS_INTERNODE_OFFLINE_BYPASS=${RUSTFS_INTERNODE_OFFLINE_BYPASS:-false}
+      - RUSTFS_INTERNODE_OFFLINE_REPROBE_SECS=${RUSTFS_INTERNODE_OFFLINE_REPROBE_SECS:-5}
+      - RUSTFS_INTERNODE_OFFLINE_FAILURE_THRESHOLD=${RUSTFS_INTERNODE_OFFLINE_FAILURE_THRESHOLD:-3}
+      - RUSTFS_INTERNODE_IDEMPOTENT_READ_RETRIES=${RUSTFS_INTERNODE_IDEMPOTENT_READ_RETRIES:-1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - node3_data_0:/data/rustfs0
+      - node3_data_1:/data/rustfs1
+      - node3_data_2:/data/rustfs2
+      - node3_data_3:/data/rustfs3
+    ports:
+      - "9002:9000"
+    networks:
+      - rustfs-cluster-net
+
+  node4:
+    image: ${RUSTFS_IMAGE:-rustfs/rustfs:local-4node}
+    build:
+      context: ../..
+      dockerfile: Dockerfile.source
+    hostname: node4
+    environment:
+      - RUSTFS_VOLUMES=${RUSTFS_VOLUMES:-http://node{1...4}:9000/data/rustfs{0...3}}
+      - RUSTFS_ADDRESS=:9000
+      - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY:-rustfsadmin-local}
+      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY:-rustfssecret-local}
+      - RUSTFS_OBS_ENDPOINT=${RUSTFS_OBS_ENDPOINT:-http://host.docker.internal:4318}
+      - RUSTFS_OBS_LOGGER_LEVEL=${RUSTFS_OBS_LOGGER_LEVEL:-info}
+      - RUSTFS_OBS_USE_STDOUT=${RUSTFS_OBS_USE_STDOUT:-false}
+      - RUSTFS_OBS_LOG_STDOUT_ENABLED=${RUSTFS_OBS_LOG_STDOUT_ENABLED:-false}
+      - RUSTFS_ISSUE3031_DIAG_ENABLE=${RUSTFS_ISSUE3031_DIAG_ENABLE:-false}
+      - RUSTFS_OBJECT_LOCK_ACQUIRE_TIMEOUT=${RUSTFS_OBJECT_LOCK_ACQUIRE_TIMEOUT:-5}
+      - RUSTFS_LOCK_ACQUIRE_TIMEOUT=${RUSTFS_LOCK_ACQUIRE_TIMEOUT:-5}
+      - RUSTFS_UNSAFE_BYPASS_DISK_CHECK=${RUSTFS_UNSAFE_BYPASS_DISK_CHECK:-true}
+      # Internode gRPC optimization knobs (grpc-optimization P0-P3). Defaults match the binary
+      # defaults, so leaving these unset is a no-op; the A/B driver exports them to toggle a stage.
+      - RUSTFS_INTERNODE_RPC_TCP_NODELAY=${RUSTFS_INTERNODE_RPC_TCP_NODELAY:-true}
+      - RUSTFS_INTERNODE_RPC_HTTP2_STREAM_WINDOW_SIZE=${RUSTFS_INTERNODE_RPC_HTTP2_STREAM_WINDOW_SIZE:-1048576}
+      - RUSTFS_INTERNODE_RPC_HTTP2_CONN_WINDOW_SIZE=${RUSTFS_INTERNODE_RPC_HTTP2_CONN_WINDOW_SIZE:-2097152}
+      - RUSTFS_INTERNODE_RPC_MAX_MESSAGE_SIZE=${RUSTFS_INTERNODE_RPC_MAX_MESSAGE_SIZE:-104857600}
+      - RUSTFS_INTERNODE_CHANNEL_ISOLATION=${RUSTFS_INTERNODE_CHANNEL_ISOLATION:-false}
+      - RUSTFS_INTERNODE_BULK_CHANNELS=${RUSTFS_INTERNODE_BULK_CHANNELS:-2}
+      - RUSTFS_INTERNODE_RPC_MSGPACK_ONLY=${RUSTFS_INTERNODE_RPC_MSGPACK_ONLY:-false}
+      - RUSTFS_INTERNODE_PREWARM=${RUSTFS_INTERNODE_PREWARM:-false}
+      - RUSTFS_INTERNODE_OFFLINE_BYPASS=${RUSTFS_INTERNODE_OFFLINE_BYPASS:-false}
+      - RUSTFS_INTERNODE_OFFLINE_REPROBE_SECS=${RUSTFS_INTERNODE_OFFLINE_REPROBE_SECS:-5}
+      - RUSTFS_INTERNODE_OFFLINE_FAILURE_THRESHOLD=${RUSTFS_INTERNODE_OFFLINE_FAILURE_THRESHOLD:-3}
+      - RUSTFS_INTERNODE_IDEMPOTENT_READ_RETRIES=${RUSTFS_INTERNODE_IDEMPOTENT_READ_RETRIES:-1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - node4_data_0:/data/rustfs0
+      - node4_data_1:/data/rustfs1
+      - node4_data_2:/data/rustfs2
+      - node4_data_3:/data/rustfs3
+    ports:
+      - "9003:9000"
+    networks:
+      - rustfs-cluster-net
+
+volumes:
+  node1_data_0:
+  node1_data_1:
+  node1_data_2:
+  node1_data_3:
+  node2_data_0:
+  node2_data_1:
+  node2_data_2:
+  node2_data_3:
+  node3_data_0:
+  node3_data_1:
+  node3_data_2:
+  node3_data_3:
+  node4_data_0:
+  node4_data_1:
+  node4_data_2:
+  node4_data_3:
+
+networks:
+  rustfs-cluster-net:
+    driver: bridge

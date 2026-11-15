@@ -1,0 +1,11 @@
+# C-10 deploy policy
+version: "1.0"
+llm_control: DENY
+force_push: false
+require_expected_head: true
+dry_run_default: true
+protected_patterns:
+  - ".github/workflows/**"
+  - "**/secrets/**"
+  - "**/*credential*"
+  - "**/*token*"

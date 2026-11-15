@@ -1,0 +1,45 @@
+import { useConfig } from '@/contexts/ConfigContext';
+import { X } from 'lucide-react';
+import * as React from 'react';
+
+export function UpdateBanner() {
+  const config = useConfig();
+  const [dismissed, setDismissed] = React.useState(() => {
+    return (
+      localStorage.getItem('update-banner-dismissed') === config.latestVersion
+    );
+  });
+
+  if (!config.updateAvailable || dismissed) return null;
+
+  const handleDismiss = () => {
+    localStorage.setItem('update-banner-dismissed', config.latestVersion);
+    setDismissed(true);
+  };
+
+  return (
+    <div className="bg-violet-50 dark:bg-[#1c1840] border-b border-violet-200 dark:border-[#3a3170] px-4 py-1.5 flex items-center justify-between text-sm">
+      <span className="text-violet-900 dark:text-violet-200">
+        Update available: v{config.version} &rarr; {config.latestVersion}
+        <a
+          href="https://github.com/dagucloud/dagu/releases"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-2 underline hover:no-underline"
+        >
+          View release
+        </a>
+        <span className="ml-2">
+          · Run <code className="font-mono bg-violet-100 dark:bg-[#2a2452] px-1 rounded text-xs">dagu upgrade</code> to update
+        </span>
+      </span>
+      <button
+        onClick={handleDismiss}
+        className="p-0.5 hover:bg-violet-100 dark:hover:bg-[#2a2452] rounded"
+        aria-label="Dismiss update notification"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}

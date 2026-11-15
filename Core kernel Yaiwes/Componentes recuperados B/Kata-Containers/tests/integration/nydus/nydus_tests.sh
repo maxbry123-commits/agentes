@@ -1,0 +1,289 @@
+#!/bin/bash
+#
+# Copyright (c) 2022 Ant Group
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# This will test the nydus feature is working properly
+
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o errtrace
+
+dir_path=$(dirname "$0")
+# shellcheck source=/dev/null
+source "${dir_path}/../../common.bash"
+source "/etc/os-release" || source "/usr/lib/os-release"
+KATA_HYPERVISOR="${KATA_HYPERVISOR:-qemu-runtime-rs}"
+
+need_restore_kata_config=false
+kata_config_backup="/tmp/kata-configuration.toml"
+SYSCONFIG_FILE="/etc/kata-containers/configuration.toml"
+DEFAULT_CONFIG_FILE="/opt/kata/share/defaults/kata-containers/configuration-qemu.toml"
+CLH_CONFIG_FILE="/opt/kata/share/defaults/kata-containers/configuration-clh.toml"
+DB_CONFIG_FILE="/opt/kata/share/defaults/kata-containers/runtime-rs/configuration-dragonball.toml"
+QEMU_RS_CONFIG_FILE="/opt/kata/share/defaults/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml"
+CLH_RS_CONFIG_FILE="/opt/kata/share/defaults/kata-containers/runtime-rs/configuration-clh-runtime-rs.toml"
+need_restore_containerd_config=false
+need_restore_containerd_fragment=false
+containerd_config="/etc/containerd/config.toml"
+containerd_config_backup="/tmp/containerd.config.toml.bak"
+nydus_containerd_drop_in="/etc/containerd/conf.d/50-nydus.toml"
+containerd_fragment_backup="/tmp/50-nydus.toml.bak"
+
+# test image for container
+IMAGE="${IMAGE:-ghcr.io/dragonflyoss/image-service/alpine:nydus-latest}"
+
+# How long to wait for the nydus processes to be gone after being killed
+KILL_TIMEOUT_SECS=10
+
+if [[ "${KATA_HYPERVISOR}" != "qemu" ]] && [[ "${KATA_HYPERVISOR}" != "clh" ]] && \
+   [[ "${KATA_HYPERVISOR}" != "dragonball" ]] && [[ "${KATA_HYPERVISOR}" != "qemu-runtime-rs" ]] && \
+   [[ "${KATA_HYPERVISOR}" != "clh-runtime-rs" ]]; then
+	echo "Skip nydus test for ${KATA_HYPERVISOR}, it only works for QEMU/CLH/DB/QEMU-runtime-rs/CLH-runtime-rs now."
+	exit 0
+fi
+
+case "${KATA_HYPERVISOR}" in
+	dragonball|qemu-runtime-rs|clh-runtime-rs)
+		SYSCONFIG_FILE="/etc/kata-containers/runtime-rs/configuration.toml"
+		;;
+	*)
+		;;
+esac
+
+function setup_nydus() {
+	# Config nydus snapshotter
+	sudo -E cp "${dir_path}/nydusd-config.json" /etc/
+	sudo -E cp "${dir_path}/snapshotter-config.toml" /etc/
+
+	# start nydus-snapshotter
+	sudo nohup /usr/local/bin/containerd-nydus-grpc \
+		--config /etc/snapshotter-config.toml \
+		--nydusd-config /etc/nydusd-config.json &
+}
+
+function config_kata() {
+	sudo mkdir -p "$(dirname "${SYSCONFIG_FILE}")"
+	if [[ -f "${SYSCONFIG_FILE}" ]]; then
+		need_restore_kata_config=true
+		sudo cp -a "${SYSCONFIG_FILE}" "${kata_config_backup}"
+	elif [[ "${KATA_HYPERVISOR}" == "qemu" ]]; then
+		sudo cp -a "${DEFAULT_CONFIG_FILE}" "${SYSCONFIG_FILE}"
+	elif [[ "${KATA_HYPERVISOR}" == "dragonball" ]]; then
+		sudo cp -a "${DB_CONFIG_FILE}" "${SYSCONFIG_FILE}"
+	elif [[ "${KATA_HYPERVISOR}" == "qemu-runtime-rs" ]]; then
+		sudo cp -a "${QEMU_RS_CONFIG_FILE}" "${SYSCONFIG_FILE}"
+	elif [[ "${KATA_HYPERVISOR}" == "clh-runtime-rs" ]]; then
+		sudo cp -a "${CLH_RS_CONFIG_FILE}" "${SYSCONFIG_FILE}"
+	else
+		sudo cp -a "${CLH_CONFIG_FILE}" "${SYSCONFIG_FILE}"
+	fi
+
+	echo "Enabling all debug options in file ${SYSCONFIG_FILE}"
+	# Both the commented out and the already set to false forms have to be
+	# handled: the shipped configurations carry "enable_debug = false".
+	sudo sed -i -e 's/^#\{0,1\}[[:space:]]*enable_debug[[:space:]]*=.*/enable_debug = true/g' "${SYSCONFIG_FILE}"
+	sudo sed -i -e 's/^kernel_params = "\(.*\)"/kernel_params = "\1 agent.log=debug"/g' "${SYSCONFIG_FILE}"
+
+	if [[ "${KATA_HYPERVISOR}" != "dragonball" ]]; then
+		sudo sed -i 's|^shared_fs.*|shared_fs = "virtio-fs-nydus"|g' "${SYSCONFIG_FILE}"
+		sudo sed -i 's|^virtio_fs_daemon.*|virtio_fs_daemon = "/usr/local/bin/nydusd"|g' "${SYSCONFIG_FILE}"
+	fi
+
+	sudo sed -i 's|^virtio_fs_extra_args.*|virtio_fs_extra_args = []|g' "${SYSCONFIG_FILE}"
+}
+
+function config_containerd() {
+	local schema
+	schema="$(_containerd_resolved_schema_version)"
+	echo "[INFO] Configuring containerd for nydus (schema version ${schema})"
+	config_containerd_core "${schema}"
+}
+
+function config_containerd_core() {
+	local schema="${1}"
+	local runc_path
+	runc_path=$(command -v runc)
+	readonly runc_path
+
+	sudo mkdir -p /etc/containerd/
+
+	if [[ "${schema}" -ge 3 ]]; then
+		# containerd v2.x (schema v3+): keep the base config and configure nydus
+		# via a conf.d drop-in fragment using the io.containerd.cri.v1.* plugins.
+		sudo mkdir -p /etc/containerd/conf.d
+		if [[ -f "${nydus_containerd_drop_in}" ]]; then
+			need_restore_containerd_fragment=true
+			sudo cp -a "${nydus_containerd_drop_in}" "${containerd_fragment_backup}"
+		fi
+		if [[ ! -f "${containerd_config}" ]]; then
+			sudo env "PATH=${PATH}:/usr/local/sbin:/usr/local/bin" containerd config default | \
+				sudo tee "${containerd_config}" >/dev/null
+		fi
+		ensure_containerd_conf_d_rootful_api_sockets
+
+		sudo tee "${nydus_containerd_drop_in}" >/dev/null <<EOF
+[proxy_plugins]
+  [proxy_plugins.nydus]
+    type = "snapshot"
+    address = "/run/containerd-nydus/containerd-nydus-grpc.sock"
+
+[plugins.'io.containerd.cri.v1.images']
+  snapshotter = 'nydus'
+  disable_snapshot_annotations = false
+  discard_unpacked_layers = false
+
+[plugins.'io.containerd.cri.v1.runtime']
+  [plugins.'io.containerd.cri.v1.runtime'.containerd]
+    [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes]
+      [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.kata-${KATA_HYPERVISOR}]
+        runtime_type = "io.containerd.kata-${KATA_HYPERVISOR}.v2"
+        sandboxer = 'podsandbox'
+      [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc]
+        runtime_type = 'io.containerd.runc.v2'
+        sandboxer = 'podsandbox'
+        [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc.options]
+          BinaryName = "${runc_path}"
+EOF
+	else
+		# containerd v1.x (schema v2): conf.d is not honoured the same way, so
+		# replace config.toml wholesale with a complete, self-contained file
+		# using the io.containerd.grpc.v1.cri plugin.
+		if [[ -f "${containerd_config}" ]]; then
+			need_restore_containerd_config=true
+			sudo cp -a "${containerd_config}" "${containerd_config_backup}"
+		fi
+
+		sudo tee "${containerd_config}" >/dev/null <<EOF
+version = 2
+
+[proxy_plugins]
+  [proxy_plugins.nydus]
+    type = "snapshot"
+    address = "/run/containerd-nydus/containerd-nydus-grpc.sock"
+
+[plugins."io.containerd.grpc.v1.cri".containerd]
+  snapshotter = "nydus"
+  disable_snapshot_annotations = false
+  discard_unpacked_layers = false
+
+  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata-${KATA_HYPERVISOR}]
+    runtime_type = "io.containerd.kata-${KATA_HYPERVISOR}.v2"
+
+  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+    runtime_type = "io.containerd.runc.v2"
+
+    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+      BinaryName = "${runc_path}"
+EOF
+	fi
+}
+
+function check_nydus_snapshotter_exist() {
+	echo "check_nydus_snapshotter_exist"
+	bin="containerd-nydus-grpc"
+	if pgrep -f "${bin}" >/dev/null; then
+		echo "nydus-snapshotter is running"
+	else
+		die "nydus-snapshotter is not running"
+	fi
+}
+
+function setup() {
+	setup_nydus
+	config_kata
+	config_containerd
+	restart_containerd_service
+	check_processes "${KILL_TIMEOUT_SECS}"
+	check_nydus_snapshotter_exist
+	extract_kata_env
+}
+
+function run_test() {
+	sudo -E crictl --timeout=20s pull "${IMAGE}"
+	pod=$(sudo -E crictl --timeout=20s runp -r "kata-${KATA_HYPERVISOR}" "${dir_path}/nydus-sandbox.yaml")
+	echo "Pod ${pod} created"
+	cnt=$(sudo -E crictl --timeout=20s create "${pod}" "${dir_path}/nydus-container.yaml" "${dir_path}/nydus-sandbox.yaml")
+	echo "Container ${cnt} created"
+	sudo -E crictl --timeout=20s start "${cnt}"
+	echo "Container ${cnt} started"
+
+	# ensure container is running
+	state=$(sudo -E crictl --timeout=20s inspect "${cnt}" | jq .status.state | tr -d '"')
+	[[ "${state}" == "CONTAINER_RUNNING" ]] || die "Container is not running(${state})"
+	# run a command in container
+	sudo -E crictl --timeout=20s exec "${cnt}" ls
+
+	# cleanup containers
+	sudo -E crictl --timeout=20s stop "${cnt}"
+	sudo -E crictl --timeout=20s stopp "${pod}"
+	sudo -E crictl --timeout=20s rmp "${pod}"
+}
+
+function remove_leftover_pods() {
+	local pods
+	pods=$(sudo -E crictl --timeout=20s pods -q || true)
+	[[ -z "${pods}" ]] && return 0
+
+	for pod in ${pods}; do
+		echo "Removing leftover pod ${pod}"
+		sudo -E crictl --timeout=20s stopp "${pod}" || true
+		sudo -E crictl --timeout=20s rmp -f "${pod}" || true
+	done
+}
+
+function teardown() {
+	echo "Running teardown"
+	local rc=0
+
+	remove_leftover_pods
+
+	local pid
+	for bin in containerd-nydus-grpc nydusd; do
+		pid=$(pidof "${bin}" || true)
+		if [[ -n "${pid}" ]]; then
+			echo "Killing ${bin} processes"
+			# shellcheck disable=SC2086
+			sudo -E kill -9 ${pid} || true
+			# kill(2) only queues the signal, so the processes can still be
+			# listed for a while after it returns.
+			if ! waitForProcess "${KILL_TIMEOUT_SECS}" 1 "[[ -z \"\$(pidof ${bin} || true)\" ]]"; then
+				echo "${bin} is still running ($(pidof "${bin}" || true)) but it should not"
+				rc=1
+			fi
+		fi
+	done
+
+	# restore kata configuratiom.toml if needed
+	if [[ "${need_restore_kata_config}" == "true" ]]; then
+		sudo mv "${kata_config_backup}" "${SYSCONFIG_FILE}"
+	else
+		sudo rm "${SYSCONFIG_FILE}"
+	fi
+
+	# restore containerd config.toml (schema v2 path) if needed
+	if [[ "${need_restore_containerd_config}" == "true" ]]; then
+		sudo mv "${containerd_config_backup}" "${containerd_config}"
+	fi
+
+	# restore containerd drop-in fragment (schema v3+ path) if needed
+	if [[ "${need_restore_containerd_fragment}" == "true" ]]; then
+		sudo mv "${containerd_fragment_backup}" "${nydus_containerd_drop_in}"
+	else
+		sudo rm -f "${nydus_containerd_drop_in}"
+	fi
+
+	clean_env_ctr || rc=1
+	check_processes "${KILL_TIMEOUT_SECS}"
+	return "${rc}"
+}
+
+trap teardown EXIT
+
+echo "Running setup"
+setup
+
+echo "Running nydus integration tests"
+run_test

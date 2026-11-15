@@ -1,0 +1,95 @@
+import {
+  RiAppsLine,
+  RiBook2Line,
+  RiBookMarkedLine,
+  RiBrainLine,
+  RiBroadcastLine,
+  RiCalendarScheduleLine,
+  RiDatabase2Line,
+  RiFlashlightLine,
+  RiGitPullRequestLine,
+  RiKey2Line,
+  RiLightbulbLine,
+  RiListCheck2,
+  RiPlugLine,
+  RiSettings3Line,
+  RiStackLine,
+} from "@remixicon/react";
+import { SearchCommand } from "./search-command";
+import { SidebarBrand } from "./sidebar-brand";
+import { Sidebar, SidebarNavItem, SidebarSectionLabel } from "./sidebar-nav";
+import { ThemeToggle } from "./theme-toggle";
+import { UserMenu } from "./user-menu";
+
+export type LibrarySidebarActive =
+  | "skills"
+  | "playbooks"
+  | "automations"
+  | "knowledge"
+  | "memory"
+  | "learnings"
+  | "wiki"
+  | "reviews"
+  | "apps"
+  | "artifacts"
+  | "plugins"
+  | "tasks"
+  | "secrets"
+  | "settings";
+
+const LIBRARY_ITEMS = [
+  { key: "skills", href: "/skills", icon: RiFlashlightLine, label: "Skills" },
+  { key: "playbooks", href: "/playbooks", icon: RiBookMarkedLine, label: "Playbooks" },
+  {
+    key: "automations",
+    href: "/agent/automations",
+    icon: RiCalendarScheduleLine,
+    label: "Automations",
+  },
+  { key: "knowledge", href: "/knowledge", icon: RiBrainLine, label: "Knowledge" },
+  { key: "memory", href: "/memory", icon: RiDatabase2Line, label: "Memory" },
+  { key: "learnings", href: "/learnings", icon: RiLightbulbLine, label: "Learnings" },
+  { key: "wiki", href: "/wiki", icon: RiBook2Line, label: "Wiki" },
+  { key: "reviews", href: "/review", icon: RiGitPullRequestLine, label: "Reviews" },
+  { key: "apps", href: "/apps", icon: RiAppsLine, label: "Apps" },
+  { key: "artifacts", href: "/agent/artifacts", icon: RiBroadcastLine, label: "Artifacts" },
+  { key: "plugins", href: "/agent/plugins", icon: RiPlugLine, label: "Plugins" },
+  { key: "tasks", href: "/tasks", icon: RiListCheck2, label: "Tasks" },
+  { key: "secrets", href: "/secrets", icon: RiKey2Line, label: "Secrets" },
+] as const;
+
+export function LibrarySidebar({ active }: { active?: LibrarySidebarActive }) {
+  return (
+    <Sidebar
+      ariaLabel="Customize navigation"
+      header={<SidebarBrand label="Customize" />}
+      footer={
+        <nav aria-label="Customize utilities" className="p-3">
+          <SidebarNavItem
+            href="/settings"
+            icon={RiSettings3Line}
+            label="Settings"
+            active={active === "settings"}
+          />
+          <div className="mt-2 flex items-center justify-between px-2">
+            <UserMenu />
+            <ThemeToggle />
+          </div>
+        </nav>
+      }
+    >
+      <SearchCommand />
+      <SidebarNavItem href="/agent/runs" icon={RiStackLine} label="Workspace" />
+      <SidebarSectionLabel>Customize</SidebarSectionLabel>
+      {LIBRARY_ITEMS.map((item) => (
+        <SidebarNavItem
+          key={item.key}
+          href={item.href}
+          icon={item.icon}
+          label={item.label}
+          active={active === item.key}
+        />
+      ))}
+    </Sidebar>
+  );
+}

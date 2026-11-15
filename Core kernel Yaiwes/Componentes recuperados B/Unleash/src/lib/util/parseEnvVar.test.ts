@@ -1,0 +1,81 @@
+import { PayloadType } from 'unleash-client';
+import {
+    parseEnvVarBoolean,
+    parseEnvVarBooleanOrStringVariant,
+    parseEnvVarNumber,
+    parseEnvVarNumbers,
+    parseEnvVarStrings,
+} from './parseEnvVar.js';
+
+test('parseEnvVarNumber', () => {
+    expect(parseEnvVarNumber('', 1)).toEqual(1);
+    expect(parseEnvVarNumber('', 2)).toEqual(2);
+    expect(parseEnvVarNumber(' ', 1)).toEqual(1);
+    expect(parseEnvVarNumber('a', 1)).toEqual(1);
+    expect(parseEnvVarNumber('1', 1)).toEqual(1);
+    expect(parseEnvVarNumber('2', 1)).toEqual(2);
+    expect(parseEnvVarNumber('2e2', 1)).toEqual(2);
+    expect(parseEnvVarNumber('-1', 1)).toEqual(-1);
+});
+
+test('parseEnvVarBoolean', () => {
+    expect(parseEnvVarBoolean('', true)).toEqual(true);
+    expect(parseEnvVarBoolean('', false)).toEqual(false);
+    expect(parseEnvVarBoolean(' ', false)).toEqual(false);
+    expect(parseEnvVarBoolean('1', false)).toEqual(true);
+    expect(parseEnvVarBoolean('2', false)).toEqual(false);
+    expect(parseEnvVarBoolean('t', false)).toEqual(true);
+    expect(parseEnvVarBoolean('f', false)).toEqual(false);
+    expect(parseEnvVarBoolean('true', false)).toEqual(true);
+    expect(parseEnvVarBoolean('false', false)).toEqual(false);
+    expect(parseEnvVarBoolean('test', false)).toEqual(false);
+});
+
+test('parseEnvVarStringList', () => {
+    expect(parseEnvVarStrings(undefined, [])).toEqual([]);
+    expect(parseEnvVarStrings(undefined, ['a'])).toEqual(['a']);
+    expect(parseEnvVarStrings('', ['a'])).toEqual([]);
+    expect(parseEnvVarStrings('', [])).toEqual([]);
+    expect(parseEnvVarStrings('  ', [])).toEqual([]);
+    expect(parseEnvVarStrings('a', ['*'])).toEqual(['a']);
+    expect(parseEnvVarStrings('a,b,c', [])).toEqual(['a', 'b', 'c']);
+    expect(parseEnvVarStrings('a,b,c', [])).toEqual(['a', 'b', 'c']);
+    expect(parseEnvVarStrings(' a,,,b,  c , ,', [])).toEqual(['a', 'b', 'c']);
+});
+
+test('parseEnvVarBooleanOrStringVariant', () => {
+    expect(parseEnvVarBooleanOrStringVariant(undefined, true)).toEqual(true);
+    expect(parseEnvVarBooleanOrStringVariant(undefined, false)).toEqual(false);
+    for (const truthy of ['true', 't', '1']) {
+        expect(parseEnvVarBooleanOrStringVariant(truthy, false)).toEqual(true);
+    }
+    for (const falsy of ['false', 'f', '0']) {
+        expect(parseEnvVarBooleanOrStringVariant(falsy, true)).toEqual(false);
+    }
+
+    expect(
+        parseEnvVarBooleanOrStringVariant(undefined, {
+            name: 'default-variant',
+            enabled: false,
+        }),
+    ).toEqual({ name: 'default-variant', enabled: false });
+
+    expect(
+        parseEnvVarBooleanOrStringVariant('custom string', true),
+    ).toMatchObject({
+        name: expect.any(String),
+        enabled: true,
+        payload: {
+            value: 'custom string',
+            type: PayloadType.STRING,
+        },
+    });
+});
+
+test('parseEnvVarNumbers', () => {
+    expect(parseEnvVarNumbers(undefined, [14, 3])).toEqual([14, 3]);
+    expect(parseEnvVarNumbers('', [14, 3])).toEqual([14, 3]);
+    expect(parseEnvVarNumbers('30, 7', [])).toEqual([30, 7]);
+    expect(parseEnvVarNumbers('a,7,b', [])).toEqual([7]);
+    expect(parseEnvVarNumbers('a,b', [14, 3])).toEqual([14, 3]);
+});

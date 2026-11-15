@@ -1,0 +1,171 @@
+# Commands
+
+We have seen how to create a CLI program with possibly several *CLI options* and *CLI arguments*.
+
+But **Typer** allows you to create CLI programs with several commands (also known as subcommands).
+
+For example, the program `git` has several commands.
+
+One command of `git` is `git push`. And `git push` in turn takes its own *CLI arguments* and *CLI options*.
+
+For example:
+
+<div class="termy">
+
+```console
+// The push command with no parameters
+$ git push
+
+---> 100%
+
+// The push command with one CLI option --set-upstream and 2 CLI arguments
+$ git push --set-upstream origin master
+
+---> 100%
+```
+
+</div>
+
+Another command of `git` is `git pull`, it also has some *CLI parameters*.
+
+It's like if the same big program `git` had several small programs inside.
+
+/// tip
+
+A command looks the same as a *CLI argument*, it's just some name without a preceding `--`. But commands have a predefined name, and are used to group different sets of functionalities into the same CLI application.
+
+///
+
+## Command or subcommand
+
+It's common to call a CLI program a "command".
+
+But when one of these programs have subcommands, those subcommands are also frequently called just "commands".
+
+Have that in mind so you don't get confused.
+
+Here I'll use **CLI application** or **program** to refer to the program you are building in Python with Typer, and **command** to refer to one of these "subcommands" of your program.
+
+## A CLI application with multiple commands
+
+**Typer** allows creating CLI applications with multiple commands/subcommands.
+
+Now that you know how to create an explicit `typer.Typer()` application and add one command, let's see how to add multiple commands.
+
+Let's say that we have a CLI application to manage users.
+
+We'll have a command to `create` users and another command to `delete` them.
+
+To begin, let's say it can only create and delete one single predefined user:
+
+{* docs_src/commands/index/tutorial002_py310.py hl[6,11] *}
+
+Now we have a CLI application with 2 commands, `create` and `delete`:
+
+<div class="termy">
+
+```console
+// Check the help
+$ uv run python main.py --help
+
+Usage: main.py [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --install-completion  Install completion for the current shell.
+  --show-completion     Show completion for the current shell, to copy it or customize the installation.
+  --help                Show this message and exit.
+
+Commands:
+  create
+  delete
+
+// Test them
+$ uv run python main.py create
+
+Creating user: Hiro Hamada
+
+$ uv run python main.py delete
+
+Deleting user: Hiro Hamada
+
+// Now we have 2 commands! 🎉
+```
+
+</div>
+
+Notice that the help text now shows the 2 commands: `create` and `delete`.
+
+/// tip
+
+By default, the names of the commands are generated from the function name.
+
+///
+
+## Show the help message if no command is given
+
+By default, we need to specify `--help` to get the command's help page.
+
+However, by setting `no_args_is_help=True` when defining the `typer.Typer()` application, the help function will be shown whenever no argument is given:
+
+{* docs_src/commands/index/tutorial003_py310.py hl[3] *}
+
+Now we can run this:
+
+<div class="termy">
+
+```console
+// Check the help without having to type --help
+$ uv run python main.py
+
+Usage: main.py [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --install-completion  Install completion for the current shell.
+  --show-completion     Show completion for the current shell, to copy it or customize the installation.
+  --help                Show this message and exit.
+
+Commands:
+  create
+  delete
+```
+
+</div>
+
+
+## Sorting of the commands
+
+Note that by design, **Typer** shows the commands in the order they've been declared.
+
+So, if we take our original example, with `create` and `delete` commands, and reverse the order in the Python file:
+
+{* docs_src/commands/index/tutorial004_py310.py hl[7,12] *}
+
+Then we will see the `delete` command first in the help output:
+
+<div class="termy">
+
+```console
+// Check the help
+$ uv run python main.py --help
+
+Usage: main.py [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --install-completion  Install completion for the current shell.
+  --show-completion     Show completion for the current shell, to copy it or customize the installation.
+  --help                Show this message and exit.
+
+Commands:
+  delete
+  create
+```
+
+</div>
+
+## Decorator Technical Details
+
+When you use `@app.command()` the function under the decorator is registered in the **Typer** application and is then used later by the application.
+
+But Typer doesn't modify that function itself, the function is left as is.
+
+That means that if your function is simple enough that you could create it without using `typer.Option()` or `typer.Argument()`, you could use the same function for a **Typer** application and a **FastAPI** application putting both decorators on top, or similar tricks.

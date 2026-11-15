@@ -1,0 +1,2421 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import type { Stats } from 'node:fs';
+
+import { trace as otelTrace, SpanStatusCode } from '@opentelemetry/api';
+import dedent from 'dedent';
+import cliState from '../cliState';
+import { getEnvString } from '../envars';
+import { importModule, resolvePackageEntryPoint } from '../esm';
+import logger from '../logger';
+import {
+  addActiveSpanRoleAttribute,
+  emitTurnMarkerSpan,
+  GenAIAttributes,
+  getGenAITracer,
+  getTraceparent,
+  PROMPTFOO_RESOURCE_ATTR_PARENT_SPAN_ID,
+  PROMPTFOO_RESOURCE_ATTR_TRACE_ID,
+  sanitizeBody,
+  withGenAISpan,
+} from '../tracing/genaiTracer';
+import { safeResolve } from '../util/pathUtils';
+import {
+  cacheResponse,
+  getCachedResponse,
+  initializeAgenticCache,
+  resolveAgenticWorkingDir,
+} from './agentic-utils';
+import { ANTHROPIC_MODELS } from './anthropic/util';
+import { transformMCPConfigToClaudeCode, validateMCPConfigForClaudeCode } from './mcp/transform';
+import {
+  getConfiguredTracingExport,
+  isActiveTracingExport,
+  waitForNativeTraceExport,
+} from './tracing';
+import type {
+  AgentDefinition,
+  CanUseTool,
+  HookCallbackMatcher,
+  HookEvent,
+  OnElicitation,
+  OutputFormat,
+  Options as QueryOptions,
+  SandboxSettings,
+  SDKAssistantMessage,
+  SDKAssistantMessageError,
+  SDKResultMessage,
+  SettingSource,
+  Settings,
+  SpawnedProcess,
+  SpawnOptions,
+  ThinkingConfig,
+  ToolConfig,
+} from '@anthropic-ai/claude-agent-sdk';
+
+import type { EnvOverrides } from '../types/env';
+import type {
+  ApiProvider,
+  CallApiContextParams,
+  CallApiOptionsParams,
+  ProviderResponse,
+  SkillCallEntry,
+} from '../types/index';
+import type { MCPConfig, MCPServerConfig } from './mcp/types';
+
+/**
+ * Represents a single tool call captured during a Claude Agent SDK session.
+ * Available in `response.metadata.toolCalls` after a session completes.
+ */
+export interface ToolCallEntry {
+  id: string;
+  name: string;
+  input: unknown;
+  output: unknown;
+  is_error: boolean;
+  parentToolUseId: string | null;
+}
+
+/**
+ * Error reported by an assistant message during a Claude Agent SDK session. The
+ * SDK started populating `SDKAssistantMessage.error` with discriminated codes
+ * like `'model_not_found'` and `'rate_limit'` in 0.3.144 (previously these were
+ * collapsed into a generic `'invalid_request'`). Available in
+ * `response.metadata.assistantErrors` after a session completes.
+ */
+export interface AssistantErrorEntry {
+  error: SDKAssistantMessageError;
+  uuid: string;
+  parentToolUseId: string | null;
+  request_id?: string;
+  subagent_type?: string;
+  task_description?: string;
+}
+
+/** Hard cap for attribute body length on synthesized tool spans. */
+const TOOL_SPAN_BODY_LIMIT = 4096;
+const REDACTED_SUBAGENT_TRANSCRIPT =
+  '[Subagent transcript omitted; set forward_subagent_text: true to include it]';
+/** Returned when cancellation is observed at any checkpoint before the SDK query starts. */
+const ABORTED_BEFORE_START_ERROR = 'Claude Agent SDK call aborted before it started';
+
+/**
+ * Append promptfoo-specific resource-attribute kvs to a W3C-style
+ * `OTEL_RESOURCE_ATTRIBUTES` string, removing trailing whitespace/commas from
+ * the existing value and stripping any previous occurrence of our keys so the
+ * producer can't double-up. Returns the new string. Exported for tests.
+ */
+export function appendPromptfooResourceAttrs(
+  existing: string | undefined,
+  traceId: string,
+  parentSpanId: string,
+): string {
+  const incoming = `${PROMPTFOO_RESOURCE_ATTR_TRACE_ID}=${traceId},${PROMPTFOO_RESOURCE_ATTR_PARENT_SPAN_ID}=${parentSpanId}`;
+  if (!existing) {
+    return incoming;
+  }
+  const cleaned = existing
+    .split(',')
+    .map((pair) => pair.trim())
+    .filter(
+      (pair) =>
+        pair.length > 0 &&
+        !pair.startsWith(`${PROMPTFOO_RESOURCE_ATTR_TRACE_ID}=`) &&
+        !pair.startsWith(`${PROMPTFOO_RESOURCE_ATTR_PARENT_SPAN_ID}=`),
+    )
+    .join(',');
+  return cleaned.length > 0 ? `${cleaned},${incoming}` : incoming;
+}
+
+function stringifyForSpan(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  let raw: string | undefined;
+  if (typeof value === 'string') {
+    raw = value;
+  } else {
+    try {
+      raw = JSON.stringify(value);
+    } catch {
+      // JSON.stringify throws on circular references / BigInts / etc.
+      // Preserve the enclosing span by substituting a sentinel for just this attribute.
+      return '<unserializable>';
+    }
+  }
+  if (raw === undefined) {
+    return undefined;
+  }
+  const sanitized = sanitizeBody(raw);
+  return sanitized.length > TOOL_SPAN_BODY_LIMIT
+    ? `${sanitized.slice(0, TOOL_SPAN_BODY_LIMIT - 15)}... [truncated]`
+    : sanitized;
+}
+
+/**
+ * Emit a child span for a single tool call. Parents to the currently active
+ * span (the provider's GenAI wrapper) so the UI shows an agent → tool hierarchy
+ * similar to the OpenAI Agents SDK.
+ *
+ * When `incomplete` is true the call never produced a matching `tool_result`
+ * (aborted run, stop hook, or the stream ended mid-tool). Such spans are
+ * flagged via `tool.incomplete` and marked ERROR so traces surface the gap
+ * instead of silently dropping the tool.
+ */
+function emitToolSpan(
+  entry: ToolCallEntry,
+  startTimeMs: number,
+  endTimeMs: number,
+  isError: boolean,
+  incomplete = false,
+  turnIndex?: number,
+): void {
+  try {
+    const tracer = getGenAITracer();
+    const attributes: Record<string, string | number | boolean> = {
+      'gen_ai.operation.name': 'execute_tool',
+      'gen_ai.tool.call.id': entry.id,
+      'gen_ai.tool.name': entry.name,
+      'tool.name': entry.name,
+      'tool.is_error': isError,
+    };
+    if (incomplete) {
+      attributes['tool.incomplete'] = true;
+    }
+    const input = stringifyForSpan(entry.input);
+    if (input !== undefined) {
+      attributes['tool.input'] = input;
+    }
+    const output = stringifyForSpan(entry.output);
+    if (output !== undefined) {
+      attributes['tool.output'] = output;
+    }
+    if (entry.parentToolUseId) {
+      attributes['tool.parent_id'] = entry.parentToolUseId;
+    }
+    if (typeof turnIndex === 'number') {
+      attributes['gen_ai.turn.index'] = turnIndex;
+    }
+
+    const span = tracer.startSpan(`tool ${entry.name}`, {
+      startTime: startTimeMs,
+      attributes: addActiveSpanRoleAttribute(attributes),
+    });
+    span.setStatus({
+      code: isError || incomplete ? SpanStatusCode.ERROR : SpanStatusCode.OK,
+    });
+    span.end(endTimeMs);
+  } catch (err) {
+    logger.warn(`[ClaudeAgentSDK] Failed to emit tool span for ${entry.name}: ${err}`);
+  }
+}
+
+function isRawSubagentTranscript(result: unknown): boolean {
+  if (typeof result !== 'object' || result === null) {
+    return false;
+  }
+  if ('content' in result && '_meta' in result) {
+    return isRawSubagentTranscript(result.content);
+  }
+  if ('isRawTranscript' in result && result.isRawTranscript === true) {
+    return true;
+  }
+  return (
+    'task' in result &&
+    typeof result.task === 'object' &&
+    result.task !== null &&
+    'isRawTranscript' in result.task &&
+    result.task.isRawTranscript === true
+  );
+}
+
+function redactRawSubagentToolOutput(result: unknown): unknown {
+  if (!isRawSubagentTranscript(result)) {
+    return result;
+  }
+
+  const output = result as Record<string, unknown>;
+  if ('content' in output && '_meta' in output) {
+    return { ...output, content: redactRawSubagentToolOutput(output.content) };
+  }
+  const nestedTask = 'task' in output && typeof output.task === 'object' && output.task !== null;
+  const task = (nestedTask ? output.task : output) as Record<string, unknown>;
+  const redactedTask = {
+    ...task,
+    output: REDACTED_SUBAGENT_TRANSCRIPT,
+    ...('result' in task ? { result: REDACTED_SUBAGENT_TRANSCRIPT } : {}),
+    isRawTranscript: false,
+  };
+
+  return nestedTask ? { ...output, task: redactedTask } : redactedTask;
+}
+
+function createTaskOutputTranscriptRedactionHook(): HookCallbackMatcher {
+  return {
+    matcher: 'TaskOutput',
+    hooks: [
+      async (input) => {
+        if (
+          input.hook_event_name !== 'PostToolUse' ||
+          input.tool_name !== 'TaskOutput' ||
+          !isRawSubagentTranscript(input.tool_response)
+        ) {
+          return {};
+        }
+
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PostToolUse',
+            updatedToolOutput: redactRawSubagentToolOutput(input.tool_response),
+          },
+        };
+      },
+    ],
+  };
+}
+
+function deriveSkillCalls(toolCalls: ToolCallEntry[]): SkillCallEntry[] {
+  return toolCalls
+    .filter((toolCall) => toolCall.name === 'Skill')
+    .flatMap((toolCall) => {
+      const skillName =
+        toolCall.input &&
+        typeof toolCall.input === 'object' &&
+        typeof (toolCall.input as Record<string, unknown>).skill === 'string'
+          ? ((toolCall.input as Record<string, unknown>).skill as string).trim()
+          : '';
+
+      if (!skillName) {
+        return [];
+      }
+
+      return [
+        {
+          name: skillName,
+          input: toolCall.input,
+          is_error: toolCall.is_error,
+          source: 'tool' as const,
+        },
+      ];
+    });
+}
+
+/**
+ * Claude Agent SDK Provider
+ *
+ * This provider requires the @anthropic-ai/claude-agent-sdk package to be installed separately:
+ *   npm install @anthropic-ai/claude-agent-sdk
+ *
+ * Two default configurations:
+ * - No working_dir: Runs in temp directory with no tools - behaves like plain chat API
+ * - With working_dir: Runs in specified directory with read-only file tools (Read/Grep/Glob/LS)
+ *
+ * User can override tool permissions with 'custom_allowed_tools', 'append_allowed_tools', 'disallowed_tools', and 'permission_mode'.
+ *
+ * For side effects (file writes, system calls, etc.), user can override permissions and use a custom working directory. They're then responsible for setup/teardown and security considerations.
+ *
+ * MCP server connection details are passed through from config. strict_mcp_config is true by default to only allow explicitly configured MCP servers.
+ */
+
+// When a working directory is provided, we allow read-only tools by default (when no working directory is provided, default to no tools)
+export const FS_READONLY_ALLOWED_TOOLS = ['Read', 'Grep', 'Glob', 'LS'].sort(); // sort and export for tests
+
+// Claude Agent SDK supports these model aliases in addition to full model names
+// See: https://docs.anthropic.com/en/docs/claude-agent-sdk/model-config
+export const CLAUDE_CODE_MODEL_ALIASES = [
+  'default',
+  'sonnet',
+  'opus',
+  'haiku',
+  'sonnet[1m]',
+  'opusplan',
+];
+
+/**
+ * Helper to load the Claude Agent SDK ESM module
+ * Uses resolvePackageEntryPoint to handle ESM-only packages with restrictive exports
+ */
+async function loadClaudeCodeSDK(): Promise<typeof import('@anthropic-ai/claude-agent-sdk')> {
+  const basePath =
+    cliState.basePath && path.isAbsolute(cliState.basePath) ? cliState.basePath : process.cwd();
+
+  const claudeCodePath = resolvePackageEntryPoint('@anthropic-ai/claude-agent-sdk', basePath);
+
+  if (!claudeCodePath) {
+    throw new Error(
+      dedent`The @anthropic-ai/claude-agent-sdk package could not be resolved from ${basePath}.
+
+      To use the Claude Agent SDK provider, install it with:
+        npm install @anthropic-ai/claude-agent-sdk
+
+      If the package is already installed elsewhere, run promptfoo from the
+      project root (or point the config at that root) so node_modules is on
+      the resolution path.
+
+      For more information, see: https://www.promptfoo.dev/docs/providers/claude-agent-sdk/`,
+    );
+  }
+
+  try {
+    return importModule(claudeCodePath);
+  } catch (err) {
+    logger.error(`Failed to load Claude Agent SDK: ${err}`);
+    if ((err as any).stack) {
+      logger.error((err as any).stack);
+    }
+    throw new Error(
+      dedent`Failed to load @anthropic-ai/claude-agent-sdk.
+
+      The package was found but could not be loaded. This may be due to:
+      - Incompatible Node.js version (requires Node.js >=22.22.0)
+      - Corrupted installation
+
+      Try reinstalling:
+        npm install @anthropic-ai/claude-agent-sdk
+
+      For more information, see: https://www.promptfoo.dev/docs/providers/claude-agent-sdk/`,
+    );
+  }
+}
+
+export interface ClaudeCodeOptions {
+  apiKey?: string;
+  apiKeyRequired?: boolean;
+
+  /**
+   * 'working_dir' allows user to point to a pre-prepared directory with desired files/directories in place
+   * If not supplied, we'll use an empty temp dir for isolation
+   */
+  working_dir?: string;
+
+  /**
+   * 'model' and 'fallback_model' are optional
+   * if not supplied, Claude Agent SDK uses default models
+   * 'fallback_model' accepts a comma-separated list, tried in order (SDK >= 0.3.160)
+   */
+  model?: string;
+  fallback_model?: string;
+
+  max_turns?: number;
+  max_thinking_tokens?: number;
+
+  /**
+   * Enable the Claude subprocess's native model, tool, and subagent OpenTelemetry spans.
+   * Existing OTEL environment settings take precedence over Promptfoo's local defaults.
+   * @default false
+   */
+  deep_tracing?: boolean;
+
+  mcp?: MCPConfig;
+  strict_mcp_config?: boolean; // only allow MCP servers that are explicitly configured—no discovery; true by default
+
+  /**
+   * When true, enables caching even when MCP servers are configured.
+   * Use this when your MCP tools are deterministic (e.g., code search, static knowledge bases).
+   * Different MCP configurations will produce different cache keys.
+   * @default false
+   */
+  cache_mcp?: boolean;
+
+  /**
+   * Permission mode for controlling how tool executions are handled:
+   * - 'default' - Standard behavior, prompts for dangerous operations
+   * - 'manual' - Alias for 'default', prompts for dangerous operations
+   * - 'plan' - Planning mode, no actual tool execution
+   * - 'acceptEdits' - Auto-accept file edit operations
+   * - 'bypassPermissions' - Bypass all permission checks (requires allow_dangerously_skip_permissions)
+   * - 'dontAsk' - Don't prompt for permissions, deny if not pre-approved
+   * - 'auto' - Use a model classifier to approve or deny permission prompts
+   */
+  permission_mode?:
+    | 'default'
+    | 'manual'
+    | 'plan'
+    | 'acceptEdits'
+    | 'bypassPermissions'
+    | 'dontAsk'
+    | 'auto';
+
+  /**
+   * Custom workflow instructions for plan mode. Only takes effect when
+   * `permission_mode` is `'plan'`; the string replaces the default
+   * code-implementation workflow body in the plan-mode system reminder.
+   * The CLI still wraps it with the read-only enforcement preamble and the
+   * ExitPlanMode protocol footer.
+   */
+  plan_mode_instructions?: string;
+
+  /**
+   * User can set a custom system prompt, or append to the default Claude Agent SDK system prompt
+   */
+  custom_system_prompt?: string;
+  append_system_prompt?: string;
+
+  /**
+   * When `true`, strip per-user dynamic sections (working directory, auto-memory,
+   * git status) from the Claude Code preset system prompt so the prompt-caching
+   * prefix stays static and eligible for cross-user cache hits. The stripped
+   * context is re-injected as the first user message so the model still has
+   * access to it. Has no effect when `custom_system_prompt` is set.
+   *
+   * Useful for large eval fleets where many runs share the same system prompt
+   * and the per-user dynamic context would otherwise bust the cache.
+   *
+   * @see https://platform.claude.com/docs/en/agent-sdk/settings
+   */
+  exclude_dynamic_sections?: boolean;
+
+  /**
+   * Since we run CC by default with a readonly set of allowed_tools, user can either fully replace the list ('custom_allowed_tools'), append to it ('append_allowed_tools'), or allow all tools ('allow_all_tools')
+   */
+  custom_allowed_tools?: string[];
+  append_allowed_tools?: string[];
+  allow_all_tools?: boolean;
+
+  /**
+   * 'disallowed_tools' is passed through as is; it always takes precedence over 'allowed_tools'
+   */
+  disallowed_tools?: string[];
+
+  /**
+   * 'setting_sources' controls where the Claude Agent SDK looks for settings, CLAUDE.md, and slash commands—accepts 'user', 'project', and 'local'
+   * if not supplied, it won't look for any settings, CLAUDE.md, or slash commands
+   */
+  setting_sources?: SettingSource[];
+
+  /**
+   * 'plugins' allows loading Claude Code plugins from local file system paths
+   * Each plugin must be a directory containing .claude-plugin/plugin.json manifest
+   */
+  plugins?: Array<{ type: 'local'; path: string }>;
+
+  /**
+   * Filters which Skills are loaded into the main session.
+   *
+   * - omitted: no SDK-side filtering — the CLI's own defaults still apply
+   *   (this is **not** "skills off")
+   * - `'all'`: enable every discovered skill
+   * - `string[]`: enable only the listed skills, matched by SKILL.md `name` /
+   *   directory name, or `plugin:skill` for plugin-qualified skills
+   *
+   * When set, the SDK auto-allows the `Skill` tool for the session — you do
+   * not need to add it to `append_allowed_tools` / `custom_allowed_tools`.
+   *
+   * This is a context filter, not a sandbox: unlisted skills are hidden from
+   * the model's listing and rejected by the Skill tool, but their files
+   * remain on disk and are reachable via Read/Bash. Do not store secrets in
+   * skill files.
+   *
+   * Skills are discovered from the directories enabled by `setting_sources`
+   * and from `plugins`; this option only narrows the set, it does not
+   * discover new skills.
+   *
+   * @example
+   * ```yaml
+   * skills: all
+   * skills:
+   *   - pdf
+   *   - docx
+   * ```
+   *
+   * @see https://platform.claude.com/docs/en/agent-sdk/skills
+   */
+  skills?: string[] | 'all';
+
+  /**
+   * Maximum budget in USD for this session. When exceeded, the SDK will stop with error_max_budget_usd.
+   * Useful for cost control in automated evaluations.
+   */
+  max_budget_usd?: number;
+
+  /**
+   * Additional directories the agent can access beyond the working directory.
+   * Useful when the agent needs to read files from multiple locations.
+   */
+  additional_directories?: string[];
+
+  /**
+   * Session ID to resume a previous conversation. The agent will continue from where it left off.
+   * Use with 'fork_session' to branch instead of continuing the same session.
+   */
+  resume?: string;
+
+  /**
+   * When true and 'resume' is set, creates a new session branching from the resumed point
+   * instead of continuing the original session.
+   */
+  fork_session?: boolean;
+
+  /**
+   * When resuming, only restore messages up to this message UUID.
+   * Allows resuming from a specific point in the conversation history.
+   */
+  resume_session_at?: string;
+
+  /**
+   * When true, continues from the previous conversation without requiring a resume session ID.
+   */
+  continue?: boolean;
+
+  /**
+   * Programmatic agent definitions. Allows defining custom subagents inline without filesystem dependencies.
+   * Keys are agent names, values are agent definitions with description, tools, and prompt.
+   */
+  agents?: Record<string, AgentDefinition>;
+
+  /**
+   * Maximum nesting depth for subagents. Defaults to five to preserve the
+   * behavior of Claude Agent SDK versions before 0.3.217.
+   */
+  max_subagent_spawn_depth?: number;
+
+  /**
+   * Maximum number of subagents that can run concurrently. When omitted, the
+   * Claude Agent SDK applies its own default (20 as of version 0.3.217).
+   */
+  max_concurrent_subagents?: number;
+
+  /**
+   * Output format specification for structured outputs.
+   * When set, the agent will return validated JSON matching the provided schema.
+   */
+  output_format?: OutputFormat;
+
+  /**
+   * Hooks for intercepting events during agent execution.
+   * Allows custom logic at various points like PreToolUse, PostToolUse, etc.
+   */
+  hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>;
+
+  /**
+   * When true, includes partial/streaming messages in the response.
+   * Useful for debugging or when you need to see intermediate outputs.
+   */
+  include_partial_messages?: boolean;
+
+  /**
+   * When true, forwards subagent text and thinking blocks as assistant/user
+   * messages with `parent_tool_use_id` set. By default the SDK only emits
+   * tool_use/tool_result blocks from subagents (enough for a heartbeat
+   * counter). Enable this if you want a complete subagent transcript in
+   * `metadata.toolCalls` / OTel spans.
+   *
+   * @default false
+   */
+  forward_subagent_text?: boolean;
+
+  /**
+   * When true, includes hook lifecycle events (hook_started, hook_progress, hook_response)
+   * in the output stream. SessionStart and Setup hook events are always emitted regardless.
+   *
+   * @default false
+   */
+  include_hook_events?: boolean;
+
+  /**
+   * Per-tool configuration for built-in tools.
+   *
+   * @example
+   * ```yaml
+   * tool_config:
+   *   askUserQuestion:
+   *     previewFormat: html
+   * ```
+   */
+  tool_config?: ToolConfig;
+
+  /**
+   * Enable AI-predicted next prompts. When true, the agent emits a prompt_suggestion
+   * message after each turn with a predicted next user prompt.
+   * Suggestions piggyback on the parent's prompt cache, making them nearly free.
+   *
+   * @default false
+   */
+  prompt_suggestions?: boolean;
+
+  /**
+   * Enable periodic AI-generated progress summaries for running subagents.
+   * When true, subagent conversations are forked every ~30s to produce a short
+   * present-tense description, emitted on task_progress events.
+   *
+   * @default false
+   */
+  agent_progress_summaries?: boolean;
+
+  /**
+   * Additional settings to apply. Accepts either a path to a settings JSON file
+   * or a Settings object. These are loaded into the "flag settings" layer,
+   * which has the highest priority among user-controlled settings.
+   *
+   * @example Path to settings file
+   * ```yaml
+   * settings: /path/to/settings.json
+   * ```
+   *
+   * @example Inline settings object
+   * ```yaml
+   * settings:
+   *   permissions:
+   *     allow:
+   *       - 'Bash(*)'
+   * ```
+   */
+  settings?: string | Settings;
+
+  /**
+   * Policy-tier settings supplied by the embedding parent. Loaded into the
+   * managed-settings layer (above HKCU, below IT-controlled sources), so
+   * user/project settings cannot widen restrictions set here. Use this when
+   * promptfoo runs inside an app that derives lockdown configuration from
+   * its own enterprise policy and needs to enforce it on the SDK subprocess
+   * without writing root-owned files.
+   *
+   * Differs from `settings` (flag layer, user-controllable) — prefer
+   * `managed_settings` for fields like `sandbox.network.allowManagedDomainsOnly`.
+   *
+   * @example
+   * ```yaml
+   * managed_settings:
+   *   sandbox:
+   *     network:
+   *       allowManagedDomainsOnly: true
+   * ```
+   */
+  managed_settings?: Settings;
+
+  /**
+   * Callback for handling MCP elicitation requests.
+   * Called when an MCP server requests user input (form fields, URL auth, etc.)
+   * and no hook handles the request first. If not provided, elicitation requests
+   * that aren't handled by hooks will be declined automatically.
+   *
+   * Note: This option is only available when using the provider programmatically,
+   * not via YAML config.
+   */
+  on_elicitation?: OnElicitation;
+
+  /**
+   * Callback forwarded to Claude Agent SDK's `canUseTool` option.
+   * Available only in programmatic configs because functions cannot be
+   * represented in YAML.
+   */
+  can_use_tool?: CanUseTool;
+
+  /**
+   * Enable beta features. Currently supports:
+   * - 'context-1m-2025-08-07' - Enable 1M token context window (Sonnet 4/4.5 only)
+   *
+   * @see https://docs.anthropic.com/en/api/beta-headers
+   */
+  betas?: 'context-1m-2025-08-07'[];
+
+  /**
+   * Controls Claude's thinking/reasoning behavior. When set, takes precedence over max_thinking_tokens.
+   * - { type: 'adaptive' } - Claude decides when and how much to think (Opus 4.6+, default for supporting models)
+   * - { type: 'enabled', budgetTokens?: number } - Fixed thinking token budget (older models)
+   * - { type: 'disabled' } - No extended thinking
+   *
+   * @see https://docs.anthropic.com/en/docs/build-with-claude/adaptive-thinking
+   */
+  thinking?: ThinkingConfig;
+
+  /**
+   * Token budget for the task. The model will pace its tool use to stay within this budget.
+   * Useful for cost-conscious evaluations.
+   *
+   * @example
+   * ```yaml
+   * task_budget:
+   *   total: 50000
+   * ```
+   */
+  task_budget?: {
+    total: number;
+  };
+
+  /**
+   * Controls how much effort Claude puts into its response.
+   * Works with adaptive thinking to guide thinking depth.
+   * - 'low' - Minimal thinking, fastest responses
+   * - 'medium' - Moderate thinking
+   * - 'high' - Deep reasoning (default)
+   * - 'xhigh' - Extra high reasoning (Opus 4.7+); sits between 'high' and 'max'
+   * - 'max' - Maximum effort
+   *
+   * @see https://docs.anthropic.com/en/docs/build-with-claude/effort
+   */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+  /**
+   * Agent name for the main thread. When specified, the agent's system prompt,
+   * tool restrictions, and model will be applied to the main conversation.
+   * The agent must be defined either in the 'agents' option or in settings.
+   */
+  agent?: string;
+
+  /**
+   * Use a specific session ID for the conversation instead of an auto-generated one.
+   * Must be a valid UUID. Cannot be used with 'continue' or 'resume' unless
+   * 'fork_session' is also set.
+   */
+  session_id?: string;
+
+  /**
+   * Custom title for a new session. When set, the session uses this title instead
+   * of auto-generating one from the first user message. Useful for locating an
+   * eval run in `~/.claude/projects/` or in Claude Code's session list.
+   *
+   * When resuming via `resume`/`continue`, the persisted title takes precedence.
+   */
+  title?: string;
+
+  /**
+   * Enable debug mode for the Claude Code process.
+   * When true, enables verbose debug logging (equivalent to --debug CLI flag).
+   */
+  debug?: boolean;
+
+  /**
+   * Write debug logs to a specific file path.
+   * Implicitly enables debug mode.
+   */
+  debug_file?: string;
+
+  /**
+   * Sandbox settings for command execution isolation.
+   * When enabled, commands are executed in a sandboxed environment that restricts
+   * filesystem and network access. This provides an additional security layer.
+   *
+   * Available options:
+   * - `enabled` - Enable/disable sandboxing
+   * - `autoAllowBashIfSandboxed` - Auto-allow bash commands when sandboxed
+   * - `allowUnsandboxedCommands` - Allow commands that can't be sandboxed
+   * - `enableWeakerNestedSandbox` - Enable weaker sandbox for nested environments
+   * - `excludedCommands` - Commands to exclude from sandboxing
+   * - `failIfUnavailable` - Fail closed when sandbox dependencies or platform support are missing
+   * - `ignoreViolations` - Map of command patterns to violation types to ignore
+   * - `network` - Network configuration:
+   *   - `allowedDomains` - Domains the sandbox can access
+   *   - `allowLocalBinding` - Allow binding to localhost
+   *   - `allowUnixSockets` - Specific Unix sockets to allow
+   *   - `allowAllUnixSockets` - Allow all Unix socket connections
+   *   - `httpProxyPort` - HTTP proxy port for network access
+   *   - `socksProxyPort` - SOCKS proxy port for network access
+   * - `credentials` - Credential protection configuration:
+   *   - `envVars` - Environment variables to deny or mask, with optional `injectHosts`
+   *   - `allowPlaintextInject` - Allow masked credentials over plain HTTP (unsafe)
+   * - `ripgrep` - Custom ripgrep configuration:
+   *   - `command` - Path to ripgrep executable
+   *   - `args` - Additional arguments for ripgrep
+   *
+   * @example Enable sandboxing with auto-allow
+   * ```yaml
+   * sandbox:
+   *   enabled: true
+   *   autoAllowBashIfSandboxed: true
+   * ```
+   *
+   * @example Configure network options with proxy
+   * ```yaml
+   * sandbox:
+   *   enabled: true
+   *   network:
+   *     allowLocalBinding: true
+   *     allowedDomains:
+   *       - api.example.com
+   *     httpProxyPort: 8080
+   *     socksProxyPort: 1080
+   * ```
+   *
+   * @example Exclude specific commands and configure ripgrep
+   * ```yaml
+   * sandbox:
+   *   enabled: true
+   *   excludedCommands:
+   *     - docker
+   *     - podman
+   *   ripgrep:
+   *     command: /usr/local/bin/rg
+   *     args: ['--hidden']
+   * ```
+   *
+   * @see https://docs.anthropic.com/en/docs/claude-code/settings#sandbox-settings
+   */
+  sandbox?: SandboxSettings;
+
+  /**
+   * Must be set to true when using permission_mode: 'bypassPermissions'.
+   * This is a safety measure to ensure intentional bypassing of permissions.
+   */
+  allow_dangerously_skip_permissions?: boolean;
+
+  /**
+   * MCP tool name to use for permission prompts. When set, permission requests
+   * will be routed through this MCP tool instead of the default handler.
+   */
+  permission_prompt_tool_name?: string;
+
+  /**
+   * Callback for stderr output from the Claude Code process.
+   * Useful for debugging and logging.
+   *
+   * Note: This option is only available when using the provider programmatically,
+   * not via YAML config.
+   */
+  stderr?: (data: string) => void;
+
+  /**
+   * Environment variables to pass to the Claude Agent SDK subprocess.
+   * Merged with process.env and EnvOverrides (precedence: EnvOverrides > config.env > process.env).
+   *
+   * Useful for forwarding OTEL settings so the SDK exports telemetry to a collector.
+   *
+   * @example
+   * ```yaml
+   * config:
+   *   env:
+   *     CLAUDE_CODE_ENABLE_TELEMETRY: "1"
+   *     OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4318"
+   *     OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+   * ```
+   */
+  env?: Record<string, string>;
+
+  /**
+   * JavaScript runtime to use for executing Claude Code.
+   * Auto-detected if not specified.
+   */
+  executable?: 'bun' | 'deno' | 'node';
+
+  /**
+   * Additional arguments to pass to the JavaScript runtime executable.
+   */
+  executable_args?: string[];
+
+  /**
+   * Additional CLI arguments to pass to Claude Code.
+   * Keys are argument names (without --), values are argument values.
+   * Use null for boolean flags.
+   *
+   * @example
+   * ```yaml
+   * extra_args:
+   *   verbose: null  # Adds --verbose flag
+   *   timeout: "30"  # Adds --timeout 30
+   * ```
+   */
+  extra_args?: Record<string, string | null>;
+
+  /**
+   * Path to the Claude Code executable. Uses the built-in executable if not specified.
+   * Useful for testing with custom builds or specific versions.
+   */
+  path_to_claude_code_executable?: string;
+
+  /**
+   * Specify the base set of available built-in tools.
+   * - `string[]` - Array of specific tool names (e.g., `['Bash', 'Read', 'Edit']`)
+   * - `[]` (empty array) - Disable all built-in tools
+   * - `{ type: 'preset', preset: 'claude_code' }` - Use all default Claude Code tools
+   *
+   * This is different from 'custom_allowed_tools' - 'tools' specifies the base set,
+   * while 'allowedTools' filters from that base.
+   *
+   * @example Use all default tools
+   * ```yaml
+   * tools:
+   *   type: preset
+   *   preset: claude_code
+   * ```
+   *
+   * @example Use only specific tools
+   * ```yaml
+   * tools:
+   *   - Bash
+   *   - Read
+   *   - Edit
+   * ```
+   */
+  tools?: string[] | { type: 'preset'; preset: 'claude_code' };
+
+  /**
+   * Enable file checkpointing to track file changes during the session.
+   * When enabled, files can be rewound to their state at any user message
+   * using the Query.rewindFiles() method.
+   *
+   * File checkpointing creates backups of files before they are modified,
+   * allowing restoration to previous states.
+   *
+   * @default false
+   */
+  enable_file_checkpointing?: boolean;
+
+  /**
+   * When false, disables session persistence to disk. Sessions will not be
+   * saved to ~/.claude/projects/ and cannot be resumed later. Useful for
+   * ephemeral or automated workflows where session history is not needed.
+   *
+   * @default true
+   */
+  persist_session?: boolean;
+
+  /**
+   * Custom function to spawn the Claude Code process.
+   * Use this to run Claude Code in VMs, containers, or remote environments.
+   *
+   * When provided, this function is called instead of the default local spawn.
+   *
+   * Note: This option is only available when using the provider programmatically,
+   * not via YAML config.
+   *
+   * @example
+   * ```typescript
+   * spawn_claude_code_process: (options) => {
+   *   // Custom spawn logic for VM execution
+   *   // options contains: command, args, cwd, env, signal
+   *   return myVMProcess; // Must satisfy SpawnedProcess interface
+   * }
+   * ```
+   */
+  spawn_claude_code_process?: (options: SpawnOptions) => SpawnedProcess;
+
+  /**
+   * Configuration for handling AskUserQuestion tool in automated evaluations.
+   * Since there's no human to answer questions, this provides automated responses.
+   *
+   * @example
+   * ```yaml
+   * ask_user_question:
+   *   behavior: first_option  # Always select the first option
+   * ```
+   */
+  ask_user_question?: {
+    /**
+     * Default behavior for answering questions:
+     * - 'first_option': Always select the first option (default)
+     * - 'random': Randomly select from available options
+     * - 'deny': Deny the tool use (agent cannot ask questions)
+     */
+    behavior?: 'first_option' | 'random' | 'deny';
+  };
+}
+
+/**
+ * Type for AskUserQuestion tool input from the SDK
+ */
+interface AskUserQuestionToolInput {
+  questions: Array<{
+    question: string;
+    header: string;
+    options: Array<{ label: string; description: string }>;
+    multiSelect: boolean;
+  }>;
+  answers?: Record<string, string>;
+}
+
+/**
+ * Creates a canUseTool callback for handling AskUserQuestion tool in automated evaluations.
+ * This provides automated responses to questions that would normally require user input.
+ *
+ * The callback wraps an optional user-provided canUseTool and handles AskUserQuestion specifically,
+ * deferring to the wrapped callback for all other tools.
+ */
+function createAskUserQuestionCanUseTool(
+  behavior: 'first_option' | 'random' | 'deny' = 'first_option',
+  wrappedCanUseTool?: CanUseTool,
+): CanUseTool {
+  return async (toolName, input, options) => {
+    // Only handle AskUserQuestion tool
+    if (toolName !== 'AskUserQuestion') {
+      // Defer to a wrapped callback when one exists. Otherwise fail closed so
+      // enabling automated question answers cannot widen unrelated tool access.
+      if (wrappedCanUseTool) {
+        return wrappedCanUseTool(toolName, input, options);
+      }
+      return {
+        behavior: 'deny',
+        message: 'Tool permission request is not handled by ask_user_question automation',
+      };
+    }
+
+    // Deny the tool use if configured to do so
+    if (behavior === 'deny') {
+      return {
+        behavior: 'deny',
+        message: 'AskUserQuestion is disabled in automated evaluation mode',
+      };
+    }
+
+    if (!isAskUserQuestionToolInput(input)) {
+      return {
+        behavior: 'deny',
+        message: 'AskUserQuestion received malformed question input',
+      };
+    }
+
+    const toolInput = input;
+    const answers = Object.create(null) as Record<string, string>;
+
+    // Generate answers for each question based on the configured behavior
+    for (const question of toolInput.questions) {
+      if (!question.options || question.options.length === 0) {
+        continue;
+      }
+
+      let selectedLabels: string[];
+      if (behavior === 'random') {
+        const randomIndex = Math.floor(Math.random() * question.options.length);
+        selectedLabels = [question.options[randomIndex].label];
+      } else {
+        // first_option (default)
+        selectedLabels = [question.options[0].label];
+      }
+
+      // Multi-select answers are comma-separated strings per SDK documentation
+      answers[question.question] = selectedLabels.join(', ');
+    }
+
+    return {
+      behavior: 'allow',
+      updatedInput: {
+        questions: toolInput.questions, // Pass through original questions
+        answers,
+      },
+    };
+  };
+}
+
+/**
+ * Assemble the hook set actually handed to the SDK.
+ *
+ * Two independent concerns layer here, on different hook events, so both apply:
+ * a PostToolUse hook that redacts raw background-agent transcripts, and a
+ * PreToolUse hook that answers AskUserQuestion under `dontAsk`. In both cases
+ * promptfoo's hook goes first and the user's configured matchers stay installed
+ * behind it, so an explicit user denial still wins.
+ */
+function buildClaudeHooks(config: ClaudeCodeOptions): ClaudeCodeOptions['hooks'] {
+  let hooks = config.hooks;
+
+  // Sanitize raw background-agent transcripts before TaskOutput reaches the main model.
+  if (!config.forward_subagent_text) {
+    hooks = {
+      ...hooks,
+      PostToolUse: [createTaskOutputTranscriptRedactionHook(), ...(hooks?.PostToolUse ?? [])],
+    };
+  }
+
+  // AskUserQuestion is intrinsically interactive, so dontAsk denies it before canUseTool runs.
+  // A narrow PreToolUse hook can supply the automated answer while preserving the configured
+  // permission mode and the precedence of explicit deny rules and matching user-hook denials.
+  if (config.permission_mode !== 'dontAsk' || !config.ask_user_question) {
+    return hooks;
+  }
+
+  const questionHandler = createAskUserQuestionCanUseTool(config.ask_user_question.behavior);
+  const askUserQuestionHook: HookCallbackMatcher = {
+    matcher: 'AskUserQuestion',
+    hooks: [
+      async (input, toolUseID, { signal }) => {
+        if (input.hook_event_name !== 'PreToolUse' || input.tool_name !== 'AskUserQuestion') {
+          return {};
+        }
+        // The hook carries no separate permission-request id, so the tool_use id
+        // doubles as one: it is unique per tool call within the session, which is
+        // the identity questionHandler needs.
+        const resolvedToolUseID = toolUseID ?? input.tool_use_id;
+        const result = await questionHandler(
+          input.tool_name,
+          input.tool_input as Record<string, unknown>,
+          { signal, toolUseID: resolvedToolUseID, requestId: resolvedToolUseID },
+        );
+        // CanUseTool may resolve to null. Fail closed: an absent decision must
+        // never read as approval for an interactive tool.
+        if (result?.behavior !== 'allow') {
+          return {
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse' as const,
+              permissionDecision: 'deny' as const,
+              permissionDecisionReason:
+                result?.message ?? 'ask_user_question automation returned no decision',
+            },
+          };
+        }
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse' as const,
+            permissionDecision: 'allow' as const,
+            updatedInput: result.updatedInput,
+          },
+        };
+      },
+    ],
+  };
+  return {
+    ...hooks,
+    PreToolUse: [askUserQuestionHook, ...(hooks?.PreToolUse ?? [])],
+  };
+}
+
+function validateAskUserQuestionConfig(config: unknown): void {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    throw new Error('ask_user_question must be an object');
+  }
+
+  const behavior = (config as { behavior?: unknown }).behavior;
+  if (
+    behavior !== undefined &&
+    behavior !== 'first_option' &&
+    behavior !== 'random' &&
+    behavior !== 'deny'
+  ) {
+    throw new Error('ask_user_question.behavior must be first_option, random, or deny');
+  }
+}
+
+const RESERVED_POLICY_EXTRA_ARGS = new Set([
+  'adddir',
+  'agent',
+  'agents',
+  'allowdangerouslyskippermissions',
+  'allowedtools',
+  'bare',
+  'brief',
+  'chrome',
+  'dangerouslyskippermissions',
+  'disallowedtools',
+  'ide',
+  'managedsettings',
+  'mcpconfig',
+  'permissionmode',
+  'permissionprompttool',
+  'plugindir',
+  'plugindirnomcp',
+  'pluginurl',
+  'remotecontrol',
+  'safemode',
+  'settings',
+  'settingsources',
+  'strictmcpconfig',
+  'tools',
+]);
+
+function normalizeClaudeCliArgumentName(name: string): string {
+  return name.split(/[=:]/, 1)[0].replace(/^--/, '').replace(/[-_]/g, '').toLowerCase();
+}
+
+function validateClaudeToolPolicyConfig(config: ClaudeCodeOptions): void {
+  for (const option of ['allow_all_tools', 'allow_dangerously_skip_permissions'] as const) {
+    if (config[option] !== undefined && typeof config[option] !== 'boolean') {
+      throw new Error(`${option} must be a boolean`);
+    }
+  }
+
+  for (const option of [
+    'custom_allowed_tools',
+    'append_allowed_tools',
+    'disallowed_tools',
+  ] as const) {
+    const value = config[option];
+    if (
+      value !== undefined &&
+      (!Array.isArray(value) || value.some((tool) => typeof tool !== 'string'))
+    ) {
+      throw new Error(`${option} must be an array of tool-name strings`);
+    }
+  }
+
+  // Keep in sync with ClaudeCodeOptions['permission_mode']; 'manual' is the
+  // documented alias for 'default' and is normalized when the query is built.
+  const permissionModes = [
+    'default',
+    'plan',
+    'acceptEdits',
+    'bypassPermissions',
+    'dontAsk',
+    'auto',
+    'manual',
+  ];
+  if (
+    config.permission_mode !== undefined &&
+    !permissionModes.includes(config.permission_mode as string)
+  ) {
+    throw new Error(`permission_mode must be one of ${permissionModes.join(', ')}`);
+  }
+
+  if (config.tools !== undefined) {
+    const validArray =
+      Array.isArray(config.tools) && config.tools.every((tool) => typeof tool === 'string');
+    const validPreset =
+      !!config.tools &&
+      typeof config.tools === 'object' &&
+      !Array.isArray(config.tools) &&
+      config.tools.type === 'preset' &&
+      config.tools.preset === 'claude_code';
+    if (!validArray && !validPreset) {
+      throw new Error('tools must be an array of tool-name strings or the claude_code preset');
+    }
+  }
+
+  if (
+    config.extra_args !== undefined &&
+    (!config.extra_args ||
+      typeof config.extra_args !== 'object' ||
+      Array.isArray(config.extra_args) ||
+      Object.values(config.extra_args).some((value) => value !== null && typeof value !== 'string'))
+  ) {
+    throw new Error('extra_args must be an object with string or null values');
+  }
+  const reservedExtraArg = Object.keys(config.extra_args ?? {}).find((name) =>
+    RESERVED_POLICY_EXTRA_ARGS.has(normalizeClaudeCliArgumentName(name)),
+  );
+  if (reservedExtraArg) {
+    throw new Error(
+      `extra_args cannot override Claude runtime policy (${reservedExtraArg}); use supported structured provider options instead`,
+    );
+  }
+}
+
+function mcpServerContainsCacheSensitiveData(server: MCPServerConfig): boolean {
+  if (
+    server.auth ||
+    Object.keys(server.headers ?? {}).length > 0 ||
+    (server.args?.length ?? 0) > 0
+  ) {
+    return true;
+  }
+  if (!server.url) {
+    return false;
+  }
+  try {
+    const url = new URL(server.url);
+    return Boolean(url.username || url.password || url.search);
+  } catch {
+    return server.url.includes('?') || server.url.includes('@');
+  }
+}
+
+function mcpConfigContainsCacheSensitiveData(config: MCPConfig | undefined): boolean {
+  if (!config || config.enabled === false) {
+    return false;
+  }
+  return [...(config.servers ?? []), ...(config.server ? [config.server] : [])].some(
+    mcpServerContainsCacheSensitiveData,
+  );
+}
+
+function isAskUserQuestionToolInput(input: unknown): input is AskUserQuestionToolInput {
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    !Array.isArray((input as { questions?: unknown }).questions)
+  ) {
+    return false;
+  }
+
+  return (input as { questions: unknown[] }).questions.every(
+    (question) =>
+      !!question &&
+      typeof question === 'object' &&
+      typeof (question as { question?: unknown }).question === 'string' &&
+      typeof (question as { header?: unknown }).header === 'string' &&
+      typeof (question as { multiSelect?: unknown }).multiSelect === 'boolean' &&
+      Array.isArray((question as { options?: unknown }).options) &&
+      (question as { options: unknown[] }).options.every(
+        (option) =>
+          !!option &&
+          typeof option === 'object' &&
+          typeof (option as { label?: unknown }).label === 'string' &&
+          typeof (option as { description?: unknown }).description === 'string',
+      ),
+  );
+}
+
+export class ClaudeCodeSDKProvider implements ApiProvider {
+  static ANTHROPIC_MODELS = ANTHROPIC_MODELS;
+  static ANTHROPIC_MODELS_NAMES = ANTHROPIC_MODELS.map((model) => model.id);
+
+  config: ClaudeCodeOptions;
+  env?: EnvOverrides;
+  apiKey?: string;
+
+  // Only SDK and Anthropic are supported for now
+  // Could later potentially support Claude Agent SDK via external CLI calls, as well as Bedrock/Vertex providers
+  private providerId = 'anthropic:claude-agent-sdk';
+  private claudeCodeModule?: typeof import('@anthropic-ai/claude-agent-sdk');
+  private readonly credentialCacheScope = crypto.randomUUID();
+
+  constructor(
+    options: {
+      id?: string;
+      config?: ClaudeCodeOptions;
+      env?: EnvOverrides;
+    } = {},
+  ) {
+    const { config, env, id } = options;
+    this.config = config ?? {};
+    this.env = env;
+    this.apiKey = this.getApiKey();
+    this.providerId = id ?? this.providerId;
+
+    if (
+      this.config.model &&
+      !ClaudeCodeSDKProvider.ANTHROPIC_MODELS_NAMES.includes(this.config.model) &&
+      !CLAUDE_CODE_MODEL_ALIASES.includes(this.config.model)
+    ) {
+      logger.warn(`Using unknown model for Claude Agent SDK: ${this.config.model}`);
+    }
+
+    // Since SDK 0.3.160, fallback_model accepts a comma-separated list tried in order.
+    for (const fallbackModel of (this.config.fallback_model ?? '')
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean)) {
+      if (
+        !ClaudeCodeSDKProvider.ANTHROPIC_MODELS_NAMES.includes(fallbackModel) &&
+        !CLAUDE_CODE_MODEL_ALIASES.includes(fallbackModel)
+      ) {
+        logger.warn(`Using unknown model for Claude Agent SDK fallback: ${fallbackModel}`);
+      }
+    }
+  }
+
+  id(): string {
+    return this.providerId;
+  }
+
+  async callApi(
+    prompt: string,
+    context?: CallApiContextParams,
+    callOptions?: CallApiOptionsParams,
+  ): Promise<ProviderResponse> {
+    if (callOptions?.abortSignal?.aborted) {
+      return { error: ABORTED_BEFORE_START_ERROR };
+    }
+
+    // Merge configs from the provider and the prompt
+    const config: ClaudeCodeOptions = {
+      ...this.config,
+      ...context?.prompt?.config,
+    };
+
+    if (config.ask_user_question !== undefined) {
+      validateAskUserQuestionConfig(config.ask_user_question);
+    }
+    if (config.mcp !== undefined) {
+      validateMCPConfigForClaudeCode(config.mcp);
+    }
+    validateClaudeToolPolicyConfig(config);
+
+    // Sort keys for stable cache-key hashing. Precedence is documented on the
+    // `env` field of ClaudeCodeOptions: process.env < config.env < EnvOverrides.
+    const env: Record<string, string> = {};
+    for (const key of Object.keys(process.env).sort()) {
+      if (process.env[key] !== undefined) {
+        env[key] = process.env[key];
+      }
+    }
+
+    if (config.env) {
+      for (const key of Object.keys(config.env).sort()) {
+        const value = config.env[key];
+        if (value !== undefined) {
+          env[key] = value;
+        }
+      }
+    }
+
+    if (this.env) {
+      for (const key of Object.keys(this.env).sort()) {
+        const value = this.env[key as keyof typeof this.env];
+        if (value !== undefined) {
+          env[key] = value;
+        }
+      }
+    }
+
+    if (config.deep_tracing) {
+      const receiverExport = getConfiguredTracingExport();
+
+      env.CLAUDE_CODE_ENABLE_TELEMETRY ??= '1';
+      env.CLAUDE_CODE_ENHANCED_TELEMETRY_BETA ??= '1';
+      env.OTEL_TRACES_EXPORTER ??= 'otlp';
+      env.OTEL_EXPORTER_OTLP_ENDPOINT ??= receiverExport?.endpoint ?? 'http://127.0.0.1:4318';
+      env.OTEL_EXPORTER_OTLP_PROTOCOL ??=
+        receiverExport?.format === 'json' ? 'http/json' : 'http/protobuf';
+      // The SDK's five-second default is longer than Promptfoo's three-second fetch delay.
+      env.OTEL_TRACES_EXPORT_INTERVAL ??= '1000';
+    }
+
+    const sdkExportsNativeSpans =
+      env.CLAUDE_CODE_ENABLE_TELEMETRY === '1' &&
+      (env.CLAUDE_CODE_ENHANCED_TELEMETRY_BETA === '1' ||
+        env.ENABLE_ENHANCED_TELEMETRY_BETA === '1') &&
+      env.OTEL_TRACES_EXPORTER?.split(',').some((exporter) => exporter.trim() === 'otlp') &&
+      isActiveTracingExport(
+        env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ?? env.OTEL_EXPORTER_OTLP_ENDPOINT,
+        env.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL ?? env.OTEL_EXPORTER_OTLP_PROTOCOL,
+      );
+
+    const subagentLimits = [
+      ['max_subagent_spawn_depth', 'CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH'],
+      ['max_concurrent_subagents', 'CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS'],
+    ] as const;
+
+    for (const [option, environmentVariable] of subagentLimits) {
+      const value = config[option];
+      if (value === undefined) {
+        continue;
+      }
+      if (!Number.isSafeInteger(value) || value < 1) {
+        throw new Error(`${option} must be a positive safe integer`);
+      }
+      env[environmentVariable] = String(value);
+    }
+
+    // Claude Agent SDK 0.3.217 lowered this default from five to one. Keep
+    // existing nested-agent evals working unless an env override opts out.
+    env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH ??= '5';
+
+    // SDK 0.3.233 removes task tools from newer models by default. Preserve
+    // allow_all_tools behavior unless the user explicitly opts out.
+    if (config.allow_all_tools) {
+      env.CLAUDE_CODE_ENABLE_TODO_TOOLS ??= '1';
+    }
+
+    // Ensure API key is available to Claude Agent SDK
+    if (this.apiKey) {
+      env.ANTHROPIC_API_KEY = this.apiKey;
+    }
+    // Subprocess environment can contain credentials under arbitrary names and value formats.
+    // Keep it out of persistent key material and scope reuse to this provider instance instead.
+    const credentialCacheScope = this.credentialCacheScope;
+
+    // Could potentially do more to validate credentials for Bedrock/Vertex here, but Anthropic key is the main use case
+    if (
+      !this.apiKey &&
+      !(
+        config.apiKeyRequired === false ||
+        env.CLAUDE_CODE_USE_BEDROCK ||
+        env.CLAUDE_CODE_USE_VERTEX
+      )
+    ) {
+      throw new Error(
+        dedent`Anthropic API key is not set. Set the ANTHROPIC_API_KEY environment variable or add "apiKey" to the provider config.
+
+        Use CLAUDE_CODE_USE_BEDROCK or CLAUDE_CODE_USE_VERTEX environment variables to use Bedrock or Vertex instead.`,
+      );
+    }
+
+    // Set up allowed tools for the Claude Agent SDK call
+    // Check for conflicting config options (may want a zod schema in the future)
+    if (
+      config.allow_all_tools === true &&
+      ('custom_allowed_tools' in config ||
+        'append_allowed_tools' in config ||
+        config.tools !== undefined)
+    ) {
+      throw new Error(
+        'Cannot specify allow_all_tools together with tools, custom_allowed_tools, or append_allowed_tools',
+      );
+    }
+    if ('custom_allowed_tools' in config && 'append_allowed_tools' in config) {
+      throw new Error('Cannot specify both custom_allowed_tools and append_allowed_tools');
+    }
+
+    // Validate that bypassPermissions mode requires the safety flag
+    if (
+      config.permission_mode === 'bypassPermissions' &&
+      config.allow_dangerously_skip_permissions !== true
+    ) {
+      throw new Error(
+        "permission_mode 'bypassPermissions' requires allow_dangerously_skip_permissions: true as a safety measure",
+      );
+    }
+
+    // `title` only applies to new sessions; the SDK silently keeps the
+    // persisted title on resume/continue. Warn so users don't wonder why their
+    // custom title didn't stick.
+    if (config.title && (config.resume || config.continue)) {
+      logger.warn(
+        '[ClaudeAgentSDK] `title` is ignored when `resume` or `continue` is set; the persisted session title is used instead.',
+      );
+    }
+
+    // De-dupe and sort allowed/disallowed tools for cache key consistency
+    const defaultAllowedTools = config.working_dir ? FS_READONLY_ALLOWED_TOOLS : [];
+
+    let allowedTools = config.allow_all_tools ? undefined : defaultAllowedTools;
+    if ('custom_allowed_tools' in config) {
+      allowedTools = Array.from(new Set(config.custom_allowed_tools ?? [])).sort();
+    } else if (config.append_allowed_tools) {
+      allowedTools = Array.from(
+        new Set([...defaultAllowedTools, ...config.append_allowed_tools]),
+      ).sort();
+    }
+
+    // Bare allowedTools entries bypass canUseTool, so keep AskUserQuestion out of
+    // the allow list when the convenience callback needs to answer it.
+    if (config.ask_user_question) {
+      allowedTools = allowedTools?.filter((tool) => tool !== 'AskUserQuestion');
+    }
+
+    const disallowedTools = config.disallowed_tools
+      ? Array.from(new Set(config.disallowed_tools)).sort()
+      : undefined;
+    let tools = config.tools;
+    if (tools === undefined) {
+      if (config.allow_all_tools === true) {
+        tools = { type: 'preset', preset: 'claude_code' } as const;
+      } else {
+        const derivedTools = new Set(allowedTools);
+        if (config.ask_user_question) {
+          derivedTools.add('AskUserQuestion');
+        }
+        if (config.skills === 'all' || (Array.isArray(config.skills) && config.skills.length > 0)) {
+          derivedTools.add('Skill');
+        }
+        if (config.agents && Object.keys(config.agents).length > 0) {
+          derivedTools.add('Task');
+        }
+        if (config.permission_mode === 'plan') {
+          derivedTools.add('ExitPlanMode');
+        }
+        tools = Array.from(derivedTools).sort();
+      }
+    }
+
+    const basePath = cliState.basePath ? path.resolve(cliState.basePath) : process.cwd();
+
+    let isTempDir = false;
+    let workingDir: string | undefined;
+
+    if (config.working_dir) {
+      workingDir = resolveAgenticWorkingDir(config.working_dir, basePath);
+    } else {
+      isTempDir = true;
+    }
+
+    // Create canUseTool callback for ask_user_question convenience option
+    let canUseTool = config.can_use_tool;
+    if (config.ask_user_question) {
+      canUseTool = createAskUserQuestionCanUseTool(
+        config.ask_user_question.behavior,
+        config.can_use_tool,
+      );
+    }
+
+    const hooks = buildClaudeHooks(config);
+
+    // Just the keys we'll use to compute the cache key first
+    // Lets us avoid unnecessary work and cleanup if there's a cache hit
+    // Keys listed here are excluded from the cache key because they're either
+    // callbacks/runtime controllers (hashing them is pointless) or pure session
+    // metadata that doesn't influence the model's output (`title`).
+    const cacheKeyQueryOptions: Omit<
+      QueryOptions,
+      | 'abortController'
+      | 'canUseTool'
+      | 'cwd'
+      | 'mcpServers'
+      | 'onElicitation'
+      | 'spawnClaudeCodeProcess'
+      | 'stderr'
+      | 'title'
+    > = {
+      maxTurns: config.max_turns,
+      model: config.model,
+      fallbackModel: config.fallback_model,
+      strictMcpConfig: config.strict_mcp_config ?? true, // only allow MCP servers that are explicitly configured - true by default
+      permissionMode: config.permission_mode === 'manual' ? 'default' : config.permission_mode,
+      planModeInstructions: config.plan_mode_instructions,
+      systemPrompt: config.custom_system_prompt
+        ? config.custom_system_prompt
+        : {
+            type: 'preset',
+            preset: 'claude_code',
+            append: config.append_system_prompt,
+            ...(config.exclude_dynamic_sections ? { excludeDynamicSections: true } : {}),
+          },
+      maxThinkingTokens: config.max_thinking_tokens,
+      allowedTools,
+      disallowedTools,
+      plugins: config.plugins?.map((plugin) => ({
+        ...plugin,
+        path: safeResolve(basePath, plugin.path),
+      })),
+      skills: config.skills,
+      maxBudgetUsd: config.max_budget_usd,
+      additionalDirectories: config.additional_directories?.map((dir) =>
+        safeResolve(basePath, dir),
+      ),
+      resume: config.resume,
+      forkSession: config.fork_session,
+      resumeSessionAt: config.resume_session_at,
+      continue: config.continue,
+      agents: config.agents,
+      outputFormat: config.output_format,
+      hooks,
+      includePartialMessages: config.include_partial_messages,
+      includeHookEvents: config.include_hook_events,
+      forwardSubagentText: config.forward_subagent_text,
+      toolConfig: config.tool_config,
+      promptSuggestions: config.prompt_suggestions,
+      agentProgressSummaries: config.agent_progress_summaries,
+      settings:
+        typeof config.settings === 'string' && config.settings
+          ? safeResolve(basePath, config.settings)
+          : config.settings,
+      managedSettings: config.managed_settings,
+      betas: config.betas,
+      thinking: config.thinking,
+      effort: config.effort,
+      agent: config.agent,
+      sessionId: config.session_id,
+      debug: config.debug,
+      debugFile: config.debug_file ? safeResolve(basePath, config.debug_file) : undefined,
+      sandbox: config.sandbox,
+      allowDangerouslySkipPermissions: config.allow_dangerously_skip_permissions,
+      permissionPromptToolName: config.permission_prompt_tool_name,
+      executable: config.executable,
+      executableArgs: config.executable_args,
+      extraArgs: config.extra_args,
+      pathToClaudeCodeExecutable: config.path_to_claude_code_executable
+        ? safeResolve(basePath, config.path_to_claude_code_executable)
+        : undefined,
+      settingSources: config.setting_sources ?? [],
+      tools,
+      enableFileCheckpointing: config.enable_file_checkpointing,
+      persistSession: config.persist_session,
+      taskBudget: config.task_budget,
+      env: {},
+    };
+
+    // Runtime callbacks can change tool or elicitation decisions in ways that aren't representable
+    // in the cache key. The built-in ask_user_question=random callback is nondeterministic too.
+    const runtimeCallbackBypassesCache =
+      Boolean(config.can_use_tool) ||
+      Boolean(config.on_elicitation) ||
+      Boolean(config.hooks) ||
+      Boolean(config.spawn_claude_code_process) ||
+      config.ask_user_question?.behavior === 'random';
+    const activeMcpConfig =
+      config.mcp?.enabled !== false &&
+      (config.mcp?.server || (config.mcp?.servers?.length ?? 0) > 0)
+        ? config.mcp
+        : undefined;
+    const sensitiveMcpBypassesCache = mcpConfigContainsCacheSensitiveData(activeMcpConfig);
+    const settingsConfigurationBypassesCache =
+      config.settings !== undefined || config.managed_settings !== undefined;
+    const extraArgsBypassCache = Object.keys(config.extra_args ?? {}).length > 0;
+    const promptEnvironmentOverrideBypassesCache = config.env !== this.config.env;
+    const statefulSessionBypassesCache = Boolean(
+      config.continue || config.resume || config.session_id,
+    );
+    const externalCredentialProviderBypassesCache =
+      config.apiKeyRequired === false ||
+      Boolean(env.CLAUDE_CODE_USE_BEDROCK || env.CLAUDE_CODE_USE_VERTEX);
+    if (runtimeCallbackBypassesCache) {
+      logger.debug('[ClaudeCodeSDKProvider] Bypassing cache: runtime callback is not cache-stable');
+    }
+    if (sensitiveMcpBypassesCache) {
+      logger.debug('[ClaudeCodeSDKProvider] Bypassing cache: MCP configuration contains secrets');
+    }
+    if (credentialCacheScope) {
+      logger.debug('[ClaudeCodeSDKProvider] Scoping cache to in-memory credential identity');
+    }
+    if (settingsConfigurationBypassesCache) {
+      logger.debug('[ClaudeCodeSDKProvider] Bypassing cache: SDK settings are externally mutable');
+    }
+    if (extraArgsBypassCache) {
+      logger.debug('[ClaudeCodeSDKProvider] Bypassing cache: extra_args is open-ended');
+    }
+    if (promptEnvironmentOverrideBypassesCache) {
+      logger.debug('[ClaudeCodeSDKProvider] Bypassing cache: prompt config overrides environment');
+    }
+    if (statefulSessionBypassesCache) {
+      logger.debug('[ClaudeCodeSDKProvider] Bypassing cache: session history is mutable');
+    }
+    if (externalCredentialProviderBypassesCache) {
+      logger.debug(
+        '[ClaudeCodeSDKProvider] Bypassing cache: external credential identity is not cache-stable',
+      );
+    }
+    const cacheResult =
+      runtimeCallbackBypassesCache ||
+      sensitiveMcpBypassesCache ||
+      settingsConfigurationBypassesCache ||
+      extraArgsBypassCache ||
+      promptEnvironmentOverrideBypassesCache ||
+      statefulSessionBypassesCache ||
+      externalCredentialProviderBypassesCache
+        ? { shouldCache: false, shouldReadCache: false, shouldWriteCache: false }
+        : await initializeAgenticCache(
+            {
+              cacheKeyPrefix: 'anthropic:claude-agent-sdk',
+              workingDir,
+              bustCache: context?.bustCache,
+              mcp: activeMcpConfig,
+              cacheMcp: config.cache_mcp,
+            },
+            {
+              prompt,
+              cacheKeyQueryOptions,
+              ...(credentialCacheScope ? { credentialCacheScope } : {}),
+              ...(config.ask_user_question ? { ask_user_question: config.ask_user_question } : {}),
+            },
+          );
+
+    // Check cache for existing response
+    const cachedResponse = await getCachedResponse(cacheResult, 'Claude Agent SDK');
+    if (callOptions?.abortSignal?.aborted) {
+      return { error: ABORTED_BEFORE_START_ERROR };
+    }
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+
+    // Transform MCP config to Claude Agent SDK MCP servers
+    const mcpServers = config.mcp ? await transformMCPConfigToClaudeCode(config.mcp) : {};
+
+    if (workingDir) {
+      // verify the working dir exists and is a directory
+      let stats: Stats;
+      try {
+        stats = await fs.stat(workingDir);
+      } catch (err: any) {
+        throw new Error(
+          `Working dir ${config.working_dir} does not exist or isn't accessible: ${err.message}`,
+        );
+      }
+      if (!stats.isDirectory()) {
+        throw new Error(`Working dir ${config.working_dir} is not a directory`);
+      }
+    } else if (isTempDir) {
+      // use a temp dir
+      workingDir = await fs.mkdtemp(path.join(os.tmpdir(), 'promptfoo-claude-agent-sdk-'));
+    }
+
+    // Make sure we didn't already abort
+    if (callOptions?.abortSignal?.aborted) {
+      if (isTempDir && workingDir) {
+        await fs.rm(workingDir, { recursive: true, force: true });
+      }
+      return { error: ABORTED_BEFORE_START_ERROR };
+    }
+
+    // Propagate abort signal to the Claude Agent SDK call
+    const abortController = new AbortController();
+    let abortHandler: (() => void) | undefined;
+    if (callOptions?.abortSignal) {
+      abortHandler = () => {
+        abortController.abort(callOptions.abortSignal!.reason);
+      };
+      callOptions.abortSignal.addEventListener('abort', abortHandler);
+    }
+
+    // Make the Claude Agent SDK call
+    const options: QueryOptions = {
+      ...cacheKeyQueryOptions,
+      env,
+      abortController,
+      mcpServers,
+      cwd: workingDir,
+      // Callbacks are not included in cache key since they're functions
+      stderr: config.stderr,
+      spawnClaudeCodeProcess: config.spawn_claude_code_process,
+      canUseTool,
+      hooks,
+      onElicitation: config.on_elicitation,
+      // Session metadata — excluded from cache key so cosmetic changes don't
+      // force cache misses. The SDK ignores `title` on resumed sessions
+      // (the persisted title wins), so we warn above when both are set.
+      title: config.title,
+    };
+    const queryParams = { prompt, options };
+
+    // Log the query params for debugging
+    logger.debug(
+      `Calling Claude Agent SDK: ${JSON.stringify({
+        prompt,
+        options: {
+          ...options,
+          // overwrite with metadata instead of the full objects to avoid logging secrets
+          mcpServers: options.mcpServers ? Object.keys(options.mcpServers) : undefined,
+          env: Object.keys(env).length > 0 ? Object.keys(env) : undefined,
+        },
+      })}`,
+    );
+
+    try {
+      return await withGenAISpan(
+        {
+          system: 'anthropic',
+          operationName: 'invoke_agent',
+          model: config.model || 'Claude Code',
+          agentName: 'Claude Code',
+          providerId: this.providerId,
+          traceparent: context?.traceparent,
+          maxTokens: config.max_thinking_tokens,
+          requestBody: prompt,
+        },
+        async () => {
+          // Propagate trace context to the SDK subprocess so its OTEL spans attach
+          // under our span. Prefer the active span's traceparent; fall back to the
+          // evaluator-supplied one. `getTraceparent()` can return an all-zero trace
+          // id when no OTEL SDK is registered (NonRecordingSpan / INVALID_TRACEID),
+          // which would poison propagation — skip it in that case.
+          const ZERO_TRACE_ID = '00000000000000000000000000000000';
+          const active = getTraceparent();
+          const activeValid = active && !active.includes(ZERO_TRACE_ID) ? active : undefined;
+          const traceparent = activeValid ?? context?.traceparent;
+          // Runtime environment is intentionally excluded from persistent key material and
+          // replaced by the provider-instance scope, so trace propagation cannot affect the key.
+          if (traceparent && !env.TRACEPARENT) {
+            env.TRACEPARENT = traceparent;
+          }
+          // Some SDK telemetry signals (logs in particular) do not inherit
+          // TRACEPARENT into their OTEL context. Encode the trace + parent span
+          // IDs as resource attributes too — promptfoo's OTLP /v1/logs receiver
+          // reads these to link log-derived spans to the evaluation trace.
+          // traceparent format: "version-traceId-spanId-flags".
+          const [, tpTraceId, tpSpanId] = traceparent ? traceparent.split('-') : [];
+          if (tpTraceId && tpSpanId) {
+            env.OTEL_RESOURCE_ATTRIBUTES = appendPromptfooResourceAttrs(
+              env.OTEL_RESOURCE_ATTRIBUTES,
+              tpTraceId,
+              tpSpanId,
+            );
+          }
+
+          // Dynamically import the ESM module once and cache it
+          if (!this.claudeCodeModule) {
+            this.claudeCodeModule = await loadClaudeCodeSDK();
+          }
+
+          const res = await this.claudeCodeModule.query(queryParams);
+
+          // Collect tool calls and results from intermediate messages
+          const toolCallsMap = new Map<string, ToolCallEntry>();
+          // Assistant message errors (model_not_found, rate_limit, etc.).
+          // The SDK only populates `SDKAssistantMessage.error` when the model
+          // call itself fails, so this stays empty on healthy runs.
+          const assistantErrors: AssistantErrorEntry[] = [];
+          // Wall-clock start time per tool_use.id, captured when we first see the tool_use
+          // message so we can synthesize child spans with realistic durations.
+          const toolStartTimes = new Map<string, number>();
+          // Counter for LLM turns observed in this run. Each `assistant` message
+          // emitted by the SDK corresponds to one LLM round; we surface that as a
+          // `gen_ai.turn N` marker span so trace assertions can count rounds.
+          // Tool spans are tagged with the active turn index via `toolTurnIndex`.
+          let turnCount = 0;
+          const toolTurnIndex = new Map<string, number>();
+          const deferredSyntheticSpans: Array<() => void> = [];
+          const emitOrDeferSyntheticSpan = (emit: () => void): void => {
+            if (sdkExportsNativeSpans) {
+              deferredSyntheticSpans.push(emit);
+            } else {
+              emit();
+            }
+          };
+          const emitTurnSpan = (msg: SDKAssistantMessage): number => {
+            const index = turnCount + 1;
+            turnCount = index;
+            const attributes: Record<string, string | number | boolean> = {
+              'gen_ai.turn.index': index,
+              [GenAIAttributes.PROVIDER_NAME]: 'anthropic',
+            };
+            if (msg.parent_tool_use_id) {
+              attributes['gen_ai.turn.parent_tool_use_id'] = msg.parent_tool_use_id;
+              attributes['gen_ai.turn.is_subagent'] = true;
+            }
+            if (msg.subagent_type) {
+              attributes['gen_ai.turn.subagent_type'] = msg.subagent_type;
+            }
+            if (msg.message?.model) {
+              attributes['gen_ai.response.model'] = msg.message.model;
+            }
+            const usage = msg.message?.usage;
+            if (usage) {
+              if (typeof usage.input_tokens === 'number') {
+                attributes['gen_ai.usage.input_tokens'] = usage.input_tokens;
+              }
+              if (typeof usage.output_tokens === 'number') {
+                attributes['gen_ai.usage.output_tokens'] = usage.output_tokens;
+              }
+            }
+            if (msg.error) {
+              // The SDK exposes discriminated codes like `model_not_found` /
+              // `rate_limit` on failed assistant messages. Surface them so
+              // trace assertions can spot failed rounds instead of silently
+              // reporting them as OK.
+              attributes['gen_ai.turn.error'] = msg.error;
+            }
+            // A turn marker is a point-in-time event, so start and end at the same instant.
+            const now = Date.now();
+            emitOrDeferSyntheticSpan(() => {
+              emitTurnMarkerSpan({
+                tracer: getGenAITracer(),
+                index,
+                startTime: now,
+                endTime: now,
+                attributes,
+                errorMessage: msg.error,
+                logLabel: 'ClaudeAgentSDK',
+              });
+            });
+            return index;
+          };
+
+          // Drain any tool_use entries that never saw a matching tool_result. Without
+          // this, aborted runs and stop-hook terminations silently drop the tool span.
+          const drainOrphans = (): void => {
+            if (toolStartTimes.size === 0) {
+              return;
+            }
+            const endedAt = Date.now();
+            for (const [toolUseId, startMs] of toolStartTimes) {
+              const entry = toolCallsMap.get(toolUseId);
+              if (entry) {
+                const turnIndex = toolTurnIndex.get(toolUseId);
+                emitOrDeferSyntheticSpan(() => {
+                  emitToolSpan(entry, startMs, endedAt, false, /* incomplete */ true, turnIndex);
+                });
+              }
+            }
+            toolStartTimes.clear();
+            toolTurnIndex.clear();
+          };
+
+          // The Claude Agent SDK interleaves a `result` message for each background
+          // sub-agent (Task tool with run_in_background: true) into the parent
+          // session's stream before the main agent's terminal `result` arrives.
+          // As of @anthropic-ai/claude-agent-sdk 0.2.126, result messages carry
+          // `origin.kind`: the user-prompted main result is `human` and background
+          // sub-agent completions are `task-notification` followups. Scheduled
+          // prompts are also task notifications, but SDK >= 0.3.214 identifies
+          // them with `origin.subkind: 'scheduled-trigger'`. Prefer the last
+          // main-agent result, falling back to the last result
+          // overall for older SDK servers that don't emit `origin` (in which case
+          // the pre-0.2.126 position heuristic still applies — the main agent's
+          // result is the last one in the stream). Otherwise we'd return the
+          // first sub-agent's summary and skip the main agent's actual final
+          // response. See https://github.com/promptfoo/promptfoo/issues/9054.
+          let lastResultMsg: SDKResultMessage | undefined;
+          let lastMainResultMsg: SDKResultMessage | undefined;
+          let resultMsgCount = 0;
+
+          for await (const msg of res) {
+            if (msg.type === 'assistant') {
+              const turnIndex = emitTurnSpan(msg);
+              // Extract tool_use content blocks from assistant messages
+              for (const block of msg.message.content) {
+                if (block.type === 'tool_use') {
+                  toolCallsMap.set(block.id, {
+                    id: block.id,
+                    name: block.name,
+                    input: block.input,
+                    output: undefined,
+                    is_error: false,
+                    parentToolUseId: msg.parent_tool_use_id,
+                  });
+                  toolStartTimes.set(block.id, Date.now());
+                  toolTurnIndex.set(block.id, turnIndex);
+                }
+              }
+              if (msg.error) {
+                assistantErrors.push({
+                  error: msg.error,
+                  uuid: msg.uuid,
+                  parentToolUseId: msg.parent_tool_use_id,
+                  ...(msg.request_id ? { request_id: msg.request_id } : {}),
+                  ...(msg.subagent_type ? { subagent_type: msg.subagent_type } : {}),
+                  ...(msg.task_description ? { task_description: msg.task_description } : {}),
+                });
+              }
+            } else if (msg.type === 'user') {
+              // Extract tool_result content blocks and match to tool calls
+              const content = msg.message?.content;
+              if (Array.isArray(content)) {
+                for (const block of content) {
+                  if (block.type === 'tool_result') {
+                    const entry = toolCallsMap.get(block.tool_use_id);
+                    if (entry) {
+                      entry.output =
+                        entry.name === 'TaskOutput' &&
+                        isRawSubagentTranscript(msg.tool_use_result) &&
+                        !config.forward_subagent_text
+                          ? REDACTED_SUBAGENT_TRANSCRIPT
+                          : block.content;
+                      entry.is_error = block.is_error ?? false;
+                      const startMs = toolStartTimes.get(block.tool_use_id);
+                      if (startMs !== undefined) {
+                        const endedAt = Date.now();
+                        const turnIndex = toolTurnIndex.get(block.tool_use_id);
+                        emitOrDeferSyntheticSpan(() => {
+                          emitToolSpan(entry, startMs, endedAt, entry.is_error, false, turnIndex);
+                        });
+                        toolStartTimes.delete(block.tool_use_id);
+                        toolTurnIndex.delete(block.tool_use_id);
+                      }
+                    }
+                  }
+                }
+              }
+            } else if (msg.type === 'result') {
+              lastResultMsg = msg;
+              resultMsgCount++;
+              // A background sub-agent completion is the one result we must not mistake
+              // for the main-agent answer. Scheduled triggers share the task-notification
+              // kind but are the session's own assigned prompt, so they stay candidates.
+              // The sibling 'peer-send-message' subkind is deliberately not exempted: it
+              // is another session's message, not a result for the prompt we submitted.
+              // Absent origin (older SDKs) and every other kind stay candidates too; the
+              // position-based last-wins fallback below covers them.
+              const isBackgroundTaskResult =
+                msg.origin?.kind === 'task-notification' &&
+                !('subkind' in msg.origin && msg.origin.subkind === 'scheduled-trigger');
+              if (!isBackgroundTaskResult) {
+                lastMainResultMsg = msg;
+              }
+            }
+          }
+
+          // The stream is about to close; emit any orphan tool spans first so
+          // abort/hook-stop runs don't silently drop them.
+          drainOrphans();
+
+          // Prefer the origin-tagged main result; fall back to the last result
+          // overall when older SDK servers don't emit `origin` (or — defensively
+          // — when every result was a task-notification, which would indicate
+          // the main agent's result never arrived).
+          const finalMsg = lastMainResultMsg ?? lastResultMsg;
+
+          if (!finalMsg) {
+            return { error: "Claude Agent SDK call didn't return a result" };
+          }
+
+          if (sdkExportsNativeSpans && tpTraceId && tpSpanId) {
+            let nativeSpansArrived = false;
+            try {
+              nativeSpansArrived = await waitForNativeTraceExport(
+                tpTraceId,
+                tpSpanId,
+                env,
+                callOptions?.abortSignal,
+              );
+            } catch (error) {
+              logger.debug('[ClaudeAgentSDK] Unable to inspect native trace export', {
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+
+            if (!nativeSpansArrived && !callOptions?.abortSignal?.aborted) {
+              logger.warn(
+                '[ClaudeAgentSDK] Native trace spans did not reach the receiver before grading; emitting synthetic turn and tool spans.',
+              );
+              for (const emit of deferredSyntheticSpans) {
+                emit();
+              }
+            }
+          }
+
+          // Truncation guard. With SDK >= 0.2.126 the `origin` field gives a
+          // definitive answer, so only warn when origin was unavailable for
+          // every result (lastMainResultMsg defaulted to the last result) AND
+          // we saw >1 results AND the chosen result is a non-terminal success.
+          //
+          // Gate on subtype === 'success' because non-success subtypes
+          // ('error_during_execution', 'error_max_turns', etc.) are themselves
+          // a definitive terminal signal — they're how the SDK reports the
+          // run ending in error, not a truncation indicator. Warning on those
+          // would be a false positive on every legitimate main-agent failure
+          // that follows a background sub-agent.
+          const usedPositionHeuristic =
+            !lastMainResultMsg || lastMainResultMsg.origin === undefined;
+          if (
+            usedPositionHeuristic &&
+            resultMsgCount > 1 &&
+            finalMsg.subtype === 'success' &&
+            finalMsg.terminal_reason === undefined
+          ) {
+            logger.warn(
+              `[ClaudeAgentSDK] Stream produced ${resultMsgCount} result messages and the last had no terminal_reason; returning it as the main-agent result, but the stream may have been truncated.`,
+            );
+            otelTrace.getActiveSpan()?.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: 'stream closed without terminal_reason after multiple result messages',
+            });
+          }
+          const raw = JSON.stringify(finalMsg);
+          // result.usage counts only the main agent; modelUsage has a row per model, so it also
+          // covers subagent calls. Prefer modelUsage and fall back to result.usage, normalizing
+          // both to one shape so the totals are summed in a single place. When the SDK reports
+          // neither, leave tokenUsage empty rather than synthesizing zeros, which downstream
+          // cost and usage reporting cannot tell apart from a genuine zero count.
+          const usageSources: {
+            inputTokens?: number;
+            outputTokens?: number;
+            cacheReadInputTokens?: number;
+            cacheCreationInputTokens?: number;
+          }[] = Object.values(finalMsg.modelUsage ?? {});
+          if (usageSources.length === 0 && finalMsg.usage) {
+            usageSources.push({
+              inputTokens: finalMsg.usage.input_tokens,
+              outputTokens: finalMsg.usage.output_tokens,
+              cacheReadInputTokens: finalMsg.usage.cache_read_input_tokens,
+              cacheCreationInputTokens: finalMsg.usage.cache_creation_input_tokens,
+            });
+          }
+          const usage = usageSources.reduce<{
+            inputTokens: number;
+            outputTokens: number;
+            cacheReadInputTokens: number;
+            cacheCreationInputTokens: number;
+          }>(
+            (total, source) => ({
+              inputTokens: total.inputTokens + (source.inputTokens ?? 0),
+              outputTokens: total.outputTokens + (source.outputTokens ?? 0),
+              cacheReadInputTokens: total.cacheReadInputTokens + (source.cacheReadInputTokens ?? 0),
+              cacheCreationInputTokens:
+                total.cacheCreationInputTokens + (source.cacheCreationInputTokens ?? 0),
+            }),
+            {
+              inputTokens: 0,
+              outputTokens: 0,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+            },
+          );
+          const promptTokens =
+            usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
+          const tokenUsage: ProviderResponse['tokenUsage'] = usageSources.length
+            ? {
+                prompt: promptTokens,
+                completion: usage.outputTokens,
+                total: promptTokens + usage.outputTokens,
+                ...(usage.cacheReadInputTokens > 0 || usage.cacheCreationInputTokens > 0
+                  ? {
+                      completionDetails: {
+                        cacheReadInputTokens: usage.cacheReadInputTokens,
+                        cacheCreationInputTokens: usage.cacheCreationInputTokens,
+                      },
+                    }
+                  : {}),
+              }
+            : {};
+          const cost = finalMsg.total_cost_usd ?? 0;
+          const sessionId = finalMsg.session_id;
+
+          const toolCallsArray = Array.from(toolCallsMap.values());
+          const skillCalls = deriveSkillCalls(toolCallsArray);
+
+          // Aborted terminal reasons mean the agent stopped unexpectedly mid-run.
+          // Mark the provider span ERROR directly — without poisoning the
+          // response's `output`/`error` contract, since any produced output is
+          // still useful and downstream assertions may depend on it.
+          const abortedTerminalReason =
+            typeof finalMsg.terminal_reason === 'string' &&
+            (finalMsg.terminal_reason.startsWith('aborted_') ||
+              finalMsg.terminal_reason === 'hook_stopped')
+              ? finalMsg.terminal_reason
+              : undefined;
+          if (abortedTerminalReason) {
+            otelTrace.getActiveSpan()?.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: `aborted: ${abortedTerminalReason}`,
+            });
+          }
+
+          // Only SDKResultSuccess carries `api_error_status` per the SDK types;
+          // guarding with `'api_error_status' in finalMsg` avoids leaking the
+          // field as `undefined` onto unrelated result shapes.
+          const apiErrorStatus =
+            'api_error_status' in finalMsg ? finalMsg.api_error_status : undefined;
+
+          if (finalMsg.subtype === 'success') {
+            logger.debug(`Claude Agent SDK response: ${raw}`);
+            // When structured output is enabled and available, use it as the output
+            // Otherwise fall back to the text result
+            const output =
+              finalMsg.structured_output === undefined
+                ? finalMsg.result
+                : finalMsg.structured_output;
+            const response: ProviderResponse = {
+              output,
+              tokenUsage,
+              cost,
+              raw,
+              sessionId,
+              metadata: {
+                skillCalls,
+                toolCalls: toolCallsArray,
+                numTurns: finalMsg.num_turns,
+                durationMs: finalMsg.duration_ms,
+                durationApiMs: finalMsg.duration_api_ms,
+                modelUsage: finalMsg.modelUsage,
+                permissionDenials: finalMsg.permission_denials,
+                ...(finalMsg.terminal_reason === undefined
+                  ? {}
+                  : { terminalReason: finalMsg.terminal_reason }),
+                ...(finalMsg.structured_output === undefined
+                  ? {}
+                  : { structuredOutput: finalMsg.structured_output }),
+                ...(apiErrorStatus === undefined || apiErrorStatus === null
+                  ? {}
+                  : { apiErrorStatus }),
+                ...(assistantErrors.length > 0 ? { assistantErrors } : {}),
+              },
+            };
+
+            // Cache the response using shared utilities
+            await cacheResponse(cacheResult, response, 'Claude Agent SDK');
+            return response;
+          }
+
+          // Surface the last assistant error code (`model_not_found`,
+          // `rate_limit`, etc.) alongside the subtype so callers can tell
+          // apart "ran out of turns" from "model doesn't exist" without
+          // digging into metadata.
+          const lastAssistantError =
+            assistantErrors.length > 0
+              ? assistantErrors[assistantErrors.length - 1].error
+              : undefined;
+          const errorMessage = lastAssistantError
+            ? `Claude Agent SDK call failed: ${finalMsg.subtype} (${lastAssistantError})`
+            : `Claude Agent SDK call failed: ${finalMsg.subtype}`;
+          return {
+            error: errorMessage,
+            tokenUsage,
+            cost,
+            raw,
+            sessionId,
+            metadata: {
+              skillCalls,
+              toolCalls: toolCallsArray,
+              numTurns: finalMsg.num_turns,
+              durationMs: finalMsg.duration_ms,
+              durationApiMs: finalMsg.duration_api_ms,
+              modelUsage: finalMsg.modelUsage,
+              permissionDenials: finalMsg.permission_denials,
+              ...(finalMsg.terminal_reason === undefined
+                ? {}
+                : { terminalReason: finalMsg.terminal_reason }),
+              ...(apiErrorStatus === undefined || apiErrorStatus === null
+                ? {}
+                : { apiErrorStatus }),
+              ...(assistantErrors.length > 0 ? { assistantErrors } : {}),
+            },
+          };
+        },
+        (response) => {
+          const metadata = response.metadata ?? {};
+          const additional: Record<string, string | number | boolean> = {};
+          if (typeof metadata.numTurns === 'number') {
+            additional['promptfoo.agent.num_turns'] = metadata.numTurns;
+          }
+          if (typeof metadata.durationApiMs === 'number') {
+            additional['promptfoo.agent.duration_api_ms'] = metadata.durationApiMs;
+          }
+          if (typeof response.cost === 'number' && response.cost > 0) {
+            additional['promptfoo.agent.cost_usd'] = response.cost;
+          }
+          const toolCalls = metadata.toolCalls;
+          if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+            additional['promptfoo.agent.tool_call_count'] = toolCalls.length;
+          }
+          // Response model: the SDK reports per-model usage keyed by model name.
+          // Pick the key with the largest token usage rather than iteration order —
+          // the SDK makes no ordering contract, and tie-breaking by usage gives the
+          // model that actually did most of the work when fallbacks fire.
+          let responseModel: string | undefined;
+          const modelUsage = metadata.modelUsage;
+          if (modelUsage && typeof modelUsage === 'object' && !Array.isArray(modelUsage)) {
+            let topUsage = -1;
+            for (const [key, usage] of Object.entries(
+              modelUsage as Record<string, { inputTokens?: number; outputTokens?: number }>,
+            )) {
+              if (typeof key !== 'string' || key.length === 0 || key === 'undefined') {
+                continue;
+              }
+              const total = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
+              if (total > topUsage) {
+                topUsage = total;
+                responseModel = key;
+              }
+            }
+          }
+
+          // Map the SDK's terminal_reason into the standard GenAI finish_reasons
+          // attribute so trace consumers can filter on it.
+          const finishReasons =
+            typeof metadata.terminalReason === 'string' ? [metadata.terminalReason] : undefined;
+
+          return {
+            tokenUsage: response.tokenUsage,
+            responseModel,
+            responseId: response.sessionId,
+            finishReasons,
+            cacheHit: response.cached,
+            responseBody:
+              typeof response.output === 'string'
+                ? response.output
+                : response.output === undefined
+                  ? undefined
+                  : JSON.stringify(response.output),
+            additionalAttributes: Object.keys(additional).length > 0 ? additional : undefined,
+          };
+        },
+      );
+    } catch (error: any) {
+      const isAbort = error?.name === 'AbortError' || callOptions?.abortSignal?.aborted;
+
+      if (isAbort) {
+        logger.warn('Claude Agent SDK call aborted');
+        return { error: 'Claude Agent SDK call aborted' };
+      }
+
+      logger.error(`Error calling Claude Agent SDK: ${error}`);
+      return {
+        error: `Error calling Claude Agent SDK: ${error}`,
+      };
+    } finally {
+      if (isTempDir && workingDir) {
+        // Clean up the temp dir
+        await fs.rm(workingDir, { recursive: true, force: true });
+      }
+      if (callOptions?.abortSignal && abortHandler) {
+        callOptions.abortSignal.removeEventListener('abort', abortHandler);
+      }
+    }
+  }
+
+  toString(): string {
+    return '[Anthropic Claude Agent SDK Provider]';
+  }
+
+  /**
+   * For normal Claude Agent SDK support, just use the Anthropic API key
+   * Users can also use Bedrock (with CLAUDE_CODE_USE_BEDROCK env var) or Vertex (with CLAUDE_CODE_USE_VERTEX env var)
+   */
+  requiresApiKey(): boolean {
+    if (this.config.apiKeyRequired === false) {
+      return false;
+    }
+    return !(
+      this.env?.CLAUDE_CODE_USE_BEDROCK ||
+      this.env?.CLAUDE_CODE_USE_VERTEX ||
+      getEnvString('CLAUDE_CODE_USE_BEDROCK') ||
+      getEnvString('CLAUDE_CODE_USE_VERTEX')
+    );
+  }
+
+  getApiKey(): string | undefined {
+    return this.config?.apiKey || this.env?.ANTHROPIC_API_KEY || getEnvString('ANTHROPIC_API_KEY');
+  }
+
+  async cleanup(): Promise<void> {
+    // no cleanup needed
+  }
+}

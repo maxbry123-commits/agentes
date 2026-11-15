@@ -1,0 +1,430 @@
+{
+  "timestamp": "20251020_204150",
+  "test_config": {
+    "azure_model": "gpt-4o",
+    "azure_endpoint": "https://hanqing-ncus.openai.azure.com/",
+    "num_calls": 5,
+    "max_tokens": 1000,
+    "method": "llm_agent_patterns",
+    "tests": [
+      "Planning",
+      "Proposal",
+      "Commitment",
+      "Regular"
+    ]
+  },
+  "results": [
+    {
+      "method": "structured",
+      "response_format": "AgentPlan",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.812149417004548,
+      "max_time": 1.1530529579613358,
+      "mean_time": 0.9262078415835276,
+      "median_time": 0.9010129580274224,
+      "std_dev": 0.13864268800096843,
+      "total_time": 4.631039207917638,
+      "all_times": [
+        1.1530529579613358,
+        0.8193714579683729,
+        0.9010129580274224,
+        0.812149417004548,
+        0.945452416955959
+      ],
+      "responses": [
+        {
+          "latency": 1.1530529579613358,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.8193714579683729,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9010129580274224,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.812149417004548,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.945452416955959,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        }
+      ],
+      "errors": [],
+      "test_name": "Planning_temp_0.0"
+    },
+    {
+      "method": "structured",
+      "response_format": "AgentPlan",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.8520778340171091,
+      "max_time": 0.9779895410174504,
+      "mean_time": 0.9239443418104202,
+      "median_time": 0.9258140840101987,
+      "std_dev": 0.04990497883004442,
+      "total_time": 4.619721709052101,
+      "all_times": [
+        0.8520778340171091,
+        0.9023767079925165,
+        0.9258140840101987,
+        0.9779895410174504,
+        0.9614635420148261
+      ],
+      "responses": [
+        {
+          "latency": 0.8520778340171091,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9023767079925165,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9258140840101987,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9779895410174504,
+          "tokens": 1455,
+          "response_length": 401,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9614635420148261,
+          "tokens": 1455,
+          "response_length": 402,
+          "parsed_successfully": true
+        }
+      ],
+      "errors": [],
+      "test_name": "Planning_temp_0.7"
+    },
+    {
+      "method": "structured",
+      "response_format": "TaskProposal",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.8233503340161406,
+      "max_time": 1.0942854579770938,
+      "mean_time": 0.9835379667929374,
+      "median_time": 0.9815239590243436,
+      "std_dev": 0.11402574174177749,
+      "total_time": 4.917689833964687,
+      "all_times": [
+        0.9815239590243436,
+        1.0942854579770938,
+        1.0891229579574428,
+        0.929407124989666,
+        0.8233503340161406
+      ],
+      "responses": [
+        {
+          "latency": 0.9815239590243436,
+          "tokens": 886,
+          "response_length": 277,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.0942854579770938,
+          "tokens": 893,
+          "response_length": 329,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.0891229579574428,
+          "tokens": 889,
+          "response_length": 310,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.929407124989666,
+          "tokens": 889,
+          "response_length": 305,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.8233503340161406,
+          "tokens": 885,
+          "response_length": 287,
+          "parsed_successfully": true
+        }
+      ],
+      "errors": [],
+      "test_name": "Proposal_temp_0.0"
+    },
+    {
+      "method": "structured",
+      "response_format": "TaskProposal",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.8439516249927692,
+      "max_time": 1.5140275419689715,
+      "mean_time": 1.1023593335878104,
+      "median_time": 1.054533583985176,
+      "std_dev": 0.2616312889863628,
+      "total_time": 5.511796667939052,
+      "all_times": [
+        1.5140275419689715,
+        0.9277548749814741,
+        1.1715290420106612,
+        0.8439516249927692,
+        1.054533583985176
+      ],
+      "responses": [
+        {
+          "latency": 1.5140275419689715,
+          "tokens": 910,
+          "response_length": 380,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.9277548749814741,
+          "tokens": 885,
+          "response_length": 274,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.1715290420106612,
+          "tokens": 905,
+          "response_length": 376,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.8439516249927692,
+          "tokens": 878,
+          "response_length": 239,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 1.054533583985176,
+          "tokens": 904,
+          "response_length": 364,
+          "parsed_successfully": true
+        }
+      ],
+      "errors": [],
+      "test_name": "Proposal_temp_0.7"
+    },
+    {
+      "method": "structured",
+      "response_format": "TaskCommitment",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.37751254200702533,
+      "max_time": 0.5080714169889688,
+      "mean_time": 0.4261672416003421,
+      "median_time": 0.406056665990036,
+      "std_dev": 0.05116689201229944,
+      "total_time": 2.1308362080017105,
+      "all_times": [
+        0.37751254200702533,
+        0.44088016700698063,
+        0.5080714169889688,
+        0.3983154160086997,
+        0.406056665990036
+      ],
+      "responses": [
+        {
+          "latency": 0.37751254200702533,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.44088016700698063,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.5080714169889688,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.3983154160086997,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.406056665990036,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        }
+      ],
+      "errors": [],
+      "test_name": "Commitment_temp_0.0"
+    },
+    {
+      "method": "structured",
+      "response_format": "TaskCommitment",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.37010466697392985,
+      "max_time": 0.4513157090405002,
+      "mean_time": 0.4129831416066736,
+      "median_time": 0.4083777909982018,
+      "std_dev": 0.03667584547277324,
+      "total_time": 2.064915708033368,
+      "all_times": [
+        0.38586145802401006,
+        0.4513157090405002,
+        0.37010466697392985,
+        0.4083777909982018,
+        0.44925608299672604
+      ],
+      "responses": [
+        {
+          "latency": 0.38586145802401006,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.4513157090405002,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.37010466697392985,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.4083777909982018,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        },
+        {
+          "latency": 0.44925608299672604,
+          "tokens": 426,
+          "response_length": 46,
+          "parsed_successfully": true
+        }
+      ],
+      "errors": [],
+      "test_name": "Commitment_temp_0.7"
+    },
+    {
+      "method": "regular",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.9311878750449978,
+      "max_time": 1.0899079159717076,
+      "mean_time": 0.9939299746067263,
+      "median_time": 0.9891636660322547,
+      "std_dev": 0.06082029584747411,
+      "total_time": 4.969649873033632,
+      "all_times": [
+        0.9549957909621298,
+        1.0899079159717076,
+        0.9311878750449978,
+        1.0043946250225417,
+        0.9891636660322547
+      ],
+      "responses": [
+        {
+          "latency": 0.9549957909621298,
+          "tokens": 683,
+          "response_length": 384
+        },
+        {
+          "latency": 1.0899079159717076,
+          "tokens": 690,
+          "response_length": 408
+        },
+        {
+          "latency": 0.9311878750449978,
+          "tokens": 683,
+          "response_length": 384
+        },
+        {
+          "latency": 1.0043946250225417,
+          "tokens": 690,
+          "response_length": 408
+        },
+        {
+          "latency": 0.9891636660322547,
+          "tokens": 683,
+          "response_length": 384
+        }
+      ],
+      "errors": [],
+      "test_name": "Regular_temp_0.0"
+    },
+    {
+      "method": "regular",
+      "num_calls": 5,
+      "num_errors": 0,
+      "min_time": 0.8823541669989936,
+      "max_time": 0.9683523749699816,
+      "mean_time": 0.9223754333797842,
+      "median_time": 0.9164575840113685,
+      "std_dev": 0.033532275273621404,
+      "total_time": 4.611877166898921,
+      "all_times": [
+        0.9416833329596557,
+        0.9030297079589218,
+        0.9683523749699816,
+        0.9164575840113685,
+        0.8823541669989936
+      ],
+      "responses": [
+        {
+          "latency": 0.9416833329596557,
+          "tokens": 683,
+          "response_length": 384
+        },
+        {
+          "latency": 0.9030297079589218,
+          "tokens": 683,
+          "response_length": 384
+        },
+        {
+          "latency": 0.9683523749699816,
+          "tokens": 683,
+          "response_length": 384
+        },
+        {
+          "latency": 0.9164575840113685,
+          "tokens": 683,
+          "response_length": 384
+        },
+        {
+          "latency": 0.8823541669989936,
+          "tokens": 676,
+          "response_length": 360
+        }
+      ],
+      "errors": [],
+      "test_name": "Regular_temp_0.7"
+    }
+  ]
+}

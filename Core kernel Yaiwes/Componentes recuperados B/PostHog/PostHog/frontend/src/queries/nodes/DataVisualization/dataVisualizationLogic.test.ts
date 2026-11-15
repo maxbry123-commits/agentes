@@ -1,0 +1,649 @@
+import { expectLogic } from 'kea-test-utils'
+
+import { DataVisualizationNode, NodeKind } from '~/queries/schema/schema-general'
+import { initKeaTests } from '~/test/init'
+import { ChartDisplayType } from '~/types'
+
+import { dataNodeLogic } from '../DataNode/dataNodeLogic'
+import { DataVisualizationLogicProps, dataVisualizationLogic } from './dataVisualizationLogic'
+
+const testKey = 'test-auto-visualization'
+const dataNodeCollectionId = 'new-test-SQL'
+
+const defaultQuery: DataVisualizationNode = {
+    kind: NodeKind.DataVisualizationNode,
+    source: {
+        kind: NodeKind.HogQLQuery,
+        query: 'select 1',
+    },
+    display: ChartDisplayType.Auto,
+}
+
+describe('dataVisualizationLogic', () => {
+    let logic: ReturnType<typeof dataVisualizationLogic.build>
+
+    beforeEach(() => {
+        initKeaTests()
+
+        logic = dataVisualizationLogic({
+            key: testKey,
+            query: defaultQuery,
+            dataNodeCollectionId,
+        } as DataVisualizationLogicProps)
+        logic.mount()
+    })
+
+    afterEach(() => {
+        logic.unmount()
+    })
+
+    test.each([
+        {
+            name: 'shows a big number for a single numeric column',
+            response: {
+                columns: ['value'],
+                types: [['value', 'Int64']],
+                results: [[1]],
+            },
+            expected: ChartDisplayType.BoldNumber,
+        },
+        {
+            name: 'shows a line chart when a timestamp column is present',
+            response: {
+                columns: ['timestamp', 'value'],
+                types: [
+                    ['timestamp', 'DateTime'],
+                    ['value', 'Int64'],
+                ],
+                results: [
+                    ['2025-01-01 00:00:00', 1],
+                    ['2025-01-02 00:00:00', 2],
+                ],
+            },
+            expected: ChartDisplayType.ActionsLineGraph,
+        },
+        {
+            name: 'shows a bar chart when only one timeseries point is present',
+            response: {
+                columns: ['timestamp', 'value'],
+                types: [
+                    ['timestamp', 'DateTime'],
+                    ['value', 'Int64'],
+                ],
+                results: [['2025-01-01 00:00:00', 1]],
+            },
+            expected: ChartDisplayType.ActionsBar,
+        },
+        {
+            name: 'shows a 2d heatmap for two string columns and one numeric column',
+            response: {
+                columns: ['region', 'segment', 'count'],
+                types: [
+                    ['region', 'String'],
+                    ['segment', 'String'],
+                    ['count', 'Int64'],
+                ],
+                results: [['US', 'Enterprise', 10]],
+            },
+            expected: ChartDisplayType.TwoDimensionalHeatmap,
+        },
+        {
+            name: 'shows a bar chart for non-time-series numeric data',
+            response: {
+                columns: ['group', 'value'],
+                types: [
+                    ['group', 'String'],
+                    ['value', 'Int64'],
+                ],
+                results: [['A', 1]],
+            },
+            expected: ChartDisplayType.ActionsBar,
+        },
+    ])('$name', async ({ response, expected }) => {
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse(response)
+
+        await expectLogic(logic).toMatchValues({
+            effectiveVisualizationType: expected,
+        })
+    })
+
+    it('auto-selects the first non-y-axis column as x-axis for bar charts', async () => {
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['fruit', 'count'],
+            types: [
+                ['fruit', 'String'],
+                ['count', 'Int64'],
+            ],
+            results: [
+                ['banana', 1],
+                ['pineapple', 2],
+            ],
+        })
+
+        await expectLogic(logic).toMatchValues({
+            selectedXAxis: 'fruit',
+            selectedYAxis: [
+                {
+                    name: 'count',
+                    settings: {
+                        formatting: {
+                            prefix: '',
+                            suffix: '',
+                        },
+                    },
+                },
+            ],
+        })
+    })
+
+    it('auto-maps box plot columns when the chart is selected', async () => {
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['bucket', 'series', 'min', 'p25', 'median', 'mean', 'p75', 'max'],
+            types: [
+                ['bucket', 'Date'],
+                ['series', 'String'],
+                ['min', 'Float64'],
+                ['p25', 'Float64'],
+                ['median', 'Float64'],
+                ['mean', 'Float64'],
+                ['p75', 'Float64'],
+                ['max', 'Float64'],
+            ],
+            results: [['2026-01-01', 'Free', 1, 2, 3, 4, 5, 6]],
+        })
+
+        logic.actions.setVisualizationType(ChartDisplayType.BoxPlot)
+
+        await expectLogic(logic).toMatchValues({
+            chartSettings: expect.objectContaining({
+                boxPlot: {
+                    xAxisColumn: 'bucket',
+                    seriesColumn: 'series',
+                    minColumn: 'min',
+                    p25Column: 'p25',
+                    medianColumn: 'median',
+                    meanColumn: 'mean',
+                    p75Column: 'p75',
+                    maxColumn: 'max',
+                },
+            }),
+        })
+    })
+
+    it('resets axes when y-axis columns are no longer numerical', async () => {
+        const dataNode = dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId })
+
+        dataNode.actions.setResponse({
+            columns: ['1', '2', '3'],
+            types: [
+                ['1', 'Int64'],
+                ['2', 'Int64'],
+                ['3', 'Int64'],
+            ],
+            results: [[1, 2, 3]],
+        })
+
+        await expectLogic(logic).toMatchValues({
+            selectedXAxis: null,
+            selectedYAxis: [
+                {
+                    name: '1',
+                    settings: {
+                        formatting: {
+                            prefix: '',
+                            suffix: '',
+                        },
+                    },
+                },
+                {
+                    name: '2',
+                    settings: {
+                        formatting: {
+                            prefix: '',
+                            suffix: '',
+                        },
+                    },
+                },
+                {
+                    name: '3',
+                    settings: {
+                        formatting: {
+                            prefix: '',
+                            suffix: '',
+                        },
+                    },
+                },
+            ],
+        })
+
+        dataNode.actions.setResponse({
+            columns: ['1', '2', '3'],
+            types: [
+                ['1', 'String'],
+                ['2', 'Int64'],
+                ['3', 'String'],
+            ],
+            results: [['a', 2, 'b']],
+        })
+
+        await expectLogic(logic).toMatchValues({
+            selectedXAxis: '1',
+            selectedYAxis: [
+                {
+                    name: '2',
+                    settings: {
+                        formatting: {
+                            prefix: '',
+                            suffix: '',
+                        },
+                    },
+                },
+            ],
+        })
+    })
+
+    it('does not resolve to a time-series chart without a date column', async () => {
+        logic.actions.setVisualizationType(ChartDisplayType.ActionsLineGraph)
+
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['first_value', 'second_value'],
+            types: [
+                ['first_value', 'Int64'],
+                ['second_value', 'Int64'],
+            ],
+            results: [[1, 2]],
+        })
+
+        await expectLogic(logic).toMatchValues({
+            effectiveVisualizationType: ChartDisplayType.ActionsLineGraph,
+        })
+    })
+
+    it.each([
+        {
+            displayType: ChartDisplayType.ActionsLineGraph,
+            name: 'line chart',
+        },
+        {
+            displayType: ChartDisplayType.ActionsAreaGraph,
+            name: 'area chart',
+        },
+    ])('uses the first numeric column as x-axis when enabling a $name on all-numeric data', async ({ displayType }) => {
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['screen_width', 'screen_height'],
+            types: [
+                ['screen_width', 'Int64'],
+                ['screen_height', 'Int64'],
+            ],
+            results: [
+                [1920, 1080],
+                [1440, 900],
+            ],
+        })
+
+        logic.actions.setVisualizationType(displayType)
+
+        await expectLogic(logic).toMatchValues({
+            effectiveVisualizationType: displayType,
+            selectedXAxis: 'screen_width',
+            selectedYAxis: [
+                {
+                    name: 'screen_height',
+                    settings: {
+                        formatting: {
+                            prefix: '',
+                            suffix: '',
+                        },
+                    },
+                },
+            ],
+        })
+    })
+
+    it('fills x-axis labels with empty values when no x-axis is selected', async () => {
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['first_value', 'second_value', 'third_value'],
+            types: [
+                ['first_value', 'Int64'],
+                ['second_value', 'Int64'],
+                ['third_value', 'Int64'],
+            ],
+            results: [
+                [1, 2, 3],
+                [4, 5, 6],
+            ],
+        })
+
+        logic.actions.clearAxis()
+
+        await expectLogic(logic).toMatchValues({
+            xData: {
+                column: {
+                    name: 'None',
+                    type: {
+                        name: 'STRING',
+                        isNumerical: false,
+                    },
+                    label: 'None',
+                    dataIndex: -1,
+                },
+                data: ['', ''],
+            },
+        })
+    })
+
+    it('does not resolve to a time-series chart when there is only one row', async () => {
+        logic.actions.setVisualizationType(ChartDisplayType.ActionsLineGraph)
+
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['timestamp', 'value'],
+            types: [
+                ['timestamp', 'DateTime'],
+                ['value', 'Int64'],
+            ],
+            results: [['2025-01-01 00:00:00', 1]],
+        })
+
+        await expectLogic(logic).toMatchValues({
+            effectiveVisualizationType: ChartDisplayType.ActionsLineGraph,
+        })
+    })
+
+    it('respects explicit line chart display even when auto would choose heatmap', async () => {
+        logic.actions.setVisualizationType(ChartDisplayType.ActionsLineGraph)
+
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['bucket', 'flag_state', 'reverse_proxy'],
+            types: [
+                ['bucket', 'String'],
+                ['flag_state', 'String'],
+                ['reverse_proxy', 'Float64'],
+            ],
+            results: [['2025-01-01', 'control', 0.2]],
+        })
+
+        await expectLogic(logic).toMatchValues({
+            autoVisualizationType: ChartDisplayType.TwoDimensionalHeatmap,
+            effectiveVisualizationType: ChartDisplayType.ActionsLineGraph,
+        })
+    })
+
+    it('auto-fills 2d heatmap columns when auto resolves to heatmap', async () => {
+        logic.actions.toggleChartSettingsPanel(true)
+
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['region', 'segment', 'count'],
+            types: [
+                ['region', 'String'],
+                ['segment', 'String'],
+                ['count', 'Int64'],
+            ],
+            results: [['US', 'Enterprise', 10]],
+        })
+
+        await expectLogic(logic).toMatchValues({
+            effectiveVisualizationType: ChartDisplayType.TwoDimensionalHeatmap,
+            chartSettings: {
+                heatmap: {
+                    xAxisColumn: 'region',
+                    yAxisColumn: 'segment',
+                    valueColumn: 'count',
+                },
+            },
+        })
+    })
+    it('stamps labels onto the slices when a pie chart is newly picked', async () => {
+        logic.actions.setVisualizationType(ChartDisplayType.ActionsPie)
+
+        await expectLogic(logic).toMatchValues({
+            chartSettings: expect.objectContaining({ pie: { sliceContent: 'labels' } }),
+        })
+    })
+
+    it('does not override existing pie slice content when re-picking pie', async () => {
+        logic.actions.updateChartSettings({ pie: { sliceContent: 'values' } })
+        logic.actions.setVisualizationType(ChartDisplayType.ActionsPie)
+
+        await expectLogic(logic).toMatchValues({
+            chartSettings: expect.objectContaining({ pie: { sliceContent: 'values' } }),
+        })
+    })
+
+    it('moves a scatter plot onto a numeric x-axis when the selected one has no coordinates', async () => {
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['country', 'session_duration', 'revenue'],
+            types: [
+                ['country', 'String'],
+                ['session_duration', 'Int64'],
+                ['revenue', 'Float64'],
+            ],
+            results: [['US', 120, 42.5]],
+        })
+
+        // Auto put the string column on the x-axis and both numeric columns on the y-axis.
+        await expectLogic(logic).toMatchValues({ selectedXAxis: 'country' })
+
+        logic.actions.setVisualizationType(ChartDisplayType.ScatterPlot)
+
+        await expectLogic(logic).toMatchValues({
+            selectedXAxis: 'session_duration',
+            selectedYAxis: [expect.objectContaining({ name: 'revenue' })],
+        })
+    })
+
+    it('keeps a numeric x-axis and drops it from the y-series when a scatter plot is picked', async () => {
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['session_duration', 'revenue'],
+            types: [
+                ['session_duration', 'Int64'],
+                ['revenue', 'Float64'],
+            ],
+            results: [[120, 42.5]],
+        })
+
+        logic.actions.updateXSeries('revenue')
+        logic.actions.setVisualizationType(ChartDisplayType.ScatterPlot)
+
+        // The numeric x is kept, but must be removed from the y-series so it doesn't plot against itself.
+        await expectLogic(logic).toMatchValues({
+            selectedXAxis: 'revenue',
+            selectedYAxis: [expect.objectContaining({ name: 'session_duration' })],
+        })
+    })
+
+    it('re-resolves a scatter x-axis when an all-numeric query changes columns', async () => {
+        const dataNode = dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId })
+        dataNode.actions.setResponse({
+            columns: ['a', 'b'],
+            types: [
+                ['a', 'Int64'],
+                ['b', 'Int64'],
+            ],
+            results: [[1, 2]],
+        })
+
+        logic.actions.setVisualizationType(ChartDisplayType.ScatterPlot)
+        await expectLogic(logic).toMatchValues({ selectedXAxis: 'a' })
+
+        // Editing the query to add another numeric column re-runs the columns subscription. Without an
+        // explicit scatter resolution there, x would be left null and every point would drop.
+        dataNode.actions.setResponse({
+            columns: ['a', 'b', 'c'],
+            types: [
+                ['a', 'Int64'],
+                ['b', 'Int64'],
+                ['c', 'Int64'],
+            ],
+            results: [[1, 2, 3]],
+        })
+
+        await expectLogic(logic).toMatchValues({
+            selectedXAxis: 'a',
+            selectedYAxis: [expect.objectContaining({ name: 'b' }), expect.objectContaining({ name: 'c' })],
+        })
+    })
+
+    it('auto-fills 2d heatmap columns when selecting auto on heatmap data', async () => {
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['region', 'segment', 'count'],
+            types: [
+                ['region', 'String'],
+                ['segment', 'String'],
+                ['count', 'Int64'],
+            ],
+            results: [['US', 'Enterprise', 10]],
+        })
+
+        logic.actions.setVisualizationType(ChartDisplayType.ActionsBar)
+        logic.actions.setVisualizationType(ChartDisplayType.Auto)
+
+        await expectLogic(logic).toMatchValues({
+            visualizationType: ChartDisplayType.Auto,
+            effectiveVisualizationType: ChartDisplayType.TwoDimensionalHeatmap,
+            chartSettings: {
+                heatmap: {
+                    xAxisColumn: 'region',
+                    yAxisColumn: 'segment',
+                    valueColumn: 'count',
+                },
+            },
+        })
+    })
+
+    it('transposes table results without changing the query source', async () => {
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['region', 'value'],
+            types: [
+                ['region', 'String'],
+                ['value', 'Int64'],
+            ],
+            results: [
+                ['US', 10],
+                ['EU', 20],
+            ],
+        })
+
+        logic.actions.setTransposeResults(true)
+
+        await expectLogic(logic).toMatchValues({
+            isTransposed: true,
+            isPinningEnabled: false,
+            tabularData: [
+                [
+                    {
+                        value: 'region',
+                        formattedValue: null,
+                        type: 'STRING',
+                        sourceColumnName: 'region',
+                        isTransposedHeader: true,
+                    },
+                    {
+                        value: 'US',
+                        formattedValue: 'US',
+                        type: 'STRING',
+                        sourceColumnName: 'region',
+                    },
+                    {
+                        value: 'EU',
+                        formattedValue: 'EU',
+                        type: 'STRING',
+                        sourceColumnName: 'region',
+                    },
+                ],
+                [
+                    {
+                        value: 'value',
+                        formattedValue: null,
+                        type: 'STRING',
+                        sourceColumnName: 'value',
+                        isTransposedHeader: true,
+                    },
+                    {
+                        value: 10,
+                        formattedValue: '10',
+                        type: 'INTEGER',
+                        sourceColumnName: 'value',
+                    },
+                    {
+                        value: 20,
+                        formattedValue: '20',
+                        type: 'INTEGER',
+                        sourceColumnName: 'value',
+                    },
+                ],
+            ],
+        })
+
+        expect(logic.values.query.source).toEqual(defaultQuery.source)
+        expect(logic.values.query.tableSettings?.transpose).toEqual(true)
+    })
+
+    it('flags the table as sorted only after setTableSorted', async () => {
+        await expectLogic(logic).toMatchValues({ hasSortedTable: false })
+
+        logic.actions.setTableSorted()
+
+        await expectLogic(logic).toMatchValues({ hasSortedTable: true })
+    })
+
+    it('does not mutate the original query when updating y-axis formatting', async () => {
+        const queryWithAxisSettings: DataVisualizationNode = {
+            ...defaultQuery,
+            chartSettings: {
+                yAxis: [
+                    {
+                        column: 'value',
+                        settings: {
+                            formatting: {
+                                prefix: '',
+                                suffix: '',
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+
+        logic.unmount()
+        logic = dataVisualizationLogic({
+            key: testKey,
+            query: queryWithAxisSettings,
+            dataNodeCollectionId,
+        } as DataVisualizationLogicProps)
+        logic.mount()
+
+        dataNodeLogic({ key: testKey, query: defaultQuery.source, dataNodeCollectionId }).actions.setResponse({
+            columns: ['label', 'value'],
+            types: [
+                ['label', 'String'],
+                ['value', 'Float64'],
+            ],
+            results: [['A', 1.2345]],
+        })
+
+        logic.actions.updateSeriesIndex(0, 'value', {
+            formatting: {
+                decimalPlaces: 2,
+            },
+        })
+
+        await expectLogic(logic).toMatchValues({
+            query: expect.objectContaining({
+                chartSettings: expect.objectContaining({
+                    yAxis: [
+                        expect.objectContaining({
+                            column: 'value',
+                            settings: expect.objectContaining({
+                                formatting: expect.objectContaining({
+                                    decimalPlaces: 2,
+                                }),
+                            }),
+                        }),
+                    ],
+                }),
+            }),
+        })
+
+        expect(queryWithAxisSettings.chartSettings?.yAxis?.[0].settings?.formatting?.decimalPlaces).toBeUndefined()
+    })
+})

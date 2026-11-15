@@ -1,0 +1,223 @@
+{
+  "name": "openswarm",
+  "version": "1.7.7",
+  "license": "AGPL-3.0-only",
+  "description": "OpenSwarm — AI Agent Orchestrator",
+  "author": "openswarm-ai",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env ELECTRON_DEV=1 electron .",
+    "postinstall": "node scripts/sign-vmp.js",
+    "sign-vmp": "node scripts/sign-vmp.js",
+    "dist": "electron-builder --mac --publish never",
+    "dist:publish": "electron-builder --mac --publish always",
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "dist:win:publish": "electron-builder --win --x64 --publish always",
+    "dist:all": "electron-builder --mac --win --linux",
+    "test": "node --test affiliateTracking.test.js updateErrorMessage.test.js selectWebauthnAccount.test.js voice/streamingVoice.test.js",
+    "test:mouseclamp": "bash native/mouseclamp/run-tests.sh"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.3",
+    "get-port": "5.1.1",
+    "uiohook-napi": "^1.5.5"
+  },
+  "devDependencies": {
+    "@electron/notarize": "3.1.1",
+    "cross-env": "7.0.3",
+    "electron": "github:castlabs/electron-releases#v42.3.3+wvcus",
+    "electron-builder": "^26.8.1",
+    "electron-builder-squirrel-windows": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.clusterlabs.openswarm",
+    "productName": "OpenSwarm",
+    "afterPack": "./build/after-pack.js",
+    "electronLanguages": [
+      "en",
+      "en-US"
+    ],
+    "electronDownload": {
+      "mirror": "https://github.com/castlabs/electron-releases/releases/download/v"
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!python-env",
+      "!python-env/**",
+      "!build-staging",
+      "!build-staging/**",
+      "!**/*.test.js"
+    ],
+    "icon": "build/icon.png",
+    "mac": {
+      "icon": "build/icon.icns",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "notarize": false,
+      "extendInfo": {
+        "NSFaceIDUsageDescription": "OpenSwarm uses Touch ID to sign you in to websites with passkeys.",
+        "NSMicrophoneUsageDescription": "OpenSwarm uses the microphone for voice dictation."
+      },
+      "provisioningProfile": "build/embedded.provisionprofile",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "extraResources": [
+        {
+          "from": "build-staging/mouseclamp/${arch}",
+          "to": "mouseclamp",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "build-staging/fn-watcher/${arch}",
+          "to": "fn-watcher",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "build-staging/haptics/${arch}",
+          "to": "haptics",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "build-staging/whisper/${arch}",
+          "to": "whisper",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "build-staging/python-env/${arch}",
+          "to": "python-env",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "artifactName": "OpenSwarm-${arch}.${ext}",
+      "title": "OpenSwarm ${version}",
+      "size": "5000000K",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "extraResources": [
+        {
+          "from": "python-env",
+          "to": "python-env",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ],
+      "target": [
+        {
+          "target": "squirrel",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "OpenSwarm-Setup-${arch}.${ext}",
+      "signtoolOptions": {
+        "sign": "./build/sign-windows.js",
+        "signingHashAlgorithms": [
+          "sha256"
+        ]
+      }
+    },
+    "squirrelWindows": {
+      "iconUrl": "https://raw.githubusercontent.com/openswarm-ai/openswarm/main/electron/build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OpenSwarm",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "OpenSwarm-Setup-${arch}.${ext}",
+      "include": "build/installer-recovery.nsh"
+    },
+    "extraResources": [
+      {
+        "from": "build-staging/frontend",
+        "to": "frontend",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build-staging/backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!**/tests/**",
+          "!**/__pycache__/**"
+        ]
+      },
+      {
+        "from": "build-staging/debugger",
+        "to": "debugger",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build-staging/router",
+        "to": "router",
+        "filter": [
+          "**/*",
+          "**/.*",
+          "**/.*/**"
+        ]
+      },
+      {
+        "from": "build-staging/node/${arch}",
+        "to": "node/${arch}",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build-staging/uv-bin/${arch}",
+        "to": "backend/uv-bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "openswarm-ai",
+      "repo": "openswarm"
+    },
+    "afterSign": "scripts/notarize.js"
+  }
+}

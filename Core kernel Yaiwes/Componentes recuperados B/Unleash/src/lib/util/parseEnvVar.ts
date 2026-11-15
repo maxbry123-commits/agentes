@@ -1,0 +1,99 @@
+import { PayloadType, type Variant } from 'unleash-client';
+
+export function parseEnvVarNumber(
+    envVar: string | undefined,
+    defaultVal: number,
+): number {
+    if (!envVar) {
+        return defaultVal;
+    }
+    const parsed = Number.parseInt(envVar, 10);
+
+    if (Number.isNaN(parsed)) {
+        return defaultVal;
+    }
+
+    return parsed;
+}
+
+export function parseEnvVarBoolean(
+    envVar: string | undefined,
+    defaultVal: boolean,
+): boolean {
+    if (envVar) {
+        return envVar === 'true' || envVar === '1' || envVar === 't';
+    }
+
+    return defaultVal;
+}
+
+export function parseEnvVarNumbers(
+    envVar: string | undefined,
+    defaultVal: number[],
+): number[] {
+    if (!envVar) {
+        return defaultVal;
+    }
+
+    const parsed = envVar
+        .split(',')
+        .map((item) => Number.parseInt(item.trim(), 10))
+        .filter((item) => !Number.isNaN(item));
+
+    return parsed.length > 0 ? parsed : defaultVal;
+}
+
+export function parseEnvVarStrings(
+    envVar: string | undefined,
+    defaultVal: string[],
+): string[] {
+    if (typeof envVar === 'string') {
+        return envVar
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean);
+    }
+
+    return defaultVal;
+}
+
+export function parseEnvVarJSON(
+    envVar: string | undefined,
+    defaultVal: Record<string, unknown>,
+): Record<string, unknown> {
+    if (envVar) {
+        try {
+            return JSON.parse(envVar);
+        } catch (_e) {
+            return defaultVal;
+        }
+    }
+
+    return defaultVal;
+}
+
+export function parseEnvVarBooleanOrStringVariant(
+    envVar: string | undefined,
+    defaultVal: boolean | Variant,
+): boolean | Variant {
+    if (!envVar) {
+        return defaultVal;
+    }
+
+    if (envVar === '1' || envVar === 't' || envVar === 'true') {
+        return true;
+    }
+
+    if (envVar === '0' || envVar === 'f' || envVar === 'false') {
+        return false;
+    }
+
+    return {
+        name: 'Variant',
+        enabled: true,
+        payload: {
+            type: PayloadType.STRING,
+            value: envVar,
+        },
+    };
+}

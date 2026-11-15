@@ -1,0 +1,139 @@
+# KTP — Kernel Thought Protocol states
+# Fuente: PIPELINE 12 FULL §9 + PIPELINE 13
+# Tipo: D = determinista | H = humano/Director | D+H = condicional | D_STRICT = 0% LLM
+
+states:
+  OBJETIVO:
+    emoji: "🎯"
+    tipo: D
+    entrada: [input_block, documento, mensaje_chat]
+    salida: goal_struct
+    microflujo: extract_goal
+    resource_brain: false
+    descripcion: "Extraer meta principal, verbo de acción, criterios de éxito/fallo. Formato: [Verbo] + [Objeto] + [Restricción]"
+
+  TAREA:
+    emoji: "🏗️"
+    tipo: D
+    entrada: [goal_struct]
+    salida: task_list
+    microflujo: decompose_tasks
+    resource_brain: false
+    descripcion: "Descomponer en pasos atómicos (1 verbo). Ordenar por dependencias. Prioridad CRITICAL|HIGH|MEDIUM|LOW. Estado inicial PENDING."
+
+  PLANIFICAR:
+    emoji: "💡"
+    tipo: D
+    entrada: [goal_struct, task_list]
+    salida: execution_plan
+    microflujo: plan_and_select
+    resource_brain: true
+    resource_query: "capabilities needed for current goal"
+    descripcion: "Verificar objetivo + tareas completos. Seleccionar capacidades AVAILABLE."
+
+  PROXIMOS:
+    emoji: "📌👣"
+    tipo: D
+    entrada: [execution_plan]
+    salida: next_step
+    microflujo: select_immediate_step
+    resource_brain: false
+    descripcion: "Solo el siguiente paso inmediato (no lista)."
+
+  PASO:
+    emoji: "👣"
+    tipo: D+H
+    entrada: [next_step, selected_capabilities]
+    salida: step_result
+    microflujo: execute_one_step
+    resource_brain: true
+    llm_allowed: conditional
+    descripcion: "Ejecutar UN paso. PENDING → RUNNING → DONE."
+
+  RESULTADOS:
+    emoji: "🧩"
+    tipo: D
+    entrada: [step_result]
+    salida: formatted_output
+    microflujo: format_output
+    resource_brain: false
+    descripcion: "Formato exacto de salida (código, YAML, texto, hash)."
+
+  PENDIENTES:
+    emoji: "⚠️"
+    tipo: D
+    entrada: [blockers]
+    salida: blocker_list
+    microflujo: manage_blockers
+    resource_brain: false
+    descripcion: "Bloqueos activos con dueño y fecha límite."
+
+  CERRADO:
+    emoji: "🔒"
+    tipo: D
+    entrada: [step_result]
+    salida: evidence_hash
+    microflujo: close_and_hash
+    resource_brain: false
+    descripcion: "Paso completado + hash de evidencia + timestamp."
+
+  FALTA:
+    emoji: "⁉️"
+    tipo: H
+    entrada: [missing_info]
+    salida: director_question
+    microflujo: ask_director
+    resource_brain: false
+    descripcion: "Único estado que pregunta al Director. Pregunta concreta."
+
+  ARCHIVAR:
+    emoji: "📂"
+    tipo: D
+    entrada: [closed_steps]
+    salida: archive_path
+    microflujo: archive
+    resource_brain: false
+    descripcion: "Mover a históricos cuando el ciclo termina."
+
+  INTEGRADO:
+    emoji: "✅"
+    tipo: D
+    entrada: [evidence_hash]
+    salida: integrated_flag
+    microflujo: mark_integrated
+    resource_brain: false
+    descripcion: "Marcar como parte del sistema después de todos los checks."
+
+  NUEVO:
+    emoji: "🆕"
+    tipo: D
+    entrada: [new_input]
+    salida: classification
+    microflujo: classify_new_input
+    resource_brain: false
+    descripcion: "Documento o capacidad recién incorporada, pendiente de revisión."
+
+  INGENIERIA:
+    emoji: "🚨"
+    tipo: D_STRICT
+    entrada: [any]
+    salida: deterministic_result
+    microflujo: pure_code_mode
+    resource_brain: true
+    llm_allowed: false
+    descripcion: "0% LLM. Solo código + validación Sheriff."
+
+transitions:
+  OBJETIVO: [TAREA, FALTA]
+  TAREA: [PLANIFICAR, FALTA]
+  PLANIFICAR: [PROXIMOS, PENDIENTES, FALTA]
+  PROXIMOS: [PASO]
+  PASO: [RESULTADOS, PENDIENTES, FALTA]
+  RESULTADOS: [CERRADO, PENDIENTES]
+  CERRADO: [INTEGRADO, ARCHIVAR, PROXIMOS]
+  PENDIENTES: [PLANIFICAR, FALTA]
+  FALTA: [OBJETIVO, PLANIFICAR]
+  ARCHIVAR: [INTEGRADO]
+  INTEGRADO: [NUEVO, OBJETIVO]
+  NUEVO: [OBJETIVO, PLANIFICAR]
+  INGENIERIA: [RESULTADOS, CERRADO]

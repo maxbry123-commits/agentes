@@ -1,0 +1,180 @@
+import numpy as np
+
+from gymnasium.spaces import (
+    Box,
+    Dict,
+    Discrete,
+    Graph,
+    MultiBinary,
+    MultiDiscrete,
+    OneOf,
+    Sequence,
+    Space,
+    Text,
+    Tuple,
+)
+
+TESTING_FUNDAMENTAL_SPACES = [
+    Discrete(3),
+    Discrete(3, start=-1),
+    Discrete(n=4, dtype=np.int32, start=1),
+    Box(low=0.0, high=1.0),
+    Box(low=0.0, high=np.inf, shape=(2, 2)),
+    Box(low=np.array([-10.0, 0.0]), high=np.array([10.0, 10.0]), dtype=np.float64),
+    Box(low=-np.inf, high=0.0, shape=(2, 1)),
+    Box(low=0.0, high=np.inf, shape=(2, 1)),
+    Box(low=0, high=255, shape=(2, 2, 3), dtype=np.uint8),
+    Box(low=np.array([0, 0, 1]), high=np.array([1, 0, 1]), dtype=np.bool_),
+    Box(
+        low=np.array([-np.inf, -np.inf, 0, -10]),
+        high=np.array([np.inf, 0, np.inf, 10]),
+        dtype=np.int32,
+    ),
+    MultiDiscrete([2, 2]),
+    MultiDiscrete([[2, 3], [3, 2]]),
+    MultiDiscrete([2, 2], start=[10, 10]),
+    MultiDiscrete([[2, 3], [3, 2]], start=[[10, 20], [30, 40]]),
+    MultiDiscrete([2, 3], dtype=np.int8),
+    MultiDiscrete([2, 3], dtype=np.uint16),
+    MultiBinary(8),
+    MultiBinary([2, 3]),
+    Text(6),
+    Text(min_length=3, max_length=6),
+    Text(6, charset="abcdef"),
+]
+TESTING_FUNDAMENTAL_SPACES_IDS = [f"{space}" for space in TESTING_FUNDAMENTAL_SPACES]
+
+
+TESTING_COMPOSITE_SPACES = [
+    # Tuple spaces
+    Tuple([Discrete(5), Discrete(4)]),
+    Tuple(
+        (
+            Discrete(5),
+            Box(
+                low=np.array([0.0, 0.0]),
+                high=np.array([1.0, 5.0]),
+                dtype=np.float64,
+            ),
+        )
+    ),
+    Tuple((Discrete(5), Tuple((Box(low=0.0, high=1.0, shape=(3,)), Discrete(2))))),
+    Tuple((Discrete(3), Dict(position=Box(low=0.0, high=1.0), velocity=Discrete(2)))),
+    Tuple((OneOf([Box(-1, 1, shape=(2,)), Box(-1, 1, shape=(3,))]), Box(0.0, 1.0))),
+    Tuple((Graph(node_space=Box(-1, 1, shape=(2, 1)), edge_space=None), Discrete(2))),
+    # Dict spaces
+    Dict(
+        {
+            "position": Discrete(5),
+            "velocity": Box(
+                low=np.array([0.0, 0.0]),
+                high=np.array([1.0, 5.0]),
+                dtype=np.float64,
+            ),
+        }
+    ),
+    Dict(
+        position=Discrete(6),
+        velocity=Box(
+            low=np.array([0.0, 0.0]),
+            high=np.array([1.0, 5.0]),
+            dtype=np.float64,
+        ),
+    ),
+    Dict(
+        {
+            "a": Box(low=0, high=1, shape=(3, 3)),
+            "b": Dict(
+                {
+                    "b_1": Box(low=-100, high=100, shape=(2,)),
+                    "b_2": Box(low=-1, high=1, shape=(2,)),
+                }
+            ),
+            "c": Discrete(4),
+        }
+    ),
+    Dict(
+        a=Dict(
+            a=Graph(node_space=Box(-100, 100, shape=(2, 2)), edge_space=None),
+            b=Box(-100, 100, shape=(2, 2)),
+        ),
+        b=Tuple((Box(-100, 100, shape=(2,)), Box(-100, 100, shape=(2,)))),
+    ),
+    # Graph spaces
+    Graph(node_space=Box(-1, 1, shape=(2,)), edge_space=None),
+    Graph(node_space=Box(low=-100, high=100, shape=(3, 4)), edge_space=Discrete(5)),
+    Graph(node_space=Discrete(5), edge_space=Box(low=-100, high=100, shape=(3, 4))),
+    Graph(node_space=Discrete(3), edge_space=Discrete(4)),
+    Graph(
+        node_space=Dict(
+            {"node_feature_1": Discrete(5), "node_feature_2": MultiBinary(5)}
+        ),
+        edge_space=Box(low=1, high=4),
+    ),
+    # Graph spaces with arbitrary node/edge spaces
+    Graph(node_space=MultiBinary(4), edge_space=None),
+    Graph(node_space=MultiDiscrete([3, 4, 2]), edge_space=Discrete(3)),
+    Graph(node_space=Tuple((Box(-1, 1, shape=(2,)), Discrete(3))), edge_space=None),
+    Graph(
+        node_space=Discrete(4), edge_space=Tuple((Box(0, 1, shape=(2,)), Discrete(3)))
+    ),
+    Graph(
+        node_space=Discrete(3),
+        edge_space=Dict({"weight": Box(0, 1, shape=()), "type": Discrete(4)}),
+    ),
+    Graph(
+        node_space=Dict({"pos": Box(-10, 10, shape=(3,)), "label": Discrete(5)}),
+        edge_space=Dict({"weight": Box(0, 1, shape=()), "type": Discrete(3)}),
+    ),
+    Graph(
+        node_space=Tuple((Dict({"a": Discrete(3)}), MultiBinary(2))),
+        edge_space=Tuple((Discrete(4), Box(0, 1, shape=(2,)))),
+    ),
+    # Note: Text, Sequence, Graph, and OneOf as node/edge spaces have broken
+    # JSON serialization in Graph.to_jsonable/from_jsonable
+    # Graph(node_space=Sequence(Discrete(3)), edge_space=None),
+    # Graph(node_space=Discrete(3), edge_space=Sequence(Box(0, 1, shape=(2,)))),
+    # Graph(
+    #     node_space=Graph(node_space=Box(-1, 1, shape=(2,)), edge_space=None),
+    #     edge_space=None,
+    # ),
+    # Graph(
+    #     node_space=Discrete(3),
+    #     edge_space=Graph(node_space=Box(-1, 1, shape=(2,)), edge_space=None),
+    # ),
+    # Graph(node_space=OneOf([Discrete(3), Box(0, 1)]), edge_space=None),
+    # Graph(node_space=Discrete(3), edge_space=OneOf([Discrete(3), Box(0, 1)])),
+    # Graph(node_space=Text(6), edge_space=None),
+    # Graph(node_space=Discrete(3), edge_space=Text(6)),
+    #
+    # Sequence spaces
+    Sequence(Discrete(4)),
+    Sequence(Dict({"feature": Box(0, 1, (3,))})),
+    Sequence(Graph(node_space=Box(-100, 100, shape=(2, 2)), edge_space=Discrete(4))),
+    Sequence(Box(low=0.0, high=1.0), stack=True),
+    Sequence(Dict({"a": Box(0, 1, (3,)), "b": Discrete(5)}), stack=True),
+    # OneOf spaces
+    OneOf([Discrete(3), Box(low=0.0, high=1.0)]),
+    OneOf([MultiBinary(2), MultiDiscrete([2, 2])]),
+    OneOf([Box(-1, 1, shape=(2,)), Box(-1, 1, shape=(3,))]),
+    OneOf([Text(5), Discrete(3)]),
+    OneOf([MultiBinary(3), MultiBinary([2, 2])]),
+    OneOf([Discrete(3), Discrete(5, start=-2)]),
+    OneOf([Discrete(3), Box(-1, 1, shape=(2,))]),
+    OneOf([Text(5), Box(-1, 1, shape=(4,))]),
+    OneOf([OneOf([Discrete(2), MultiBinary(3)]), Box(-1, 1, shape=(4,))]),
+    # More subspaces than the shared `bool` dtype can index, see `_flat_dtype`
+    OneOf([Box(0, 1, shape=(2,), dtype=np.bool_) for _ in range(3)]),
+]
+TESTING_COMPOSITE_SPACES_IDS = [f"{space}" for space in TESTING_COMPOSITE_SPACES]
+
+TESTING_SPACES: list[Space] = TESTING_FUNDAMENTAL_SPACES + TESTING_COMPOSITE_SPACES
+TESTING_SPACES_IDS = TESTING_FUNDAMENTAL_SPACES_IDS + TESTING_COMPOSITE_SPACES_IDS
+
+
+class CustomSpace(Space):
+    def __eq__(self, o: object) -> bool:
+        return isinstance(o, CustomSpace)
+
+
+TESTING_CUSTOM_SPACE = CustomSpace()

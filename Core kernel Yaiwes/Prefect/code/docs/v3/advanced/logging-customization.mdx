@@ -1,0 +1,327 @@
+---
+title: How to customize Prefect's logging configuration
+sidebarTitle: Customize logging
+keywords: ["logging", "custom handler", "log level", "log format", "structured logging", "disable logging", "opt out", "PREFECT_LOGGING_TO_API_ENABLED", "send_to_api"]
+---
+
+Prefect relies on [the standard Python implementation of logging configuration](https://docs.python.org/3/library/logging.config.html).
+The full specification of the default logging configuration for any version of Prefect can always be inspected [here](https://github.com/PrefectHQ/prefect/blob/main/src/prefect/logging/logging.yml).
+The default logging level is `INFO`.
+
+### Customize logging configuration
+
+Prefect provides several settings to configure the logging level and individual loggers.
+
+Any value in [Prefect's logging configuration file](https://github.com/PrefectHQ/prefect/blob/main/src/prefect/logging/logging.yml) can be overridden through 
+a Prefect setting of the form `PREFECT_LOGGING_[PATH]_[TO]_[KEY]=value` corresponding to the nested address of the field you are configuring.
+
+For example, to change the default logging level for flow runs but not task runs, update your profile with:
+```bash
+prefect config set PREFECT_LOGGING_LOGGERS_PREFECT_FLOW_RUNS_LEVEL="ERROR"
+```
+or set the corresponding environment variable:
+```bash
+export PREFECT_LOGGING_LOGGERS_PREFECT_FLOW_RUNS_LEVEL="ERROR"
+```
+
+You can also configure the "root" Python logger. The root logger receives logs from all loggers unless they 
+explicitly opt out by disabling propagation. By default, the root logger is configured to output `WARNING` level logs 
+to the console. As with other logging settings, you can override this from the environment or in the logging configuration 
+file. For example, you can change the level with the `PREFECT_LOGGING_ROOT_LEVEL` environment variable.
+
+In some situations you may want to completely overhaul the Prefect logging configuration by providing your own `logging.yml` file.
+You can create your own version of `logging.yml` in one of two ways:
+
+1. Create a `logging.yml` file in your `PREFECT_HOME` directory (default is `~/.prefect`).
+2. Specify a custom path to your `logging.yml` file using the `PREFECT_LOGGING_CONFIG_PATH` setting.
+
+If Prefect cannot find the `logging.yml` file at the specified location, it will fall back to using the default logging configuration.
+
+See the Python [Logging configuration](https://docs.python.org/3/library/logging.config.html#logging.config.dictConfig) 
+documentation for more information about the configuration options and syntax used by `logging.yml`.
+
+<Note>
+As with all Prefect settings, logging settings are loaded at runtime.
+This means that to customize Prefect logging in a remote environment requires setting the appropriate environment variables and/or profile in that environment.
+</ Note>
+
+### Formatters
+
+Prefect log formatters specify the format of log messages. 
+The default formatting for task and flow run records is 
+`"%(asctime)s.%(msecs)03d | %(levelname)-7s | Task run %(task_run_name)r - %(message)s"` for tasks and
+similarly `"%(asctime)s.%(msecs)03d | %(levelname)-7s | Flow run %(flow_run_name)r - %(message)s"` for flows.
+
+The variables available to interpolate in log messages vary by logger. 
+In addition to the run context, message string, 
+and any keyword arguments, flow and task run loggers have access to additional variables.
+
+The flow run logger has the following variables available for formatting:
+
+- `flow_run_name`
+- `flow_run_id`
+- `flow_name`
+- `deployment_name`
+
+The task run logger has the following variables available for formatting:
+
+- `task_run_id`
+- `flow_run_id`
+- `task_run_name`
+- `task_name`
+- `flow_run_name`
+- `flow_name`
+
+You can specify custom formatting by setting the relevant environment variable or by modifying the formatter in a custom `logging.yml` file as
+described earlier. 
+For example, the following changes the formatting for the flow runs formatter:
+
+
+```bash
+PREFECT_LOGGING_FORMATTERS_STANDARD_FLOW_RUN_FMT="%(asctime)s.%(msecs)03d | %(levelname)-7s | %(flow_run_id)s - %(message)s"
+```
+
+The resulting messages, using the flow run ID instead of name, look like this:
+
+
+```bash
+10:40:01.211 | INFO    | e43a5a80-417a-41c4-a39e-2ef7421ee1fc - Created task run
+'othertask-1c085beb-3' for task 'othertask'
+```
+
+### Styles
+
+By default, Prefect highlights specific keywords in the console logs with a variety of colors.
+You can toggle highlighting on/off with the `PREFECT_LOGGING_COLORS` setting:
+
+
+```bash
+PREFECT_LOGGING_COLORS=False
+```
+
+You can also change what gets highlighted and even adjust the colors by updating the styles - see the `styles`
+section of [the Prefect logging configuration file](https://github.com/PrefectHQ/prefect/blob/main/src/prefect/logging/logging.yml) for available keys.
+
+<Note>
+Note that these style settings only impact the display within a terminal, not the Prefect UI.
+</ Note>
+
+You can even build your own handler with a [custom highlighter](https://rich.readthedocs.io/en/stable/highlighting.html#custom-highlighters). 
+For example, to additionally highlight emails:
+
+1. Copy and paste the following code into  `my_package_or_module.py` (rename as needed) in the same directory as the flow run 
+script; or ideally as part of a Python package so it's available in `site-packages` and accessible anywhere within your environment.
+
+```python
+import logging
+from typing import Dict, Union
+
+from rich.highlighter import Highlighter
+
+from prefect.logging.handlers import PrefectConsoleHandler
+from prefect.logging.highlighters import PrefectConsoleHighlighter
+
+class CustomConsoleHighlighter(PrefectConsoleHighlighter):
+    base_style = "log."
+    highlights = PrefectConsoleHighlighter.highlights + [
+        # ?P<email> is naming this expression as `email`
+        r"(?P<email>[\w-]+@([\w-]+\.)+[\w-]+)",
+    ]
+
+class CustomConsoleHandler(PrefectConsoleHandler):
+    def __init__(
+        self,
+        highlighter: Highlighter = CustomConsoleHighlighter,
+        styles: Dict[str, str] = None,
+        level: Union[int, str] = logging.NOTSET,
+   ):
+        super().__init__(highlighter=highlighter, styles=styles, level=level)
+```
+
+2. Update `~/.prefect/logging.yml` to use `my_package_or_module.CustomConsoleHandler` and additionally reference the 
+base_style and named expression: `log.email`.
+
+```yaml
+    console_flow_runs:
+        level: 0
+        class: my_package_or_module.CustomConsoleHandler
+        formatter: flow_runs
+        styles:
+            log.email: magenta
+            # other styles can be appended here, e.g.
+            # log.completed_state: green
+```
+
+3. On your next flow run, text that looks like an email is highlighted. For example, `my@email.com` is colored in 
+magenta below:
+
+```python
+from prefect import flow
+from prefect.logging import get_run_logger
+
+@flow
+def log_email_flow():
+    logger = get_run_logger()
+    logger.info("my@email.com")
+
+log_email_flow()
+```
+
+### Apply markup in logs
+
+To use [Rich's markup](https://rich.readthedocs.io/en/stable/markup.html#console-markup) in Prefect logs, first 
+configure `PREFECT_LOGGING_MARKUP`:
+
+
+```bash
+PREFECT_LOGGING_MARKUP=True
+```
+
+The following will highlight "fancy" in red:
+
+```python
+from prefect import flow
+from prefect.logging import get_run_logger
+
+@flow
+def my_flow():
+    logger = get_run_logger()
+    logger.info("This is [bold red]fancy[/]")
+
+my_flow()
+```
+<Warning>
+**Inaccurate logs could result**
+
+If enabled, strings that contain square brackets may be 
+inaccurately interpreted and lead to incomplete output. For example, `DROP TABLE [dbo].[SomeTable];"` outputs 
+`DROP TABLE .[SomeTable];`.
+</Warning>
+
+## Include logs from other libraries
+
+By default, Prefect won't capture log statements from libraries that your flows
+and tasks use. You can tell Prefect to include logs from these libraries with
+the `PREFECT_LOGGING_EXTRA_LOGGERS` setting.
+
+To use this setting, specify one or more Python library names to include,
+separated by commas. For example, if you want Prefect to capture Dask
+and SciPy logging statements with your flow and task run logs, use:
+
+`PREFECT_LOGGING_EXTRA_LOGGERS=dask,scipy`
+
+Configure this setting as an environment variable or in a profile. See
+[Settings](/v3/develop/settings-and-profiles/) for more details about how to use settings.
+
+## Disable logging
+
+Prefect prints run logs to the console and sends them to the API.
+Use the settings in this section to turn off one or both outputs.
+
+### Stop sending logs to the API
+
+Set `PREFECT_LOGGING_TO_API_ENABLED` to `false` to keep logs out of the API.
+This setting works with Prefect Cloud and with a self-hosted Prefect server.
+
+<CodeGroup>
+```bash Environment variable
+export PREFECT_LOGGING_TO_API_ENABLED=false
+```
+
+```bash Profile
+prefect config set PREFECT_LOGGING_TO_API_ENABLED=false
+```
+
+```toml prefect.toml
+[logging.to_api]
+enabled = false
+```
+</CodeGroup>
+
+When this setting is `false`:
+
+- Flow run logs, task run logs, Prefect Cloud worker logs, and logs from [extra loggers](#include-logs-from-other-libraries) are not sent to the API.
+- Logs still print to the console.
+- States, events, artifacts, and other run data are still sent to the API. Only log records are affected.
+
+#### Where to set it
+
+Prefect reads this setting in the process that runs your flow.
+Set it at the scope that matches how you run your flows:
+
+| Scope | How to set it |
+|---|---|
+| A local run, or a flow served with `.serve()` | An environment variable, your active profile, or a `prefect.toml` file. See [Settings and profiles](/v3/concepts/settings-and-profiles). The process that calls `.serve()` passes its settings to each flow run it starts. |
+| Every flow run started by a worker | The environment or profile of the worker process. A worker passes each setting that is explicitly set in its own configuration to every flow run it starts. |
+| Every deployment in a work pool | The `env` field in the work pool's base job template. |
+| One deployment | The `env` job variable in `prefect.yaml` or in `.deploy()`. See [Customize job variables](/v3/how-to-guides/deployments/customize-job-variables). |
+| One flow run | The `env` job variable on the custom run form in the UI, or the `--job-variable` option on the CLI. |
+
+Environment variables from these scopes are merged key by key, and the most specific scope wins.
+A flow run's `env` overrides the deployment's, the deployment's overrides the work pool's, and all of them override the worker's own settings.
+
+### Silence a logger
+
+To stop a logger from writing to the console and to the API, raise its level or disable it.
+
+To keep only `WARNING` and higher records from task runs, raise the level of the task run logger:
+
+```bash
+prefect config set PREFECT_LOGGING_LOGGERS_PREFECT_TASK_RUNS_LEVEL="WARNING"
+```
+
+To disable the flow run and task run loggers for a block of code, use `disable_run_logger`.
+Inside the block, `get_run_logger()` returns a logger that discards every record, even outside of a run.
+This is useful when you call a task's function directly in a test:
+
+```python
+from prefect import task
+from prefect.logging import disable_run_logger, get_run_logger
+
+
+@task
+def process_order(order_id: int) -> int:
+    get_run_logger().info(f"Processing order {order_id}")
+    return order_id
+
+
+with disable_run_logger():
+    assert process_order.fn(42) == 42
+```
+
+See [Test workflows](/v3/how-to-guides/workflows/test-workflows) for more testing patterns.
+
+### Keep one message out of the API
+
+To print a single log record to the console without sending it to the API, pass `send_to_api=False` in the `extra` argument of the log call:
+
+```python
+from prefect import flow
+from prefect.logging import get_run_logger
+
+
+@flow
+def sync_customers():
+    logger = get_run_logger()
+    logger.info("Starting customer sync")
+    logger.info("Local debug detail", extra={"send_to_api": False})
+
+
+sync_customers()
+```
+
+The second message prints to the console but is not sent to the API.
+
+### Silence the warning for logs outside of a run
+
+Prefect can only send a log record to the API when the record belongs to a flow run.
+If a logger that is attached to the API handler is used outside of a run, Prefect drops the record and prints a warning.
+This happens, for example, when a library listed in `PREFECT_LOGGING_EXTRA_LOGGERS` logs outside of a flow run.
+
+To turn the warning off:
+
+```bash
+prefect config set PREFECT_LOGGING_TO_API_WHEN_MISSING_FLOW=ignore
+```
+
+The default value is `warn`. Set the value to `error` to raise an exception instead.

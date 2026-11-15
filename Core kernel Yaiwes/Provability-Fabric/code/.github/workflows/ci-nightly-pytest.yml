@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 Provability-Fabric Contributors
+#
+# Nightly full Python sweep (PR CI may run a subset via tools/select_impacted.py).
+
+name: CI nightly pytest full
+
+on:
+  schedule:
+    - cron: "15 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  pytest-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest flask requests pyyaml psutil flake8-breakpoint
+          pip install -r tests/integration/requirements.txt
+          pip install -r tests/redteam/requirements.txt
+
+      - name: Run tools and unit-style tests
+        run: |
+          python -m pytest tools/results/test_summarize.py tools/ci/test_impacted_only.py -v
+          cd bench/swebench && python -m pytest test_runner.py -v && cd ../..
+
+      - name: Run red-team suite (offline)
+        run: |
+          # Offline-only: no kernel/gateway is started (same contract as redteam.yaml).
+          python tests/redteam/injection_runner.py \
+            --corpus tests/redteam/injection_corpus.jsonl \
+            --offline \
+            --output /tmp/injection-results.json
+          python tests/redteam/abac_fuzz.py --queries 50 --offline
+
+      - name: Run integration tests (full tree)
+        run: |
+          # Kind/Helm admission lives in integration.yaml; nightly excludes kind-marked tests.
+          timeout 30m pytest tests/integration/ -v --tb=short -m "not kind" \
+            --ignore=tests/integration/test_happy_path.py \
+            --ignore=tests/integration/test_violation_path.py

@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 9125844,
+  "bundle_sha256": "e7489f81b6455555317198fdc89a8b0a6e7d64ced6eb179c9395cb86d6554895",
+  "extracted_tree": {
+    "bytes": 18388860,
+    "files": 71,
+    "sha256": "825f206370b5649ab521a3c691d85ab1ca54354a8d5514e057feaf1c983f07c9"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 9125844,
+      "name": "Godel-Agent.bundle.zip.part-0001",
+      "sha256": "e7489f81b6455555317198fdc89a8b0a6e7d64ced6eb179c9395cb86d6554895"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Godel-Agent",
+  "source_bytes": 18388860,
+  "source_commit": "bbb508796be31c7140cdfc7106efd830a1324242",
+  "source_files": 71,
+  "source_ref": "HEAD",
+  "source_repo": "Arvid-pku/Godel_Agent",
+  "source_tree": {
+    "bytes": 18388860,
+    "files": 71,
+    "sha256": "825f206370b5649ab521a3c691d85ab1ca54354a8d5514e057feaf1c983f07c9"
+  }
+}

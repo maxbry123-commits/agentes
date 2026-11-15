@@ -1,0 +1,1320 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use std::num::{NonZero, NonZeroU8, NonZeroU32, NonZeroU64, NonZeroUsize};
+use std::path::PathBuf;
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use tracing::warn;
+
+use restate_serde_util::SerdeableHeaderHashMap;
+use restate_util_bytecount::{ByteCount, NonZeroByteCount};
+use restate_util_time::{FriendlyDuration, NonZeroFriendlyDuration};
+
+use super::{
+    BackgroundWorkBudget, CommonOptions, DEFAULT_MESSAGE_SIZE_LIMIT, NetworkingOptions,
+    ObjectStoreOptions, RocksDbOptions,
+};
+use crate::config::throttling::ThrottlingOptions;
+use crate::config::{
+    AwsLambdaOptions, DeprecatedAwsLambdaOptions, DeprecatedHttpOptions, HttpOptions,
+    IngestionOptions,
+};
+use crate::identifiers::PartitionId;
+use crate::net::connect_opts::MESSAGE_SIZE_OVERHEAD;
+use crate::retries::RetryPolicy;
+
+const MIN_ROCKSDB_MEMORY: NonZeroByteCount =
+    NonZeroByteCount::new(NonZeroUsize::new(32 * 1024 * 1024).unwrap());
+
+const X_RESTATE_CLUSTER_NAME: http::HeaderName =
+    http::HeaderName::from_static("x-restate-cluster-name");
+
+const DEFAULT_MAX_SUCCESSIVE_MERGES: u16 = 5000;
+
+/// # Worker options
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize, derive_builder::Builder)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", schemars(rename = "WorkerOptions", default))]
+#[serde(rename_all = "kebab-case")]
+#[builder(default)]
+pub struct WorkerOptions {
+    /// # Internal queue for partition processor communication
+    internal_queue_length: NonZeroUsize,
+
+    /// # Num timers in memory limit
+    ///
+    /// The number of timers in memory limit is used to bound the amount of timers loaded in memory. If this limit is set, when exceeding it, the timers farther in the future will be spilled to disk.
+    num_timers_in_memory_limit: Option<NonZeroUsize>,
+
+    /// # Cleanup interval
+    ///
+    /// In order to clean up completed invocations, that is invocations invoked with an idempotency id, or workflows,
+    /// Restate periodically scans among the completed invocations to check whether they need to be removed or not.
+    /// This interval sets the scan interval of the cleanup procedure. Default: 1 hour.
+    cleanup_interval: NonZeroFriendlyDuration,
+
+    pub storage: StorageOptions,
+
+    /// # Disable scheduler
+    ///
+    /// Prevents this worker from scheduling VQueue entries.
+    ///
+    /// Since v1.7.5
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub disable_scheduler: bool,
+
+    pub invoker: InvokerOptions,
+
+    /// # Maximum command batch size (count) for partition processors
+    ///
+    /// The maximum number of Bifrost log records a partition processor will process opportunistically
+    /// in a single batch. The larger this value is, the higher the throughput and latency are.
+    max_command_batch_size: NonZeroUsize,
+
+    /// # Maximum command batch size (in bytes) for partition processors
+    ///
+    /// Caps the total bytes of Bifrost log records processed opportunistically by the partition processor in
+    /// a single iteration. This works in conjunction with `max-command-batch-size` which caps the
+    /// number of records. The processor will process the batch when whichever limit is hit first.
+    ///
+    /// Default: 1 MiB
+    ///
+    /// Since v1.7.1
+    pub max_command_batch_bytes: NonZeroByteCount,
+
+    /// # Snapshots
+    ///
+    /// Snapshots provide a mechanism for safely trimming the log and efficient bootstrapping of new
+    /// worker nodes.
+    #[serde(default)]
+    pub snapshots: SnapshotsOptions,
+
+    /// # Durability mode
+    ///
+    /// Every partition store is backed up by a durable log that is used to recover the state of
+    /// the partition on restart or failover. The durability mode defines the criteria used
+    /// to determine whether a partition is considered fully durable or not at a given point in the
+    /// log history. Once a partition is fully durable, its backing log is allowed to be trimmed to
+    /// the durability point.
+    ///
+    /// This helps keeping the log's disk usage under control but it forces nodes that need to restore
+    /// the state of the partition to fetch a snapshot of that partition that covers the changes up to
+    /// and including the "durability point".
+    ///
+    /// Since v1.4.2 (not compatible with earlier versions)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub durability_mode: Option<DurabilityMode>,
+    /// # Delayed log trimming
+    ///
+    /// Log trimming normally happens immediately after the partition becomes fully durable. A
+    /// partition is considered fully durable when one of the following conditions is met:
+    ///
+    /// 1. The partition has been fully replicated and flushed to all nodes in its replica-set.
+    /// 2. The partition has been snapshotted into the snapshot repository.
+    ///
+    /// The delay interval is the time that Restate will wait before trimming the log _after_ the
+    /// durability condition is met. It's useful to set this to a non-zero duration if you want to
+    /// cover the time needed for the snapshot repository (i.e. S3) to replicate the snapshot
+    /// across regions (typically a few seconds, but can be longer. Check S3's guidelines and
+    /// cross-region replication SLA for more information).
+    #[serde(default, skip_serializing_if = "FriendlyDuration::is_zero")]
+    trim_delay_interval: FriendlyDuration,
+
+    /// # Worker Shuffle Options
+    ///
+    /// Settings for the shared ingestion client used by all workers to
+    /// manage record ingestion across partitions (shuffle).
+    pub shuffle: IngestionOptions,
+
+    /// Memory limit for incoming partition data service messages (Ingestion).
+    ///
+    /// Default is 256 MiB.
+    pub data_service_memory_limit: NonZeroByteCount,
+
+    /// # Rule book poll interval
+    ///
+    /// How often each node's `RuleBookCache` polls the metadata store
+    /// for rule-book updates. The cache also receives push-style
+    /// notifications when partition processors apply
+    /// `Command::UpsertRuleBook` from Bifrost, so this poll interval
+    /// is mainly a fallback for cross-node propagation when no
+    /// partition leader has yet observed the change. Default: 30 s.
+    /// *Since v1.7.0*
+    pub rule_book_poll_interval: NonZeroFriendlyDuration,
+
+    /// Create a database per partition
+    ///
+    /// This asks the node to create a database per partition. Enabling this is only
+    /// effective for fresh empty nodes. If this was enabled on a node that already has
+    /// the single db layout, the node will continue to use the single db layout.
+    ///
+    /// It's possible in future versions (>=v1.8.0+) to include automatic migration
+    /// facility when enabling this option on a legacy node.
+    /// *Since v1.7.0*
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub use_multi_db_layout: bool,
+
+    /// # Self-proposal queue memory limit
+    ///
+    /// The amount of memory a partition leader may use to buffer commands it proposes to its
+    /// own log (timers, invoker effects, RPCs, etc.) before pushing back on their producers.
+    /// Larger values improve append batching and throughput at the cost of memory usage and
+    /// commit tail latency. The limit applies to each partition individually.
+    ///
+    /// Default: 64 MiB
+    ///
+    /// Since v1.7.3
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    pub self_proposal_queue_memory_limit: NonZeroByteCount,
+}
+
+impl WorkerOptions {
+    /// set networking-derived values if they are not configured to reduce verbose configurations
+    pub fn set_derived_values(&mut self, common: &CommonOptions, opts: &NetworkingOptions) {
+        self.invoker.merge(common, opts);
+    }
+
+    pub fn internal_queue_length(&self) -> usize {
+        self.internal_queue_length.into()
+    }
+
+    pub fn max_command_batch_size(&self) -> usize {
+        self.max_command_batch_size.into()
+    }
+
+    pub fn num_timers_in_memory_limit(&self) -> Option<usize> {
+        self.num_timers_in_memory_limit.map(Into::into)
+    }
+
+    pub fn cleanup_interval(&self) -> Duration {
+        self.cleanup_interval.into()
+    }
+
+    pub fn trim_delay_interval(&self) -> Duration {
+        self.trim_delay_interval.into()
+    }
+}
+
+impl Default for WorkerOptions {
+    fn default() -> Self {
+        Self {
+            internal_queue_length: NonZeroUsize::new(1000).expect("Non zero number"),
+            num_timers_in_memory_limit: None,
+            cleanup_interval: NonZeroFriendlyDuration::from_secs_unchecked(60 * 60),
+            storage: StorageOptions::default(),
+            disable_scheduler: false,
+            invoker: Default::default(),
+            max_command_batch_size: NonZeroUsize::new(32).expect("Non zero number"),
+            max_command_batch_bytes: NonZeroByteCount::new(NonZeroUsize::new(1024 * 1024).unwrap()),
+            snapshots: SnapshotsOptions::default(),
+            // 10 minutes delayed trimming by default to give time for followers to catch up
+            // to the new durable LSN before observing the trim gap.
+            trim_delay_interval: FriendlyDuration::from_secs(10 * 60),
+            durability_mode: None,
+            shuffle: IngestionOptions {
+                inflight_memory_budget: NonZeroByteCount::new(
+                    NonZeroUsize::new(10 * 1024 * 1024).expect("non zero"),
+                ), // 10 MiB
+                connection_retry_policy: RetryPolicy::exponential(
+                    Duration::from_millis(250),
+                    2.0,
+                    None,
+                    Some(Duration::from_secs(3)),
+                ),
+                request_batch_size: NonZeroByteCount::new(
+                    NonZeroUsize::new(50 * 1024).expect("non zero"),
+                ),
+            },
+            data_service_memory_limit: NonZeroByteCount::new(
+                NonZeroUsize::new(256 * 1024 * 1024).unwrap(),
+            ),
+            rule_book_poll_interval: NonZeroFriendlyDuration::from_secs_unchecked(30),
+            use_multi_db_layout: false,
+            self_proposal_queue_memory_limit: NonZeroByteCount::new(
+                NonZeroUsize::new(64 * 1024 * 1024).expect("non zero"),
+            ),
+        }
+    }
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "kebab-case")]
+pub enum DurabilityMode {
+    /// This disables durability tracking and trimming completely.
+    ///
+    /// Trims and snapshots are still possible if performed manually or by an external
+    /// component.
+    None,
+
+    /// In this mode, a partition is considered durable when its state can be restored from
+    /// any of members of the replica-set as well as the latest snapshot.
+    ///
+    /// In other words, do not trim unless **all** replicas cover this Lsn, **and** the snapshot.
+    ///
+    /// [requires snapshot repository]
+    /// DurabilityPoint = Min(Min(ReplicaSetDurablePoints), SnapshotDurablePoint)
+    SnapshotAndReplicaSet,
+
+    // A partition is fully durable if the _entire_ replica-set is durable at this Lsn
+    // **or** if a snapshot is available.
+    //
+    // Do not trim unless the Lsn is covered by a snapshot, **or** by _all_ the replicas
+    // in the replica-set.
+    //
+    // DurabilityPoint = Max(Min(ReplicaSetDurablePoints), SnapshotDurablePoint)
+    //
+    // [Requires node-to-node sharing of ad-hoc snapshots] so it's commented until support is
+    // added
+    // SnapshotOrReplicaSet,
+    // -----
+    //
+    /// In this mode, a partition is considered durable when its state can be restored from
+    /// the snapshot and at least a single replica.
+    ///
+    /// Do not trim unless the Lsn is covered (durably) by _any_ of the replicas **and** by
+    /// the snapshot. Gives weight to snapshots over the durability of the replica-set but
+    /// without ignoring the replica-set completely.
+    ///
+    /// In practice, this means that after a snapshot has been created on the leader, the
+    /// system will wait for the nearest memtable flush that cover this Lsn before considering
+    /// this Lsn for trimming. If the leader crashes before the memtable flush, we are confident
+    /// that the leader will be able to replay the log without any trim-gaps. This is under the
+    /// condition that the leader didn't move to another node. In the latter case, the system will
+    /// fetch the snapshot as usual.
+    ///
+    /// [requires snapshot repository]
+    /// [default] if restate-server is in cluster mode.
+    /// DurabilityPoint = Min(Max(ReplicaSetDurablePoints), SnapshotDurablePoint)
+    Balanced,
+
+    /// A partition is considered durable once all nodes in the replica-set are durable, regardless
+    /// of the state of snapshots.
+    ///
+    /// Do not trim unless all replicas durably include this Lsn.
+    ///
+    /// default in standalone-mode with no snapshot repository configured
+    ///
+    /// [default] if restate-server is in single-node mode.
+    /// DurabilityPoint = Min(ReplicaSetDurablePoints)
+    // [Requires node-to-on-node sharing of ad-hoc snapshots] if used in cluster mode.
+    ReplicaSetOnly,
+
+    /// A partition is durable ONLY after a snapshot has been created.
+    /// [requires snapshot repository]
+    ///
+    /// Do not trim unless the Lsn is covered by the snapshot with no regard to the
+    /// state of durability of the replica-set members.
+    ///
+    /// DurabilityPoint = SnapshotDurablePoint
+    SnapshotOnly,
+}
+
+pub const DEFAULT_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(60);
+// Changed from 60s to 10min in response to issue #3961
+pub const DEFAULT_ABORT_TIMEOUT: Duration = Duration::from_secs(600);
+/// Default per-invocation initial memory for the outbound budget.
+pub const DEFAULT_PER_INVOCATION_INITIAL_MEMORY: NonZeroByteCount =
+    NonZeroByteCount::new(NonZeroUsize::new(32 * 1024).unwrap());
+
+/// # Invoker options
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize, derive_builder::Builder)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", schemars(rename = "InvokerOptions", default))]
+#[builder(default)]
+#[serde(rename_all = "kebab-case")]
+pub struct InvokerOptions {
+    /// # Inactivity timeout
+    ///
+    /// This timer guards against stalled service/handler invocations. Once it expires,
+    /// Restate triggers a graceful termination by asking the service invocation to
+    /// suspend (which preserves intermediate progress).
+    ///
+    /// The 'abort timeout' is used to abort the invocation, in case it doesn't react to
+    /// the request to suspend.
+    pub inactivity_timeout: FriendlyDuration,
+
+    /// # Abort timeout
+    ///
+    /// This timer guards against stalled service/handler invocations that are supposed to
+    /// terminate. The abort timeout is started after the 'inactivity timeout' has expired
+    /// and the service/handler invocation has been asked to gracefully terminate. Once the
+    /// timer expires, it will abort the service/handler invocation.
+    ///
+    /// This timer potentially **interrupts** user code. If the user code needs longer to
+    /// gracefully terminate, then this value needs to be set accordingly.
+    pub abort_timeout: FriendlyDuration,
+
+    /// # Message size warning
+    ///
+    /// Threshold to log a warning in case protocol messages coming from a service are larger than the specified amount.
+    pub message_size_warning: NonZeroByteCount,
+
+    /// # Message size limit
+    ///
+    /// Maximum size of journal messages that can be received from a service. If a service sends a message
+    /// larger than this limit, the invocation will fail.
+    ///
+    /// If unset, defaults to `networking.message-size-limit`. If set, it will be clamped at
+    /// the value of `networking.message-size-limit` since larger messages cannot be transmitted
+    /// over the cluster internal network.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message_size_limit: Option<NonZeroByteCount>,
+
+    /// # Temporary directory
+    ///
+    /// Temporary directory to use for the invoker temporary files.
+    /// If empty, the system temporary directory will be used instead.
+    tmp_dir: Option<PathBuf>,
+
+    /// # Spill invocations to disk
+    ///
+    /// Defines the threshold after which queues invocations will spill to disk at
+    /// the path defined in `tmp-dir`. In other words, this is the number of invocations
+    /// that can be kept in memory before spilling to disk. This is a per-partition limit.
+    in_memory_queue_length_limit: NonZeroUsize,
+
+    /// # Limit number of concurrent invocations from this node
+    ///
+    /// Number of concurrent invocations that can be processed by the invoker.
+    concurrent_invocations_limit: Option<NonZeroUsize>,
+
+    /// # Eager state size limit (since v1.7.0)
+    ///
+    /// Maximum total size (in bytes) of state entries to send eagerly in the StartMessage.
+    /// When the total size of state entries exceeds this limit, only a partial state is sent
+    /// and the service will fetch remaining state lazily using GetEagerState commands.
+    ///
+    /// Set to `0` to disable eager state entirely (equivalent to enabling lazy state).
+    ///
+    /// This helps reduce memory pressure on deployments for services with large state.
+    /// If unset, defaults to `message-size-limit` (clamped to that value if set higher).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    eager_state_size_limit: Option<ByteCount>,
+
+    // -- Private config options (not exposed in the schema)
+    /// Deprecated since v1.7.0: Use `eager_state_size_limit` with a value of `0` instead.
+    /// When true, treated as `eager_state_size_limit = 0` (no eager state).
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub disable_eager_state: bool,
+
+    /// # Invocation throttling
+    ///
+    /// Configures throttling for service invocations at the node level.
+    /// This throttling mechanism uses a token bucket algorithm to control the rate
+    /// at which invocations can be processed, helping to prevent resource exhaustion
+    /// and maintain system stability under high load.
+    ///
+    /// The throttling limit is shared across all partitions running on this node,
+    /// providing a global rate limit for the entire node rather than per-partition limits.
+    /// When `unset`, no throttling is applied and invocations are processed
+    /// without throttling.
+    pub invocation_throttling: Option<ThrottlingOptions>,
+
+    /// # Action throttling
+    ///
+    /// Configures rate limiting for service actions at the node level.
+    /// This throttling mechanism uses a token bucket algorithm to control the rate
+    /// at which actions can be processed, helping to prevent resource exhaustion
+    /// and maintain system stability under high load.
+    ///
+    /// The throttling limit is shared across all partitions running on this node,
+    /// providing a global rate limit for the entire node rather than per-partition limits.
+    /// When `unset`, no throttling is applied and actions are processed
+    /// without throttling.
+    pub action_throttling: Option<ThrottlingOptions>,
+
+    /// # Memory limit
+    ///
+    /// Global memory budget for the invoker, shared across all partitions on this node.
+    /// This controls how much memory can be used for in-flight journal entries, state,
+    /// and protocol messages between the invoker and service deployments.
+    ///
+    /// To effectively disable memory limiting, set this to a very large value.
+    ///
+    /// Since v1.7.0
+    pub memory_limit: NonZeroByteCount,
+
+    /// # Per-invocation memory limit
+    ///
+    /// Maximum memory (in bytes) a single invocation may use per direction (inbound and
+    /// outbound). Once an invocation's directional budget reaches this ceiling it must
+    /// wait for in-flight data to be consumed or yield back to the scheduler.
+    ///
+    /// If unset, defaults to `message-size-limit`. If set, it will be clamped at
+    /// the value of `message-size-limit`.
+    ///
+    /// Since v1.7.0
+    #[serde(skip_serializing_if = "Option::is_none")]
+    per_invocation_memory_limit: Option<ByteCount>,
+
+    /// # Per-invocation initial memory
+    ///
+    /// Memory (in bytes) reserved from the global memory pool before an invocation
+    /// starts. Used for the outbound budget and acts as the minimum reserved floor.
+    ///
+    /// Smaller values allow more concurrent invocations but may cause frequent
+    /// round-trips to the global pool. Larger values reduce contention but limit
+    /// maximum concurrency.
+    ///
+    /// Since v1.7.0
+    pub per_invocation_initial_memory: NonZeroByteCount,
+
+    /// # Service client options
+    ///
+    /// Configures the HTTP/Lambda client the invoker uses to call service deployments.
+    /// Covers HTTP connection tuning (keep-alive, proxy, timeouts, HTTP/2 windows),
+    /// AWS Lambda settings, the optional request-identity signing key, and any
+    /// additional outbound headers applied to every invocation request.
+    ///
+    /// Since v1.7.0
+    #[serde(flatten)]
+    pub service_client: ServiceClientOptions,
+
+    /// # Maximum awaited future nesting depth
+    ///
+    /// The maximum nesting depth allowed for the futures (promises) an invocation
+    /// awaits on. Restate futures can be composed with combinators (e.g. `all`,
+    /// `race`), and each level of composition adds one level of nesting. This limit
+    /// bounds how deeply such futures may be nested, guarding against unbounded or
+    /// runaway recursion in service code.
+    ///
+    /// When an invocation awaits on (or suspends on) a future whose nesting depth
+    /// exceeds this limit, the attempt fails with a "maximum promise recursion
+    /// reached" error, and the invocation is then handled according to
+    /// `on-future-recursion-limit`.
+    ///
+    /// Default: `1000`.
+    ///
+    /// Since v1.7.3
+    pub max_awaited_future_depth: usize,
+}
+
+impl InvokerOptions {
+    pub fn gen_tmp_dir(&self) -> PathBuf {
+        self.tmp_dir.clone().unwrap_or_else(|| {
+            std::env::temp_dir().join(format!("{}-{}", "invoker", ulid::Ulid::new()))
+        })
+    }
+
+    pub fn concurrent_invocations_limit(&self) -> Option<NonZeroUsize> {
+        self.concurrent_invocations_limit
+    }
+
+    pub fn in_memory_queue_length_limit(&self) -> usize {
+        self.in_memory_queue_length_limit.into()
+    }
+
+    pub fn message_size_limit(&self) -> NonZeroUsize {
+        let limit = self
+            .message_size_limit
+            .map(|v| v.as_non_zero_usize())
+            .unwrap_or(DEFAULT_MESSAGE_SIZE_LIMIT);
+
+        if cfg!(any(test, feature = "test-util")) {
+            // In tests, we don't want to leave overhead
+            limit
+        } else {
+            // We only add 1/4 of the overhead to leave room for outer envelope/messages
+            limit.saturating_add(MESSAGE_SIZE_OVERHEAD.div_ceil(4))
+        }
+    }
+
+    /// Resolved per-invocation per-direction memory upper bound.
+    /// Falls back to `message_size_limit()` when unset.
+    pub fn per_invocation_memory_limit(&self) -> NonZeroByteCount {
+        self.per_invocation_memory_limit
+            .and_then(|v| NonZeroUsize::new(v.as_usize()))
+            .map(NonZeroByteCount::new)
+            .unwrap_or_else(|| NonZeroByteCount::new(self.message_size_limit()))
+    }
+
+    /// Resolved eager state size limit in bytes. After `merge()`, this is guaranteed
+    /// to be clamped to the message size limit. `0` means eager state is disabled.
+    pub fn eager_state_size_limit(&self) -> usize {
+        self.eager_state_size_limit
+            .map(|v| v.as_usize())
+            .unwrap_or_else(|| self.message_size_limit().get())
+    }
+
+    pub(crate) fn merge(&mut self, common: &CommonOptions, opts: &NetworkingOptions) {
+        #[allow(deprecated)]
+        self.service_client
+            .apply_deprecated("worker.invoker", common.service_client.clone());
+
+        if self.service_client.additional_request_headers.is_none() {
+            let cluster_name_visible_ascii = common
+                .cluster_name()
+                .chars()
+                .filter(|c| *c >= ' ' && *c <= '~')
+                .collect::<String>();
+
+            self.service_client.additional_request_headers = Some(
+                std::collections::HashMap::from_iter([(
+                    X_RESTATE_CLUSTER_NAME,
+                    http::HeaderValue::from_str(&cluster_name_visible_ascii)
+                        .expect("a visible ascii string must be a valid header value"),
+                )])
+                .into(),
+            )
+        }
+
+        self.message_size_limit = Some(
+            self.message_size_limit
+                .map(|limit| limit.min(opts.message_size_limit))
+                .unwrap_or(opts.message_size_limit),
+        );
+
+        // Resolve per_invocation_memory_limit, clamped to message_size_limit
+        self.per_invocation_memory_limit = Some(
+            self.per_invocation_memory_limit
+                .map(|limit| limit.min(opts.message_size_limit.into()))
+                .unwrap_or_else(|| opts.message_size_limit.into()),
+        );
+
+        // Fuse deprecated disable_eager_state into eager_state_size_limit
+        if self.disable_eager_state {
+            if self.eager_state_size_limit.is_some_and(|v| v.as_u64() > 0) {
+                warn!(
+                    "Both 'disable-eager-state' and 'eager-state-size-limit' are set; \
+                     'eager-state-size-limit' takes precedence. \
+                     'disable-eager-state' is deprecated, use 'eager-state-size-limit = \"0\"' instead."
+                );
+            } else if self.eager_state_size_limit.is_none() {
+                self.eager_state_size_limit = Some(ByteCount::ZERO);
+            }
+        }
+
+        // Clamp eager_state_size_limit to the resolved message_size_limit.
+        // The eager_state_size_limit must not be larger than the per_invocation_memory_limit
+        // because that's the maximum amount of memory used for the outbound/inbound direction.
+        self.eager_state_size_limit = Some(
+            self.eager_state_size_limit
+                .unwrap_or_else(|| opts.message_size_limit.into()),
+        )
+        .map(|limit| {
+            limit
+                .min(opts.message_size_limit.into())
+                .min(self.per_invocation_memory_limit.unwrap_or(ByteCount::MAX))
+        });
+    }
+}
+
+impl Default for InvokerOptions {
+    fn default() -> Self {
+        Self {
+            in_memory_queue_length_limit: NonZeroUsize::new(66_049).unwrap(),
+            inactivity_timeout: FriendlyDuration::new(DEFAULT_INACTIVITY_TIMEOUT),
+            abort_timeout: FriendlyDuration::new(DEFAULT_ABORT_TIMEOUT),
+            message_size_warning: NonZeroByteCount::new(
+                NonZeroUsize::new(10 * 1024 * 1024).unwrap(),
+            ),
+            message_size_limit: None,
+            tmp_dir: None,
+            concurrent_invocations_limit: Some(NonZeroUsize::new(1000).expect("is non zero")),
+            eager_state_size_limit: None,
+            disable_eager_state: false,
+            invocation_throttling: None,
+            action_throttling: None,
+            memory_limit: NonZeroByteCount::new(
+                NonZeroUsize::new(1536 * 1024 * 1024).unwrap(), // 1.5 GiB
+            ),
+            per_invocation_memory_limit: None,
+            per_invocation_initial_memory: DEFAULT_PER_INVOCATION_INITIAL_MEMORY,
+            service_client: ServiceClientOptions::default(),
+            max_awaited_future_depth: 1000,
+        }
+    }
+}
+
+/// # Service Client options
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize, derive_builder::Builder)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "schemars",
+    schemars(rename = "ServiceClientOptions", default)
+)]
+#[builder(default)]
+#[serde(rename_all = "kebab-case")]
+pub struct ServiceClientOptions {
+    #[serde(flatten)]
+    pub http: HttpOptions,
+    #[serde(flatten)]
+    pub lambda: AwsLambdaOptions,
+
+    /// # Request identity private key PEM file
+    ///
+    /// A path to a file, such as "/var/secrets/key.pem", which contains exactly one ed25519 private
+    /// key in PEM format. Such a file can be generated with `openssl genpkey -algorithm ed25519`.
+    /// If provided, this key will be used to attach JWTs to requests from this client which
+    /// SDKs may optionally verify, proving that the caller is a particular Restate instance.
+    ///
+    /// This file is currently only read on client creation, but this may change in future.
+    /// Parsed public keys will be logged at INFO level in the same format that SDKs expect.
+    pub request_identity_private_key_pem_file: Option<PathBuf>,
+
+    /// # Request identity expiration leeway
+    ///
+    /// The validity window of the JWTs attached to outgoing requests when a request identity key is
+    /// configured. The token's `exp` (expiry) is set to `now + leeway` and its `nbf` (not-before) to
+    /// `now - leeway`, so this value bounds both how long a token remains valid and how much clock
+    /// skew between this client and the receiving SDK is tolerated.
+    ///
+    /// The minimum expiration leeway is 1s and lower values will be automatically clamped.
+    /// Default: 60s.
+    ///
+    /// Since v1.7.0
+    request_identity_expiration: NonZeroFriendlyDuration,
+
+    /// # Additional request headers
+    ///
+    /// Headers that should be applied to all outgoing requests (HTTP and Lambda).
+    /// Defaults to `x-restate-cluster-name: <cluster name>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub additional_request_headers: Option<SerdeableHeaderHashMap>,
+}
+
+const DEFAULT_REQUEST_IDENTITY_EXPIRATION: NonZeroFriendlyDuration =
+    NonZeroFriendlyDuration::new_unchecked(Duration::from_secs(60));
+
+impl Default for ServiceClientOptions {
+    fn default() -> Self {
+        Self {
+            http: HttpOptions::default(),
+            lambda: AwsLambdaOptions::default(),
+            request_identity_private_key_pem_file: None,
+            request_identity_expiration: DEFAULT_REQUEST_IDENTITY_EXPIRATION,
+            additional_request_headers: None,
+        }
+    }
+}
+
+impl ServiceClientOptions {
+    // todo: Remove in Restate v1.8
+    pub(crate) fn apply_deprecated(
+        &mut self,
+        new_base: &str,
+        deprecated: DeprecatedServiceClientOptions,
+    ) {
+        let DeprecatedServiceClientOptions {
+            http,
+            lambda,
+            request_identity_private_key_pem_file,
+            additional_request_headers,
+        } = deprecated;
+
+        self.http.apply_deprecated(new_base, http);
+        self.lambda.apply_deprecated(new_base, lambda);
+
+        super::apply_deprecated_field_optional(
+            &mut self.request_identity_private_key_pem_file,
+            request_identity_private_key_pem_file,
+            new_base,
+            "request-identity-private-key-pem-file",
+            None,
+        );
+        super::apply_deprecated_field_optional(
+            &mut self.additional_request_headers,
+            additional_request_headers,
+            new_base,
+            "additional-request-headers",
+            None,
+        );
+    }
+
+    pub fn request_identity_expiration(&self) -> NonZeroFriendlyDuration {
+        self.request_identity_expiration
+            .max(NonZeroFriendlyDuration::from_secs_unchecked(1))
+    }
+}
+
+/// Shadow of [`ServiceClientOptions`] for the deprecated `service-client` root location. Every
+/// leaf field is `Option<T>` so `None` means "user didn't set it" and `Some(_)` means "user set
+/// this value".
+// todo: Remove in Restate v1.8
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
+pub(crate) struct DeprecatedServiceClientOptions {
+    #[serde(flatten)]
+    pub http: DeprecatedHttpOptions,
+    #[serde(flatten)]
+    pub lambda: DeprecatedAwsLambdaOptions,
+    pub request_identity_private_key_pem_file: Option<PathBuf>,
+    pub additional_request_headers: Option<SerdeableHeaderHashMap>,
+}
+
+/// # Storage options
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize, derive_builder::Builder)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", schemars(rename = "StorageOptions", default))]
+#[serde(rename_all = "kebab-case")]
+#[builder(default)]
+pub struct StorageOptions {
+    #[serde(flatten)]
+    pub rocksdb: RocksDbOptions,
+
+    /// The memory budget for rocksdb memtables in bytes
+    ///
+    /// The total is divided evenly across partitions. The server will rebalance the memory budget
+    /// periodically depending on the number of running partitions on this node.
+    ///
+    /// If this value is set, it overrides the ratio defined in `rocksdb-memory-ratio`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rocksdb_memory_budget: Option<NonZeroByteCount>,
+
+    /// The memory budget for rocksdb memtables as ratio
+    ///
+    /// This defines the total memory for rocksdb as a ratio of all memory available to memtables
+    /// (See `rocksdb-total-memtables-ratio` in common). The budget is then divided evenly across
+    /// partitions.
+    rocksdb_memory_ratio: f32,
+
+    /// Whether to perform commits in background IO thread pools eagerly or not
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub always_commit_in_background: bool,
+
+    /// # Disable compact-on-deletion collector
+    ///
+    /// When set to `true`, disables RocksDB's CompactOnDeletionCollector for partition stores.
+    /// The collector automatically triggers compaction when SST files accumulate a high density
+    /// of tombstones (deletion markers), helping reclaim disk space after bulk deletions.
+    ///
+    /// This helps control space amplification when invocation journal retention expires and
+    /// the cleaner purges completed invocations.
+    ///
+    /// Consider disabling this if you observe frequent unnecessary compactions triggered by
+    /// the collector causing performance issues.
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub rocksdb_disable_compact_on_deletion: bool,
+
+    /// # Compact-on-deletion sliding window size
+    ///
+    /// The number of consecutive keys examined by the CompactOnDeletionCollector. If the window
+    /// contains at least `rocksdb-compact-on-deletions-count` tombstones, the SST file is marked
+    /// for compaction.
+    ///
+    /// Larger windows detect sparser deletion patterns but increase scanning overhead.
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    #[serde(
+        skip_serializing_if = "serde_helpers::is_default_compact_on_deletions_window",
+        default = "serde_helpers::default_compact_on_deletions_window"
+    )]
+    pub rocksdb_compact_on_deletions_window: NonZeroUsize,
+
+    /// # Compact-on-deletion tombstone count trigger
+    ///
+    /// Minimum number of tombstones within the sliding window that triggers compaction.
+    /// With default values (window=1000, count=100), compaction triggers when at least 10%
+    /// of keys in any window are tombstones.
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    #[serde(
+        skip_serializing_if = "serde_helpers::is_default_compact_on_deletions_count",
+        default = "serde_helpers::default_compact_on_deletions_count"
+    )]
+    pub rocksdb_compact_on_deletions_count: NonZeroUsize,
+
+    /// # Compact-on-deletion ratio trigger
+    ///
+    /// Overall deletion ratio threshold for the entire SST file. If the proportion of
+    /// tombstones to total entries exceeds this ratio, the file is marked for compaction
+    /// regardless of the sliding window check.
+    ///
+    /// Valid range is (0.0, 1.0]. Values outside this range disable ratio-based triggering,
+    /// relying solely on the sliding window.
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    #[serde(
+        skip_serializing_if = "serde_helpers::is_default_compact_on_deletions_ratio",
+        default = "serde_helpers::default_compact_on_deletions_ratio"
+    )]
+    pub rocksdb_compact_on_deletions_ratio: f64,
+
+    /// # Compact-on-deletion minimum SST file size
+    ///
+    /// Minimum SST file size in bytes before the compact-on-deletion collector will consider
+    /// marking the file for compaction. Files smaller than this threshold are ignored even if
+    /// they exceed the deletion count or ratio triggers.
+    ///
+    /// Set to 0 to disable the minimum file size check (default).
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    #[serde(
+        skip_serializing_if = "serde_helpers::is_default_compact_on_deletions_min_sst_file_size",
+        default = "serde_helpers::default_compact_on_deletions_min_sst_file_size"
+    )]
+    pub rocksdb_compact_on_deletions_min_sst_file_size: ByteCount,
+
+    /// # Disable automatic rocksdb memory reclaimer
+    ///
+    /// When set to `true`, disables RocksDB's memory reclaimer for partition stores.
+    /// The reclaimer automatically reclaims memory from memtables when they are no longer
+    /// needed, or when the total memtable budget is exceeded. Disabling this will cause
+    /// rocksdb to exceed the specific budget under extreme conditions and when flushes
+    /// are falling behind. The benefit of disabling the reclaimer is reduce the chances
+    /// of rocksdb write stalls under heavy load.
+    ///
+    /// [Supports configuration hot-reloading]
+    pub rocksdb_disable_auto_memory_reclaimer: bool,
+
+    /// # Max background flushes
+    ///
+    /// Maximum number of concurrent flush operations for the partition-store database.
+    /// Flushes are latency-critical (they unblock writes) and are allocated equally
+    /// across databases.
+    ///
+    /// If unset, defaults are computed based on CPU count and active node roles.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    rocksdb_max_background_flushes: Option<NonZeroU32>,
+
+    /// # Max background compactions
+    ///
+    /// Maximum number of concurrent compaction operations for the partition-store database.
+    /// The partition-store typically has many column families generating compaction demand,
+    /// so it gets a larger share of the compaction budget (~65%).
+    ///
+    /// If unset, defaults are computed based on CPU count and active node roles.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    rocksdb_max_background_compactions: Option<NonZeroU32>,
+
+    /// The maximum number of subcompactions to run in parallel.
+    ///
+    /// Setting this to 1 means no sub-compactions are allowed.
+    ///
+    /// Default is 1
+    ///
+    /// Since v1.7.5
+    rocksdb_max_sub_compactions: u32,
+
+    /// # Target size for SST files
+    ///
+    /// The target size for sst files. Restate uses this value to internally determine
+    /// the number of memtables to keep in memory and how much to merge before flushing.
+    ///
+    /// The value is automatically sanitized to 8 MiB if set to a smaller value.
+    ///
+    /// [default] is 64 MiB
+    ///
+    /// Since v1.7.0
+    pub rocksdb_max_file_size: NonZeroByteCount,
+
+    /// # Buffer size used for writing to SST files
+    ///
+    /// Sets the maximum buffer size that is used to write SST files to disk.
+    /// Larger values translate to larger IO operations which can be helpful
+    /// for slow or network-attached storage devices.
+    ///
+    /// [default] is 1 MiB
+    ///
+    /// Since v1.7.7
+    pub rocksdb_writable_file_max_buffer_size: NonZeroByteCount,
+
+    /// # Number of L0 files to trigger compaction
+    ///
+    /// Sets the number of files to trigger level-0 compaction.
+    ///
+    /// [default] is 2
+    ///
+    /// Since v1.7.7
+    pub rocksdb_l0_num_compaction_trigger: NonZeroU32,
+
+    /// # Max open files
+    ///
+    /// Sets the number of open files that can be used by the DB. You may need to
+    /// increase this if your database has a large working set. Unset means
+    /// files opened are always kept open.
+    ///
+    /// [default] is unset
+    ///
+    /// Since v1.7.7
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rocksdb_max_open_files: Option<NonZeroU32>,
+
+    /// # Max Successive Merge Operations
+    ///
+    /// When a merge operation is added to the memtable and the maximum number of
+    /// successive merges is reached, the value of the key will be calculated and
+    /// inserted into the memtable instead of the merge operation. This will
+    /// ensure that there are never more than max_successive_merges merge
+    /// operations in the memtable.
+    ///
+    /// Since v1.7.8
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    #[serde(default, skip_serializing_if = "is_default_max_successive_merges")]
+    pub rocksdb_max_successive_merges: u16,
+}
+
+impl StorageOptions {
+    pub fn apply_common(&mut self, common: &CommonOptions) {
+        self.rocksdb.apply_common(&common.rocksdb);
+        if self.rocksdb_memory_budget.is_none() {
+            self.rocksdb_memory_budget = Some(
+                NonZeroByteCount::try_from(
+                    ((common.rocksdb_total_memtables_size().as_u64() as f64
+                        * self.rocksdb_memory_ratio as f64) as u64)
+                        .max(MIN_ROCKSDB_MEMORY.as_u64()),
+                )
+                .unwrap(),
+            );
+        }
+    }
+
+    pub fn apply_background_work_budget(&mut self, budget: &BackgroundWorkBudget) {
+        if self.rocksdb_max_background_flushes.is_none() {
+            self.rocksdb_max_background_flushes = Some(budget.max_background_flushes);
+        }
+        if self.rocksdb_max_background_compactions.is_none() {
+            self.rocksdb_max_background_compactions = Some(budget.max_background_compactions);
+        }
+    }
+
+    pub fn rocksdb_max_background_flushes(&self) -> NonZeroU32 {
+        self.rocksdb_max_background_flushes
+            .unwrap_or(NonZeroU32::new(1).unwrap())
+    }
+
+    pub fn rocksdb_max_background_compactions(&self) -> NonZeroU32 {
+        self.rocksdb_max_background_compactions
+            .unwrap_or(NonZeroU32::new(1).unwrap())
+    }
+
+    pub fn rocksdb_max_sub_compactions(&self) -> u32 {
+        if self.rocksdb_max_sub_compactions == 0 {
+            1
+        } else {
+            self.rocksdb_max_sub_compactions
+        }
+    }
+
+    pub fn rocksdb_memory_budget(&self) -> NonZeroByteCount {
+        self.rocksdb_memory_budget
+            .unwrap_or_else(|| {
+                warn!(
+                    "PartitionStore rocksdb_memory_budget is not set, defaulting to {MIN_ROCKSDB_MEMORY}"
+                );
+                MIN_ROCKSDB_MEMORY
+            })
+    }
+
+    pub fn set_rocksdb_memory_budget(&mut self, budget: NonZeroByteCount) {
+        self.rocksdb_memory_budget = Some(budget);
+    }
+
+    pub fn data_dir(&self, db_name: &str) -> PathBuf {
+        super::data_dir(db_name)
+    }
+
+    pub fn snapshots_staging_dir(&self) -> PathBuf {
+        super::data_dir("pp-snapshots")
+    }
+}
+
+impl Default for StorageOptions {
+    fn default() -> Self {
+        #[allow(deprecated)]
+        StorageOptions {
+            rocksdb: RocksDbOptions::default(),
+            // set by apply_common in runtime
+            rocksdb_memory_budget: None,
+            rocksdb_memory_ratio: 0.49,
+            always_commit_in_background: false,
+            rocksdb_disable_compact_on_deletion: false,
+            rocksdb_compact_on_deletions_window: serde_helpers::default_compact_on_deletions_window(
+            ),
+            rocksdb_compact_on_deletions_count: serde_helpers::default_compact_on_deletions_count(),
+            rocksdb_compact_on_deletions_ratio: serde_helpers::default_compact_on_deletions_ratio(),
+            rocksdb_compact_on_deletions_min_sst_file_size:
+                serde_helpers::default_compact_on_deletions_min_sst_file_size(),
+            rocksdb_disable_auto_memory_reclaimer: false,
+            rocksdb_max_background_flushes: None,
+            rocksdb_max_background_compactions: None,
+            rocksdb_max_sub_compactions: 1,
+            rocksdb_max_file_size: NonZeroByteCount::new(
+                NonZeroUsize::new(64 * 1024 * 1024).unwrap(),
+            ),
+            rocksdb_writable_file_max_buffer_size: NonZeroByteCount::new(
+                NonZeroUsize::new(1024 * 1024).unwrap(),
+            ),
+            rocksdb_l0_num_compaction_trigger: NonZeroU32::new(2).unwrap(),
+            rocksdb_max_open_files: None,
+            rocksdb_max_successive_merges: DEFAULT_MAX_SUCCESSIVE_MERGES,
+        }
+    }
+}
+
+fn is_default_max_successive_merges(i: &u16) -> bool {
+    *i == DEFAULT_MAX_SUCCESSIVE_MERGES
+}
+
+/// # Snapshot options
+///
+/// Partition store object-store snapshotting settings. At a minimum, set `destination` to enable
+/// manual snapshotting via `restatectl`. Additionally, `snapshot-interval` and
+/// `snapshot-interval-num-records` can be used to configure automated periodic snapshots. For a
+/// complete example, see [Snapshots](https://docs.restate.dev/operate/snapshots).
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize, derive_builder::Builder)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", schemars(rename = "SnapshotsOptions", default))]
+#[serde(rename_all = "kebab-case")]
+#[builder(default)]
+pub struct SnapshotsOptions {
+    /// # Snapshot destination URL
+    ///
+    /// Base URL for cluster snapshots. Currently only supports the `s3://` protocol scheme.
+    /// S3-compatible object stores must support ETag-based conditional writes.
+    ///
+    /// Default: `None`
+    pub destination: Option<String>,
+
+    /// # Automatic snapshot time interval
+    ///
+    /// A time interval at which partition snapshots will be created. If
+    /// `snapshot-interval-num-records` is also set, it will be treated as an additional requirement
+    /// before a snapshot is taken. Use both time-based and record-based intervals to reduce the
+    /// number of snapshots created during times of low activity.
+    ///
+    /// Snapshot intervals are calculated based on the wall clock timestamps reported by cluster
+    /// nodes, assuming a basic level of clock synchronization within the cluster.
+    ///
+    /// This setting does not influence explicitly requested snapshots triggered using `restatectl`.
+    ///
+    /// Default: `None` - automatic snapshots are disabled
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub snapshot_interval: Option<FriendlyDuration>,
+
+    /// # Automatic snapshot minimum records
+    ///
+    /// Number of log records that trigger a snapshot to be created.
+    ///
+    /// As snapshots are created asynchronously, the actual number of new records that will trigger
+    /// a snapshot will vary. The counter for the subsequent snapshot begins from the LSN at which
+    /// the previous snapshot export was initiated.
+    ///
+    /// This setting does not influence explicitly requested snapshots triggered using `restatectl`.
+    ///
+    /// Default: `None` - automatic snapshots are disabled
+    pub snapshot_interval_num_records: Option<NonZeroU64>,
+
+    #[serde(flatten)]
+    pub object_store: ObjectStoreOptions,
+
+    /// # Error retry policy
+    ///
+    /// A retry policy for dealing with retryable object store errors.
+    pub object_store_retry_policy: RetryPolicy,
+
+    /// # Snapshot retention count
+    ///
+    /// Number of most recent snapshots to retain. Older snapshots will be
+    /// deleted automatically. Only snapshots created after this setting is enabled will
+    /// be considered for pruning.
+    ///
+    /// Retaining multiple snapshots causes the partition archived LSN to be reported as that of the
+    /// oldest retained snapshot. Therefore, retaining multiple snapshots will cause increased disk
+    /// usage on log-server nodes.
+    ///
+    /// Default: `1`
+    ///
+    /// Since v1.7.0
+    #[serde(default = "default_num_retained")]
+    pub num_retained: NonZeroU8,
+
+    /// # Export concurrency limit
+    ///
+    /// Maximum number of concurrent partition snapshot exports. This controls how
+    /// many partition stores can simultaneously export snapshots to the snapshot
+    /// repository.
+    ///
+    /// Default: 4
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub export_concurrency_limit: Option<NonZeroU32>,
+
+    #[cfg(any(test, feature = "test-util"))]
+    pub enable_cleanup: bool,
+}
+
+fn default_num_retained() -> NonZero<u8> {
+    NonZeroU8::new(1).unwrap()
+}
+
+impl Default for SnapshotsOptions {
+    fn default() -> Self {
+        Self {
+            destination: None,
+            snapshot_interval: None,
+            snapshot_interval_num_records: None,
+            object_store: Default::default(),
+            object_store_retry_policy: Self::default_retry_policy(),
+            num_retained: default_num_retained(),
+            export_concurrency_limit: None,
+            #[cfg(any(test, feature = "test-util"))]
+            enable_cleanup: true,
+        }
+    }
+}
+
+impl SnapshotsOptions {
+    fn default_retry_policy() -> RetryPolicy {
+        RetryPolicy::exponential(
+            Duration::from_millis(100),
+            2.,
+            Some(10),
+            Some(Duration::from_secs(10)),
+        )
+    }
+
+    pub fn export_concurrency_limit(&self) -> u32 {
+        self.export_concurrency_limit.map(|v| v.get()).unwrap_or(4)
+    }
+
+    pub fn snapshots_base_dir(&self) -> PathBuf {
+        super::data_dir("db-snapshots")
+    }
+
+    pub fn snapshots_dir(&self, partition_id: PartitionId) -> PathBuf {
+        super::data_dir("db-snapshots").join(partition_id.to_string())
+    }
+}
+
+mod serde_helpers {
+    use std::num::NonZeroUsize;
+
+    use restate_util_bytecount::ByteCount;
+
+    pub const fn default_compact_on_deletions_window() -> NonZeroUsize {
+        // SAFETY: 1000 is non-zero
+        unsafe { NonZeroUsize::new_unchecked(1000) }
+    }
+
+    pub fn is_default_compact_on_deletions_window(v: &NonZeroUsize) -> bool {
+        *v == default_compact_on_deletions_window()
+    }
+
+    pub const fn default_compact_on_deletions_count() -> NonZeroUsize {
+        // SAFETY: 100 is non-zero
+        unsafe { NonZeroUsize::new_unchecked(100) }
+    }
+
+    pub fn is_default_compact_on_deletions_count(v: &NonZeroUsize) -> bool {
+        *v == default_compact_on_deletions_count()
+    }
+
+    pub const fn default_compact_on_deletions_ratio() -> f64 {
+        0.25
+    }
+
+    pub fn is_default_compact_on_deletions_ratio(v: &f64) -> bool {
+        *v == default_compact_on_deletions_ratio()
+    }
+
+    pub const fn default_compact_on_deletions_min_sst_file_size() -> ByteCount {
+        ByteCount::<true>::new(0)
+    }
+
+    pub fn is_default_compact_on_deletions_min_sst_file_size(v: &ByteCount) -> bool {
+        *v == default_compact_on_deletions_min_sst_file_size()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    #[test]
+    fn scheduler_is_enabled_by_default_and_can_be_disabled() {
+        let options = WorkerOptions::default();
+        assert!(!options.disable_scheduler);
+
+        let mut value = serde_json::to_value(options).unwrap();
+        value["disable-scheduler"] = true.into();
+
+        let options: WorkerOptions = serde_json::from_value(value).unwrap();
+        assert!(options.disable_scheduler);
+    }
+
+    #[test]
+    fn apply_deprecated_precedence() {
+        let base = "worker.invoker";
+
+        // empty shadow: canonical is untouched.
+        let mut new = ServiceClientOptions::default();
+        new.lambda.aws_profile = Some("kept".to_owned());
+        new.apply_deprecated(base, DeprecatedServiceClientOptions::default());
+        assert_eq!(new.lambda.aws_profile.as_deref(), Some("kept"));
+
+        // deprecated-only: the value migrates from the old location into the new one
+        // (also exercises delegation into the flattened `lambda` child).
+        let mut new = ServiceClientOptions::default();
+        let deprecated = DeprecatedServiceClientOptions {
+            lambda: DeprecatedAwsLambdaOptions {
+                aws_profile: Some("old".to_owned()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        new.apply_deprecated(base, deprecated);
+        assert_eq!(new.lambda.aws_profile.as_deref(), Some("old"));
+
+        // both set: deprecated wins (preserves the user's prior effective behavior during the
+        // migration window; warning fires telling them to remove the deprecated key).
+        let mut new = ServiceClientOptions::default();
+        new.http.connect_timeout = NonZeroFriendlyDuration::from_secs_unchecked(7);
+        let deprecated = DeprecatedServiceClientOptions {
+            http: DeprecatedHttpOptions {
+                connect_timeout: Some(NonZeroFriendlyDuration::from_secs_unchecked(5)),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        new.apply_deprecated(base, deprecated);
+        assert_eq!(
+            new.http.connect_timeout,
+            NonZeroFriendlyDuration::from_secs_unchecked(5)
+        );
+
+        // an own field migrates through the same logic
+        let mut new = ServiceClientOptions::default();
+        let deprecated = DeprecatedServiceClientOptions {
+            request_identity_private_key_pem_file: Some("/key.pem".into()),
+            ..Default::default()
+        };
+        new.apply_deprecated(base, deprecated);
+        assert_eq!(
+            new.request_identity_private_key_pem_file.as_deref(),
+            Some(Path::new("/key.pem"))
+        );
+    }
+    #[test]
+
+    fn sanitize_rocksdb_max_sub_compactions() {
+        let mut options = StorageOptions::default();
+        assert_eq!(options.rocksdb_max_sub_compactions(), 1);
+
+        options.rocksdb_max_sub_compactions = 0;
+        assert_eq!(options.rocksdb_max_sub_compactions(), 1);
+
+        options.rocksdb_max_sub_compactions = 4;
+        assert_eq!(options.rocksdb_max_sub_compactions(), 4);
+    }
+}

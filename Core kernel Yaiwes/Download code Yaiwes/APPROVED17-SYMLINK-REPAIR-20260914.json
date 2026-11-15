@@ -1,0 +1,10 @@
+{
+  "schema": "yaiwes.download-extract.approved17.symlink-repair/v1",
+  "destination_root": "Core kernel Yaiwes",
+  "queue": [
+    {"id":"A17-R01","source_repo":"https://github.com/Yelp/detect-secrets.git","source_ref":"HEAD","slug":"detect-secrets","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-R02","source_repo":"https://github.com/semgrep/semgrep.git","source_ref":"HEAD","slug":"semgrep","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-R03","source_repo":"https://github.com/open-policy-agent/gatekeeper.git","source_ref":"HEAD","slug":"gatekeeper","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true},
+    {"id":"A17-R04","source_repo":"https://github.com/great-expectations/great_expectations.git","source_ref":"HEAD","slug":"great-expectations","dest_repo":"maxbry123-commits/agentes","dest_branch":"main","dest_root":"Core kernel Yaiwes","publish":true}
+  ]
+}

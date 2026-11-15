@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "TruLens",
+    "path": "examples/experimental/end2end_apps/trubot/hnswlib_trubot/embedding.bin",
+    "chunks_dir": "TruLens/examples/experimental/end2end_apps/trubot/hnswlib_trubot/embedding.bin.chunks",
+    "bytes": 19406432,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "TruLens",
+    "path": "examples/expositional/vector_stores/hnsw/hnswlib_trubot/embedding.bin",
+    "chunks_dir": "TruLens/examples/expositional/vector_stores/hnsw/hnswlib_trubot/embedding.bin.chunks",
+    "bytes": 9621384,
+    "chunk_bytes": 8388608
+  }
+]

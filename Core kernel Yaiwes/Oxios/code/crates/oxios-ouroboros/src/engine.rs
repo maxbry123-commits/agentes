@@ -1,0 +1,505 @@
+//! IntentEngine: external review for directives that carry acceptance criteria.
+//!
+//! RFC-033 removed the `assess` and `crystallize` external LLM gates.
+//! Every message now streams through the agent loop directly (see
+//! `Orchestrator::handle`); the agent's own UNDERSTAND → PLAN → EXECUTE
+//! → VERIFY → REPORT protocol replaces them. The only surviving external
+//! call is `review`, gated on a Directive that carries acceptance criteria.
+
+use anyhow::Result;
+use futures::StreamExt;
+use oxicode_sdk::{Context, Message, ProviderEvent, UserMessage};
+use parking_lot::Mutex;
+use serde::Deserialize;
+use std::sync::Arc;
+
+use crate::directive::{Directive, Verdict};
+use crate::fallback;
+use crate::fallback::MechanicalEvalResult;
+use crate::model_resolver::{ModelResolver, ResolvedModel};
+use crate::prompts::REVIEW_SYSTEM_PROMPT;
+use crate::types::ExecutionResult;
+
+// ---------------------------------------------------------------------------
+// JSON response shapes
+// ---------------------------------------------------------------------------
+
+/// Expected LLM response shape for the review phase.
+#[derive(Debug, Deserialize)]
+struct ReviewResponse {
+    passed: bool,
+    score: f64,
+    #[serde(default)]
+    notes: Vec<String>,
+    #[serde(default)]
+    gaps: Vec<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Engine
+// ---------------------------------------------------------------------------
+
+/// External review operation for the intent engine (RFC-033).
+///
+/// RFC-033 removed the `assess` and `crystallize` gates — every message
+/// now streams through the agent loop, so the only remaining external
+/// LLM call is `review`, which fires when a Directive carries acceptance
+/// criteria (see `Directive::needs_review`). Exists so tests can provide
+/// a mock implementation without real LLM calls.
+#[async_trait::async_trait]
+pub trait IntentEngineOps: Send + Sync {
+    /// Check execution output against a Directive's acceptance criteria.
+    async fn review(&self, directive: &Directive, result: &ExecutionResult) -> Result<Verdict>;
+}
+
+/// LLM-backed intent engine.
+///
+/// Resolves the live default model from the injected [`ModelResolver`] at
+/// the start of every LLM-bound call. This keeps assess/crystallize/review
+/// in lockstep with the agent execution phase and with hot-swaps.
+pub struct IntentEngine {
+    resolver: Arc<dyn ModelResolver>,
+    /// Optional lightweight model ID for assess/crystallize/review calls.
+    /// When None, uses the resolver's default model.
+    lightweight_model: Option<String>,
+    /// Optional persona system prompt, prepended to every LLM call.
+    persona_prompt: Mutex<Option<String>>,
+}
+
+impl IntentEngine {
+    /// Create a new engine backed by the given model resolver.
+    pub fn new(resolver: Arc<dyn ModelResolver>) -> Self {
+        Self {
+            resolver,
+            lightweight_model: None,
+            persona_prompt: Mutex::new(None),
+        }
+    }
+
+    /// Create a new engine with a lightweight model for intent-handling calls.
+    pub fn with_lightweight(
+        resolver: Arc<dyn ModelResolver>,
+        lightweight_model: Option<String>,
+    ) -> Self {
+        Self {
+            resolver,
+            lightweight_model,
+            persona_prompt: Mutex::new(None),
+        }
+    }
+
+    /// Set the persona system prompt (voice customization).
+    pub fn set_persona_prompt(&self, prompt: Option<String>) {
+        *self.persona_prompt.lock() = prompt;
+    }
+
+    /// Resolve the model to use for an intent-handling call.
+    ///
+    /// When a lightweight model is configured (`[intent] lightweight_model`),
+    /// it is resolved through [`ModelResolver::resolve`] against the live
+    /// engine catalog; otherwise the resolver's default (the agent execution
+    /// model) is used so intent and execution agree.
+    fn resolve_model(&self) -> Result<ResolvedModel> {
+        // Use the configured lightweight model for intent-handling calls
+        // (assess/crystallize/review) when one is set; otherwise fall back
+        // to the resolver's default (the agent execution model).
+        match self.lightweight_model.as_deref() {
+            Some(id) => self.resolver.resolve(id),
+            None => self.resolver.resolve_default(),
+        }
+    }
+    async fn llm_complete(&self, system_prompt: &str, user_message: &str) -> Result<String> {
+        let effective_system = if let Some(ref persona) = *self.persona_prompt.lock() {
+            format!("{persona}\n\n{system_prompt}")
+        } else {
+            system_prompt.to_string()
+        };
+
+        let resolved = self.resolve_model()?;
+
+        let mut ctx = Context::new();
+        ctx.set_system_prompt(effective_system);
+        ctx.add_message(Message::User(UserMessage::new(user_message)));
+
+        let stream = resolved
+            .provider
+            .stream(&resolved.model, &ctx, None)
+            .await?;
+
+        let mut text = String::new();
+        tokio::pin!(stream);
+        while let Some(event) = stream.next().await {
+            match event {
+                ProviderEvent::TextDelta { delta, .. } => text.push_str(&delta),
+                ProviderEvent::Done { .. } => break,
+                ProviderEvent::Error { error, .. } => {
+                    let msg_text = error.text_content();
+                    if !msg_text.is_empty() {
+                        text = msg_text;
+                    } else {
+                        anyhow::bail!("LLM stream error");
+                    }
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        Ok(text)
+    }
+
+    /// Run LLM completion, parse as JSON, retry once on failure.
+    async fn llm_json<T: serde::de::DeserializeOwned>(
+        &self,
+        system_prompt: &str,
+        user_message: &str,
+    ) -> Result<T> {
+        let raw = self.llm_complete(system_prompt, user_message).await?;
+        match Self::parse_json::<T>(&raw) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => {
+                tracing::warn!(error = %e, "JSON parse failed, retrying with correction");
+                let retry_msg = format!(
+                    "Your previous response was invalid JSON. The error was: {}\n\n\
+                     Your raw output was:\n```\n{}\n```\n\n\
+                     Please respond with ONLY valid JSON matching the requested schema. \
+                     Do not include any text before or after the JSON object.",
+                    e,
+                    &raw[..raw.floor_char_boundary(raw.len().min(500))]
+                );
+                let retry_raw = self.llm_complete(system_prompt, &retry_msg).await?;
+                Self::parse_json::<T>(&retry_raw)
+                    .map_err(|e2| anyhow::anyhow!("JSON parse failed after retry: {e2}"))
+            }
+        }
+    }
+
+    /// Parse JSON from LLM output, handling markdown fences and prose wrapping.
+    fn parse_json<T: serde::de::DeserializeOwned>(raw: &str) -> Result<T> {
+        let trimmed = raw.trim();
+        let json_str = if trimmed.starts_with("```") {
+            let after_open = trimmed.find('\n').map(|i| i + 1).unwrap_or(0);
+            let before_close = trimmed
+                .rfind("```")
+                .filter(|&i| i >= after_open)
+                .unwrap_or(trimmed.len());
+            &trimmed[after_open..before_close]
+        } else if let Some(start) = trimmed.find('{') {
+            if let Some(end) = trimmed.rfind('}') {
+                &trimmed[start..=end]
+            } else {
+                trimmed
+            }
+        } else if let Some(start) = trimmed.find('[') {
+            if let Some(end) = trimmed.rfind(']') {
+                &trimmed[start..=end]
+            } else {
+                trimmed
+            }
+        } else {
+            trimmed
+        };
+        Ok(serde_json::from_str(json_str.trim())?)
+    }
+
+    // -----------------------------------------------------------------------
+    // review
+    // -----------------------------------------------------------------------
+
+    /// Check execution output against a Directive's acceptance criteria.
+    pub async fn review(&self, directive: &Directive, result: &ExecutionResult) -> Result<Verdict> {
+        // Stage 1: mechanical (LLM-free) check
+        let mechanical =
+            MechanicalEvalResult::evaluate(&directive.acceptance_criteria, &result.output);
+        let all_mechanical = mechanical.all_passed;
+
+        // Stage 2: semantic (LLM) check
+        let user_message = build_review_prompt(directive, result);
+        let parsed: ReviewResponse = match self
+            .llm_json::<ReviewResponse>(REVIEW_SYSTEM_PROMPT, &user_message)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(error = %e, "review JSON parse failed after retry, using degraded fallback");
+                return Ok(fallback::degraded_verdict(all_mechanical));
+            }
+        };
+
+        // Merge mechanical and semantic — if mechanical failed, force not passed
+        let passed = parsed.passed && all_mechanical;
+        let mut gaps = parsed.gaps;
+        if !all_mechanical {
+            for c in &mechanical.criterion_results {
+                if !c.passed {
+                    gaps.push(format!("{} ({})", c.criterion, c.reason));
+                }
+            }
+        }
+
+        let mut notes = parsed.notes;
+        if !all_mechanical {
+            for c in &mechanical.criterion_results {
+                if c.passed {
+                    notes.push(format!("✓ {}", c.criterion));
+                } else {
+                    notes.push(format!("✗ {}", c.criterion));
+                }
+            }
+        }
+
+        tracing::info!(
+            score = parsed.score,
+            passed,
+            mechanical = all_mechanical,
+            notes = notes.len(),
+            gaps = gaps.len(),
+            "Review complete"
+        );
+
+        Ok(Verdict {
+            passed,
+            score: parsed.score,
+            notes,
+            gaps,
+        })
+    }
+}
+
+impl std::fmt::Debug for IntentEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IntentEngine")
+            .field("lightweight_model", &self.lightweight_model)
+            .finish()
+    }
+}
+
+#[async_trait::async_trait]
+impl IntentEngineOps for IntentEngine {
+    async fn review(&self, directive: &Directive, result: &ExecutionResult) -> Result<Verdict> {
+        IntentEngine::review(self, directive, result).await
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Prompt builders
+// ---------------------------------------------------------------------------
+
+fn build_review_prompt(directive: &Directive, result: &ExecutionResult) -> String {
+    let criteria = if directive.acceptance_criteria.is_empty() {
+        "(none)".to_string()
+    } else {
+        directive
+            .acceptance_criteria
+            .iter()
+            .enumerate()
+            .map(|(i, c)| format!("{}. {}", i + 1, c))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    format!(
+        "## Directive\n\
+         Goal: {}\n\
+         Constraints: {}\n\
+         Acceptance Criteria:\n{}\n\n\
+         ## Execution Output\n{}\n\n\
+         Produce a JSON object with:\n\
+         - \"passed\": true if all criteria met\n\
+         - \"score\": 0.0-1.0\n\
+         - \"notes\": human-readable assessment notes\n\
+         - \"gaps\": specific failures (for retry context) — empty array when passed",
+        directive.goal,
+        directive.constraints.join(", "),
+        criteria,
+        result.output,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -----------------------------------------------------------------------
+    // build_review_prompt — pure formatter; full coverage of the template
+    // branches. Mock-free.
+    // -----------------------------------------------------------------------
+
+    fn empty_result() -> ExecutionResult {
+        ExecutionResult {
+            output: String::new(),
+            steps_completed: 0,
+            success: false,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn build_review_prompt_includes_directive_goal() {
+        let d = Directive::from_message("add a login screen");
+        let prompt = build_review_prompt(&d, &empty_result());
+        assert!(prompt.contains("Goal: add a login screen"));
+    }
+
+    #[test]
+    fn build_review_prompt_includes_output_verbatim() {
+        let d = Directive::from_message("do thing");
+        let result = ExecutionResult {
+            output: "RESULT_HERE: 42 files changed".into(),
+            ..empty_result()
+        };
+        let prompt = build_review_prompt(&d, &result);
+        assert!(prompt.contains("RESULT_HERE: 42 files changed"));
+    }
+
+    #[test]
+    fn build_review_prompt_uses_none_when_criteria_empty() {
+        let d = Directive::from_message("trivial");
+        let prompt = build_review_prompt(&d, &empty_result());
+        // Empty criteria list → "Acceptance Criteria:\n(none)\n" so the LLM
+        // sees a clear signal, not a missing field.
+        assert!(prompt.contains("Acceptance Criteria:\n(none)"));
+    }
+
+    #[test]
+    fn build_review_prompt_numbers_criteria_one_indexed() {
+        let mut d = Directive::from_message("do thing");
+        d.acceptance_criteria = vec![
+            "must compile".to_string(),
+            "must exit 0".to_string(),
+            "must have tests".to_string(),
+        ];
+        let prompt = build_review_prompt(&d, &empty_result());
+        assert!(prompt.contains("1. must compile"));
+        assert!(prompt.contains("2. must exit 0"));
+        assert!(prompt.contains("3. must have tests"));
+    }
+
+    #[test]
+    fn build_review_prompt_joins_constraints_with_commas() {
+        let mut d = Directive::from_message("do thing");
+        d.constraints = vec![
+            "no network".to_string(),
+            "single file".to_string(),
+            "use TypeScript".to_string(),
+        ];
+        let prompt = build_review_prompt(&d, &empty_result());
+        assert!(prompt.contains("Constraints: no network, single file, use TypeScript"));
+    }
+
+    #[test]
+    fn build_review_prompt_constraints_empty_when_none() {
+        let d = Directive::from_message("do thing");
+        // No constraints → join produces "" — prompt still has the
+        // "Constraints: " label with empty value, which the LLM can parse.
+        let prompt = build_review_prompt(&d, &empty_result());
+        assert!(prompt.contains("Constraints: \n"));
+    }
+
+    #[test]
+    fn build_review_prompt_includes_output_schema_section() {
+        // When the directive carries an output_schema, it does NOT appear
+        // inline in the prompt today (the LLM is expected to read it from
+        // context). Documenting the current contract so a future refactor
+        // that adds schema-injection gets caught by this test.
+        let mut d = Directive::from_message("do thing");
+        d.output_schema = Some(serde_json::json!({"type": "object"}));
+        let prompt = build_review_prompt(&d, &empty_result());
+        // The schema is omitted — but the goal still appears.
+        assert!(prompt.contains("Goal: do thing"));
+    }
+
+    #[test]
+    fn build_review_prompt_documents_output_json_shape() {
+        let d = Directive::from_message("do thing");
+        let prompt = build_review_prompt(&d, &empty_result());
+        // The schema is hard-coded into the prompt so the LLM has a stable
+        // contract to follow — pin it here.
+        assert!(prompt.contains("\"passed\""));
+        assert!(prompt.contains("\"score\""));
+        assert!(prompt.contains("\"notes\""));
+        assert!(prompt.contains("\"gaps\""));
+    }
+
+    // -----------------------------------------------------------------------
+    // resolve_model routing — proves lightweight_model actually reaches
+    // ModelResolver::resolve(id) (vs silently falling back to the default).
+    // Guards against the half-wired regression where the constructor stored
+    // the model but resolve_model ignored it.
+    // -----------------------------------------------------------------------
+
+    /// Resolver that records which method the engine called and with what arg.
+    struct RecordingResolver {
+        default_calls: std::sync::atomic::AtomicUsize,
+        resolve_ids: Mutex<Vec<String>>,
+    }
+
+    impl ModelResolver for RecordingResolver {
+        fn resolve_default(&self) -> Result<ResolvedModel> {
+            self.default_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(fake_resolved("default"))
+        }
+        fn resolve(&self, id: &str) -> Result<ResolvedModel> {
+            self.resolve_ids.lock().push(id.to_string());
+            Ok(fake_resolved(id))
+        }
+    }
+
+    fn fake_resolved(id: &str) -> ResolvedModel {
+        let model =
+            oxicode_sdk::Model::new(id, id, oxicode_sdk::Api::OpenAiCompletions, "test", "");
+        let provider: std::sync::Arc<dyn oxicode_sdk::Provider> =
+            std::sync::Arc::new(oxicode_sdk::OpenAiProvider::with_base_url_and_key(
+                "https://invalid.invalid/v1",
+                Some("unused".to_string()),
+            ));
+        ResolvedModel {
+            model,
+            provider,
+            model_id: id.to_string(),
+        }
+    }
+
+    #[test]
+    fn with_lightweight_routes_to_resolve_by_id() {
+        use std::sync::atomic::Ordering;
+        let rec = std::sync::Arc::new(RecordingResolver {
+            default_calls: std::sync::atomic::AtomicUsize::new(0),
+            resolve_ids: Mutex::new(Vec::new()),
+        });
+        let engine =
+            IntentEngine::with_lightweight(rec.clone(), Some("anthropic/claude-haiku".into()));
+        engine.resolve_model().expect("resolve succeeds");
+        assert_eq!(
+            rec.default_calls.load(Ordering::SeqCst),
+            0,
+            "lightweight model must route to resolve(id), not resolve_default"
+        );
+        assert_eq!(
+            rec.resolve_ids.lock().as_slice(),
+            &["anthropic/claude-haiku".to_string()],
+            "resolve(id) must receive the configured lightweight model id"
+        );
+    }
+
+    #[test]
+    fn without_lightweight_routes_to_default() {
+        use std::sync::atomic::Ordering;
+        let rec = std::sync::Arc::new(RecordingResolver {
+            default_calls: std::sync::atomic::AtomicUsize::new(0),
+            resolve_ids: Mutex::new(Vec::new()),
+        });
+        let engine = IntentEngine::new(rec.clone());
+        engine.resolve_model().expect("resolve succeeds");
+        assert_eq!(
+            rec.default_calls.load(Ordering::SeqCst),
+            1,
+            "no lightweight model must route to resolve_default"
+        );
+        assert!(
+            rec.resolve_ids.lock().is_empty(),
+            "resolve(id) must not be called when no lightweight model is set"
+        );
+    }
+}

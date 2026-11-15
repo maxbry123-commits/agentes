@@ -1,0 +1,30 @@
+[
+  {
+    "repo": "Ray",
+    "path": "rllib/offline/tests/data/statelesscartpole/5_6b9103c8f5454c26b8fceb36779718b8_000000_000000-0.parquet",
+    "chunks_dir": "Ray/rllib/offline/tests/data/statelesscartpole/5_6b9103c8f5454c26b8fceb36779718b8_000000_000000-0.parquet.chunks",
+    "bytes": 15597329,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Ray",
+    "path": "doc/source/rllib/images/rllib-new-api-stack.svg",
+    "chunks_dir": "Ray/doc/source/rllib/images/rllib-new-api-stack.svg.chunks",
+    "bytes": 20449447,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Ray",
+    "path": "doc/source/rllib/images/envs/env_loop_concept.svg",
+    "chunks_dir": "Ray/doc/source/rllib/images/envs/env_loop_concept.svg.chunks",
+    "bytes": 18243625,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Ray",
+    "path": "doc/data/MNIST/raw/train-images-idx3-ubyte",
+    "chunks_dir": "Ray/doc/data/MNIST/raw/train-images-idx3-ubyte.chunks",
+    "bytes": 47040016,
+    "chunk_bytes": 8388608
+  }
+]

@@ -1,0 +1,10 @@
+// Copyright IBM Corp. 2015, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+//go:build !ent
+
+package scheduler
+
+// StateEnterprise are the available state store methods for the enterprise
+// version.
+type StateEnterprise any

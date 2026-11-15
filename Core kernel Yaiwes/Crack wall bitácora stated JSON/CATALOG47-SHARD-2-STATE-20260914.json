@@ -1,0 +1,264 @@
+{
+  "created_at": 1789368761,
+  "items": {
+    "C47-003": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 138, in publish\n    run(['git','push','origin',f'HEAD:{DEST_BRANCH}'],dst,env=env); commit=run(['git','rev-parse','HEAD'],dst)\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 16, in run\n    if check and p.returncode: raise RuntimeError(f'COMMAND_FAILED:{argv[0]}:{p.returncode}:{p.stdout[-3000:]}')\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: COMMAND_FAILED:git:1:To https://github.com/maxbry123-commits/agentes.git\n ! [rejected]              HEAD -> main (fetch first)\nerror: failed to push some refs to 'https://github.com/maxbry123-commits/agentes.git'\nhint: Updates were rejected because the remote contains work that you do not\nhint: have locally. This is usually caused by another repository pushing to\nhint: the same ref. If you want to integrate the remote changes, use\nhint: 'git pull' before pushing again.\nhint: See the 'Note about fast-forwards' in 'git push --help' for details.\n\n",
+      "slug": "Hermes-Agent",
+      "source_repo": "NousResearch/hermes-agent",
+      "status": "FAILED"
+    },
+    "C47-008": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 128, in publish\n    if target.exists(): raise RuntimeError('DESTINATION_EXISTS:'+rel)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: DESTINATION_EXISTS:Core kernel Yaiwes/MemRL\n",
+      "slug": "MemRL",
+      "source_repo": "MemTensor/MemRL",
+      "status": "FAILED"
+    },
+    "C47-013": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 144, in publish\n    if actual['sha256']!=remote['extracted_tree']['sha256'] or actual['files']!=remote['extracted_tree']['files']: raise RuntimeError('READBACK_TREE_HASH_GAP')\n                                                                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: READBACK_TREE_HASH_GAP\n",
+      "slug": "Oxios",
+      "source_repo": "project-oxi/oxios",
+      "status": "FAILED"
+    },
+    "C47-018": {
+      "attempts": 3,
+      "result": {
+        "bundle_bytes": 1637107,
+        "bundle_sha256": "0a34d6c2d03b3f34e991a4f9dfdb5ff0e619ba0bdd049702fd1c5ddf9fdca7da",
+        "elapsed_seconds": 26.2,
+        "extracted_tree": {
+          "bytes": 5573192,
+          "files": 762,
+          "sha256": "f8e62a0f2818e8acd8803b167b9f8c8e29015b8eaeccd7d62d6186009e90fd20"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 1637107,
+            "name": "Qualixar-OS.bundle.zip.part-0001",
+            "sha256": "0a34d6c2d03b3f34e991a4f9dfdb5ff0e619ba0bdd049702fd1c5ddf9fdca7da"
+          }
+        ],
+        "publish": {
+          "commit": "2cfe235f053f164eea8bbdb7dbcd79fee9526369",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "Qualixar-OS",
+        "source_bytes": 5573192,
+        "source_commit": "eee934b5942bfff2fa5543a39e64a78905640a0c",
+        "source_files": 762,
+        "source_ref": "HEAD",
+        "source_repo": "qualixar/qualixar-os",
+        "source_tree": {
+          "bytes": 5573192,
+          "files": 762,
+          "sha256": "f8e62a0f2818e8acd8803b167b9f8c8e29015b8eaeccd7d62d6186009e90fd20"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "Qualixar-OS",
+      "source_repo": "qualixar/qualixar-os",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-023": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 2244638,
+        "bundle_sha256": "a166fb69aaa95d4aeaf7c204e252829689059b168c372a797778cb42c2c84d8b",
+        "elapsed_seconds": 24.53,
+        "extracted_tree": {
+          "bytes": 3206048,
+          "files": 147,
+          "sha256": "ca12dd7319c29b84c38752f756006d859cdecfe4ed458164966993729ca8ad4f"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 2244638,
+            "name": "Interlat.bundle.zip.part-0001",
+            "sha256": "a166fb69aaa95d4aeaf7c204e252829689059b168c372a797778cb42c2c84d8b"
+          }
+        ],
+        "publish": {
+          "commit": "fcfff88ae07708092b6df8210220e7f7afe2b034",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "Interlat",
+        "source_bytes": 3206048,
+        "source_commit": "66a89cb4d4097b2f86cbe48ed9851d6e8578f821",
+        "source_files": 147,
+        "source_ref": "HEAD",
+        "source_repo": "XiaoDu-flying/Interlat",
+        "source_tree": {
+          "bytes": 3206048,
+          "files": 147,
+          "sha256": "ca12dd7319c29b84c38752f756006d859cdecfe4ed458164966993729ca8ad4f"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "Interlat",
+      "source_repo": "XiaoDu-flying/Interlat",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-028": {
+      "attempts": 3,
+      "error": "Traceback (most recent call last):\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 161, in <module>\n    if __name__=='__main__': main()\n                             ^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 158, in main\n    pub=publish(work,parts_dir,extracted,mp,slug) if PUBLISH else {'verdict':'DRY_RUN_DOWNLOAD_EXTRACT_VERIFIED'}\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 138, in publish\n    run(['git','push','origin',f'HEAD:{DEST_BRANCH}'],dst,env=env); commit=run(['git','rev-parse','HEAD'],dst)\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/agentes/agentes/Motores/\ud83d\udcc2Motor descarga de componentes y extracci\u00f3n de zip/hf_download_extract_engine.py\", line 16, in run\n    if check and p.returncode: raise RuntimeError(f'COMMAND_FAILED:{argv[0]}:{p.returncode}:{p.stdout[-3000:]}')\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: COMMAND_FAILED:git:1:To https://github.com/maxbry123-commits/agentes.git\n ! [remote rejected]       HEAD -> main (cannot lock ref 'refs/heads/main': is at 06b3b89d02ac17d2c7680e5409342cf9766ddee6 but expected 2cfe235f053f164eea8bbdb7dbcd79fee9526369)\nerror: failed to push some refs to 'https://github.com/maxbry123-commits/agentes.git'\n\n",
+      "slug": "GrayMatter",
+      "source_repo": "angelnicolasc/graymatter",
+      "status": "FAILED"
+    },
+    "C47-033": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 1003885,
+        "bundle_sha256": "6caf995e8ef3e4fe8c1f54e4b20b70ee550636a4b4e60fe7839593970255e17f",
+        "elapsed_seconds": 25.08,
+        "extracted_tree": {
+          "bytes": 2722289,
+          "files": 304,
+          "sha256": "5292085bb7dc63a286ce5aee909c61f8a8f8b984f0835c869a3b444ecbae8a26"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 1003885,
+            "name": "OpenGuardrails.bundle.zip.part-0001",
+            "sha256": "6caf995e8ef3e4fe8c1f54e4b20b70ee550636a4b4e60fe7839593970255e17f"
+          }
+        ],
+        "publish": {
+          "commit": "db9abf9241f4b8f449d7956605517cb6e3861721",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "OpenGuardrails",
+        "source_bytes": 2722289,
+        "source_commit": "a982f7c84ca567043b21697f0c634c659ef3aeba",
+        "source_files": 304,
+        "source_ref": "HEAD",
+        "source_repo": "openguardrails/openguardrails",
+        "source_tree": {
+          "bytes": 2722289,
+          "files": 304,
+          "sha256": "5292085bb7dc63a286ce5aee909c61f8a8f8b984f0835c869a3b444ecbae8a26"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "OpenGuardrails",
+      "source_repo": "openguardrails/openguardrails",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-038": {
+      "attempts": 2,
+      "result": {
+        "bundle_bytes": 2339172,
+        "bundle_sha256": "abe311a426289aac3d4c8241d7437906ae85288bafd228cac0df5ab512defb00",
+        "elapsed_seconds": 25.56,
+        "extracted_tree": {
+          "bytes": 3788418,
+          "files": 38,
+          "sha256": "21d300366921251c3d25ed587141ac9028be7568925dbdc629f4958e2f7cc86e"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 2339172,
+            "name": "SPIRAL.bundle.zip.part-0001",
+            "sha256": "abe311a426289aac3d4c8241d7437906ae85288bafd228cac0df5ab512defb00"
+          }
+        ],
+        "publish": {
+          "commit": "14b74939a506c9f76253df55c4d716e86ec98e93",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "SPIRAL",
+        "source_bytes": 3788418,
+        "source_commit": "7ae099580b2bf8fdf9c3632451922b8ba1134e38",
+        "source_files": 38,
+        "source_ref": "HEAD",
+        "source_repo": "IBM/SPIRAL",
+        "source_tree": {
+          "bytes": 3788418,
+          "files": 38,
+          "sha256": "21d300366921251c3d25ed587141ac9028be7568925dbdc629f4958e2f7cc86e"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "SPIRAL",
+      "source_repo": "IBM/SPIRAL",
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-043": {
+      "attempts": 1,
+      "result": {
+        "bundle_bytes": 24576558,
+        "bundle_sha256": "871626d897914f7885d52233c2095b8c20a3cda83157c43421b5d41edfa0f29f",
+        "elapsed_seconds": 42.34,
+        "extracted_tree": {
+          "bytes": 25012998,
+          "files": 82,
+          "sha256": "5932cc111f13fa4aaab521b2ef6c6204cb94ed8a7c68911dbd289a96edbadc2e"
+        },
+        "extraction_verified": true,
+        "max_github_blob_bytes": 99614720,
+        "no_lfs": true,
+        "part_size_limit_bytes": 12582912,
+        "parts": [
+          {
+            "bytes": 12582912,
+            "name": "ISEK.bundle.zip.part-0001",
+            "sha256": "d2abe8b3aaa25c07b9b56b0729877ddf2c2494bc058ade12f66b4d022ef4746a"
+          },
+          {
+            "bytes": 11993646,
+            "name": "ISEK.bundle.zip.part-0002",
+            "sha256": "d90b0d67bd6d291409f8640d88aba0b9a59b98c6f8eb2c926479dd1e33d7aabb"
+          }
+        ],
+        "publish": {
+          "commit": "046030f7e07699feda754252360c72f389fa3369",
+          "verdict": "PUBLISHED_AND_EXTRACTED_READBACK_VERIFIED"
+        },
+        "reconstruction_verified": true,
+        "schema": "yaiwes.hf.download-extract.v1",
+        "slug": "ISEK",
+        "source_bytes": 25012998,
+        "source_commit": "e2959f3c5209c396510b567faabe22982a231ad5",
+        "source_files": 82,
+        "source_ref": "HEAD",
+        "source_repo": "isekOS/ISEK",
+        "source_tree": {
+          "bytes": 25012998,
+          "files": 82,
+          "sha256": "5932cc111f13fa4aaab521b2ef6c6204cb94ed8a7c68911dbd289a96edbadc2e"
+        },
+        "verdict": "VERIFIED_CLOSED"
+      },
+      "slug": "ISEK",
+      "source_repo": "isekOS/ISEK",
+      "status": "VERIFIED_CLOSED"
+    }
+  },
+  "schema": "yaiwes.frontend.download-extract-queue.v1"
+}

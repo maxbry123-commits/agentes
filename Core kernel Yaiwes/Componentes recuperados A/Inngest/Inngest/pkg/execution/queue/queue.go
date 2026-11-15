@@ -1,0 +1,328 @@
+package queue
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"iter"
+	"time"
+
+	"github.com/oklog/ulid/v2"
+)
+
+type Queue interface {
+	Producer
+	Consumer
+
+	RunQueueReader
+	QueueStatusReader
+	QueuePartitionReader
+	QueueBacklogReader
+	QueueItemReader
+	MigrationLocker
+	Unpauser
+	AttemptResetter
+	RoleStatusReader
+}
+
+type RunInfo struct {
+	Latency        time.Duration
+	SojournDelay   time.Duration
+	Priority       uint
+	QueueShardName string
+	// ContinueCount represents the total number of continues that the queue has processed
+	// via RunFunc returning true.  This allows us to prevent unbounded sequential processing
+	// on the same function by limiting the number of continues possible within a given chain.
+	ContinueCount       uint
+	RefilledFromBacklog string
+	CapacityLease       *CapacityLease
+	ScavengeCount       int
+}
+
+// RunFunc represents a function called to process each item in the queue.  This may be
+// called in parallel.
+//
+// RunFunc returns a boolean representing whether the Item enqueued more work within the
+// same function run.  If set to true, the queue may choose to continue processing the
+// partition to improve inter-step latency.
+//
+// If the RunFunc returns an error, the Item will be nacked and retried depending on the
+// Item's retry policy.
+type RunFunc func(context.Context, RunInfo, Item) (RunResult, error)
+
+type DispatchFunc func(ctx context.Context, item ProcessItem) (DispatchedItem, error)
+
+type QueueItemLeaser interface {
+	LeaseItem(ctx context.Context, req LeaseItemRequest, dispatch DispatchFunc) (LeaseItemResult, error)
+}
+
+type LeaseItemRequest struct {
+	Item                       *QueueItem
+	Priority                   uint
+	ContinueCount              uint
+	EarliestPeekTimeFallbackMS int64
+	StaticTime                 time.Time
+}
+
+type LeaseItemStatus int
+
+const (
+	LeaseItemStatusNone LeaseItemStatus = iota
+	LeaseItemStatusDispatched
+	LeaseItemStatusAlreadyLeased
+	LeaseItemStatusNoWorkerCapacity
+	LeaseItemStatusThrottled
+	LeaseItemStatusConcurrencyLimited
+	LeaseItemStatusCustomConcurrencyLimited
+	LeaseItemStatusSemaphoreLimited
+	LeaseItemStatusNotFound
+	LeaseItemStatusLeaseContention
+	LeaseItemStatusLeaseError
+)
+
+type LeaseItemResult struct {
+	Status     LeaseItemStatus
+	Err        error
+	RetryAfter time.Time
+}
+
+type RunResult struct {
+	// ScheduledImmediateJob indicates whether this run function scheduled another job
+	// in the same partition for immediate consumption.
+	ScheduledImmediateJob bool
+}
+
+type ProcessItemResult struct {
+	RunResult RunResult
+}
+
+type EnqueueOpts struct {
+	PassthroughJobId       bool
+	ForceQueueShardName    string
+	NormalizeFromBacklogID string
+	// IdempotencyPeriod allows customizing the idempotency period for this queue
+	// item.  For example, after a debounce queue has been consumed we want to remove
+	// the idempotency key immediately;  the same debounce key should become available
+	// for another debounced function run.
+	IdempotencyPeriod *time.Duration `json:"ip,omitempty"`
+}
+
+type Producer interface {
+	// Enqueue allows an item to be enqueued ton run at the given time.
+	Enqueue(context.Context, Item, time.Time, EnqueueOpts) error
+
+	Requeue(ctx context.Context, shardName string, i QueueItem, at time.Time, opts ...RequeueOptionFn) error
+
+	// RequeueByJobID reschedules an outstanding, unleased job by ID on the
+	// named shard. scope must identify the job's tenant/function namespace and
+	// must include account, environment, and function IDs.
+	RequeueByJobID(ctx context.Context, scope Scope, shardName string, jobID string, at time.Time) error
+}
+
+type Consumer interface {
+	Dequeue(ctx context.Context, shardName string, i QueueItem, opts ...DequeueOptionFn) error
+}
+
+type RoleStatusReader interface {
+	// ActiveRoles returns the queue roles currently held by this worker.
+	ActiveRoles() []QueueRoleStatus
+}
+
+type MigrationLocker interface {
+	// SetFunctionMigrate updates the function metadata to signal it's being migrated to
+	// another queue shard
+	SetFunctionMigrate(ctx context.Context, sourceShard string, scope Scope, migrateLockUntil *time.Time) error
+}
+
+type Unpauser interface {
+	UnpauseFunction(ctx context.Context, shard string, scope Scope) error
+}
+
+type AttemptResetter interface {
+	// ResetAttemptsByJobID sets retries to zero given a single job ID. This is
+	// important for checkpointing; a single job becomes shared amongst many steps.
+	ResetAttemptsByJobID(ctx context.Context, shard string, scope Scope, jobID string) error
+}
+
+// QuitError is an error that, when returned, quits the queue.  This always retries
+// an error.
+type QuitError interface {
+	AlwaysRetryableError
+	Quit()
+}
+
+// RetryableError represents an error that, when returned, optionally specifies
+// whether the job can be retried.
+type RetryableError interface {
+	Retryable() bool
+}
+
+// AlwaysRetryableError ignores MaxAttempts and always retries a job.
+type AlwaysRetryableError interface {
+	AlwaysRetryable()
+}
+
+// RetryAtSpecifier specifies the next retry time.  If this returns a nil pointer,
+// the default retry iwll be used for the current attempt.
+type RetryAtSpecifier interface {
+	NextRetryAt() *time.Time
+}
+
+func RetryAtError(err error, at *time.Time) error {
+	if err == nil {
+		err = fmt.Errorf("retry at")
+	}
+	return retryAtError{cause: err, at: at}
+}
+
+func AsRetryAtError(err error) *retryAtError {
+	at := retryAtError{}
+	if errors.As(err, &at) {
+		return &at
+	}
+	return nil
+}
+
+type retryAtError struct {
+	cause error
+	at    *time.Time
+}
+
+func (r retryAtError) Error() string {
+	return r.cause.Error()
+}
+
+func (r retryAtError) Unwrap() error {
+	return r.cause
+}
+
+func (r retryAtError) NextRetryAt() *time.Time {
+	return r.at
+}
+
+// ShouldRetry returns whether we need to retry an error.
+func ShouldRetry(err error, attempt int, max int) bool {
+	unwrapped := err
+	for unwrapped != nil {
+		if _, ok := unwrapped.(AlwaysRetryableError); ok {
+			return true
+		}
+
+		// This error specifies internally whether it should be retried.
+		retryable, isRetry := unwrapped.(RetryableError)
+		if isRetry && !retryable.Retryable() {
+			// The error says no;  cannot be bypassed.
+			return false
+		}
+
+		unwrapped = errors.Unwrap(unwrapped)
+	}
+
+	// So, at this point we either have a basic, non-interface error OR
+	// a retryable error which returns Retryable() true.
+	//
+	// Note that attempt is 0-indexed, hence attempt+1.
+	return (attempt + 1) < max
+}
+
+func NeverRetryError(err error) error {
+	return nonRetryable{error: err}
+}
+
+type nonRetryable struct {
+	error
+}
+
+func (nonRetryable) Retryable() bool { return false }
+
+// AlwaysRetryError always retries, ignoring max retry counts
+// This will not increase the job's attempt count
+func AlwaysRetryError(err error) error {
+	return alwaysRetry{error: err}
+}
+
+type alwaysRetry struct {
+	error
+}
+
+func (a alwaysRetry) AlwaysRetryable() {}
+
+func IsAlwaysRetryable(err error) bool {
+	var ar alwaysRetry
+	return errors.As(err, &ar)
+}
+
+type JobResponse struct {
+	// JobID is the item ID.
+	JobID string
+	// At represents the time the job is scheduled for.
+	At time.Time `json:"at"`
+	// Position represents the position for the job in the queue
+	Position int64 `json:"position"`
+	// Kind represents the kind of job in the queue.
+	Kind string `json:"kind"`
+	// Attempt
+	Attempt int `json:"attempt"`
+
+	Raw any
+}
+
+// RunQueueReader reads queue state associated with function runs.
+type RunQueueReader interface {
+	// OutstandingJobCount returns the number of jobs in progress
+	// or scheduled for a given run.
+	OutstandingJobCount(ctx context.Context, scope Scope, runID ulid.ULID) (int, error)
+
+	// RunJobs reads items in the queue for a specific run.
+	RunJobs(ctx context.Context, queueShardName string, scope Scope, runID ulid.ULID, limit, offset int64) ([]JobResponse, error)
+
+	// ItemsByRunID retrieves all queue items via runID.
+	ItemsByRunID(ctx context.Context, queueShard QueueShard, scope Scope, runID ulid.ULID) ([]*QueueItem, error)
+}
+
+// QueueStatusReader reads function-level queue status counters.
+type QueueStatusReader interface {
+	// RunningCount returns the number of running (in-progress) jobs for a given function
+	RunningCount(ctx context.Context, scope Scope) (int64, error)
+
+	// StatusCount returns the total number of items in the function
+	// status queue.
+	StatusCount(ctx context.Context, scope Scope, status string) (int64, error)
+}
+
+// QueuePartitionReader reads partition state and items.
+type QueuePartitionReader interface {
+	// PartitionSize returns the point-in-time ready queue size of a partition.
+	PartitionSize(ctx context.Context, scope Scope, partitionID string, until time.Time) (int64, error)
+
+	// ItemsByPartition returns a queue item iterator for a function within a specific time range
+	ItemsByPartition(ctx context.Context, queueShard QueueShard, scope Scope, partitionID string, from time.Time, until time.Time, opts ...QueueIterOpt) (iter.Seq[*QueueItem], error)
+	// PartitionByID retrieves the partition by the partition ID
+	PartitionByID(ctx context.Context, queueShard QueueShard, scope Scope, partitionID string) (*PartitionInspectionResult, error)
+}
+
+// QueueBacklogReader reads key-queue backlog state. Shards that do not support
+// key queues are not required to implement the corresponding BacklogOperations.
+type QueueBacklogReader interface {
+	// PartitionBacklogSize returns the point-in-time backlog size of a partition
+	// by summing the size of all backlogs in that partition.
+	PartitionBacklogSize(ctx context.Context, scope Scope, partitionID string) (int64, error)
+
+	// ItemsByBacklog returns a queue item iterator for a backlog within a specific time range
+	ItemsByBacklog(ctx context.Context, queueShard QueueShard, backlogID string, from time.Time, until time.Time, opts ...QueueIterOpt) (iter.Seq[*QueueItem], error)
+	// BacklogsByPartition returns an iterator for the partition's backlogs
+	BacklogsByPartition(ctx context.Context, queueShard QueueShard, partitionID string, from time.Time, until time.Time, opts ...QueueIterOpt) (iter.Seq[*QueueBacklog], error)
+	// BacklogSize retrieves the number of items in the specified backlog
+	BacklogSize(ctx context.Context, queueShard QueueShard, backlogID string) (int64, error)
+	// BacklogByID retrieves a single backlog by its ID
+	BacklogByID(ctx context.Context, queueShard QueueShard, backlogID string) (*QueueBacklog, error)
+}
+
+// QueueItemReader reads individual queue items.
+type QueueItemReader interface {
+	// LoadQueueItem retrieves the queue item by the item ID.
+	LoadQueueItem(ctx context.Context, shardName string, itemID string) (*QueueItem, error)
+
+	// ItemExists checks if an item with jobID exists in the queue
+	ItemExists(ctx context.Context, queueShard QueueShard, scope Scope, jobID string) (bool, error)
+}

@@ -1,0 +1,7 @@
+{
+  "name": "haptics",
+  "version": "1.0.0",
+  "private": true,
+  "description": "macOS-only native addon: Force Touch trackpad haptic taps via NSHapticFeedbackManager for dictation start/stop feedback. See haptics.mm.",
+  "gypfile": true
+}

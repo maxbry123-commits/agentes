@@ -1,0 +1,7 @@
+models:
+  - type: main
+    engine: openai
+    model: deepseek-reasoner
+    api_key_env_var: DEEPSEEK_API_KEY
+    parameters:
+      base_url: https://api.deepseek.com/v1

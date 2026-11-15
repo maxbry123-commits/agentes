@@ -1,0 +1,17 @@
+include_hp: dcft/train/hp_settings/hritik.yaml
+
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/oh_v3.1_wo_evol_instruct_140k
+template: llama3
+messages: conversations
+formatting: sharegpt
+
+per_device_train_batch_size: 16      # Can change depending on hardware
+gradient_accumulation_steps: 1      # Can change depending on number of GPUs
+
+output_dir: "/tmp/experiments/train/checkpoints/llama3-1_8b_oh_v3-1_wo_evol_instruct_140k"
+run_name: llama3-1_8b_oh_v3-1_wo_evol_instruct_140k
+hub_model_id: mlfoundations-dev/llama3-1_8b_oh_v3.1_wo_evol_instruct_140k
+report_to: wandb
+push_to_db: true
+push_to_hub: true

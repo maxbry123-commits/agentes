@@ -1,0 +1,2920 @@
+#[path = "common/integration_utils.rs"]
+mod integration_utils;
+
+use async_trait::async_trait;
+use axum::http::StatusCode;
+use axum::Router;
+use axum_test_helper::TestClient;
+use capture::api::CaptureError;
+use capture::config::CaptureMode;
+use capture::global_rate_limiter::GlobalRateLimiter;
+use capture::outputs::{OutputRegistry, PublishEvents};
+use capture::quota_limiters::CaptureQuotaLimiter;
+use capture::router::router;
+use capture::time::TimeSource;
+use capture::v0_request::{OverflowReason, ProcessedEvent};
+use chrono::{DateTime, TimeZone, Utc};
+use common_ingestion_warnings::test_support::CollectingEmitter;
+use common_ingestion_warnings::{WarningEmitter, WarningType, CAPTURE_AI_EVENTS};
+use common_redis::MockRedisClient;
+use futures::StreamExt;
+use integration_utils::{test_lifecycle_handlers, DEFAULT_CONFIG, DEFAULT_TEST_TIME};
+use limiters::overflow::OverflowLimiter;
+use limiters::token_dropper::TokenDropper;
+use reqwest::multipart::{Form, Part};
+use serde_json::{json, Value};
+use std::io::Write;
+use std::num::NonZeroU32;
+use std::sync::Arc;
+use std::time::Duration;
+
+// Fixed time source for tests
+struct FixedTime {
+    pub time: DateTime<Utc>,
+}
+
+impl TimeSource for FixedTime {
+    fn current_time(&self) -> DateTime<Utc> {
+        self.time
+    }
+}
+
+// Simple memory sink for tests
+#[derive(Clone, Default)]
+struct TestSink;
+
+#[async_trait]
+impl PublishEvents for TestSink {
+    async fn publish_events(&self, _events: Vec<ProcessedEvent>) -> Result<(), CaptureError> {
+        Ok(())
+    }
+}
+
+// Capturing sink for Kafka tests - stores events in memory
+#[derive(Clone)]
+struct CapturingSink {
+    events: Arc<tokio::sync::Mutex<Vec<ProcessedEvent>>>,
+}
+
+impl CapturingSink {
+    fn new() -> Self {
+        Self {
+            events: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+        }
+    }
+
+    async fn get_events(&self) -> Vec<ProcessedEvent> {
+        self.events.lock().await.clone()
+    }
+}
+
+#[async_trait]
+impl PublishEvents for CapturingSink {
+    async fn publish_events(&self, events: Vec<ProcessedEvent>) -> Result<(), CaptureError> {
+        self.events.lock().await.extend(events);
+        Ok(())
+    }
+}
+
+// Helper to build multipart form and send request
+async fn send_multipart_request(
+    client: &TestClient,
+    form: Form,
+    auth_token: Option<&str>,
+) -> axum_test_helper::TestResponse {
+    // Get the boundary from the form
+    let boundary = form.boundary().to_string();
+    let content_type = format!("multipart/form-data; boundary={boundary}");
+
+    // Use into_stream() to get the body bytes
+    let mut stream = form.into_stream();
+    let mut body = Vec::new();
+
+    while let Some(chunk) = stream.next().await {
+        body.extend_from_slice(&chunk.unwrap());
+    }
+
+    let mut request = client
+        .post("/i/v0/ai")
+        .header("Content-Type", content_type)
+        .body(body);
+
+    if let Some(token) = auth_token {
+        request = request.header("Authorization", format!("Bearer {token}"));
+    }
+
+    request.send().await
+}
+
+/// Helper to create a basic AI event with properties in separate parts
+fn create_ai_event_form(event_name: &str, distinct_id: &str, properties: Value) -> Form {
+    use uuid::Uuid;
+
+    let event_data = json!({
+        "uuid": Uuid::now_v7().to_string(),
+        "event": event_name,
+        "distinct_id": distinct_id
+    });
+
+    Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+}
+
+// Helper to setup test router
+fn setup_ai_test_router() -> Router {
+    let (readiness, liveness, _monitor) = test_lifecycle_handlers();
+
+    let sink = TestSink;
+    let timesource = FixedTime {
+        time: DateTime::parse_from_rfc3339(DEFAULT_TEST_TIME)
+            .expect("Invalid fixed time format")
+            .with_timezone(&Utc),
+    };
+    let redis = Arc::new(MockRedisClient::new());
+
+    let mut cfg = DEFAULT_CONFIG.clone();
+    cfg.capture_mode = CaptureMode::Ai;
+
+    let quota_limiter =
+        CaptureQuotaLimiter::new(&cfg, redis.clone(), Duration::from_secs(60 * 60 * 24 * 7));
+
+    router(
+        timesource,
+        readiness,
+        liveness,
+        Arc::new(OutputRegistry::single(sink)),
+        redis,
+        None,
+        quota_limiter,
+        TokenDropper::default(),
+        None, // event_restriction_service
+        None, // recorder_handle
+        CaptureMode::Ai,
+        None,
+        25 * 1024 * 1024,
+        false,
+        1_i64,
+        false,
+        0.0_f32,
+        26_214_400,       // 25MB default for AI endpoint
+        983_040,          // ai_max_event_bytes (960KB, the previous hardcoded limit)
+        None,             // body_chunk_read_timeout_ms
+        256,              // body_read_chunk_size_kb
+        10 * 1024 * 1024, // capture_v1_max_compressed_body_bytes
+        50 * 1024 * 1024, // capture_v1_max_decompressed_body_bytes
+        None,             // overflow_limiter
+        None,             // ai_events_overflow_limiter
+        None,             // ai_byte_rate_limiter
+        None,             // replay_overflow_limiter
+        None,             // v1_sink_router
+        8,                // capture_v1_scatter_gather_min_batch
+        None,             // ai_gateway_signing_secret
+        false,            // ai_events_overflow_enabled
+        None,             // ingestion_warning_emitter
+    )
+}
+
+/// A router whose emit sites are live, plus the emitter to assert against.
+/// Mirrors `setup_ai_test_router` and differs only in the last argument.
+fn setup_ai_router_collecting_warnings() -> (Router, Arc<CollectingEmitter>) {
+    let (readiness, liveness, _monitor) = test_lifecycle_handlers();
+
+    let timesource = FixedTime {
+        time: DateTime::parse_from_rfc3339(DEFAULT_TEST_TIME)
+            .expect("Invalid fixed time format")
+            .with_timezone(&Utc),
+    };
+    let redis = Arc::new(MockRedisClient::new());
+
+    let mut cfg = DEFAULT_CONFIG.clone();
+    cfg.capture_mode = CaptureMode::Ai;
+
+    let quota_limiter =
+        CaptureQuotaLimiter::new(&cfg, redis.clone(), Duration::from_secs(60 * 60 * 24 * 7));
+
+    let emitter = Arc::new(CollectingEmitter::default());
+    let warning_emitter: Option<Arc<dyn WarningEmitter>> = Some(emitter.clone());
+
+    let app = router(
+        timesource,
+        readiness,
+        liveness,
+        Arc::new(OutputRegistry::single(TestSink)),
+        redis,
+        None,
+        quota_limiter,
+        TokenDropper::default(),
+        None, // event_restriction_service
+        None, // recorder_handle
+        CaptureMode::Ai,
+        None,
+        25 * 1024 * 1024,
+        false,
+        1_i64,
+        false,
+        0.0_f32,
+        26_214_400,
+        983_040, // ai_max_event_bytes (960KB, the previous hardcoded limit)
+        None,
+        256,
+        10 * 1024 * 1024,
+        50 * 1024 * 1024,
+        None,
+        None,
+        None, // ai_byte_rate_limiter
+        None,
+        None,
+        8,
+        None,
+        false,
+        warning_emitter,
+    );
+
+    (app, emitter)
+}
+
+// ============================================================================
+// PHASE 1: HTTP ENDPOINT
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Scenario 1.1: HTTP Method Validation
+// ----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_ai_endpoint_get_returns_405() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let response = test_client
+        .get("/i/v0/ai")
+        .header("Authorization", "Bearer test_token")
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_put_returns_405() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let response = test_client
+        .put("/i/v0/ai")
+        .header("Authorization", "Bearer test_token")
+        .body("test")
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_delete_returns_405() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let response = test_client
+        .delete("/i/v0/ai")
+        .header("Authorization", "Bearer test_token")
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+// ----------------------------------------------------------------------------
+// Scenario 1.1: Authentication Validation
+// ----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_ai_endpoint_no_auth_returns_401() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let properties = json!({
+        "$ai_model": "test"
+    });
+
+    let form = create_ai_event_form("$ai_generation", "test_user", properties);
+
+    let response = send_multipart_request(&test_client, form, None).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_blob_part_is_rejected_as_unknown_field() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "uuid": uuid::Uuid::now_v7().to_string(),
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "properties": {"$ai_model": "test"}
+    });
+    let form = Form::new()
+        .part(
+            "event",
+            Part::text(event_data.to_string())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties.$ai_input",
+            Part::bytes(b"payload".to_vec())
+                .mime_str("application/octet-stream")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(&test_client, form, Some("phc_test_token")).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response.text().await;
+    assert!(
+        body.contains("Unknown multipart field"),
+        "unexpected body: {body}"
+    );
+}
+
+// ----------------------------------------------------------------------------
+// Scenario 1.1: Content Type Validation
+// ----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_ai_endpoint_wrong_content_type_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "event": "$ai_generation",
+        "distinct_id": "test_user"
+    });
+
+    let response = test_client
+        .post("/i/v0/ai")
+        .header("Content-Type", "application/json")
+        .header(
+            "Authorization",
+            "Bearer phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3",
+        )
+        .json(&event_data)
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_empty_body_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let response = test_client
+        .post("/i/v0/ai")
+        .header("Content-Type", "multipart/form-data; boundary=test")
+        .header(
+            "Authorization",
+            "Bearer phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3",
+        )
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+// ----------------------------------------------------------------------------
+// Scenario 1.2: Multipart Parsing
+// ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+// Scenario 1.3: Boundary Validation
+// ----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_multipart_missing_boundary_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "properties": {
+            "$ai_model": "test-missing-boundary"
+        }
+    });
+
+    let form = Form::new().part(
+        "event",
+        Part::bytes(serde_json::to_vec(&event_data).unwrap())
+            .file_name("event.json")
+            .mime_str("application/json")
+            .unwrap(),
+    );
+
+    // Use into_stream() to get the body bytes
+    let mut stream = form.into_stream();
+    let mut body = Vec::new();
+
+    while let Some(chunk) = stream.next().await {
+        body.extend_from_slice(&chunk.unwrap());
+    }
+
+    // Send with missing boundary parameter in Content-Type
+    let response = test_client
+        .post("/i/v0/ai")
+        .header("Content-Type", "multipart/form-data")
+        .header(
+            "Authorization",
+            "Bearer phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3",
+        )
+        .body(body)
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_multipart_corrupted_boundary_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "properties": {
+            "$ai_model": "test-corrupted-boundary"
+        }
+    });
+
+    // Manually construct a request with corrupted boundary
+    let body = format!(
+        "------WebKitFormBoundary1234567890abcdef\r\nContent-Disposition: form-data; name=\"event\"; filename=\"event.json\"\r\nContent-Type: application/json\r\n\r\n{}\r\n------WebKitFormBoundary1234567890abcdef--\r\n",
+        serde_json::to_string(&event_data).unwrap()
+    );
+
+    let response = test_client
+        .post("/i/v0/ai")
+        .header(
+            "Content-Type",
+            "multipart/form-data; boundary=corrupted------WebKitFormBoundary1234567890abcdef",
+        )
+        .header(
+            "Authorization",
+            "Bearer phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3",
+        )
+        .body(body)
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+// ----------------------------------------------------------------------------
+// Scenario 1.4: Event Processing Verification
+// ----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_multipart_event_not_first_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "properties": {
+            "$ai_model": "test-event-not-first"
+        }
+    });
+
+    // Create multipart data with blob part first, then event part
+    let form = Form::new()
+        .part(
+            "event.properties.$ai_input",
+            Part::bytes(
+                serde_json::to_vec(&json!({"messages": [{"role": "user", "content": "test"}]}))
+                    .unwrap(),
+            )
+            .file_name("input.json")
+            .mime_str("application/json")
+            .unwrap(),
+        )
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .file_name("event.json")
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+// ----------------------------------------------------------------------------
+// Scenario 1.5: Basic Validation
+// ----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_invalid_event_name_not_ai_prefix_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "event": "invalid_event_name",
+        "distinct_id": "test_user",
+        "properties": {
+            "$ai_model": "test-invalid-name"
+        }
+    });
+
+    let form = Form::new().part(
+        "event",
+        Part::bytes(serde_json::to_vec(&event_data).unwrap())
+            .file_name("event.json")
+            .mime_str("application/json")
+            .unwrap(),
+    );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_invalid_event_name_regular_event_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "event": "$pageview",
+        "distinct_id": "test_user",
+        "properties": {
+            "page": "/test"
+        }
+    });
+
+    let form = Form::new().part(
+        "event",
+        Part::bytes(serde_json::to_vec(&event_data).unwrap())
+            .file_name("event.json")
+            .mime_str("application/json")
+            .unwrap(),
+    );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_invalid_event_name_custom_event_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "event": "button_clicked",
+        "distinct_id": "test_user",
+        "properties": {
+            "button": "submit"
+        }
+    });
+
+    let form = Form::new().part(
+        "event",
+        Part::bytes(serde_json::to_vec(&event_data).unwrap())
+            .file_name("event.json")
+            .mime_str("application/json")
+            .unwrap(),
+    );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_all_allowed_ai_event_types_accepted() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let allowed_events = vec![
+        "$ai_generation",
+        "$ai_trace",
+        "$ai_span",
+        "$ai_embedding",
+        "$ai_metric",
+        "$ai_feedback",
+    ];
+
+    for event_name in allowed_events {
+        let properties = json!({
+            "$ai_model": "test-model"
+        });
+
+        let form = create_ai_event_form(event_name, "test_user", properties);
+
+        let response = send_multipart_request(
+            &test_client,
+            form,
+            Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Event type {event_name} should be accepted"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_invalid_ai_event_type_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let invalid_events = vec!["$ai_unknown", "$ai_custom", "$ai_"];
+
+    for event_name in invalid_events {
+        let properties = json!({
+            "$ai_model": "test-model"
+        });
+
+        let form = create_ai_event_form(event_name, "test_user", properties);
+
+        let response = send_multipart_request(
+            &test_client,
+            form,
+            Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Event type {event_name} should be rejected"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_missing_required_ai_properties_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "properties": {
+            "custom_property": "test_value"
+        }
+    });
+
+    let form = Form::new().part(
+        "event",
+        Part::bytes(serde_json::to_vec(&event_data).unwrap())
+            .file_name("event.json")
+            .mime_str("application/json")
+            .unwrap(),
+    );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_empty_event_name_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "event": "",
+        "distinct_id": "test_user",
+        "properties": {
+            "$ai_model": "test-empty-name"
+        }
+    });
+
+    let form = Form::new().part(
+        "event",
+        Part::bytes(serde_json::to_vec(&event_data).unwrap())
+            .file_name("event.json")
+            .mime_str("application/json")
+            .unwrap(),
+    );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_missing_distinct_id_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "event": "$ai_generation",
+        "properties": {
+            "$ai_model": "test-missing-distinct-id"
+        }
+    });
+
+    let form = Form::new().part(
+        "event",
+        Part::bytes(serde_json::to_vec(&event_data).unwrap())
+            .file_name("event.json")
+            .mime_str("application/json")
+            .unwrap(),
+    );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_missing_uuid_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    // Event without UUID field
+    let event_data = json!({
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "properties": {
+            "$ai_model": "test-missing-uuid"
+        }
+    });
+
+    let form = Form::new().part(
+        "event",
+        Part::bytes(serde_json::to_vec(&event_data).unwrap())
+            .mime_str("application/json")
+            .unwrap(),
+    );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let body = response.text().await;
+    assert!(
+        body.contains("UUID"),
+        "Error should mention UUID, got: {body}"
+    );
+}
+
+#[tokio::test]
+async fn test_invalid_uuid_format_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let invalid_uuids = [
+        "not-a-uuid",
+        "12345",
+        "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+        "",
+        "550e8400-e29b-41d4-a716", // Truncated
+    ];
+
+    for invalid_uuid in invalid_uuids {
+        let event_data = json!({
+            "uuid": invalid_uuid,
+            "event": "$ai_generation",
+            "distinct_id": "test_user",
+            "properties": {
+                "$ai_model": "test-invalid-uuid"
+            }
+        });
+
+        let form = Form::new().part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+        let response = send_multipart_request(
+            &test_client,
+            form,
+            Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "UUID '{invalid_uuid}' should be rejected"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_malicious_uuid_with_path_traversal_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    // These malicious values could be used for S3 path traversal if not validated
+    let malicious_uuids = [
+        "../../../etc/passwd",
+        "550e8400/../../../secret",
+        "uuid/with/slashes",
+        "..%2F..%2F..%2Fetc%2Fpasswd", // URL-encoded traversal
+        "550e8400-e29b-41d4-a716-446655440000/../other",
+        "\0null-byte-injection",
+        "uuid\nwith\nnewlines",
+    ];
+
+    for malicious_uuid in malicious_uuids {
+        let event_data = json!({
+            "uuid": malicious_uuid,
+            "event": "$ai_generation",
+            "distinct_id": "test_user",
+            "properties": {
+                "$ai_model": "test-malicious-uuid"
+            }
+        });
+
+        let form = Form::new().part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+        let response = send_multipart_request(
+            &test_client,
+            form,
+            Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Malicious UUID '{malicious_uuid}' should be rejected"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_returns_200_for_valid_request() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let properties = json!({
+        "$ai_model": "test"
+    });
+
+    let form = create_ai_event_form("$ai_generation", "test_user", properties);
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response_json: serde_json::Value = response.json::<serde_json::Value>().await;
+    assert!(response_json["accepted_parts"].is_array());
+    let accepted_parts = response_json["accepted_parts"].as_array().unwrap();
+    assert_eq!(accepted_parts.len(), 2);
+    assert_eq!(accepted_parts[0]["name"], "event");
+    assert_eq!(accepted_parts[0]["content-type"], "application/json");
+    assert_eq!(accepted_parts[0]["length"].as_u64().unwrap(), 98); // UUID adds ~46 bytes
+    assert_eq!(accepted_parts[1]["name"], "event.properties");
+    assert_eq!(accepted_parts[1]["content-type"], "application/json");
+    assert_eq!(accepted_parts[1]["length"].as_u64().unwrap(), 20);
+}
+
+// ----------------------------------------------------------------------------
+// Properties Handling Tests
+// ----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_properties_in_event_part_only() {
+    use uuid::Uuid;
+
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "uuid": Uuid::now_v7().to_string(),
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "properties": {
+            "$ai_model": "embedded-model",
+            "custom_field": "embedded-value"
+        }
+    });
+
+    let form = Form::new().part(
+        "event",
+        Part::bytes(serde_json::to_vec(&event_data).unwrap())
+            .mime_str("application/json")
+            .unwrap(),
+    );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response_json: serde_json::Value = response.json::<serde_json::Value>().await;
+    let accepted_parts = response_json["accepted_parts"].as_array().unwrap();
+    assert_eq!(accepted_parts.len(), 1);
+    assert_eq!(accepted_parts[0]["name"], "event");
+    assert_eq!(accepted_parts[0]["length"].as_u64().unwrap(), 174); // UUID adds ~46 bytes (128 + 46)
+}
+
+#[tokio::test]
+async fn test_properties_in_separate_part_only() {
+    use uuid::Uuid;
+
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "uuid": Uuid::now_v7().to_string(),
+        "event": "$ai_generation",
+        "distinct_id": "test_user"
+    });
+
+    let properties = json!({
+        "$ai_model": "separate-model",
+        "custom_field": "separate-value"
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response_json: serde_json::Value = response.json::<serde_json::Value>().await;
+    let accepted_parts = response_json["accepted_parts"].as_array().unwrap();
+    assert_eq!(accepted_parts.len(), 2);
+    assert_eq!(accepted_parts[0]["name"], "event");
+    assert_eq!(accepted_parts[0]["length"].as_u64().unwrap(), 98); // UUID adds ~46 bytes
+    assert_eq!(accepted_parts[1]["name"], "event.properties");
+    assert_eq!(accepted_parts[1]["length"].as_u64().unwrap(), 62);
+}
+
+#[tokio::test]
+async fn test_properties_both_embedded_and_separate_returns_400() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "properties": {
+            "$ai_model": "embedded-model",
+            "custom_field": "embedded-value"
+        }
+    });
+
+    let properties = json!({
+        "$ai_model": "override-model",
+        "custom_field": "override-value"
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+// ----------------------------------------------------------------------------
+// Size Limit Tests
+// ----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_event_exceeds_32kb_returns_413() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    // Create event with large properties that exceed 32KB
+    let large_value = "x".repeat(33 * 1024);
+    let event_data = json!({
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "properties": {
+            "$ai_model": "test",
+            "large_field": large_value
+        }
+    });
+
+    let form = Form::new().part(
+        "event",
+        Part::bytes(serde_json::to_vec(&event_data).unwrap())
+            .mime_str("application/json")
+            .unwrap(),
+    );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+async fn test_combined_event_properties_exceeds_960kb_returns_413() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    // Create event and properties that together exceed 960KB
+    // 961KB to ensure we exceed the limit
+    let large_value = "x".repeat(961 * 1024);
+    let event_data = json!({
+        "event": "$ai_generation",
+        "distinct_id": "test_user"
+    });
+
+    let properties = json!({
+        "$ai_model": "test",
+        "large_field": large_value
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+async fn test_request_body_exceeds_110_percent_limit_returns_413() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let event_data = json!({
+        "event": "$ai_generation",
+        "distinct_id": "test_user"
+    });
+
+    let properties = json!({
+        "$ai_model": "test"
+    });
+
+    // Create a blob that's just barely over 25MB
+    // This will result in a request body that exceeds 27.5MB (110% limit)
+    // once multipart overhead is added
+    let large_blob = vec![0u8; (25 * 1024 * 1024) + (3 * 1024 * 1024)]; // 28MB
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties.$ai_input",
+            Part::bytes(large_blob)
+                .mime_str("application/octet-stream")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+
+    // Axum's DefaultBodyLimit returns 413 Payload Too Large when the body exceeds the limit
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+// ----------------------------------------------------------------------------
+// Content Type Validation Tests
+// ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+// Compression Tests
+// ----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_gzip_compressed_request() {
+    let router = setup_ai_test_router();
+    let test_client = TestClient::new(router);
+
+    let properties = json!({
+        "$ai_model": "test-gzip"
+    });
+
+    let form = create_ai_event_form("$ai_generation", "test_user", properties);
+
+    // Get the multipart body
+    let boundary = form.boundary().to_string();
+    let content_type = format!("multipart/form-data; boundary={boundary}");
+
+    let mut stream = form.into_stream();
+    let mut body = Vec::new();
+
+    while let Some(chunk) = stream.next().await {
+        body.extend_from_slice(&chunk.unwrap());
+    }
+
+    // Compress the body with gzip
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(&body).unwrap();
+    let compressed_body = encoder.finish().unwrap();
+
+    // Send compressed request
+    let response = test_client
+        .post("/i/v0/ai")
+        .header("Content-Type", content_type)
+        .header("Content-Encoding", "gzip")
+        .header(
+            "Authorization",
+            "Bearer phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3",
+        )
+        .body(compressed_body)
+        .send()
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify response (lengths should match uncompressed data)
+    let response_json: serde_json::Value = response.json::<serde_json::Value>().await;
+    let accepted_parts = response_json["accepted_parts"].as_array().unwrap();
+    assert_eq!(accepted_parts.len(), 2);
+    assert_eq!(accepted_parts[0]["name"], "event");
+    assert_eq!(accepted_parts[0]["length"].as_u64().unwrap(), 98); // UUID adds ~46 bytes
+    assert_eq!(accepted_parts[1]["name"], "event.properties");
+    assert_eq!(accepted_parts[1]["length"].as_u64().unwrap(), 25);
+}
+
+// ----------------------------------------------------------------------------
+// Scenario 1.6: Kafka Publishing and S3 Placeholders
+// ----------------------------------------------------------------------------
+
+// Helper to setup test router with CapturingSink
+fn setup_ai_test_router_with_capturing_sink() -> (Router, CapturingSink) {
+    let (readiness, liveness, _monitor) = test_lifecycle_handlers();
+
+    let sink = CapturingSink::new();
+    let sink_clone = sink.clone();
+    let timesource = FixedTime {
+        time: DateTime::parse_from_rfc3339(DEFAULT_TEST_TIME)
+            .expect("Invalid fixed time format")
+            .with_timezone(&Utc),
+    };
+    let redis = Arc::new(MockRedisClient::new());
+
+    let mut cfg = DEFAULT_CONFIG.clone();
+    cfg.capture_mode = CaptureMode::Ai;
+
+    let quota_limiter =
+        CaptureQuotaLimiter::new(&cfg, redis.clone(), Duration::from_secs(60 * 60 * 24 * 7));
+
+    let router = router(
+        timesource,
+        readiness,
+        liveness,
+        Arc::new(OutputRegistry::single(sink)),
+        redis,
+        None,
+        quota_limiter,
+        TokenDropper::default(),
+        None, // event_restriction_service
+        None, // recorder_handle
+        CaptureMode::Ai,
+        None,
+        25 * 1024 * 1024,
+        false,
+        1_i64,
+        false,
+        0.0_f32,
+        26_214_400,       // 25MB default for AI endpoint
+        983_040,          // ai_max_event_bytes (960KB, the previous hardcoded limit)
+        None,             // body_chunk_read_timeout_ms
+        256,              // body_read_chunk_size_kb
+        10 * 1024 * 1024, // capture_v1_max_compressed_body_bytes
+        50 * 1024 * 1024, // capture_v1_max_decompressed_body_bytes
+        None,             // overflow_limiter
+        None,             // ai_events_overflow_limiter
+        None,             // ai_byte_rate_limiter
+        None,             // replay_overflow_limiter
+        None,             // v1_sink_router
+        8,                // capture_v1_scatter_gather_min_batch
+        None,             // ai_gateway_signing_secret
+        false,            // ai_events_overflow_enabled
+        None,             // ingestion_warning_emitter
+    );
+
+    (router, sink_clone)
+}
+
+#[tokio::test]
+async fn test_ai_event_published_to_kafka() {
+    let (router, sink) = setup_ai_test_router_with_capturing_sink();
+    let test_client = TestClient::new(router);
+
+    let event_uuid = "550e8400-e29b-41d4-a716-446655440000";
+    let event_data = json!({
+        "uuid": event_uuid,
+        "event": "$ai_generation",
+        "distinct_id": "test_user"
+    });
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify event was published to Kafka
+    let events = sink.get_events().await;
+    assert_eq!(
+        events.len(),
+        1,
+        "Expected exactly one event to be published"
+    );
+
+    let event = &events[0];
+
+    // Verify event UUID
+    let event_json: serde_json::Value = serde_json::from_str(&event.event.data).unwrap();
+    assert_eq!(event_json["uuid"], event_uuid);
+    assert_eq!(event_json["event"], "$ai_generation");
+    assert_eq!(event_json["distinct_id"], "test_user");
+
+    // Verify properties
+    let props = event_json["properties"].as_object().unwrap();
+    assert_eq!(props["$ai_model"], "gpt-4");
+}
+
+#[tokio::test]
+async fn test_ai_event_metadata_preserved_in_kafka() {
+    let (router, sink) = setup_ai_test_router_with_capturing_sink();
+    let test_client = TestClient::new(router);
+
+    let event_uuid = "850e8400-e29b-41d4-a716-446655440003";
+    let distinct_id = "user_12345";
+    let event_data = json!({
+        "uuid": event_uuid,
+        "event": "$ai_trace",
+        "distinct_id": distinct_id,
+        "timestamp": "2024-01-15T10:30:00Z"
+    });
+
+    let properties = json!({
+        "$ai_model": "gpt-4-turbo",
+        "$ai_trace_id": "trace_abc123",
+        "custom_metadata": "test_value"
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify event metadata
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1);
+
+    let event = &events[0];
+    let event_json: serde_json::Value = serde_json::from_str(&event.event.data).unwrap();
+
+    // Verify all metadata is preserved
+    assert_eq!(event_json["uuid"], event_uuid);
+    assert_eq!(event_json["event"], "$ai_trace");
+    assert_eq!(event_json["distinct_id"], distinct_id);
+    assert_eq!(event_json["timestamp"], "2024-01-15T10:30:00Z");
+
+    let props = event_json["properties"].as_object().unwrap();
+    assert_eq!(props["$ai_model"], "gpt-4-turbo");
+    assert_eq!(props["$ai_trace_id"], "trace_abc123");
+    assert_eq!(props["custom_metadata"], "test_value");
+}
+
+// ----------------------------------------------------------------------------
+// Timestamp and $ignore_sent_at Tests
+// ----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_ai_event_with_ignore_sent_at_true() {
+    let (router, sink) = setup_ai_test_router_with_capturing_sink();
+    let test_client = TestClient::new(router);
+
+    let event_uuid = "950e8400-e29b-41d4-a716-446655440004";
+    let event_timestamp = "2024-01-15T10:00:00Z";
+    let sent_at = "2024-01-15T10:05:00Z"; // 5 minutes later
+
+    let event_data = json!({
+        "uuid": event_uuid,
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "timestamp": event_timestamp,
+        "sent_at": sent_at
+    });
+
+    let properties = json!({
+        "$ai_model": "gpt-4",
+        "$ignore_sent_at": true  // Should ignore clock skew correction
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify timestamp was not adjusted (sent_at was ignored)
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1);
+
+    let event = &events[0];
+    let computed_timestamp = event.metadata.computed_timestamp.unwrap();
+
+    // Should use the event timestamp directly without clock skew correction
+    let expected = DateTime::parse_from_rfc3339(event_timestamp)
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    assert_eq!(
+        computed_timestamp, expected,
+        "With $ignore_sent_at=true, timestamp should match event timestamp exactly"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_event_with_ignore_sent_at_false() {
+    let (router, sink) = setup_ai_test_router_with_capturing_sink();
+    let test_client = TestClient::new(router);
+
+    let event_uuid = "a50e8400-e29b-41d4-a716-446655440005";
+    let event_timestamp = "2024-01-01T11:59:55Z";
+    let sent_at = "2024-01-01T12:00:05Z"; // 10 seconds later
+
+    let event_data = json!({
+        "uuid": event_uuid,
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "timestamp": event_timestamp,
+        "sent_at": sent_at
+    });
+
+    let properties = json!({
+        "$ai_model": "gpt-4",
+        "$ignore_sent_at": false  // Should apply clock skew correction
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify timestamp was adjusted using clock skew correction
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1);
+
+    let event = &events[0];
+    let computed_timestamp = event.metadata.computed_timestamp.unwrap();
+
+    // With clock skew correction:
+    // computed = now + (timestamp - sent_at)
+    // now = DEFAULT_TEST_TIME (2025-07-01T11:00:00Z)
+    // timestamp - sent_at = 11:59:55 - 12:00:05 = -10 seconds
+    // computed = 2025-07-01T11:00:00Z - 10s = 2025-07-01T10:59:50Z
+    let expected = chrono::Utc
+        .with_ymd_and_hms(2025, 7, 1, 10, 59, 50)
+        .unwrap();
+
+    assert_eq!(
+        computed_timestamp, expected,
+        "With $ignore_sent_at=false, clock skew correction should be applied"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_event_without_ignore_sent_at_defaults_to_false() {
+    let (router, sink) = setup_ai_test_router_with_capturing_sink();
+    let test_client = TestClient::new(router);
+
+    let event_uuid = "b50e8400-e29b-41d4-a716-446655440006";
+    let event_timestamp = "2024-01-01T11:59:55Z";
+    let sent_at = "2024-01-01T12:00:05Z"; // 10 seconds later
+
+    let event_data = json!({
+        "uuid": event_uuid,
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "timestamp": event_timestamp,
+        "sent_at": sent_at
+    });
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+        // No $ignore_sent_at property - should default to false
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify timestamp was adjusted (default behavior is to apply clock skew correction)
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1);
+
+    let event = &events[0];
+    let computed_timestamp = event.metadata.computed_timestamp.unwrap();
+
+    // Should apply clock skew correction by default
+    let expected = chrono::Utc
+        .with_ymd_and_hms(2025, 7, 1, 10, 59, 50)
+        .unwrap();
+
+    assert_eq!(
+        computed_timestamp, expected,
+        "Without $ignore_sent_at property, clock skew correction should be applied (default behavior)"
+    );
+}
+
+// ----------------------------------------------------------------------------
+// IP Address Extraction and Redaction Tests
+// ----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_ai_event_ip_defaults_to_localhost_in_tests() {
+    let (router, sink) = setup_ai_test_router_with_capturing_sink();
+    let test_client = TestClient::new(router);
+
+    let event_uuid = "c50e8400-e29b-41d4-a716-446655440007";
+    let event_data = json!({
+        "uuid": event_uuid,
+        "event": "$ai_generation",
+        "distinct_id": "test_user"
+    });
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify IP address defaults to 127.0.0.1 in test environment
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1);
+
+    let event = &events[0];
+    assert_eq!(
+        event.event.ip, "127.0.0.1",
+        "IP address should default to 127.0.0.1 when ConnectInfo is not available"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_event_ip_redacted_for_internal_events() {
+    let (router, sink) = setup_ai_test_router_with_capturing_sink();
+    let test_client = TestClient::new(router);
+
+    let event_uuid = "d50e8400-e29b-41d4-a716-446655440008";
+    let event_data = json!({
+        "uuid": event_uuid,
+        "event": "$ai_generation",
+        "distinct_id": "test_user"
+    });
+
+    let properties = json!({
+        "$ai_model": "gpt-4",
+        "capture_internal": true  // Mark as internal event - IP should be redacted
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify IP address is redacted to 127.0.0.1 for internal events
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1);
+
+    let event = &events[0];
+    assert_eq!(
+        event.event.ip, "127.0.0.1",
+        "IP address should be redacted to 127.0.0.1 for events with capture_internal property"
+    );
+
+    // Verify the capture_internal property is preserved
+    let event_json: serde_json::Value = serde_json::from_str(&event.event.data).unwrap();
+    let props = event_json["properties"].as_object().unwrap();
+    assert_eq!(props["capture_internal"], true);
+}
+
+// ----------------------------------------------------------------------------
+// Timestamp Conversion Tests
+// ----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_ai_event_with_invalid_sent_at_skips_clock_skew_correction() {
+    let (router, sink) = setup_ai_test_router_with_capturing_sink();
+    let test_client = TestClient::new(router);
+
+    let event_uuid = "e50e8400-e29b-41d4-a716-446655440009";
+    let event_timestamp = "2024-01-01T11:59:55Z";
+
+    let event_data = json!({
+        "uuid": event_uuid,
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "timestamp": event_timestamp,
+        "sent_at": "invalid-timestamp-format"  // Invalid sent_at that can't be parsed
+    });
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify timestamp was not adjusted (sent_at was invalid, so treated as missing)
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1);
+
+    let event = &events[0];
+    let computed_timestamp = event.metadata.computed_timestamp.unwrap();
+
+    // Should use the event timestamp directly without clock skew correction
+    // (same behavior as if sent_at was missing)
+    let expected = DateTime::parse_from_rfc3339(event_timestamp)
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    assert_eq!(
+        computed_timestamp, expected,
+        "With invalid sent_at, timestamp should match event timestamp exactly (no clock skew correction)"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_event_without_sent_at_uses_event_timestamp() {
+    let (router, sink) = setup_ai_test_router_with_capturing_sink();
+    let test_client = TestClient::new(router);
+
+    let event_uuid = "f50e8400-e29b-41d4-a716-446655440010";
+    let event_timestamp = "2024-01-01T11:59:55Z";
+
+    let event_data = json!({
+        "uuid": event_uuid,
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "timestamp": event_timestamp
+        // No sent_at field
+    });
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify timestamp uses event timestamp without clock skew correction
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1);
+
+    let event = &events[0];
+    let computed_timestamp = event.metadata.computed_timestamp.unwrap();
+
+    // Should use the event timestamp directly
+    let expected = DateTime::parse_from_rfc3339(event_timestamp)
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    assert_eq!(
+        computed_timestamp, expected,
+        "Without sent_at, timestamp should match event timestamp exactly"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_event_with_valid_sent_at_applies_clock_skew_correction() {
+    let (router, sink) = setup_ai_test_router_with_capturing_sink();
+    let test_client = TestClient::new(router);
+
+    let event_uuid = "050e8400-e29b-41d4-a716-446655440011";
+    let event_timestamp = "2024-01-01T11:59:55Z";
+    let sent_at = "2024-01-01T12:00:05Z"; // 10 seconds later
+
+    let event_data = json!({
+        "uuid": event_uuid,
+        "event": "$ai_generation",
+        "distinct_id": "test_user",
+        "timestamp": event_timestamp,
+        "sent_at": sent_at  // Valid sent_at
+    });
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    let form = Form::new()
+        .part(
+            "event",
+            Part::bytes(serde_json::to_vec(&event_data).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        )
+        .part(
+            "event.properties",
+            Part::bytes(serde_json::to_vec(&properties).unwrap())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify timestamp was adjusted using clock skew correction
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1);
+
+    let event = &events[0];
+    let computed_timestamp = event.metadata.computed_timestamp.unwrap();
+
+    // With clock skew correction:
+    // computed = now + (timestamp - sent_at)
+    // now = DEFAULT_TEST_TIME (2025-07-01T11:00:00Z)
+    // timestamp - sent_at = 11:59:55 - 12:00:05 = -10 seconds
+    // computed = 2025-07-01T11:00:00Z - 10s = 2025-07-01T10:59:50Z
+    let expected = chrono::Utc
+        .with_ymd_and_hms(2025, 7, 1, 10, 59, 50)
+        .unwrap();
+
+    assert_eq!(
+        computed_timestamp, expected,
+        "With valid sent_at, clock skew correction should be applied"
+    );
+}
+
+// ----------------------------------------------------------------------------
+// Token Dropper Tests
+// ----------------------------------------------------------------------------
+
+// Helper to setup test router with custom TokenDropper and CapturingSink
+fn setup_ai_test_router_with_token_dropper(token_dropper: TokenDropper) -> (Router, CapturingSink) {
+    let (readiness, liveness, _monitor) = test_lifecycle_handlers();
+
+    let sink = CapturingSink::new();
+    let sink_clone = sink.clone();
+    let timesource = FixedTime {
+        time: DateTime::parse_from_rfc3339(DEFAULT_TEST_TIME)
+            .expect("Invalid fixed time format")
+            .with_timezone(&Utc),
+    };
+    let redis = Arc::new(MockRedisClient::new());
+
+    let mut cfg = DEFAULT_CONFIG.clone();
+    cfg.capture_mode = CaptureMode::Ai;
+
+    let quota_limiter =
+        CaptureQuotaLimiter::new(&cfg, redis.clone(), Duration::from_secs(60 * 60 * 24 * 7));
+
+    let router = router(
+        timesource,
+        readiness,
+        liveness,
+        Arc::new(OutputRegistry::single(sink)),
+        redis,
+        None,
+        quota_limiter,
+        token_dropper,
+        None, // event_restriction_service
+        None, // recorder_handle
+        CaptureMode::Ai,
+        None,             // concurrency_limit
+        25 * 1024 * 1024, // event_size_limit
+        false,            // enable_historical_rerouting
+        1,                // historical_rerouting_threshold_days
+        false,            // is_mirror_deploy
+        0.0,              // verbose_sample_percent
+        26_214_400,       // ai_max_sum_of_parts_bytes
+        983_040,          // ai_max_event_bytes (960KB, the previous hardcoded limit)
+        None,             // body_chunk_read_timeout_ms
+        256,              // body_read_chunk_size_kb
+        10 * 1024 * 1024, // capture_v1_max_compressed_body_bytes
+        50 * 1024 * 1024, // capture_v1_max_decompressed_body_bytes
+        None,             // overflow_limiter
+        None,             // ai_events_overflow_limiter
+        None,             // ai_byte_rate_limiter
+        None,             // replay_overflow_limiter
+        None,             // v1_sink_router
+        8,                // capture_v1_scatter_gather_min_batch
+        None,             // ai_gateway_signing_secret
+        false,            // ai_events_overflow_enabled
+        None,             // ingestion_warning_emitter
+    );
+
+    (router, sink_clone)
+}
+
+/// A real limiter whose local cache admits a key's first charge and limits
+/// every one after it. A threshold of `0` is what makes the second charge
+/// exceed the window with no Redis round trip and no clock, the same seam
+/// `integration_person_processing_matrix` uses for the event limiter; the tick
+/// is parked well past the requests so no background sync can race them.
+fn setup_ai_test_router_with_byte_limiter() -> (Router, CapturingSink) {
+    let (readiness, liveness, _monitor) = test_lifecycle_handlers();
+
+    let sink = CapturingSink::new();
+    let sink_clone = sink.clone();
+    let timesource = FixedTime {
+        time: DateTime::parse_from_rfc3339(DEFAULT_TEST_TIME)
+            .expect("Invalid fixed time format")
+            .with_timezone(&Utc),
+    };
+    let redis = Arc::new(MockRedisClient::new());
+
+    let mut cfg = DEFAULT_CONFIG.clone();
+    cfg.capture_mode = CaptureMode::Ai;
+    cfg.ai_byte_limit_per_second = 0;
+    cfg.global_rate_limit_tick_interval_ms = 600_000;
+
+    let quota_limiter =
+        CaptureQuotaLimiter::new(&cfg, redis.clone(), Duration::from_secs(60 * 60 * 24 * 7));
+    let byte_limiter = Arc::new(
+        GlobalRateLimiter::new_ai_bytes(&cfg, vec![redis.clone()])
+            .expect("failed to build the AI byte limiter"),
+    );
+
+    let router = router(
+        timesource,
+        readiness,
+        liveness,
+        Arc::new(OutputRegistry::single(sink)),
+        redis,
+        None,
+        quota_limiter,
+        TokenDropper::default(),
+        None, // event_restriction_service
+        None, // recorder_handle
+        CaptureMode::Ai,
+        None,             // concurrency_limit
+        25 * 1024 * 1024, // event_size_limit
+        false,            // enable_historical_rerouting
+        1,                // historical_rerouting_threshold_days
+        false,            // is_mirror_deploy
+        0.0,              // verbose_sample_percent
+        26_214_400,       // ai_max_sum_of_parts_bytes
+        983_040,          // ai_max_event_bytes (960KB, the previous hardcoded limit)
+        None,             // body_chunk_read_timeout_ms
+        256,              // body_read_chunk_size_kb
+        10 * 1024 * 1024, // capture_v1_max_compressed_body_bytes
+        50 * 1024 * 1024, // capture_v1_max_decompressed_body_bytes
+        None,             // overflow_limiter
+        None,             // ai_events_overflow_limiter
+        Some(byte_limiter),
+        None,  // replay_overflow_limiter
+        None,  // v1_sink_router
+        8,     // capture_v1_scatter_gather_min_batch
+        None,  // ai_gateway_signing_secret
+        false, // ai_events_overflow_enabled
+        None,  // ingestion_warning_emitter
+    );
+
+    (router, sink_clone)
+}
+
+/// The byte budget reaches this endpoint. It builds its event at the handler and
+/// never enters either analytics pipeline, so the charge has to be wired here or
+/// a sender could spend unbounded bytes on `/i/v0/ai` while the same bytes are
+/// capped on `/i/v0/ai/batch`.
+///
+/// An over-budget event answers 200 with no accepted parts, the shape this
+/// handler already uses for the token dropper and for a `DropEvent` restriction:
+/// a rate drop is ops-imposed and never surfaces as a request failure.
+#[tokio::test]
+async fn test_ai_endpoint_byte_budget_drops_the_over_budget_event() {
+    let (router, sink) = setup_ai_test_router_with_byte_limiter();
+    let test_client = TestClient::new(router);
+    let token = "phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3";
+
+    let send = async |client: &TestClient| {
+        let form =
+            create_ai_event_form("$ai_generation", "test_user", json!({"$ai_model": "gpt-4"}));
+        send_multipart_request(client, form, Some(token)).await
+    };
+
+    // The limiter reads a cache miss as no prior data and fails open, so the
+    // first event for a token is always admitted.
+    let first = send(&test_client).await;
+    assert_eq!(first.status(), StatusCode::OK);
+    let accepted: serde_json::Value = first.json().await;
+    assert!(
+        !accepted["accepted_parts"].as_array().unwrap().is_empty(),
+        "the first event is admitted and reports the parts it took"
+    );
+    assert_eq!(sink.get_events().await.len(), 1);
+
+    let second = send(&test_client).await;
+    assert_eq!(
+        second.status(),
+        StatusCode::OK,
+        "a rate drop is not a request failure"
+    );
+    let refused: serde_json::Value = second.json().await;
+    assert_eq!(
+        refused["accepted_parts"].as_array().unwrap().len(),
+        0,
+        "an over-budget event reports that nothing was accepted"
+    );
+    assert_eq!(
+        sink.get_events().await.len(),
+        1,
+        "the over-budget event must not reach the sink"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_token_dropper_drops_matching_token() {
+    // Configure token dropper to drop all events for a specific token
+    let token_dropper = TokenDropper::new("phc_dropped_token");
+    let (router, sink) = setup_ai_test_router_with_token_dropper(token_dropper);
+    let test_client = TestClient::new(router);
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    let form = create_ai_event_form("$ai_generation", "test_user", properties);
+
+    // Use the dropped token
+    let response = send_multipart_request(&test_client, form, Some("phc_dropped_token")).await;
+
+    // Should return 200 OK (silently drops to avoid alerting clients)
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify no event was published to Kafka
+    let events = sink.get_events().await;
+    assert_eq!(
+        events.len(),
+        0,
+        "Event should be dropped when token matches dropper configuration"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_token_dropper_allows_non_matching_token() {
+    // Configure token dropper to drop a different token
+    let token_dropper = TokenDropper::new("phc_other_token");
+    let (router, sink) = setup_ai_test_router_with_token_dropper(token_dropper);
+    let test_client = TestClient::new(router);
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    let form = create_ai_event_form("$ai_generation", "test_user", properties);
+
+    // Use a different token that is NOT in the dropper
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify event WAS published to Kafka
+    let events = sink.get_events().await;
+    assert_eq!(
+        events.len(),
+        1,
+        "Event should be published when token does not match dropper configuration"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_token_dropper_drops_matching_token_and_distinct_id() {
+    // Configure token dropper to drop events for specific token:distinct_id combination
+    let token_dropper = TokenDropper::new("phc_specific_token:blocked_user");
+    let (router, sink) = setup_ai_test_router_with_token_dropper(token_dropper);
+    let test_client = TestClient::new(router);
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    // Create event with matching distinct_id
+    let form = create_ai_event_form("$ai_generation", "blocked_user", properties);
+
+    let response = send_multipart_request(&test_client, form, Some("phc_specific_token")).await;
+
+    // Should return 200 OK (silently drops to avoid alerting clients)
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify no event was published
+    let events = sink.get_events().await;
+    assert_eq!(
+        events.len(),
+        0,
+        "Event should be dropped when token:distinct_id matches dropper configuration"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_token_dropper_allows_different_distinct_id() {
+    // Configure token dropper to drop events for specific token:distinct_id combination
+    let token_dropper = TokenDropper::new("phc_specific_token:blocked_user");
+    let (router, sink) = setup_ai_test_router_with_token_dropper(token_dropper);
+    let test_client = TestClient::new(router);
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    // Create event with DIFFERENT distinct_id
+    let form = create_ai_event_form("$ai_generation", "allowed_user", properties);
+
+    let response = send_multipart_request(&test_client, form, Some("phc_specific_token")).await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify event WAS published (different distinct_id)
+    let events = sink.get_events().await;
+    assert_eq!(
+        events.len(),
+        1,
+        "Event should be published when distinct_id does not match dropper configuration"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_token_dropper_returns_success_with_empty_accepted_parts() {
+    // Configure token dropper to drop all events for a specific token
+    let token_dropper = TokenDropper::new("phc_dropped_token");
+    let (router, _sink) = setup_ai_test_router_with_token_dropper(token_dropper);
+    let test_client = TestClient::new(router);
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    let form = create_ai_event_form("$ai_generation", "test_user", properties);
+
+    let response = send_multipart_request(&test_client, form, Some("phc_dropped_token")).await;
+
+    // Token dropper silently drops - returns 200 OK to avoid alerting clients
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify response body contains empty accepted_parts
+    let response_text = response.text().await;
+    assert!(
+        response_text.contains(r#""accepted_parts":[]"#),
+        "Response should contain empty 'accepted_parts' field, got: {response_text}"
+    );
+}
+
+// ----------------------------------------------------------------------------
+// Quota Limiter Tests
+// ----------------------------------------------------------------------------
+
+use capture::quota_limiters::is_llm_event;
+use limiters::redis::{QuotaResource, QUOTA_LIMITER_CACHE_KEY};
+
+// Helper to setup test router with quota limiter configured to limit AI events
+fn setup_ai_test_router_with_llm_quota_limited(token: &str) -> (Router, CapturingSink) {
+    let (readiness, liveness, _monitor) = test_lifecycle_handlers();
+
+    let sink = CapturingSink::new();
+    let sink_clone = sink.clone();
+    let timesource = FixedTime {
+        time: DateTime::parse_from_rfc3339(DEFAULT_TEST_TIME)
+            .expect("Invalid fixed time format")
+            .with_timezone(&Utc),
+    };
+
+    // Set up mock Redis to return this token as limited for LLM events
+    let llm_key = format!(
+        "{}{}",
+        QUOTA_LIMITER_CACHE_KEY,
+        QuotaResource::LLMEvents.as_str()
+    );
+    let redis =
+        Arc::new(MockRedisClient::new().zrangebyscore_ret(&llm_key, vec![token.to_string()]));
+
+    let mut cfg = DEFAULT_CONFIG.clone();
+    cfg.capture_mode = CaptureMode::Ai;
+
+    let quota_limiter = CaptureQuotaLimiter::new(&cfg, redis.clone(), Duration::from_secs(60))
+        .add_scoped_limiter(QuotaResource::LLMEvents, is_llm_event);
+
+    let router = router(
+        timesource,
+        readiness,
+        liveness,
+        Arc::new(OutputRegistry::single(sink)),
+        redis,
+        None,
+        quota_limiter,
+        TokenDropper::default(),
+        None, // event_restriction_service
+        None, // recorder_handle
+        CaptureMode::Ai,
+        None,
+        25 * 1024 * 1024,
+        false,
+        1_i64,
+        false,
+        0.0_f32,
+        26_214_400,
+        983_040,          // ai_max_event_bytes (960KB, the previous hardcoded limit)
+        None,             // body_chunk_read_timeout_ms
+        256,              // body_read_chunk_size_kb
+        10 * 1024 * 1024, // capture_v1_max_compressed_body_bytes
+        50 * 1024 * 1024, // capture_v1_max_decompressed_body_bytes
+        None,             // overflow_limiter
+        None,             // ai_events_overflow_limiter
+        None,             // ai_byte_rate_limiter
+        None,             // replay_overflow_limiter
+        None,             // v1_sink_router
+        8,                // capture_v1_scatter_gather_min_batch
+        None,             // ai_gateway_signing_secret
+        false,            // ai_events_overflow_enabled
+        None,             // ingestion_warning_emitter
+    );
+
+    (router, sink_clone)
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_quota_limiter_drops_when_over_quota() {
+    let limited_token = "phc_limited_token_for_quota";
+    let (router, sink) = setup_ai_test_router_with_llm_quota_limited(limited_token);
+    let test_client = TestClient::new(router);
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    let form = create_ai_event_form("$ai_generation", "test_user", properties);
+
+    // Use the token that is over quota
+    let response = send_multipart_request(&test_client, form, Some(limited_token)).await;
+
+    // Should return 429 Too Many Requests (billing limit)
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    // Verify no event was published to Kafka
+    let events = sink.get_events().await;
+    assert_eq!(
+        events.len(),
+        0,
+        "Event should be dropped when token is over LLM quota"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_quota_limiter_allows_when_not_over_quota() {
+    // Set up quota limiter with a different token limited
+    let limited_token = "phc_other_limited_token";
+    let (router, sink) = setup_ai_test_router_with_llm_quota_limited(limited_token);
+    let test_client = TestClient::new(router);
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    let form = create_ai_event_form("$ai_generation", "test_user", properties);
+
+    // Use a different token that is NOT over quota
+    let response = send_multipart_request(
+        &test_client,
+        form,
+        Some("phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3"),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify event WAS published to Kafka
+    let events = sink.get_events().await;
+    assert_eq!(
+        events.len(),
+        1,
+        "Event should be published when token is not over quota"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_quota_limiter_returns_billing_limit_error_message() {
+    let limited_token = "phc_quota_limited_token";
+    let (router, _sink) = setup_ai_test_router_with_llm_quota_limited(limited_token);
+    let test_client = TestClient::new(router);
+
+    let properties = json!({
+        "$ai_model": "gpt-4"
+    });
+
+    let form = create_ai_event_form("$ai_generation", "test_user", properties);
+
+    let response = send_multipart_request(&test_client, form, Some(limited_token)).await;
+
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    // Verify response body contains billing limit error message
+    let response_text = response.text().await;
+    assert!(
+        response_text.contains("billing limit"),
+        "Response should contain 'billing limit' error message, got: {response_text}"
+    );
+}
+
+// ============================================================================
+// OverflowLimiter coverage for the AI endpoint
+// ============================================================================
+//
+// These tests exercise the shared `stamp_overflow_reason` helper invoked in
+// `ai_handler` immediately after `build_kafka_event`. Pre-refactor the
+// OverflowLimiter check happened inside the kafka sink; now it's a pipeline
+// concern stamped into `ProcessedEventMetadata::overflow_reason`. Since AI
+// bypasses `events::analytics::process_events`, these tests are the
+// regression guard for `capture-ai-prod-us` (which runs with
+// `OVERFLOW_ENABLED=true` + `OVERFLOW_PRESERVE_PARTITION_LOCALITY=true`).
+
+const AI_OVERFLOW_TEST_TOKEN: &str = "phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3";
+
+/// Variant of `setup_ai_test_router_with_capturing_sink` that wires a real
+/// `OverflowLimiter` into the router's AI lane — where AI-endpoint events land,
+/// so it is the limiter they consult. Existing helpers still pass `None`; this
+/// one opts in to exercise the governor path.
+fn setup_ai_test_router_with_overflow_limiter(
+    ai_events_overflow_limiter: Arc<OverflowLimiter>,
+) -> (Router, CapturingSink) {
+    let (readiness, liveness, _monitor) = test_lifecycle_handlers();
+
+    let sink = CapturingSink::new();
+    let sink_clone = sink.clone();
+    let timesource = FixedTime {
+        time: DateTime::parse_from_rfc3339(DEFAULT_TEST_TIME)
+            .expect("Invalid fixed time format")
+            .with_timezone(&Utc),
+    };
+    let redis = Arc::new(MockRedisClient::new());
+
+    let mut cfg = DEFAULT_CONFIG.clone();
+    cfg.capture_mode = CaptureMode::Ai;
+
+    let quota_limiter =
+        CaptureQuotaLimiter::new(&cfg, redis.clone(), Duration::from_secs(60 * 60 * 24 * 7));
+
+    let router = router(
+        timesource,
+        readiness,
+        liveness,
+        Arc::new(OutputRegistry::single(sink)),
+        redis,
+        None,
+        quota_limiter,
+        TokenDropper::default(),
+        None, // event_restriction_service
+        None, // recorder_handle
+        CaptureMode::Ai,
+        None,
+        25 * 1024 * 1024,
+        false,
+        1_i64,
+        false,
+        0.0_f32,
+        26_214_400,
+        983_040, // ai_max_event_bytes (960KB, the previous hardcoded limit)
+        None,
+        256,
+        10 * 1024 * 1024, // capture_v1_max_compressed_body_bytes
+        50 * 1024 * 1024, // capture_v1_max_decompressed_body_bytes
+        None,             // overflow_limiter
+        Some(ai_events_overflow_limiter),
+        None, // ai_byte_rate_limiter
+        None, // replay_overflow_limiter
+        None, // v1_sink_router
+        8,    // capture_v1_scatter_gather_min_batch
+        None, // ai_gateway_signing_secret
+        true, // ai_events_overflow_enabled
+        None, // ingestion_warning_emitter
+    );
+
+    (router, sink_clone)
+}
+
+#[tokio::test]
+async fn test_ai_event_with_hot_key_stamps_force_limited_reason() {
+    // Configure the OverflowLimiter to force-route the specific
+    // `token:distinct_id` key. `per_second`/`burst` are generous so only the
+    // explicit `keys_to_reroute` entry triggers — this isolates the
+    // ForceLimited branch from the RateLimited branch.
+    let hot_distinct_id = "user_hot_key";
+    let hot_key = format!("{AI_OVERFLOW_TEST_TOKEN}:{hot_distinct_id}");
+    let overflow_limiter = Arc::new(OverflowLimiter::new(
+        NonZeroU32::new(1_000).unwrap(),
+        NonZeroU32::new(1_000).unwrap(),
+        Some(hot_key),
+        true, // preserve_locality (matches capture-ai-prod-us config)
+    ));
+
+    let (router, sink) = setup_ai_test_router_with_overflow_limiter(overflow_limiter);
+    let test_client = TestClient::new(router);
+
+    let properties = json!({"$ai_model": "gpt-4"});
+    let form = create_ai_event_form("$ai_generation", hot_distinct_id, properties);
+
+    let response = send_multipart_request(&test_client, form, Some(AI_OVERFLOW_TEST_TOKEN)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1, "AI event should still reach the sink");
+
+    let event = &events[0];
+    assert_eq!(
+        event.metadata.overflow_reason,
+        Some(OverflowReason::ForceLimited),
+        "hot key must be stamped ForceLimited so the sink routes to overflow"
+    );
+    assert!(
+        event.metadata.skip_person_processing,
+        "ForceLimited implies skip_person_processing so the header is set"
+    );
+}
+
+#[tokio::test]
+async fn test_ai_event_with_cold_key_leaves_overflow_reason_none() {
+    // Governor is wide open and no keys_to_reroute — the helper must leave
+    // `overflow_reason` as None so the sink uses the default topic.
+    let overflow_limiter = Arc::new(OverflowLimiter::new(
+        NonZeroU32::new(1_000).unwrap(),
+        NonZeroU32::new(1_000).unwrap(),
+        None,
+        true,
+    ));
+
+    let (router, sink) = setup_ai_test_router_with_overflow_limiter(overflow_limiter);
+    let test_client = TestClient::new(router);
+
+    let properties = json!({"$ai_model": "gpt-4"});
+    let form = create_ai_event_form("$ai_generation", "cold_user", properties);
+
+    let response = send_multipart_request(&test_client, form, Some(AI_OVERFLOW_TEST_TOKEN)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].metadata.overflow_reason, None);
+    assert!(!events[0].metadata.skip_person_processing);
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_without_overflow_limiter_is_parity_with_pre_refactor() {
+    // `capture-ai-*` with `OVERFLOW_ENABLED=false` (or setups without a
+    // limiter configured at all) must behave exactly as before: reason stays
+    // None. This pins the `None` short-circuit inside `stamp_overflow_reason`.
+    let (router, sink) = setup_ai_test_router_with_capturing_sink();
+    let test_client = TestClient::new(router);
+
+    let properties = json!({"$ai_model": "gpt-4"});
+    let form = create_ai_event_form("$ai_generation", "any_user", properties);
+
+    let response = send_multipart_request(&test_client, form, Some(AI_OVERFLOW_TEST_TOKEN)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].metadata.overflow_reason, None);
+}
+
+// ============================================================================
+// AI-gateway provenance on /i/v0/ai
+// ============================================================================
+
+const GW_SECRET: &str = "test-signing-secret";
+
+// Shared router builder for the provenance tests, with the signing secret set;
+// callers supply only what differs (the redis client and quota limiter).
+fn ai_router(
+    redis: Arc<MockRedisClient>,
+    quota_limiter: CaptureQuotaLimiter,
+) -> (Router, CapturingSink) {
+    let (readiness, liveness, _monitor) = test_lifecycle_handlers();
+    let sink = CapturingSink::new();
+    let sink_clone = sink.clone();
+    let timesource = FixedTime {
+        time: DateTime::parse_from_rfc3339(DEFAULT_TEST_TIME)
+            .unwrap()
+            .with_timezone(&Utc),
+    };
+    let router = router(
+        timesource,
+        readiness,
+        liveness,
+        Arc::new(OutputRegistry::single(sink)),
+        redis,
+        None,
+        quota_limiter,
+        TokenDropper::default(),
+        None,
+        None, // recorder_handle
+        CaptureMode::Ai,
+        None,
+        25 * 1024 * 1024,
+        false,
+        1_i64,
+        false,
+        0.0_f32,
+        26_214_400,
+        983_040, // ai_max_event_bytes (960KB, the previous hardcoded limit)
+        None,
+        256,
+        10 * 1024 * 1024,
+        50 * 1024 * 1024,
+        None,
+        None, // ai_events_overflow_limiter
+        None, // ai_byte_rate_limiter
+        None,
+        None,
+        8,
+        Some(GW_SECRET.to_string()),
+        false, // ai_events_overflow_enabled
+        None,  // ingestion_warning_emitter
+    );
+    (router, sink_clone)
+}
+
+// LLM-quota-limited (the token reads as over quota) with the signing secret set,
+// so a verified event can prove it bypasses the limiter.
+fn setup_ai_router_quota_limited_with_secret(token: &str) -> (Router, CapturingSink) {
+    let llm_key = format!(
+        "{}{}",
+        QUOTA_LIMITER_CACHE_KEY,
+        QuotaResource::LLMEvents.as_str()
+    );
+    let redis =
+        Arc::new(MockRedisClient::new().zrangebyscore_ret(&llm_key, vec![token.to_string()]));
+    let mut cfg = DEFAULT_CONFIG.clone();
+    cfg.capture_mode = CaptureMode::Ai;
+    let quota_limiter = CaptureQuotaLimiter::new(&cfg, redis.clone(), Duration::from_secs(60))
+        .add_scoped_limiter(QuotaResource::LLMEvents, is_llm_event);
+    ai_router(redis, quota_limiter)
+}
+
+// Signing secret set, no quota limit, so the published event is observable
+// (used to assert a forged marker is stripped).
+fn setup_ai_router_with_secret() -> (Router, CapturingSink) {
+    let redis = Arc::new(MockRedisClient::new());
+    let mut cfg = DEFAULT_CONFIG.clone();
+    cfg.capture_mode = CaptureMode::Ai;
+    let quota_limiter =
+        CaptureQuotaLimiter::new(&cfg, redis.clone(), Duration::from_secs(60 * 60 * 24 * 7));
+    ai_router(redis, quota_limiter)
+}
+
+// Sends an AI multipart request with the gateway provenance headers attached.
+async fn send_signed_ai_request(
+    client: &TestClient,
+    form: Form,
+    token: &str,
+    signature: &str,
+    signed_at: &str,
+    request_id: &str,
+) -> axum_test_helper::TestResponse {
+    let boundary = form.boundary().to_string();
+    let content_type = format!("multipart/form-data; boundary={boundary}");
+    let mut stream = form.into_stream();
+    let mut body = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        body.extend_from_slice(&chunk.unwrap());
+    }
+    client
+        .post("/i/v0/ai")
+        .header("Content-Type", content_type)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("PostHog-Ai-Gateway-Signature", signature)
+        .header("PostHog-Ai-Gateway-Signed-At", signed_at)
+        .header("PostHog-Ai-Gateway-Request-Id", request_id)
+        .body(body)
+        .send()
+        .await
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_verified_gateway_event_bypasses_quota_and_is_stamped() {
+    let token = "phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3";
+    let (router, sink) = setup_ai_router_quota_limited_with_secret(token);
+    let client = TestClient::new(router);
+
+    let distinct_id = "user-7";
+    let request_id = "req-verified-1";
+    let sig = capture::v1::gateway_provenance::sign_for_test(
+        GW_SECRET.as_bytes(),
+        token,
+        distinct_id,
+        request_id,
+        DEFAULT_TEST_TIME,
+    );
+    let form = create_ai_event_form(
+        "$ai_generation",
+        distinct_id,
+        json!({"$ai_model": "claude"}),
+    );
+    let resp =
+        send_signed_ai_request(&client, form, token, &sig, DEFAULT_TEST_TIME, request_id).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // The token is LLM-quota-limited, so an unverified event would be dropped. A
+    // verified gateway event must be exempt (published) and stamped.
+    let events = sink.get_events().await;
+    assert_eq!(
+        events.len(),
+        1,
+        "verified gateway event must bypass the LLM quota limiter"
+    );
+    let data: Value = serde_json::from_str(&events[0].event.data).unwrap();
+    assert_eq!(data["properties"]["$ai_gateway_verified"], json!(true));
+    assert_eq!(
+        data["properties"]["$ai_gateway_request_id"],
+        json!(request_id)
+    );
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_forged_marker_is_stripped() {
+    let token = "phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3";
+    let (router, sink) = setup_ai_router_with_secret();
+    let client = TestClient::new(router);
+
+    // Client forges the verified marker and sends an invalid signature.
+    let form = create_ai_event_form(
+        "$ai_generation",
+        "user-7",
+        json!({"$ai_model": "claude", "$ai_gateway_verified": true}),
+    );
+    let resp = send_signed_ai_request(
+        &client,
+        form,
+        token,
+        "deadbeef",
+        DEFAULT_TEST_TIME,
+        "req-forged",
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let events = sink.get_events().await;
+    assert_eq!(events.len(), 1);
+    let data: Value = serde_json::from_str(&events[0].event.data).unwrap();
+    assert!(
+        data["properties"].get("$ai_gateway_verified").is_none(),
+        "a forged $ai_gateway_verified with an invalid signature must be stripped"
+    );
+}
+
+// Over the global Events quota (the team-wide cap, not the scoped LLM one), with
+// the signing secret set.
+fn setup_ai_router_global_quota_limited_with_secret(token: &str) -> (Router, CapturingSink) {
+    let events_key = format!(
+        "{}{}",
+        QUOTA_LIMITER_CACHE_KEY,
+        QuotaResource::Events.as_str()
+    );
+    let redis =
+        Arc::new(MockRedisClient::new().zrangebyscore_ret(&events_key, vec![token.to_string()]));
+    let mut cfg = DEFAULT_CONFIG.clone();
+    cfg.capture_mode = CaptureMode::Ai;
+    let quota_limiter = CaptureQuotaLimiter::new(&cfg, redis.clone(), Duration::from_secs(60));
+    ai_router(redis, quota_limiter)
+}
+
+#[tokio::test]
+async fn test_ai_endpoint_verified_gateway_event_still_subject_to_global_quota() {
+    let token = "phc_VXRzc3poSG9GZm1JenRianJ6TTJFZGh4OWY2QXzx9f3";
+    let (router, sink) = setup_ai_router_global_quota_limited_with_secret(token);
+    let client = TestClient::new(router);
+
+    let distinct_id = "user-7";
+    let request_id = "req-global-limited";
+    let sig = capture::v1::gateway_provenance::sign_for_test(
+        GW_SECRET.as_bytes(),
+        token,
+        distinct_id,
+        request_id,
+        DEFAULT_TEST_TIME,
+    );
+    let form = create_ai_event_form(
+        "$ai_generation",
+        distinct_id,
+        json!({"$ai_model": "claude"}),
+    );
+    let resp =
+        send_signed_ai_request(&client, form, token, &sig, DEFAULT_TEST_TIME, request_id).await;
+
+    // Verified gateway events are exempt from the scoped LLM quota but not the
+    // global Events quota, so an over-global-quota token is still rejected.
+    assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        sink.get_events().await.len(),
+        0,
+        "verified gateway event must still obey the global Events quota"
+    );
+}
+
+// ============================================================================
+// PHASE 11: INGESTION WARNINGS
+// ============================================================================
+//
+// The mapping, details, and count are pinned at the helper level in
+// `ingestion_warnings::ai`. These cover what a unit test can't: that the emit
+// seam is wired into the handler at all, that attribution reaches it from the
+// event part, and that a rejection still produces its original HTTP response.
+
+#[tokio::test]
+async fn non_ai_event_name_warns_and_still_returns_400() {
+    let (app, emitter) = setup_ai_router_collecting_warnings();
+    let client = TestClient::new(app);
+
+    // Analytics sent to the AI path: the mistake invalid_ai_event exists for.
+    let form = Form::new().part(
+        "event",
+        Part::bytes(
+            serde_json::to_vec(&json!({
+                "uuid": uuid::Uuid::now_v7().to_string(),
+                "event": "$pageview",
+                "distinct_id": "user-1",
+                "properties": {"$ai_model": "gpt-4", "$lib": "posthog-python", "$lib_version": "3.1.0"}
+            }))
+            .unwrap(),
+        )
+        .mime_str("application/json")
+        .unwrap(),
+    );
+
+    let resp = send_multipart_request(&client, form, Some("test_token")).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let emitted = emitter.emitted();
+    assert_eq!(emitted.len(), 1);
+    assert_eq!(emitted[0].warning, WarningType::InvalidAiEvent);
+    assert_eq!(emitted[0].source, CAPTURE_AI_EVENTS);
+    assert_eq!(emitted[0].token, "test_token");
+    assert_eq!(emitted[0].count, 1);
+    assert_eq!(
+        emitted[0].extra_details.get("eventName"),
+        Some(&json!("$pageview"))
+    );
+    // Attribution came off the event part's own properties.
+    assert_eq!(
+        emitted[0].extra_details.get("lib"),
+        Some(&json!("posthog-python"))
+    );
+    assert_eq!(
+        emitted[0].extra_details.get("libVersion"),
+        Some(&json!("3.1.0"))
+    );
+    assert_eq!(
+        emitted[0].extra_details.get("path"),
+        Some(&json!("/i/v0/ai"))
+    );
+}
+
+#[tokio::test]
+async fn missing_ai_model_warns_as_invalid_ai_event() {
+    let (app, emitter) = setup_ai_router_collecting_warnings();
+    let client = TestClient::new(app);
+
+    let form = create_ai_event_form("$ai_generation", "user-2", json!({"foo": "bar"}));
+    let resp = send_multipart_request(&client, form, Some("test_token")).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let emitted = emitter.emitted();
+    assert_eq!(emitted.len(), 1);
+    assert_eq!(emitted[0].warning, WarningType::InvalidAiEvent);
+    // No $lib in the properties, so attribution falls back rather than dropping keys.
+    assert_eq!(emitted[0].extra_details.get("lib"), Some(&json!("unknown")));
+}
+
+// Structural failures happen before the event part parses, so this also covers
+// the pre-event-part attribution fallback on the seam.
+#[tokio::test]
+async fn unknown_multipart_field_warns_as_invalid_ai_payload() {
+    let (app, emitter) = setup_ai_router_collecting_warnings();
+    let client = TestClient::new(app);
+
+    let form = create_ai_event_form("$ai_generation", "user-3", json!({"$ai_model": "gpt-4"}))
+        .part(
+            "surprise",
+            Part::bytes(b"data".to_vec())
+                .mime_str("application/json")
+                .unwrap(),
+        );
+
+    let resp = send_multipart_request(&client, form, Some("test_token")).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let emitted = emitter.emitted();
+    assert_eq!(emitted.len(), 1);
+    assert_eq!(emitted[0].warning, WarningType::InvalidAiPayload);
+    assert_eq!(
+        emitted[0].extra_details.get("part"),
+        Some(&json!("surprise"))
+    );
+}
+
+// A missing Bearer header is pre-token, so there is no team to attribute to and
+// the seam must stay silent. This is the property that keeps unattributable
+// failures out of the warnings table.
+#[tokio::test]
+async fn unauthenticated_request_never_warns() {
+    let (app, emitter) = setup_ai_router_collecting_warnings();
+    let client = TestClient::new(app);
+
+    let form = create_ai_event_form("$ai_generation", "user-4", json!({"$ai_model": "gpt-4"}));
+    let resp = send_multipart_request(&client, form, None).await;
+
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert!(emitter.emitted().is_empty());
+}
+
+#[tokio::test]
+async fn valid_ai_event_never_warns() {
+    let (app, emitter) = setup_ai_router_collecting_warnings();
+    let client = TestClient::new(app);
+
+    let form = create_ai_event_form("$ai_generation", "user-5", json!({"$ai_model": "gpt-4"}));
+    let resp = send_multipart_request(&client, form, Some("test_token")).await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(emitter.emitted().is_empty());
+}

@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 2333188,
+  "bundle_sha256": "eb1a2542b232ad95617568b62bd252ec8667088d7e7a65a07ef2d9cf1a2c74b5",
+  "extracted_tree": {
+    "bytes": 6528052,
+    "files": 558,
+    "sha256": "0d5604e830952ebc7afd70ac4fbf24503baa8ed4cdcb0242c7759565bed98969"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 2333188,
+      "name": "OpenCognit.bundle.zip.part-0001",
+      "sha256": "eb1a2542b232ad95617568b62bd252ec8667088d7e7a65a07ef2d9cf1a2c74b5"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "OpenCognit",
+  "source_bytes": 6528052,
+  "source_commit": "e6dba4255dc79992044df10e324d9e0743055008",
+  "source_files": 558,
+  "source_ref": "HEAD",
+  "source_repo": "OpenCognit/opencognit",
+  "source_tree": {
+    "bytes": 6528052,
+    "files": 558,
+    "sha256": "0d5604e830952ebc7afd70ac4fbf24503baa8ed4cdcb0242c7759565bed98969"
+  }
+}

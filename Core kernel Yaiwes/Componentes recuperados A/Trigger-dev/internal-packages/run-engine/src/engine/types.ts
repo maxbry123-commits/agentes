@@ -1,0 +1,405 @@
+import { type RedisOptions } from "@internal/redis";
+import type { Meter, Tracer } from "@internal/tracing";
+import type { Logger, LogLevel } from "@trigger.dev/core/logger";
+import type {
+  MachinePreset,
+  MachinePresetName,
+  RetryOptions,
+  TriggerTraceContext,
+} from "@trigger.dev/core/v3";
+import type { PrismaClient, PrismaReplicaClient, TaskRun, Waitpoint } from "@trigger.dev/database";
+import type { RunStore } from "@internal/run-store";
+import {
+  type Worker,
+  type WorkerConcurrencyOptions,
+  type GlobalRateLimiter,
+} from "@trigger.dev/redis-worker";
+import type { ControlPlaneResolver } from "./controlPlaneResolver.js";
+import type { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
+import type { RunQueueMetricsEmitter } from "../run-queue/index.js";
+import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import type { LockRetryConfig } from "./locking.js";
+import type { workerCatalog } from "./workerCatalog.js";
+import { type BillingPlan } from "./billingCache.js";
+import type { DRRConfig } from "../batch-queue/types.js";
+import type { PendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
+
+/**
+ * Structural mirror of the webapp's CrossSeamGuardDecision
+ * (apps/webapp/app/v3/runOpsMigration/crossSeamGuard.server.ts).
+ * Re-declared here because @internal/run-engine must not depend on the webapp.
+ * Keep field names identical so the injected value is assignable.
+ */
+type CrossSeamGuardDecision = {
+  store: "new" | "legacy";
+  residency: "NEW" | "LEGACY";
+  routeKind: string;
+  pinnedReason?: string;
+};
+
+/**
+ * Optional cross-seam residency store-selection guard for waitpoint completion.
+ * Injected by the webapp as `pickRunOpsStoreForCompletion`.
+ * A no-op (returns store="legacy", the single store) when the split is OFF — the
+ * webapp wrapper short-circuits without classifying.
+ * When omitted entirely (self-host, tests), completeWaitpoint behaves exactly
+ * as today.
+ */
+export type CrossSeamGuardHook = (input: {
+  waitpointId: string;
+  routeKind: "MANUAL" | "DATETIME" | "RESUME_TOKEN" | "IDEMPOTENCY_REUSE" | "RUN";
+}) => Promise<CrossSeamGuardDecision>;
+
+export type RunEngineOptions = {
+  prisma: PrismaClient;
+  readOnlyPrisma?: PrismaReplicaClient;
+  /** Optional RunStore implementation to inject. Defaults to a PostgresRunStore
+   *  built from `prisma`/`readOnlyPrisma`, so single-DB / self-host behavior is unchanged. */
+  store?: RunStore;
+  /** Optional ControlPlaneResolver to inject. Defaults to a PassthroughControlPlaneResolver
+   *  built from `prisma`/`readOnlyPrisma` (in-DB joins), so single-DB / self-host behavior is
+   *  unchanged. The webapp injects an adapter over its cross-DB cached resolver. */
+  controlPlaneResolver?: ControlPlaneResolver;
+  /** Optional cross-seam store-selection guard. Omit for single-DB / tests. */
+  crossSeamGuard?: CrossSeamGuardHook;
+  worker: {
+    disabled?: boolean;
+    redis: RedisOptions;
+    pollIntervalMs?: number;
+    immediatePollIntervalMs?: number;
+    shutdownTimeoutMs?: number;
+  } & WorkerConcurrencyOptions;
+  machines: {
+    defaultMachine: MachinePresetName;
+    machines: Record<string, MachinePreset>;
+    baseCostInCents: number;
+  };
+  billing?: {
+    getCurrentPlan: (orgId: string) => Promise<BillingPlan>;
+  };
+  queue: {
+    redis: RedisOptions;
+    shardCount?: number;
+    masterQueueConsumersDisabled?: boolean;
+    processWorkerQueueDebounceMs?: number;
+    masterQueueConsumersIntervalMs?: number;
+    masterQueueCooloffPeriodMs?: number;
+    masterQueueCooloffCountThreshold?: number;
+    masterQueueConsumerDequeueCount?: number;
+    workerOptions?: WorkerConcurrencyOptions;
+    retryOptions?: RetryOptions;
+    defaultEnvConcurrency?: number;
+    defaultEnvConcurrencyBurstFactor?: number;
+    logLevel?: LogLevel;
+    /** Optional queue-metrics emitter; enables gauge + counter emission from the RunQueue. */
+    queueMetrics?: RunQueueMetricsEmitter;
+    queueSelectionStrategyOptions?: Pick<
+      FairQueueSelectionStrategyOptions,
+      "parentQueueLimit" | "tracer" | "biases" | "reuseSnapshotCount" | "maximumEnvCount"
+    >;
+    dequeueBlockingTimeoutSeconds?: number;
+    concurrencySweeper?: {
+      scanSchedule?: string;
+      processMarkedSchedule?: string;
+      scanJitterInMs?: number;
+      processMarkedJitterInMs?: number;
+    };
+    /** TTL system options for automatic run expiration */
+    ttlSystem?: {
+      /** Number of shards for TTL sorted sets (default: same as queue shards) */
+      shardCount?: number;
+      /** How often to poll each shard for expired runs (ms, default: 1000) */
+      pollIntervalMs?: number;
+      /** Max number of runs to expire per poll per shard (default: 100) */
+      batchSize?: number;
+      /** Whether the entire TTL system is disabled (default: false) */
+      disabled?: boolean;
+      /** Whether TTL consumers + worker are disabled on this instance (default: false).
+       *  When true, ZADD on enqueue still happens but polling loops and the TTL worker don't run. */
+      consumersDisabled?: boolean;
+      /** Visibility timeout for TTL worker jobs (ms, default: 120000) */
+      visibilityTimeoutMs?: number;
+      /** Concurrency limit for the TTL redis-worker (default: 1) */
+      workerConcurrency?: number;
+      /** Max items to accumulate before flushing a batch (default: 500) */
+      batchMaxSize?: number;
+      /** Max time (ms) to wait for more items before flushing a batch (default: 5000) */
+      batchMaxWaitMs?: number;
+    };
+  };
+  runLock: {
+    redis: RedisOptions;
+    duration?: number;
+    automaticExtensionThreshold?: number;
+    retryConfig?: LockRetryConfig;
+  };
+  cache?: {
+    redis: RedisOptions;
+  };
+  batchQueue?: {
+    redis: RedisOptions;
+    drr?: Partial<DRRConfig>;
+    /** Number of master queue shards (default: 1) */
+    shardCount?: number;
+    /** Worker queue blocking timeout in seconds (enables two-stage processing) */
+    workerQueueBlockingTimeoutSeconds?: number;
+    consumerEnabled?: boolean;
+    consumerCount?: number;
+    consumerIntervalMs?: number;
+    /** Default processing concurrency per environment when no specific limit is set */
+    defaultConcurrency?: number;
+    /** Optional global rate limiter to limit processing across all consumers */
+    globalRateLimiter?: GlobalRateLimiter;
+    /** Maximum worker queue depth before claiming pauses (protects visibility timeouts) */
+    workerQueueMaxDepth?: number;
+    /** Retry configuration for failed batch items */
+    retry?: {
+      /** Maximum number of attempts (including the first). Default: 1 (no retries) */
+      maxAttempts: number;
+      /** Base delay in milliseconds. Default: 1000 */
+      minTimeoutInMs?: number;
+      /** Maximum delay in milliseconds. Default: 30000 */
+      maxTimeoutInMs?: number;
+      /** Exponential backoff factor. Default: 2 */
+      factor?: number;
+      /** Whether to add jitter to retry delays. Default: true */
+      randomize?: boolean;
+    };
+  };
+  debounce?: {
+    redis?: RedisOptions;
+    /**
+     * Optional ceiling on how long a debounced run can be pushed back, measured from the run's
+     * `createdAt`. A trigger's own `debounce.maxDelay` overrides this. Once a trigger would push
+     * `delayUntil` past the ceiling, the existing run is released to execute and the trigger
+     * starts a new one.
+     *
+     * Unset by default, which means a continuously triggered key is pushed back for as long as
+     * the triggers keep coming. Set it to bound that; note that any `delay` at or above the
+     * ceiling stops the run from ever being pushed, so every trigger creates its own run.
+     */
+    maxDebounceDurationMs?: number;
+    /**
+     * Bucket size in milliseconds used to quantize the newly computed `delayUntil`.
+     * Quantization collapses many concurrent triggers on the same hot debounce key
+     * into the same target time, so that the unlocked fast-path skip becomes
+     * effective and the redlock on `handleDebounce` is not contended.
+     *
+     * A run might fire up to `quantizeNewDelayUntilMs` earlier than the strict
+     * `now + delay` spec.
+     *
+     * Set to 0 to disable quantization.
+     *
+     * Default: 1000 (1s).
+     */
+    quantizeNewDelayUntilMs?: number;
+    /**
+     * Whether to read the existing run's `delayUntil` outside of the redlock and
+     * short-circuit when the new (quantized) `delayUntil` is not later than the
+     * current one. Trailing-mode triggers carrying `updateData` always bypass
+     * this fast path and take the lock so payload/metadata/tag updates still
+     * land on the run.
+     *
+     * Default: true.
+     */
+    fastPathSkipEnabled?: boolean;
+    /**
+     * Whether to route the unlocked fast-path reads (probe + full-run fetch)
+     * through `readOnlyPrisma` (e.g. an Aurora reader) instead of the writer.
+     * Safe because debounce is best-effort: a stale `delayUntil` falls
+     * through to the locked path (the locked path re-checks under the lock),
+     * and a stale `status` at worst returns the existing run, which is the
+     * same outcome the caller would see if their trigger had landed a few
+     * hundred ms earlier.
+     *
+     * Default: false.
+     */
+    useReplicaForFastPathRead?: boolean;
+  };
+  /** If not set then checkpoints won't ever be used */
+  retryWarmStartThresholdMs?: number;
+  /**
+   * Delay before the `ensureRunFinalized` write-ahead guard fires after a run-finish
+   * commit whose inline side effects never acked it. Long enough that the guard
+   * stays a pure failure path in steady state. Default: 60s.
+   */
+  finalizationGuardDelayMs?: number;
+  heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
+  repairSnapshotTimeoutMs?: number;
+  treatProductionExecutionStallsAsOOM?: boolean;
+  suspendedHeartbeatRetriesConfig?: {
+    maxCount?: number;
+    maxDelayMs?: number;
+    initialDelayMs?: number;
+    factor?: number;
+  };
+  queueRunsWaitingForWorkerBatchSize?: number;
+  /**
+   * Lookup used by {@link PendingVersionSystem} to discover candidate
+   * `PENDING_VERSION` run ids without scanning the Postgres status index.
+   * Defaults to a noop lookup that returns an empty result, which causes
+   * the pending-version resolver to short-circuit. Production callers
+   * should inject a ClickHouse-backed implementation.
+   */
+  pendingVersionRunIdLookup?: PendingVersionRunIdLookup;
+  /**
+   * When the pending-version lookup returns zero candidates, schedule
+   * one more attempt after this delay to cover ClickHouse replication
+   * lag. Defaults to 5_000ms.
+   */
+  pendingVersionLagRetryDelayMs?: number;
+  /**
+   * Maximum number of lag-aware retries. Each call beyond the first
+   * counts against this cap. Defaults to 1 — so a deploy will fire at
+   * most two queries spaced by `pendingVersionLagRetryDelayMs`. Set to 0
+   * to disable lag-aware retries entirely.
+   */
+  pendingVersionLagMaxRetries?: number;
+  externalDeploymentParkDeadlineMs?: number;
+  /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
+   *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
+  defaultMaxTtl?: string;
+  /** When true, `getSnapshotsSince` reads through the read-only replica client instead
+   *  of the primary. Defaults to false. Callers passing an explicit `tx` always use
+   *  that client regardless of this flag. */
+  readReplicaSnapshotsSinceEnabled?: boolean;
+  /** Jittered delay bounds for the single replica retry `getSnapshotsSince` performs when
+   * the since snapshot is not yet on the replica, before falling back to the primary.
+   * Set maxMs to 0 (or any value <= 0) to skip the replica retry and go straight to the primary. */
+  readReplicaSnapshotsSinceRetryDelay?: { minMs: number; maxMs: number };
+  /**
+   * Periodically refreshes the set of worker queues observed by the
+   * `runqueue.workerQueue.length` gauge from the WorkerInstanceGroup records, so the
+   * gauge reports every active worker queue's length even when this instance is not
+   * dequeuing from them (a dequeue is otherwise the only thing that registers a worker
+   * queue for observation). When enabled the observer is the source of truth for the
+   * observed set, so the per-dequeue registration is skipped. Disabled by default; the
+   * server enables it.
+   */
+  workerQueueObserver?: {
+    enabled?: boolean;
+    /** How often to refresh the observed worker queue set from the database (ms). Default: 30_000. */
+    intervalMs?: number;
+    /**
+     * Extra suffix variants to also observe for each worker queue, e.g. the scheduled
+     * split queue suffix. The suffix value lives with the caller that owns the naming
+     * convention rather than in the engine. Default: [].
+     */
+    additionalQueueSuffixes?: string[];
+    /**
+     * Worker groups whose `cloudProvider` is in this list are not observed. Groups with
+     * no `cloudProvider` are always observed. Matched case-insensitively. Default: [].
+     */
+    excludedCloudProviders?: string[];
+  };
+  tracer: Tracer;
+  meter?: Meter;
+  logger?: Logger;
+  logLevel?: LogLevel;
+};
+
+export type HeartbeatTimeouts = {
+  PENDING_EXECUTING: number;
+  PENDING_CANCEL: number;
+  EXECUTING: number;
+  EXECUTING_WITH_WAITPOINTS: number;
+  SUSPENDED: number;
+};
+
+export type TriggerParams = {
+  number?: number;
+  friendlyId: string;
+  environment: MinimalAuthenticatedEnvironment;
+  idempotencyKey?: string;
+  idempotencyKeyExpiresAt?: Date;
+  /** The original user-provided idempotency key and scope */
+  idempotencyKeyOptions?: { key: string; scope: "run" | "attempt" | "global" };
+  taskIdentifier: string;
+  payload: string;
+  payloadType: string;
+  context: any;
+  traceContext: TriggerTraceContext;
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  lockedToVersionId?: string;
+  taskVersion?: string;
+  sdkVersion?: string;
+  cliVersion?: string;
+  concurrencyKey?: string;
+  workerQueue?: string;
+  region?: string;
+  /** When true, the run queue may push directly to the worker queue if concurrency is available.
+   *  Gated per WorkerInstanceGroup (production) or always true (development). */
+  enableFastPath?: boolean;
+  queue: string;
+  lockedQueueId?: string;
+  isTest: boolean;
+  delayUntil?: Date;
+  queuedAt?: Date;
+  maxAttempts?: number;
+  taskEventStore?: string;
+  priorityMs?: number;
+  queueTimestamp?: Date;
+  ttl?: string;
+  tags: string[];
+  parentTaskRunId?: string;
+  rootTaskRunId?: string;
+  replayedFromTaskRunFriendlyId?: string;
+  batch?: {
+    id: string;
+    index: number;
+  };
+  resumeParentOnCompletion?: boolean;
+  depth?: number;
+  metadata?: string;
+  metadataType?: string;
+  seedMetadata?: string;
+  seedMetadataType?: string;
+  oneTimeUseToken?: string;
+  maxDurationInSeconds?: number;
+  machine?: MachinePresetName;
+  workerId?: string;
+  runnerId?: string;
+  scheduleId?: string;
+  scheduleInstanceId?: string;
+  createdAt?: Date;
+  bulkActionId?: string;
+  planType?: string;
+  realtimeStreamsVersion?: string;
+  streamBasinName?: string | null;
+  debounce?: {
+    key: string;
+    delay: string;
+    mode?: "leading" | "trailing";
+    maxDelay?: string;
+  };
+  annotations?: {
+    triggerSource: string;
+    triggerAction: string;
+    rootTriggerSource: string;
+    rootScheduleId?: string;
+    externalDeploymentId?: string;
+  };
+  parkedOnExternalDeploymentId?: string;
+  /**
+   * Called when a run is debounced (existing delayed run found with triggerAndWait).
+   * Return spanIdToComplete to enable span closing when the run completes.
+   * This allows the webapp to create a trace span for the debounced trigger.
+   */
+  onDebounced?: (params: {
+    existingRun: TaskRun;
+    waitpoint: Waitpoint;
+    debounceKey: string;
+  }) => Promise<string | undefined>;
+};
+
+export type EngineWorker = Worker<typeof workerCatalog>;
+
+export type ReportableQueue = {
+  name: string;
+  concurrencyLimit: number | null;
+  type: string;
+  paused: boolean;
+  friendlyId: string;
+};

@@ -1,0 +1,50 @@
+{
+  "items": {
+    "C47-004": {
+      "error": "DEEP_READBACK_HASH_GAP:{\"actual\": {\"files\": 43030, \"bytes\": 582882900, \"sha256\": \"22d24d982ffb736bc0cda55f55a0a09bc6a6dafaec3e292445d2ffaedb3b9102\"}, \"expected\": {\"bytes\": 582882982, \"files\": 43030, \"sha256\": \"88d6595fd6ea0f7142e61b0793309e729ba0daf7a8863409b6132e877cf2f6a0\"}}",
+      "slug": "OpenClaw",
+      "source_repo": "openclaw/openclaw",
+      "status": "FAILED"
+    },
+    "C47-009": {
+      "extracted_tree": {
+        "bytes": 554831206,
+        "files": 3057,
+        "sha256": "5a2c53d047d952f61760c53d526bf6f79a655c3e3b4954092926a6ed1bca62d7"
+      },
+      "lfs_pointer_count": 0,
+      "normalizations": 1,
+      "publish": {
+        "commit": "318800a09f760252f293e3e1fd676dd579278c3b",
+        "tree": {
+          "bytes": 554831206,
+          "files": 3057,
+          "sha256": "5a2c53d047d952f61760c53d526bf6f79a655c3e3b4954092926a6ed1bca62d7"
+        },
+        "verdict": "PUBLISHED_AND_DEEP_READBACK_VERIFIED"
+      },
+      "slug": "Life-Harness",
+      "source_commit": "d29aeed80a046e858a5f7c52b8267c41d164ad59",
+      "source_repo": "Tianshi-Xu/Life-Harness",
+      "source_tree": {
+        "bytes": 554831206,
+        "files": 3057,
+        "sha256": "5a2c53d047d952f61760c53d526bf6f79a655c3e3b4954092926a6ed1bca62d7"
+      },
+      "status": "VERIFIED_CLOSED"
+    },
+    "C47-036": {
+      "error": "BROKEN_SYMLINK:CybersecurityBenchmarks/datasets/crwd_meta/malware_analysis/hybrid-analysis->../../../../CyberSOCEval_data/data/hybrid-analysis",
+      "slug": "LlamaFirewall",
+      "source_repo": "meta-llama/PurpleLlama",
+      "status": "FAILED"
+    },
+    "OLD20-AUTOGEN": {
+      "error": "COMMAND_FAILED:git:128:fatal: shallow file has changed since we read it\n",
+      "slug": "AutoGen-Core",
+      "source_repo": "microsoft/autogen",
+      "status": "FAILED"
+    }
+  },
+  "schema": "yaiwes.kernel.catalog47.normalized-repair-state/v1"
+}

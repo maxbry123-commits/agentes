@@ -1,0 +1,9 @@
+**/package-lock.json
+**/pnpm-lock.yaml
+**/dist/**
+**/out/**
+**/typeshed-fallback/**
+
+*.json
+*.md
+**/.github/ISSUE_TEMPLATE/**

@@ -1,0 +1,13 @@
+# TACC flawed_summ fill-to-32 2026-07-07 — swebench group (RESET queue, priority-grid order)
+# r198 laion/ablation-pymethods2test-seqmean-arm0-30-8B
+laion/ablation-pymethods2test-seqmean-arm0-30-8B
+# r201 laion/ablation-pymethods2test-seqmean-arm0-tis-15-8B
+laion/ablation-pymethods2test-seqmean-arm0-tis-15-8B
+# r204 laion/ablation-pymethods2test-seqnorm-15-8B
+laion/ablation-pymethods2test-seqnorm-15-8B
+# r207 laion/ablation-pymethods2test-shaped-45-8B
+laion/ablation-pymethods2test-shaped-45-8B
+# r265 penfever/a3-rl-SankalpKJ_swesmith-oracle-filtered-40-8B
+penfever/a3-rl-SankalpKJ_swesmith-oracle-filtered-40-8B
+# r917 laion/rloo-ab-arm1-tis-seqnorm-step45-8B
+laion/rloo-ab-arm1-tis-seqnorm-step45-8B

@@ -1,0 +1,231 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/inngest/inngest/pkg/logger"
+	"github.com/sourcegraph/conc"
+	"golang.org/x/sync/errgroup"
+)
+
+var (
+	defaultTimeout = 30 * time.Second
+
+	ErrPreTimeout = fmt.Errorf("service.Pre did not end within the given timeout")
+)
+
+var wg conc.WaitGroup
+
+func Go(f func()) {
+	wg.Go(f)
+}
+
+func Wait() {
+	wg.Wait()
+}
+
+// Service represents a basic interface for a long-running service.  By invoking
+// the Start function with a service, we automatically call Pre to initialize
+// the service prior to starting (with a timeout), run the service via Run and listen
+// for termination signals.  These term signals are caught and then the service is
+// gracefully shut down via Stop.
+type Service interface {
+	// Name returns the service name
+	Name() string
+	// Pre initializes the service, returning an error if the service is not
+	// capable of running.
+	Pre(ctx context.Context) error
+	// Run runs the service as a blocking operation, until the given context
+	// is cancelled.
+	Run(ctx context.Context) error
+	// Stop is called to gracefully shut down the service.
+	Stop(ctx context.Context) error
+}
+
+// StartTimeouter lets a Service define the timeout period when running Pre
+type StartTimeouter interface {
+	Service
+	StartTimeout() time.Duration
+}
+
+// startTimeout returns the timeout duration used when starting the service.
+// We attempt to typecast the service into a StartTimouter, returning the duration
+// provided by this function or the defaultTimeout.
+func startTimeout(s Service) time.Duration {
+	if t, ok := s.(StartTimeouter); ok {
+		return t.StartTimeout()
+	}
+	return defaultTimeout
+}
+
+// StopTimeouter lets a Service define the timeout period when running Pre
+type StopTimeouter interface {
+	Service
+	StopTimeout() time.Duration
+}
+
+// stopTimeout returns the timeout duration used when starting the service.
+// We attempt to typecast the service into a StopTimouter, returning the duration
+// provided by this function or the defaultTimeout.
+func stopTimeout(s Service) time.Duration {
+	if t, ok := s.(StopTimeouter); ok {
+		return t.StopTimeout()
+	}
+	return defaultTimeout
+}
+
+// StartAll starts all of the specified services, stopping all services when
+// any of the group errors.
+func StartAll(ctx context.Context, all ...Service) (err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	eg := &errgroup.Group{}
+	for _, s := range all {
+		svc := s
+		eg.Go(func() error {
+			err := Start(ctx, svc)
+			// Close all other services.
+			cancel()
+			if err != nil && err != context.Canceled {
+				return fmt.Errorf("service %s errored: %w", svc.Name(), err)
+			}
+			return nil
+		})
+	}
+	return eg.Wait()
+}
+
+// Start runs a Service, invoking Pre() to bootstrap the Service, then Run()
+// to run the Service.
+//
+// It blocks until an interrupt/kill signal, or the Run() command errors. We
+// automatically call Stop() when terminating the Service.
+func Start(ctx context.Context, s Service) (err error) {
+	l := logger.StdlibLogger(ctx).With("caller", s.Name())
+	ctx = logger.WithStdlib(ctx, l)
+
+	ctx, cleanup := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	defer cleanup()
+
+	defer func() {
+		if r := recover(); r != nil {
+			l.Error("service panicked", "recover", r)
+		}
+	}()
+
+	if preErr := pre(ctx, s); preErr != nil {
+		return preErr
+	}
+
+	if runErr := run(ctx, cleanup, s); runErr != nil && runErr != context.Canceled {
+		l.Error("service run errored", "error", runErr)
+		err = errors.Join(err, runErr)
+	}
+	if stopErr := stop(ctx, s); stopErr != nil {
+		l.Error("service cleanup errored", "error", stopErr)
+		err = errors.Join(err, stopErr)
+	}
+	l.Info("service run finished", "err", err)
+
+	return err
+}
+
+func pre(ctx context.Context, s Service) error {
+	// Start the pre-run function with the timeout provided.
+	preCh := make(chan error)
+	go func() {
+		// Run pre, and signal when complete.
+		err := s.Pre(ctx)
+		preCh <- err
+	}()
+	select {
+	case <-time.After(startTimeout(s)):
+		return ErrPreTimeout
+	case err := <-preCh:
+		close(preCh)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// run calls the service's Run method, blocking until run completes or the
+// parent context is cancelled.  If the parent context is cancelled, we wait
+// up to 30 seconds
+func run(ctx context.Context, stop func(), s Service) error {
+	l := logger.StdlibLogger(ctx).With("service", s.Name())
+
+	runErr := make(chan error)
+	go func() {
+		l.Info("service starting")
+		err := s.Run(ctx)
+		// Communicate this error to the outer select.
+		runErr <- err
+	}()
+
+	select {
+	case err := <-runErr:
+		// Run terminated.  Fetch the error from the goroutine.
+		if err != nil {
+			return err
+		}
+		l.Info("service finished", "signal", ctx.Err())
+	case <-ctx.Done():
+		// We received a cancellation signal.  Allow Run to continue for up
+		// to RunTimoeut period before quitting and cleaning up.
+
+		// Wait for Run to finish draining in-progress work (e.g. queue
+		// jobs) before proceeding to Stop. This ensures graceful
+		// shutdown completes before the stop timeout begins.
+		l.Info("waiting for service run to finish")
+		if err := <-runErr; err != nil && err != context.Canceled {
+			return err
+		}
+		l.Info("service run finished")
+
+		stop()
+	}
+	return nil
+}
+
+func stop(ctx context.Context, s Service) error {
+	l := logger.StdlibLogger(ctx).With("service", s.Name())
+	stopCh := make(chan error)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				l.Error("panic waiting for service to stop", "error", r)
+			}
+		}()
+
+		l.Info("service cleaning up")
+		// Create a new context that's not cancelled.
+		if err := s.Stop(context.Background()); err != nil && err != context.Canceled {
+			stopCh <- err
+			return
+		}
+		// Wait for everything in the global waitgroup.
+		if recovered := wg.WaitAndRecover(); recovered != nil {
+			l.Error("global goroutine panic waiting for service to stop", "error", recovered.Value, "stack", recovered.Stack)
+		}
+		stopCh <- nil
+	}()
+
+	select {
+	case <-time.After(stopTimeout(s)):
+		return fmt.Errorf("service did not clean up within timeout")
+	case stopErr := <-stopCh:
+		if stopErr != nil {
+			return stopErr
+		}
+	}
+	return nil
+}

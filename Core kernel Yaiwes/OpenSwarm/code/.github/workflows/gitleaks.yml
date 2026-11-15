@@ -1,0 +1,74 @@
+name: gitleaks
+
+# Block PRs that introduce hardcoded credentials. Runs the gitleaks CLI
+# directly (rather than gitleaks-action) because the action requires a
+# paid license on GitHub Orgs. Same scanner, same rules, same .gitleaks.toml.
+
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: [main, 'eric/**', 'haik/**', 'arnav/**']
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: '8.21.2'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history so PR-diff scanning works.
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /tmp gitleaks
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Run gitleaks (PR diff)
+        if: github.event_name == 'pull_request'
+        run: |
+          gitleaks detect \
+            --source . \
+            --redact \
+            --verbose \
+            --no-banner \
+            --log-opts="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
+      - name: Run gitleaks (push)
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+          # New-branch push (incl. a branch rename): GH sends 40 zeros for
+          # `before`. Diff against main's merge-base so we only scan commits
+          # unique to the branch. Fetch main at FULL depth, not --depth=1: a
+          # shallow main can't reach the fork point of a far-behind branch, so
+          # merge-base comes back empty and we'd full-rescan all of history.
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            git fetch --no-tags origin main:refs/remotes/origin/main 2>/dev/null || true
+            if git rev-parse --verify origin/main >/dev/null 2>&1; then
+              BEFORE=$(git merge-base origin/main "$AFTER" 2>/dev/null || echo "")
+            fi
+          fi
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "$AFTER" ]; then
+            gitleaks detect --source . --redact --verbose --no-banner --log-opts="${BEFORE}..${AFTER}"
+          elif [ "$BEFORE" = "$AFTER" ]; then
+            # New-branch push pointing at an existing main commit: range
+            # is empty, nothing new to scan. Don't fall through to a full
+            # repo scan — that would re-flag every historical secret a
+            # past PR already cleared. Pass-through.
+            echo "No new commits on this branch vs main; skipping scan."
+          else
+            # Truly couldn't establish a range (e.g. orphan branch with
+            # no shared history). Full scan is the only safe option.
+            gitleaks detect --source . --redact --verbose --no-banner
+          fi

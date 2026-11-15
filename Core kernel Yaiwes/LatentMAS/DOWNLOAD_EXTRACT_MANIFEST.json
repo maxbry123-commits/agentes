@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 8306311,
+  "bundle_sha256": "af3927b74d047f4f7423aa5332dad6a9c71bf901ba07b7b9662be1666645108a",
+  "extracted_tree": {
+    "bytes": 28327847,
+    "files": 24,
+    "sha256": "2a369d5b005cd407cad46b743e30d50d3c86ffcf249aa2733394cca574cdd931"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 8306311,
+      "name": "LatentMAS.bundle.zip.part-0001",
+      "sha256": "af3927b74d047f4f7423aa5332dad6a9c71bf901ba07b7b9662be1666645108a"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "LatentMAS",
+  "source_bytes": 28327847,
+  "source_commit": "9a9e4d331eb11430bd9e64754c6b252b06d73031",
+  "source_files": 24,
+  "source_ref": "HEAD",
+  "source_repo": "Gen-Verse/LatentMAS",
+  "source_tree": {
+    "bytes": 28327847,
+    "files": 24,
+    "sha256": "2a369d5b005cd407cad46b743e30d50d3c86ffcf249aa2733394cca574cdd931"
+  }
+}

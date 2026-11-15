@@ -1,0 +1,116 @@
+version: 2
+policy:
+  deterministic_percent: 95
+  llm_maximum_percent: 5
+  fail_closed: true
+  director_authorization_required: true
+research:
+  minimum_candidates_per_active_lane: 100
+  lanes: [github, huggingface, official_docs, developer_community]
+  deduplicate_by: [normalized_source_url, source_commit, content_sha256]
+  source_priority: [official_repository, official_documentation, peer_reviewed_paper, maintainer_discussion, community_report]
+input_goals:
+  discovery_and_research:
+    - G01_define_user_capability_gap
+    - G02_inventory_existing_capabilities
+    - G03_search_100_github_candidates
+    - G04_search_100_huggingface_candidates
+    - G05_search_100_documentation_and_community_signals
+  provenance_security_license:
+    - G06_verify_official_source
+    - G07_pin_commit_or_immutable_revision
+    - G08_verify_license_compatibility
+    - G09_audit_security_history_and_network_egress
+    - G10_generate_content_fingerprint_and_sbom
+  workflow_and_architecture:
+    - G11_map_current_architecture
+    - G12_classify_extension_workflow_tool_pool_or_knowledge
+    - G13_define_dsl_dag_and_state_machine
+    - G14_define_ports_adapters_and_anti_corruption_boundary
+    - G15_define_idempotency_fallback_and_rollback
+  planning_automation_schedule:
+    - G16_create_bounded_execution_plan
+    - G17_define_single_writer_github_action
+    - G18_define_hourly_watchdog_checkpoint
+    - G19_define_retry_timeout_and_circuit_breaker
+    - G20_define_completion_and_stop_conditions
+  reasoning_evaluation_refutation:
+    - G21_run_12_ask_consilio
+    - G22_run_3_simulations
+    - G23_run_3_refutations
+    - G24_score_value_risk_cost_latency
+    - G25_reject_unsupported_or_redundant_candidate
+  tools_plugins_bus_adapters:
+    - G26_define_capability_schema
+    - G27_register_adapter_in_tool_registry
+    - G28_route_calls_through_plugin_bus
+    - G29_test_contract_hot_swap_and_unmount
+    - G30_prevent_direct_external_import_into_kernel
+  agents_orchestrators_routers_pools:
+    - G31_decide_prune_or_isolated_subagent
+    - G32_remove_foreign_decision_loop_when_pruning
+    - G33_define_orchestrator_handoff
+    - G34_define_router_selection_and_failover
+    - G35_define_pool_resource_and_parallelism_limits
+  memory_rag_skills_learning:
+    - G36_store_structured_error_memory_without_secrets
+    - G37_build_rag_index_with_source_citations
+    - G38_keep_knowledge_only_assets_as_skills
+    - G39_store_user_topic_specialty_profile_with_consent
+    - G40_reuse_verified_trajectories_and_prevent_error_recurrence
+  ui_chat_work_interface:
+    - G41_surface_plan_state_and_authorization
+    - G42_surface_active_jobs_gaps_and_evidence
+    - G43_provide_separate_task_workspaces
+    - G44_expose_rollback_and_stop_controls
+    - G45_preserve_accessibility_and_audit_log
+  continuous_improvement_and_recovery:
+    - G46_extract_user_complaints_and_instruction_failures
+    - G47_compute_kpis_and_root_cause
+    - G48_prepare_correction_architecture_and_patch_proposal
+    - G49_request_director_approval_or_nct_handoff
+    - G50_verify_recovery_and_update_master_index
+output_goals:
+  - O01_capability_gap_statement
+  - O02_deduplicated_ranked_candidates
+  - O03_evidence_provenance_license_security_pack
+  - O04_reuse_mode_and_target_layer_decision
+  - O05_dsl_dag_architecture_and_abi_contract
+  - O06_github_action_acquisition_plan
+  - O07_director_authorization_record
+  - O08_sandbox_simulation_refutation_report
+  - O09_verified_adapter_registry_bus_mount
+  - O10_individual_and_end_to_end_test_report
+  - O11_hot_swap_rollback_and_recovery_evidence
+  - O12_checkpoint_master_index_and_verified_closed_verdict
+ask_consilio:
+  - A01_is_the_capability_already_present
+  - A02_is_the_source_official_and_immutable
+  - A03_is_the_license_compatible
+  - A04_can_network_and_secret_access_be_denied
+  - A05_is_the_public_contract_stable
+  - A06_can_foreign_decision_logic_be_removed
+  - A07_is_a_deterministic_workflow_sufficient
+  - A08_does_it_require_isolated_reasoning_or_memory
+  - A09_is_it_knowledge_only
+  - A10_are_effects_idempotent_observable_and_bounded
+  - A11_can_it_hot_swap_and_roll_back_cleanly
+  - A12_what_evidence_would_refute_adoption
+controllers:
+  sheriff: validates_scope_and_prohibitions
+  validator: validates_schema_sources_and_fingerprints
+  sentinel: blocks_mutation_without_director_authorization
+  supervisor: enforces_budgets_timeouts_and_single_writer
+  judge: evaluates_tests_kpis_and_refutations
+  guardian: enforces_security_privacy_license_and_rollback
+kpis:
+  - instruction_adherence_rate
+  - verified_completion_rate
+  - gap_recurrence_rate
+  - false_pass_rate
+  - duplicate_download_rate
+  - rollback_success_rate
+  - mean_time_to_detect
+  - mean_time_to_recover
+  - evidence_coverage
+  - user_complaint_recurrence

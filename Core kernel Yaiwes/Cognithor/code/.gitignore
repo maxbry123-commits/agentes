@@ -1,0 +1,106 @@
+# ── Python ────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+/build/
+!flutter_app/build/web/
+.eggs/
+*.egg
+*.so
+*.pyd
+
+# ── Testing / Linting ────────────────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# ── Virtual Environments ─────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── IDE / Editor ─────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Environment & Secrets ────────────────────────────────────────
+.env
+*.pem
+*.key
+.credential_key
+
+# ── Runtime Data ─────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+*.cache
+logs/
+*.log
+
+# ── Mutation testing scratch (cosmic-ray) ────────────────────────
+baseline-session.sqlite
+mutation-session.sqlite
+
+# ── Node ──────────────────────────────────────────────────────────
+node_modules/
+
+# ── Flutter ─────────────────────────────────────────────────────
+flutter_app/.dart_tool/
+flutter_app/.flutter-plugins-dependencies
+flutter_app/.pub-cache/
+flutter_app/.pub/
+flutter_app/build/app/
+flutter_app/build/linux/
+flutter_app/build/macos/
+flutter_app/build/windows/
+# flutter_app/build/web/ is tracked — bundled for start_cognithor.bat
+flutter_app/build/web/*.symbols
+flutter_app/build/web/*.map
+flutter_app/build/web/canvaskit/chromium/
+flutter_app/build/web/canvaskit/skwasm*
+flutter_app/build/web/canvaskit/wimp*
+
+# ── Claude Code ──────────────────────────────────────────────────
+.claude/
+
+# ── Superpowers skill session scratch ────────────────────────────
+# Brainstorm / write-plan / playground skills create ephemeral state
+# under .superpowers/<skill>/<pid>-<timestamp>/ with:
+#   - content/*.html     -- in-browser mockup for the session
+#   - state/events       -- user click log
+#   - state/server.pid   -- PID of the (local, short-lived) preview server
+#   - state/server-stopped -- stop reason JSON
+# None of this should ever land in git.
+.superpowers/
+
+# ── OS / Misc ────────────────────────────────────────────────────
+*.bak
+*.tmp
+*.orig
+.hypothesis/
+environment_files/
+arc_agi3_validation.json
+
+# cognithor-bench result artifacts
+cognithor_bench/results/
+/results/
+
+# insurance-agent-pack runtime artifacts
+examples/insurance-agent-pack/.cache/
+examples/insurance-agent-pack/results/
+
+# Local video / VLM demo artefacts (Sprint VLM-Router 2026-05-07)
+.video_demo/

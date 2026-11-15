@@ -1,0 +1,117 @@
+# Prefect Documentation
+
+Structural context for any agent working in `docs/`. For the full writing guide (page types, components, code testing, style), use the `/write-docs` skill.
+
+## Platform
+
+[Mintlify](https://mintlify.com/) docs published to [docs.prefect.io](https://docs.prefect.io). All files use `.mdx` (Markdown + JSX). Site config lives in `docs/docs.json`.
+
+## Directory structure
+
+```
+docs/
+  v3/                     # Primary docs for Prefect 3.x
+    get-started/          # Installation, quickstart
+    concepts/             # Core concepts (flows, tasks, states, deployments, etc.)
+    how-to-guides/        # Practical guides organized by category
+    advanced/             # Advanced topics
+    examples/             # Auto-generated from examples/ Python files — do NOT edit directly
+    api-ref/              # API reference — mix of auto-generated and hand-authored
+      python/             # SDK reference (auto-generated — do NOT edit directly)
+      cli/                # CLI command reference (auto-generated — do NOT edit directly)
+      rest-api/           # REST API docs (server/ and cloud/) — endpoint pages auto-generated; index.mdx overview pages are hand-authored
+      events/             # Events reference catalog — hand-authored, editable
+    release-notes/        # Version release notes
+    img/                  # Images organized by section
+  integrations/           # Integration-specific docs (prefect-aws, prefect-gcp, etc.)
+  contribute/             # Contributor guides
+  snippets/               # Reusable MDX snippets imported across pages
+  images/                 # Legacy images
+  logos/                  # Brand assets
+  styles/                 # Vale linting styles
+  resources/              # Unlisted pages (hidden: true) outside the v3/ versioning tree
+```
+
+## Auto-generated content — do not edit
+
+- `v3/examples/` — generated from top-level `examples/` Python files by `generate_example_pages.py`
+- `v3/api-ref/python/`, `v3/api-ref/cli/` — generated API reference (Python SDK, CLI)
+- `v3/api-ref/rest-api/` — individual endpoint pages are auto-generated; the `index.mdx` files at `rest-api/` and `rest-api/server/` are hand-authored and may be edited
+- `v3/api-ref/events/` is **hand-authored** and should be edited directly when event schemas change
+- `integrations/<name>/api-ref/` — generated per-integration API reference via `mdxify` (e.g., `integrations/prefect-kubernetes/api-ref/`); regenerated on each integration release
+
+## File format
+
+Every `.mdx` file starts with YAML frontmatter:
+
+```yaml
+---
+title: Page Title
+description: Brief description for SEO and navigation
+sidebarTitle: Optional shorter sidebar label   # optional
+icon: icon-name                                # optional, Mintlify icon
+mode: wide                                     # optional; use "custom" for raw JSX/HTML layouts
+hidden: true                                   # optional; unlisted page — no nav registration needed
+keywords: ["keyword1", "keyword2"]             # optional, for search
+---
+```
+
+Frontmatter keys are always lowercase. The `title` renders as the page's H1, so start body content at `##` — do not add another H1.
+
+## Navigation
+
+All pages must be registered in `docs/docs.json` under `navigation.tabs`. When adding a page, add its path (without `.mdx` extension) to the appropriate group.
+
+## Links
+
+Use absolute paths from the docs root without `.mdx`:
+
+```mdx
+See the [flows documentation](/v3/concepts/flows) for details.
+```
+
+Do not use relative paths or include `.mdx` in links.
+
+## Redirects
+
+When renaming or moving a page, add a redirect in `docs/docs.json` `redirects` array so existing links continue to work. Never remove existing redirects unless you are certain the old URL has no inbound traffic. Paths should not include `.mdx`.
+
+## Terminology and casing
+
+Preferred terms are enforced by Vale via `docs/styles/CustomStyles/WordList.yml`. Key entries:
+
+- "Prefect Cloud" (not "Prefect cloud")
+- "Prefect server" (not "Prefect Server")
+- "infrastructure" (not "infra")
+- "Kubernetes" (not "k8s")
+- "open source" (not "open-source")
+
+## Versioning
+
+All new content goes in `docs/v3/`. Do not create pages outside `v3/` for current Prefect 3.x features. Exception: unlisted pages (`hidden: true`) can live in `docs/resources/`.
+
+## Local development
+
+```bash
+just docs     # Start the dev server at localhost:3000
+just links    # Check for broken links
+just lint     # Run Vale linter
+```
+
+## Key rules
+
+1. **Do not edit auto-generated files.** Pages under `v3/examples/`, `v3/api-ref/python/`, `v3/api-ref/cli/`, `v3/api-ref/rest-api/`, and `integrations/<name>/api-ref/` are generated from source code. The exception is `v3/api-ref/events/`, which is hand-authored and should be edited when event schemas change.
+2. **Register new pages in `docs/docs.json`.** An unregistered page won't appear in navigation. Exception: pages with `hidden: true` are unlisted and do not require navigation registration.
+3. **Use `.mdx` extension** for all new documentation files.
+4. **Use Mintlify components** (`<Note>`, `<Tabs>`, `<Steps>`, etc.) rather than Markdown-native admonition syntax.
+5. **Keep code examples working.** They are tested in CI via `pytest-markdown-docs`. Two skip mechanisms exist:
+   - Per-block: add `{/* pmd-metadata: notest */}` above the fenced code block when a single example can't run in isolation.
+   - Per-file: add the path to `SKIP_FILES` in `docs/conftest.py` when an entire page requires real external infrastructure (a live database, a dbt project and profiles, real API credentials). Integration pages almost always fall into this category.
+6. **Use absolute link paths** without file extensions (e.g., `/v3/concepts/flows`).
+7. **Check for existing snippets** in `snippets/` before duplicating content.
+8. **Start body content at `##`.** The frontmatter `title` renders as H1; do not add another H1 in the body.
+9. **Document and mark Cloud-only features.** Some features are only available in Prefect Cloud and have no open source equivalent (SSO, audit logs, incidents, SLAs, the `send-email-notification` automation action, etc.). These originate in the `nebula` repo, so they are documented by Prefect staff and agents rather than external contributors. Make sure they are documented here and marked so customers and downstream consumers (such as the Terraform provider and SDKs) can discover them. Conventions:
+   - **Where Cloud-only guides live.** Account, workspace, and user management guides live under `v3/how-to-guides/cloud/`. Prefer this location for new Cloud-only how-to content.
+   - **Mark the feature** when it appears on a page that also covers open source behavior (for example a shared concept page), so readers can tell the editions apart. Use one of:
+     - A Cloud badge on its own line, directly above the page or section it marks: `<span class="badge cloud"></span>`. It renders a standalone "Prefect Cloud" label and the span is intentionally empty; put a blank line before the following prose so it scopes the whole section rather than a single sentence.
+     - A `<Note>This action is only available in Prefect Cloud.</Note>` callout for inline cases (e.g. a single table row or variable).

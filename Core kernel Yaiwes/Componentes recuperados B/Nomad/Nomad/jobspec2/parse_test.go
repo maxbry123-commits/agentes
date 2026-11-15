@@ -1,0 +1,1408 @@
+// Copyright IBM Corp. 2015, 2026
+// SPDX-License-Identifier: MPL-2.0
+
+package jobspec2
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/hashicorp/nomad/api"
+	"github.com/shoenig/test/must"
+)
+
+func TestParse_ConnectJob(t *testing.T) {
+	t.Parallel()
+
+	name := "./test-fixtures/connect-example.hcl"
+	f, err := os.Open(name)
+	must.NoError(t, err)
+	t.Cleanup(func() { _ = f.Close() })
+
+	job2, err := Parse(name, f)
+	must.NoError(t, err)
+
+	timeout := job2.TaskGroups[0].Services[0].Connect.SidecarService.Proxy.Upstreams[0].Config["connect_timeout_ms"]
+	must.Eq(t, 9999, timeout)
+}
+
+func TestParse_VarsAndFunctions(t *testing.T) {
+	t.Parallel()
+
+	hcl := `
+variables {
+  region_var = "default"
+}
+job "example" {
+  datacenters = [for s in ["dc1", "dc2"] : upper(s)]
+  region      = var.region_var
+}
+`
+
+	out, err := ParseWithConfig(&ParseConfig{
+		Path:    "input.hcl",
+		Body:    []byte(hcl),
+		ArgVars: []string{"region_var=aug"},
+		AllowFS: true,
+	})
+	must.NoError(t, err)
+
+	must.Eq(t, []string{"DC1", "DC2"}, out.Datacenters)
+	must.NotNil(t, out.Region)
+	must.Eq(t, "aug", *out.Region)
+}
+
+func TestParse_VariablesDefaultsAndSet(t *testing.T) {
+	t.Parallel()
+
+	hcl := `
+variables {
+  region_var = "default_region"
+}
+
+variable "dc_var" {
+  default = "default_dc"
+}
+
+job "example" {
+  datacenters = [var.dc_var]
+  region      = var.region_var
+}
+`
+
+	t.Run("defaults", func(t *testing.T) {
+		out, err := ParseWithConfig(&ParseConfig{
+			Path:    "input.hcl",
+			Body:    []byte(hcl),
+			AllowFS: true,
+		})
+		must.NoError(t, err)
+
+		must.Eq(t, []string{"default_dc"}, out.Datacenters)
+		must.NotNil(t, out.Region)
+		must.Eq(t, "default_region", *out.Region)
+	})
+
+	t.Run("set via -var args", func(t *testing.T) {
+		out, err := ParseWithConfig(&ParseConfig{
+			Path:    "input.hcl",
+			Body:    []byte(hcl),
+			ArgVars: []string{"dc_var=set_dc", "region_var=set_region"},
+			AllowFS: true,
+		})
+		must.NoError(t, err)
+
+		must.Eq(t, []string{"set_dc"}, out.Datacenters)
+		must.NotNil(t, out.Region)
+		must.Eq(t, "set_region", *out.Region)
+	})
+
+	t.Run("set via envvars", func(t *testing.T) {
+		out, err := ParseWithConfig(&ParseConfig{
+			Path: "input.hcl",
+			Body: []byte(hcl),
+			Envs: []string{
+				"NOMAD_VAR_dc_var=set_dc",
+				"NOMAD_VAR_region_var=set_region",
+			},
+			AllowFS: true,
+		})
+		must.NoError(t, err)
+
+		must.Eq(t, []string{"set_dc"}, out.Datacenters)
+		must.NotNil(t, out.Region)
+		must.Eq(t, "set_region", *out.Region)
+	})
+
+	t.Run("set via var-files", func(t *testing.T) {
+		varFile, err := os.CreateTemp("", "")
+		must.NoError(t, err)
+		defer os.Remove(varFile.Name())
+
+		content := `dc_var = "set_dc"
+	region_var = "set_region"`
+		_, err = varFile.WriteString(content)
+		must.NoError(t, err)
+
+		out, err := ParseWithConfig(&ParseConfig{
+			Path:     "input.hcl",
+			Body:     []byte(hcl),
+			VarFiles: []string{varFile.Name()},
+			AllowFS:  true,
+		})
+		must.NoError(t, err)
+
+		must.Eq(t, []string{"set_dc"}, out.Datacenters)
+		must.NotNil(t, out.Region)
+		must.Eq(t, "set_region", *out.Region)
+	})
+
+	t.Run("var-file does not exist", func(t *testing.T) {
+
+		out, err := ParseWithConfig(&ParseConfig{
+			Path:     "input.hcl",
+			Body:     []byte(hcl),
+			VarFiles: []string{"does-not-exist.hcl"},
+			AllowFS:  true,
+		})
+		must.Error(t, err)
+		must.Nil(t, out)
+	})
+}
+
+// TestParse_UnknownVariables asserts that unknown variables are left intact for further processing
+func TestParse_UnknownVariables(t *testing.T) {
+	t.Parallel()
+
+	hcl := `
+variables {
+  region_var = "default"
+}
+job "example" {
+  datacenters = [for s in ["dc1", "dc2"] : upper(s)]
+  region      = var.region_var
+  meta {
+    known_var   = "${var.region_var}"
+    unknown_var = "${UNKNOWN}"
+  }
+}
+`
+
+	out, err := ParseWithConfig(&ParseConfig{
+		Path:    "input.hcl",
+		Body:    []byte(hcl),
+		ArgVars: []string{"region_var=aug"},
+		AllowFS: true,
+	})
+	must.NoError(t, err)
+
+	meta := map[string]string{
+		"known_var":   "aug",
+		"unknown_var": "${UNKNOWN}",
+	}
+
+	must.Eq(t, meta, out.Meta)
+}
+
+// TestParse_UnsetVariables asserts that variables that have neither types nor
+// values return early instead of panicking.
+func TestParse_UnsetVariables(t *testing.T) {
+	t.Parallel()
+
+	hcl := `
+variable "region_var" {}
+job "example" {
+  datacenters = [for s in ["dc1", "dc2"] : upper(s)]
+  region      = var.region_var
+}
+`
+
+	_, err := ParseWithConfig(&ParseConfig{
+		Path:    "input.hcl",
+		Body:    []byte(hcl),
+		ArgVars: []string{},
+		AllowFS: true,
+	})
+
+	must.Error(t, err)
+	must.ErrorContains(t, err, "Unset variable")
+}
+
+func TestParse_Locals(t *testing.T) {
+	t.Parallel()
+
+	hcl := `
+variables {
+  region_var = "default_region"
+}
+
+locals {
+  # literal local
+  dc = "local_dc"
+  # local that depends on a variable
+  region = "${var.region_var}.example"
+}
+
+job "example" {
+  datacenters = [local.dc]
+  region      = local.region
+}
+`
+
+	t.Run("defaults", func(t *testing.T) {
+		out, err := ParseWithConfig(&ParseConfig{
+			Path:    "input.hcl",
+			Body:    []byte(hcl),
+			AllowFS: true,
+		})
+		must.NoError(t, err)
+
+		must.Eq(t, []string{"local_dc"}, out.Datacenters)
+		must.NotNil(t, out.Region)
+		must.Eq(t, "default_region.example", *out.Region)
+	})
+
+	t.Run("set via -var argments", func(t *testing.T) {
+		out, err := ParseWithConfig(&ParseConfig{
+			Path:    "input.hcl",
+			Body:    []byte(hcl),
+			ArgVars: []string{"region_var=set_region"},
+			AllowFS: true,
+		})
+		must.NoError(t, err)
+
+		must.Eq(t, []string{"local_dc"}, out.Datacenters)
+		must.NotNil(t, out.Region)
+		must.Eq(t, "set_region.example", *out.Region)
+	})
+}
+
+func TestParse_FileOperators(t *testing.T) {
+	t.Parallel()
+
+	hcl := `
+job "example" {
+  region      = file("parse_test.go")
+}
+`
+
+	t.Run("enabled", func(t *testing.T) {
+		out, err := ParseWithConfig(&ParseConfig{
+			Path:    "input.hcl",
+			Body:    []byte(hcl),
+			ArgVars: nil,
+			AllowFS: true,
+		})
+		must.NoError(t, err)
+
+		expected, err := os.ReadFile("parse_test.go")
+		must.NoError(t, err)
+
+		must.NotNil(t, out.Region)
+		must.Eq(t, string(expected), *out.Region)
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		_, err := ParseWithConfig(&ParseConfig{
+			Path:    "input.hcl",
+			Body:    []byte(hcl),
+			ArgVars: nil,
+			AllowFS: false,
+		})
+		must.Error(t, err)
+		must.ErrorContains(t, err, "filesystem function disabled")
+	})
+}
+
+func TestParseDynamic(t *testing.T) {
+	t.Parallel()
+
+	hcl := `
+job "example" {
+
+  dynamic "group" {
+    for_each = [
+      { name = "groupA", idx = 1 },
+      { name = "groupB", idx = 2 },
+      { name = "groupC", idx = 3 },
+    ]
+    labels   = [group.value.name]
+
+    content {
+      count = group.value.idx
+
+      service {
+        port = group.value.name
+      }
+
+      task "simple" {
+        driver  = "raw_exec"
+        config {
+          command = group.value.name
+        }
+        meta {
+          VERSION = group.value.idx
+        }
+        env {
+          ID = format("id:%s", group.value.idx)
+        }
+        resources {
+          cpu = group.value.idx
+        }
+      }
+    }
+  }
+}
+`
+	out, err := ParseWithConfig(&ParseConfig{
+		Path:    "input.hcl",
+		Body:    []byte(hcl),
+		ArgVars: nil,
+		AllowFS: false,
+	})
+	must.NoError(t, err)
+
+	must.Len(t, 3, out.TaskGroups)
+	must.Eq(t, "groupA", *out.TaskGroups[0].Name)
+	must.Eq(t, "groupB", *out.TaskGroups[1].Name)
+	must.Eq(t, "groupC", *out.TaskGroups[2].Name)
+	must.Eq(t, 1, *out.TaskGroups[0].Tasks[0].Resources.CPU)
+	must.Eq(t, "groupA", out.TaskGroups[0].Services[0].PortLabel)
+
+	// interpolation inside maps
+	must.Eq(t, "groupA", out.TaskGroups[0].Tasks[0].Config["command"])
+	must.Eq(t, "1", out.TaskGroups[0].Tasks[0].Meta["VERSION"])
+	must.Eq(t, "id:1", out.TaskGroups[0].Tasks[0].Env["ID"])
+	must.Eq(t, "id:2", out.TaskGroups[1].Tasks[0].Env["ID"])
+	must.Eq(t, "3", out.TaskGroups[2].Tasks[0].Meta["VERSION"])
+}
+
+func TestParse_InvalidHCL(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid body", func(t *testing.T) {
+		hcl := `invalid{hcl`
+
+		_, err := ParseWithConfig(&ParseConfig{
+			Path:    "input.hcl",
+			Body:    []byte(hcl),
+			ArgVars: []string{},
+			AllowFS: true,
+		})
+		must.Error(t, err)
+	})
+
+	t.Run("invalid vars file", func(t *testing.T) {
+		tmp, err := os.CreateTemp("", "nomad-jobspec2-")
+		must.NoError(t, err)
+		defer os.Remove(tmp.Name())
+
+		vars := `invalid{hcl`
+		_, err = tmp.Write([]byte(vars))
+		must.NoError(t, err)
+
+		hcl := `
+variables {
+  region_var = "default"
+}
+job "example" {
+  datacenters = [for s in ["dc1", "dc2"] : upper(s)]
+  region      = var.region_var
+}
+`
+
+		_, err = ParseWithConfig(&ParseConfig{
+			Path:     "input.hcl",
+			Body:     []byte(hcl),
+			VarFiles: []string{tmp.Name()},
+			ArgVars:  []string{},
+			AllowFS:  true,
+		})
+		must.Error(t, err)
+	})
+}
+
+func TestParse_InvalidScalingSyntax(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		expectedErr string
+		hcl         string
+	}{
+		{
+			"valid",
+			"",
+			`
+job "example" {
+  group "g1" {
+    scaling {
+      max  = 40
+      type = "horizontal"
+    }
+
+    task "t1" {
+      scaling "cpu" {
+        max = 20
+      }
+      scaling "mem" {
+        max = 15
+      }
+    }
+  }
+}
+`,
+		},
+		{
+			"group missing max",
+			`argument "max" is required`,
+			`
+job "example" {
+  group "g1" {
+    scaling {
+      #max  = 40
+      type = "horizontal"
+    }
+
+    task "t1" {
+      scaling "cpu" {
+        max = 20
+      }
+      scaling "mem" {
+        max = 15
+      }
+    }
+  }
+}
+`,
+		},
+		{
+			"group invalid type",
+			`task group scaling policy had invalid type`,
+			`
+job "example" {
+  group "g1" {
+    scaling {
+      max  = 40
+      type = "invalid_type"
+    }
+
+    task "t1" {
+      scaling "cpu" {
+        max = 20
+      }
+      scaling "mem" {
+        max = 15
+      }
+    }
+  }
+}
+`,
+		},
+		{
+			"task invalid label",
+			`scaling policy name must be "cpu" or "mem"`,
+			`
+job "example" {
+  group "g1" {
+    scaling {
+      max  = 40
+      type = "horizontal"
+    }
+
+    task "t1" {
+      scaling "not_cpu" {
+        max = 20
+      }
+      scaling "mem" {
+        max = 15
+      }
+    }
+  }
+}
+`,
+		},
+		{
+			"task duplicate blocks",
+			`Duplicate scaling "cpu" block`,
+			`
+job "example" {
+  group "g1" {
+    scaling {
+      max  = 40
+      type = "horizontal"
+    }
+
+    task "t1" {
+      scaling "cpu" {
+        max = 20
+      }
+      scaling "cpu" {
+        max = 15
+      }
+    }
+  }
+}
+`,
+		},
+		{
+			"task invalid type",
+			`Invalid scaling policy type`,
+			`
+job "example" {
+  group "g1" {
+    scaling {
+      max  = 40
+      type = "horizontal"
+    }
+
+    task "t1" {
+      scaling "cpu" {
+        max  = 20
+        type = "invalid"
+      }
+      scaling "mem" {
+        max = 15
+      }
+    }
+  }
+}
+`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := ParseWithConfig(&ParseConfig{
+				Path:    c.name + ".hcl",
+				Body:    []byte(c.hcl),
+				AllowFS: false,
+			})
+			if c.expectedErr == "" {
+				must.NoError(t, err)
+			} else {
+				must.Error(t, err)
+				must.ErrorContains(t, err, c.expectedErr)
+			}
+		})
+	}
+}
+
+func TestParseJob_JobWithFunctionsAndLookups(t *testing.T) {
+	t.Parallel()
+
+	hcl := `
+variable "env" {
+  description = "target environment for the job"
+}
+
+locals {
+  environments = {
+    prod    = { count = 20, dcs = ["prod-dc1", "prod-dc2"] },
+    staging = { count = 3, dcs = ["dc1"] },
+  }
+
+  env = lookup(local.environments, var.env, { count = 0, dcs = [] })
+}
+
+job "job-webserver" {
+  datacenters = local.env.dcs
+  group "group-webserver" {
+    count = local.env.count
+
+    task "server" {
+      driver = "docker"
+
+      config {
+        image = "hashicorp/http-echo"
+        args  = ["-text", "Hello from ${var.env}"]
+      }
+    }
+  }
+}
+`
+	cases := []struct {
+		env         string
+		expectedJob *api.Job
+	}{
+		{
+			"prod",
+			&api.Job{
+				ID:          new("job-webserver"),
+				Name:        new("job-webserver"),
+				Datacenters: []string{"prod-dc1", "prod-dc2"},
+				TaskGroups: []*api.TaskGroup{
+					{
+						Name:  new("group-webserver"),
+						Count: new(20),
+
+						Tasks: []*api.Task{
+							{
+								Name:   "server",
+								Driver: "docker",
+
+								Config: map[string]any{
+									"image": "hashicorp/http-echo",
+									"args":  []any{"-text", "Hello from prod"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			"staging",
+			&api.Job{
+				ID:          new("job-webserver"),
+				Name:        new("job-webserver"),
+				Datacenters: []string{"dc1"},
+				TaskGroups: []*api.TaskGroup{
+					{
+						Name:  new("group-webserver"),
+						Count: new(3),
+
+						Tasks: []*api.Task{
+							{
+								Name:   "server",
+								Driver: "docker",
+
+								Config: map[string]any{
+									"image": "hashicorp/http-echo",
+									"args":  []any{"-text", "Hello from staging"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			"unknown",
+			&api.Job{
+				ID:          new("job-webserver"),
+				Name:        new("job-webserver"),
+				Datacenters: []string{},
+				TaskGroups: []*api.TaskGroup{
+					{
+						Name:  new("group-webserver"),
+						Count: new(0),
+
+						Tasks: []*api.Task{
+							{
+								Name:   "server",
+								Driver: "docker",
+
+								Config: map[string]any{
+									"image": "hashicorp/http-echo",
+									"args":  []any{"-text", "Hello from unknown"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.env, func(t *testing.T) {
+			found, err := ParseWithConfig(&ParseConfig{
+				Path:    "example.hcl",
+				Body:    []byte(hcl),
+				AllowFS: false,
+				ArgVars: []string{"env=" + c.env},
+			})
+			must.NoError(t, err)
+			must.Eq(t, c.expectedJob, found)
+		})
+	}
+}
+
+func TestParse_TaskEnvs(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		envSnippet string
+		expected   map[string]string
+	}{
+		{
+			"none",
+			``,
+			nil,
+		},
+		{
+			"block",
+			`
+env {
+  key = "value"
+} `,
+			map[string]string{"key": "value"},
+		},
+		{
+			"attribute",
+			`
+env = {
+  "key.dot"                = "val1"
+  key_unquoted_without_dot = "val2"
+} `,
+			map[string]string{"key.dot": "val1", "key_unquoted_without_dot": "val2"},
+		},
+		{
+			"attribute_colons",
+			`env = {
+  "key.dot" : "val1"
+  key_unquoted_without_dot : "val2"
+} `,
+			map[string]string{"key.dot": "val1", "key_unquoted_without_dot": "val2"},
+		},
+		{
+			"attribute_empty",
+			`env = {}`,
+			map[string]string{},
+		},
+		{
+			"attribute_expression",
+			`env = {for k in ["a", "b"]: k => "val-${k}" }`,
+			map[string]string{"a": "val-a", "b": "val-b"},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			hcl := `
+job "example" {
+  group "group" {
+    task "task" {
+      driver = "docker"
+      config {}
+
+      ` + c.envSnippet + `
+    }
+  }
+}`
+
+			out, err := ParseWithConfig(&ParseConfig{
+				Path: "input.hcl",
+				Body: []byte(hcl),
+			})
+			must.NoError(t, err)
+
+			must.Eq(t, c.expected, out.TaskGroups[0].Tasks[0].Env)
+		})
+	}
+}
+
+func TestParse_TaskEnvs_Multiple(t *testing.T) {
+	t.Parallel()
+
+	hcl := `
+job "example" {
+  group "group" {
+    task "task" {
+      driver = "docker"
+      config {}
+
+      env = {"a": "b"}
+      env {
+        c = "d"
+      }
+    }
+  }
+}`
+
+	_, err := ParseWithConfig(&ParseConfig{
+		Path: "input.hcl",
+		Body: []byte(hcl),
+	})
+	must.Error(t, err)
+	must.ErrorContains(t, err, "Duplicate env block")
+}
+
+func Test_TaskEnvs_Invalid(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		envSnippet  string
+		expectedErr string
+	}{
+		{
+			"attr: invalid expression",
+			`env = { key = local.undefined_local }`,
+			`does not have an attribute named "undefined_local"`,
+		},
+		{
+			"block: invalid block expression",
+			`env {
+  for k in ["a", "b"]: k => k
+}`,
+			"Invalid block definition",
+		},
+		{
+			"attr: not make sense",
+			`env = [ "a" ]`,
+			"Unsuitable value: map of string required",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			hcl := `
+job "example" {
+  group "group" {
+    task "task" {
+      driver = "docker"
+      config {}
+
+      ` + c.envSnippet + `
+    }
+  }
+}`
+			_, err := ParseWithConfig(&ParseConfig{
+				Path: "input.hcl",
+				Body: []byte(hcl),
+			})
+			must.Error(t, err)
+			must.ErrorContains(t, err, c.expectedErr)
+		})
+	}
+}
+
+func TestParse_Meta_Alternatives(t *testing.T) {
+	t.Parallel()
+
+	hcl := ` job "example" {
+  group "group" {
+    task "task" {
+      driver = "config"
+      config {}
+
+      meta {
+        source = "task"
+      }
+    }
+
+    meta {
+      source = "group"
+
+    }
+  }
+
+  meta {
+    source = "job"
+  }
+}
+`
+
+	asBlock, err := ParseWithConfig(&ParseConfig{
+		Path: "input.hcl",
+		Body: []byte(hcl),
+	})
+	must.NoError(t, err)
+
+	hclAsAttr := strings.ReplaceAll(hcl, "meta {", "meta = {")
+	must.Eq(t, 3, strings.Count(hclAsAttr, "meta = {"))
+
+	asAttr, err := ParseWithConfig(&ParseConfig{
+		Path: "input.hcl",
+		Body: []byte(hclAsAttr),
+	})
+	must.NoError(t, err)
+
+	must.Eq(t, asBlock, asAttr)
+	must.Eq(t, map[string]string{"source": "job"}, asBlock.Meta)
+	must.Eq(t, map[string]string{"source": "group"}, asBlock.TaskGroups[0].Meta)
+	must.Eq(t, map[string]string{"source": "task"}, asBlock.TaskGroups[0].Tasks[0].Meta)
+
+}
+
+func TestParse_Constraint_Alternatives(t *testing.T) {
+	t.Parallel()
+
+	hclOpVal := `
+job "example" {
+  constraint {
+    operator = "distinct_hosts"
+    value    = "true"
+  }
+  constraint {
+    operator  = "distinct_property"
+    attribute = "${meta.rack}"
+    value     = "1"
+  }
+  group "group" {
+    constraint {
+      operator = "distinct_hosts"
+      value    = "false"
+    }
+    constraint {
+      operator  = "distinct_property"
+      attribute = "${meta.rack}"
+      value     = "2"
+    }
+    task "task" {
+      constraint {
+        operator = "distinct_hosts"
+        value    = "true"
+      }
+      constraint {
+        operator  = "distinct_property"
+        attribute = "${meta.rack}"
+        value     = "3"
+      }
+      driver = "config"
+      config {}
+    }
+  }
+}
+`
+	hclCompact := `
+job "example" {
+  constraint {
+    distinct_hosts = true
+  }
+  constraint {
+    distinct_property = "${meta.rack}"
+    value     = "1"
+  }
+  group "group" {
+    constraint {
+      distinct_hosts = false
+    }
+    constraint {
+      distinct_property = "${meta.rack}"
+      value     = "2"
+    }
+    task "task" {
+      constraint {
+        distinct_hosts = true
+      }
+      constraint {
+        distinct_property = "${meta.rack}"
+        value     = "3"
+      }
+      driver = "config"
+      config {}
+    }
+  }
+}
+`
+	asOpValue, err := ParseWithConfig(&ParseConfig{
+		Path: "input.hcl",
+		Body: []byte(hclOpVal),
+	})
+	must.NoError(t, err)
+
+	asCompact, err := ParseWithConfig(&ParseConfig{
+		Path: "input.hcl",
+		Body: []byte(hclCompact),
+	})
+	must.NoError(t, err)
+
+	constraint := func(l, r, op string) *api.Constraint {
+		return &api.Constraint{
+			LTarget: l,
+			RTarget: r,
+			Operand: op,
+		}
+	}
+
+	must.Eq(t, asOpValue, asCompact)
+	must.Eq(t, constraint("", "true", "distinct_hosts"), asOpValue.Constraints[0])
+	must.Eq(t, constraint("", "false", "distinct_hosts"), asOpValue.TaskGroups[0].Constraints[0])
+	must.Eq(t, constraint("", "true", "distinct_hosts"), asOpValue.TaskGroups[0].Tasks[0].Constraints[0])
+	must.Eq(t, constraint("${meta.rack}", "1", "distinct_property"), asOpValue.Constraints[1])
+	must.Eq(t, constraint("${meta.rack}", "2", "distinct_property"), asOpValue.TaskGroups[0].Constraints[1])
+	must.Eq(t, constraint("${meta.rack}", "3", "distinct_property"), asOpValue.TaskGroups[0].Tasks[0].Constraints[1])
+}
+
+// TestParse_UndefinedVariables asserts that values with undefined variables are left
+// intact in the job representation
+func TestParse_UndefinedVariables(t *testing.T) {
+	t.Parallel()
+
+	cases := []string{
+		"plain",
+		"foo-${BAR}",
+		"foo-${attr.network.dev-us-east1-relay-vpc.external-ip.0}",
+		`${env["BLAH"]}`,
+		`${mixed-indexing.0[3]["FOO"].5}`,
+		`with spaces ${   root.  field[  "FOO"].5  }`,
+	}
+
+	for _, c := range cases {
+		t.Run(c, func(t *testing.T) {
+			hcl := `job "example" {
+  region = "` + c + `"
+}`
+
+			job, err := ParseWithConfig(&ParseConfig{
+				Path: "input.hcl",
+				Body: []byte(hcl),
+			})
+			must.NoError(t, err)
+
+			must.Eq(t, c, *job.Region)
+		})
+	}
+
+	t.Run("unquoted", func(t *testing.T) {
+		hcl := `job "example" {
+  region = meta.mytest
+}`
+
+		job, err := ParseWithConfig(&ParseConfig{
+			Path: "input.hcl",
+			Body: []byte(hcl),
+		})
+		must.NoError(t, err)
+
+		must.Eq(t, "${meta.mytest}", *job.Region)
+
+	})
+}
+
+func TestParseServiceCheck(t *testing.T) {
+	t.Parallel()
+
+	hcl := ` job "group_service_check_script" {
+  group "group" {
+    service {
+      name = "foo-service"
+      port = "http"
+      check {
+        name   = "check-name"
+        type   = "http"
+        method = "POST"
+        body   = "{\"check\":\"mem\"}"
+      }
+    }
+  }
+}
+`
+	parsedJob, err := ParseWithConfig(&ParseConfig{
+		Path: "input.hcl",
+		Body: []byte(hcl),
+	})
+	must.NoError(t, err)
+
+	expectedJob := &api.Job{
+		ID:   new("group_service_check_script"),
+		Name: new("group_service_check_script"),
+		TaskGroups: []*api.TaskGroup{
+			{
+				Name: new("group"),
+				Services: []*api.Service{
+					{
+						Name:      "foo-service",
+						PortLabel: "http",
+						Checks: []api.ServiceCheck{
+							{
+								Name:   "check-name",
+								Type:   "http",
+								Method: "POST",
+								Body:   "{\"check\":\"mem\"}",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	must.Eq(t, expectedJob, parsedJob)
+}
+
+func TestWaitConfig(t *testing.T) {
+	t.Parallel()
+
+	hclBytes, err := os.ReadFile("test-fixtures/template-wait-config.hcl")
+	must.NoError(t, err)
+
+	job, err := ParseWithConfig(&ParseConfig{
+		Path:    "test-fixtures/template-wait-config.hcl",
+		Body:    hclBytes,
+		AllowFS: false,
+	})
+
+	must.NoError(t, err)
+
+	tmpl := job.TaskGroups[0].Tasks[0].Templates[0]
+	must.NotNil(t, tmpl)
+	must.NotNil(t, tmpl.Wait)
+	must.Eq(t, 5*time.Second, *tmpl.Wait.Min)
+	must.Eq(t, 60*time.Second, *tmpl.Wait.Max)
+}
+
+func TestErrMissingKey(t *testing.T) {
+	t.Parallel()
+	hclBytes, err := os.ReadFile("test-fixtures/template-err-missing-key.hcl")
+	must.NoError(t, err)
+	job, err := ParseWithConfig(&ParseConfig{
+		Path:    "test-fixtures/template-err-missing-key.hcl",
+		Body:    hclBytes,
+		AllowFS: false,
+	})
+	must.NoError(t, err)
+	tmpl := job.TaskGroups[0].Tasks[0].Templates[0]
+	must.NotNil(t, tmpl)
+	must.NotNil(t, tmpl.ErrMissingKey)
+	must.True(t, *tmpl.ErrMissingKey)
+}
+
+func TestRestartRenderTemplates(t *testing.T) {
+	t.Parallel()
+	hclBytes, err := os.ReadFile("test-fixtures/restart-render-templates.hcl")
+	must.NoError(t, err)
+	job, err := ParseWithConfig(&ParseConfig{
+		Path:    "test-fixtures/restart-render-templates.hcl",
+		Body:    hclBytes,
+		AllowFS: false,
+	})
+	must.NoError(t, err)
+	tg := job.TaskGroups[0]
+	must.NotNil(t, tg.RestartPolicy)
+	must.True(t, *tg.RestartPolicy.RenderTemplates)
+
+	must.Nil(t, tg.Tasks[0].RestartPolicy)
+	must.False(t, *tg.Tasks[1].RestartPolicy.RenderTemplates)
+}
+
+// TestIdentity asserts that the default identity will be moved from the
+// Identities slice to the pre-1.7 Identity field in case >=1.7 CLIs are used
+// with <1.7 APIs.
+func TestIdentity(t *testing.T) {
+	t.Parallel()
+	hclBytes, err := os.ReadFile("test-fixtures/identity-compat.nomad.hcl")
+	must.NoError(t, err)
+	job, err := ParseWithConfig(&ParseConfig{
+		Path:    "test-fixtures/identity-compat.nomad.hcl",
+		Body:    hclBytes,
+		AllowFS: false,
+	})
+	must.NoError(t, err)
+	must.NotNil(t, job.TaskGroups[0].Tasks[0].Identity)
+	must.True(t, job.TaskGroups[0].Tasks[0].Identity.Env)
+	must.True(t, job.TaskGroups[0].Tasks[0].Identity.File)
+
+	must.Len(t, 1, job.TaskGroups[0].Tasks[0].Identities)
+	altID := job.TaskGroups[0].Tasks[0].Identities[0]
+	must.Eq(t, "foo", altID.Name)
+	must.Eq(t, []string{"bar"}, altID.Audience)
+	must.True(t, altID.File)
+	must.False(t, altID.Env)
+	must.Eq(t, "signal", altID.ChangeMode)
+	must.Eq(t, "sighup", altID.ChangeSignal)
+	must.Eq(t, 2*time.Hour, altID.TTL)
+}
+
+func TestParse_VariablesSubmission(t *testing.T) {
+	t.Parallel()
+
+	hcl := `
+# will come from -var args, overriding env
+variable "region" {
+  type = string
+}
+
+# will come from env
+variable "pool" {
+  type = string
+}
+
+# will come from var content
+variable "datacenters" {
+  type = list(string)
+}
+
+# will come from var file
+variable "ns" {
+  type = string
+}
+
+job "example" {
+  datacenters = var.datacenters
+  region      = var.region
+  node_pool   = var.pool
+  namespace   = var.ns
+}
+`
+
+	tmpDir := t.TempDir()
+	varFile := filepath.Join(tmpDir, "vars.hcl")
+	must.NoError(t, os.WriteFile(varFile, []byte(`ns = "infra"`), 0666))
+
+	out, err := ParseWithConfigEx(&ParseConfig{
+		Path:       "input.hcl",
+		Body:       []byte(hcl),
+		ArgVars:    []string{"region=philly", "pool=prod"}, // overrides env
+		VarContent: `datacenters = ["dc1", "dc2"]`,
+		VarFiles:   []string{varFile},
+		Envs:       []string{"NOMAD_VAR_region=seattle"},
+		Strict:     false,
+	})
+	must.NoError(t, err)
+
+	must.NotNil(t, out.Job.Namespace)
+	must.Eq(t, "infra", *out.Job.Namespace)
+
+	must.NotNil(t, out.Job.NodePool)
+	must.Eq(t, "prod", *out.Job.NodePool)
+
+	must.Eq(t, []string{"dc1", "dc2"}, out.Job.Datacenters)
+
+	must.NotNil(t, out.Job.Region)
+	must.Eq(t, "philly", *out.Job.Region)
+
+	must.Eq(t, `ns = "infra"
+
+datacenters = ["dc1", "dc2"]`, out.Submission.Variables)
+
+	must.MapEq(t, map[string]string{"region": "philly", "pool": "prod"}, out.Submission.VariableFlags)
+}
+
+func Test_extractVarFiles(t *testing.T) {
+	t.Parallel()
+
+	t.Run("none", func(t *testing.T) {
+		result, err := extractVarFiles(nil)
+		must.NoError(t, err)
+		must.Eq(t, "", result)
+	})
+
+	t.Run("files", func(t *testing.T) {
+		d := t.TempDir()
+		fileOne := filepath.Join(d, "one.hcl")
+		fileTwo := filepath.Join(d, "two.hcl")
+
+		must.NoError(t, os.WriteFile(fileOne, []byte(`foo = "bar"`), 0o644))
+		must.NoError(t, os.WriteFile(fileTwo, []byte(`baz = 42`), 0o644))
+
+		result, err := extractVarFiles([]string{fileOne, fileTwo})
+		must.NoError(t, err)
+		must.Eq(t, "foo = \"bar\"\nbaz = 42\n", result)
+	})
+
+	t.Run("unreadable", func(t *testing.T) {
+		if syscall.Geteuid() == 0 {
+			t.Skip("Test requires non-root")
+		}
+		d := t.TempDir()
+		fileOne := filepath.Join(d, "one.hcl")
+
+		must.NoError(t, os.WriteFile(fileOne, []byte(`foo = "bar"`), 0o200))
+
+		_, err := extractVarFiles([]string{fileOne})
+		must.ErrorContains(t, err, "permission denied")
+	})
+}
+
+func Test_extractVarFlags(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil", func(t *testing.T) {
+		result := extractVarFlags(nil)
+		must.MapEmpty(t, result)
+	})
+
+	t.Run("complete", func(t *testing.T) {
+		result := extractVarFlags([]string{"one=1", "two=2", "three"})
+		must.Eq(t, map[string]string{
+			"one":   "1",
+			"two":   "2",
+			"three": "",
+		}, result)
+	})
+}
+
+func Test_extractJobSpecEnvVars(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil", func(t *testing.T) {
+		must.MapEmpty(t, extractJobSpecEnvVars(nil))
+	})
+
+	t.Run("complete", func(t *testing.T) {
+		result := extractJobSpecEnvVars([]string{
+			"NOMAD_VAR_count=13",
+			"GOPATH=/Users/jrasell/go",
+			"NOMAD_VAR_image=redis:7",
+		})
+		must.Eq(t, map[string]string{
+			"count": "13",
+			"image": "redis:7",
+		}, result)
+	})
+
+	t.Run("whitespace", func(t *testing.T) {
+		result := extractJobSpecEnvVars([]string{
+			"NOMAD_VAR_count = 13",
+			"GOPATH = /Users/jrasell/go",
+		})
+		must.Eq(t, map[string]string{
+			"count ": " 13",
+		}, result)
+	})
+
+	t.Run("empty key", func(t *testing.T) {
+		result := extractJobSpecEnvVars([]string{
+			"NOMAD_VAR_=13",
+			"=/Users/jrasell/go",
+		})
+		must.Eq(t, map[string]string{}, result)
+	})
+
+	t.Run("empty value", func(t *testing.T) {
+		result := extractJobSpecEnvVars([]string{
+			"NOMAD_VAR_count=",
+			"GOPATH=",
+		})
+		must.Eq(t, map[string]string{
+			"count": "",
+		}, result)
+	})
+}
+
+func TestParse_VariableValidationErrorMessage(t *testing.T) {
+	t.Parallel()
+
+	jobWith := func(errMsg string) []byte {
+		return []byte(`
+variable "build_id" {
+  type    = string
+  default = "12345"
+  validation {
+    condition     = var.build_id != ""
+    error_message = "` + errMsg + `"
+  }
+}
+
+job "example" {
+  datacenters = ["dc1"]
+}
+`)
+	}
+
+	t.Run("non-English message is accepted", func(t *testing.T) {
+		// Japanese for "Please check the build number"; see issue #15075.
+		_, err := ParseWithConfig(&ParseConfig{
+			Path:    "input.hcl",
+			Body:    jobWith("ビルド番号を確認してください"),
+			AllowFS: true,
+		})
+		must.NoError(t, err)
+	})
+
+	t.Run("message without a trailing period is accepted", func(t *testing.T) {
+		_, err := ParseWithConfig(&ParseConfig{
+			Path:    "input.hcl",
+			Body:    jobWith("build id is required"),
+			AllowFS: true,
+		})
+		must.NoError(t, err)
+	})
+
+	t.Run("empty message is rejected", func(t *testing.T) {
+		_, err := ParseWithConfig(&ParseConfig{
+			Path:    "input.hcl",
+			Body:    jobWith(""),
+			AllowFS: true,
+		})
+		must.ErrorContains(t, err, "Invalid validation error message")
+	})
+
+	t.Run("blank message is rejected", func(t *testing.T) {
+		_, err := ParseWithConfig(&ParseConfig{
+			Path:    "input.hcl",
+			Body:    jobWith("   "),
+			AllowFS: true,
+		})
+		must.ErrorContains(t, err, "Invalid validation error message")
+	})
+}

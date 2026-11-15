@@ -1,0 +1,208 @@
+package cache
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/observability/logging"
+	"github.com/vllm-project/semantic-router/src/semantic-router/pkg/observability/metrics"
+)
+
+func milvusStringLiteral(value string) string {
+	escaped := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(value)
+	return `"` + escaped + `"`
+}
+
+func milvusActiveEntryFilterExpr(model string) string {
+	return fmt.Sprintf(
+		`model == %s && query != %s && response_body != "" && (expires_at == 0 || expires_at > %d)`,
+		milvusStringLiteral(model),
+		milvusStringLiteral(exactCacheQueryMarker),
+		time.Now().Unix(),
+	)
+}
+
+func extractMilvusResponseBody(hit *client.SearchResult) []byte {
+	if hit == nil {
+		return nil
+	}
+	for _, field := range hit.Fields {
+		if col, ok := field.(*entity.ColumnVarChar); ok && col.Name() == "response_body" && col.Len() > 0 {
+			return []byte(col.Data()[0])
+		}
+	}
+	for _, field := range hit.Fields {
+		if col, ok := field.(*entity.ColumnVarChar); ok && col.Len() > 0 {
+			val := col.Data()[0]
+			if len(val) == 32 && isHexString(val) {
+				continue
+			}
+			return []byte(val)
+		}
+	}
+	return nil
+}
+
+func (c *MilvusCache) milvusSearchSimilarVectors(
+	ctx context.Context,
+	model string,
+	queryEmbedding []float32,
+) ([]client.SearchResult, error) {
+	if c.searchFn != nil {
+		return c.searchFn(ctx, model, queryEmbedding)
+	}
+	searchParam, err := entity.NewIndexHNSWSearchParam(c.config.Search.Params.Ef)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.Search(
+		ctx,
+		c.collectionName,
+		[]string{},
+		milvusActiveEntryFilterExpr(model),
+		[]string{"response_body", "timestamp", "expires_at"},
+		[]entity.Vector{entity.FloatVector(queryEmbedding)},
+		c.config.Collection.VectorField.Name,
+		entity.MetricType(c.config.Collection.VectorField.MetricType),
+		c.config.Search.TopK,
+		searchParam,
+		c.searchQueryOptions()...,
+	)
+}
+
+// FindSimilar searches for semantically similar cached requests
+func (c *MilvusCache) FindSimilar(model string, query string) ([]byte, bool, error) {
+	return c.FindSimilarWithThreshold(model, query, c.similarityThreshold)
+}
+
+// FindSimilarWithThreshold searches for semantically similar cached requests using a specific threshold
+func (c *MilvusCache) FindSimilarWithThreshold(model string, query string, threshold float32) ([]byte, bool, error) {
+	result, err := c.LookupSimilarWithThreshold(context.Background(), model, query, threshold)
+	return result.ResponseBody, result.Found, err
+}
+
+// LookupSimilarWithThreshold returns response data and similarity atomically.
+//
+//nolint:cyclop,funlen
+func (c *MilvusCache) LookupSimilarWithThreshold(ctx context.Context, model string, query string, threshold float32) (LookupResult, error) {
+	start := time.Now()
+
+	if !c.enabled {
+		logging.Debugf("MilvusCache.FindSimilarWithThreshold: cache disabled")
+		return LookupResult{}, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	logging.Debugf("MilvusCache.FindSimilarWithThreshold: searching for model='%s', query=%s, threshold=%.4f",
+		model, logging.ContentDescriptor(query), threshold)
+
+	queryEmbedding, err := c.getEmbedding(ctx, query)
+	if err != nil {
+		metrics.RecordCacheOperation("milvus", "find_similar", "error", time.Since(start).Seconds())
+		return LookupResult{}, fmt.Errorf("failed to generate embedding: %w", err)
+	}
+
+	searchResult, err := c.milvusSearchSimilarVectors(ctx, model, queryEmbedding)
+	if err != nil {
+		logging.Debugf("MilvusCache.FindSimilarWithThreshold: search failed: %v", err)
+		atomic.AddInt64(&c.missCount, 1)
+		metrics.RecordCacheOperation("milvus", "find_similar", "error", time.Since(start).Seconds())
+		// A canceled or expired request is surfaced as an error; every other
+		// search failure keeps the existing fail-open miss (#2473).
+		if contextErr := contextErrorOnFailure(ctx, err); contextErr != nil {
+			return LookupResult{}, contextErr
+		}
+		return LookupResult{}, nil
+	}
+
+	// Err can coexist with ResultCount == 0, so check it first.
+	if len(searchResult) > 0 && searchResult[0].Err != nil {
+		logging.Debugf("MilvusCache.FindSimilarWithThreshold: search result error: %v", searchResult[0].Err)
+		atomic.AddInt64(&c.missCount, 1)
+		metrics.RecordCacheOperation("milvus", "find_similar", "error", time.Since(start).Seconds())
+		return LookupResult{}, nil
+	}
+
+	if len(searchResult) == 0 || searchResult[0].ResultCount == 0 {
+		atomic.AddInt64(&c.missCount, 1)
+		logging.Debugf("MilvusCache.FindSimilarWithThreshold: no entries found")
+		metrics.RecordCacheOperation("milvus", "find_similar", "miss", time.Since(start).Seconds())
+		return LookupResult{}, nil
+	}
+
+	hit := &searchResult[0]
+	metricType := c.config.Collection.VectorField.MetricType
+	bestSimilarity := milvusScoreToSimilarity(metricType, hit.Scores[0])
+	if bestSimilarity < threshold {
+		atomic.AddInt64(&c.missCount, 1)
+		logging.Debugf("MilvusCache.FindSimilarWithThreshold: CACHE MISS - best_similarity=%.4f < threshold=%.4f (metric=%s)",
+			bestSimilarity, threshold, metricType)
+		logging.LogEvent("cache_miss", map[string]interface{}{
+			"backend":         "milvus",
+			"best_similarity": bestSimilarity,
+			"threshold":       threshold,
+			"metric":          metricType,
+			"model":           model,
+			"collection":      c.collectionName,
+		})
+		metrics.RecordCacheOperation("milvus", "find_similar", "miss", time.Since(start).Seconds())
+		// The rejected candidate's score belongs to this lookup; see the
+		// in-memory backend for the full rationale.
+		return LookupResult{Similarity: bestSimilarity}, nil
+	}
+
+	responseBody := extractMilvusResponseBody(hit)
+	if responseBody == nil {
+		logging.Debugf("MilvusCache.FindSimilarWithThreshold: cache hit but response_body is missing or not a string")
+		atomic.AddInt64(&c.missCount, 1)
+		metrics.RecordCacheOperation("milvus", "find_similar", "error", time.Since(start).Seconds())
+		return LookupResult{Similarity: bestSimilarity}, nil
+	}
+
+	atomic.AddInt64(&c.hitCount, 1)
+	logging.Debugf("MilvusCache.FindSimilarWithThreshold: CACHE HIT - similarity=%.4f >= threshold=%.4f (metric=%s), response_size=%d bytes",
+		bestSimilarity, threshold, metricType, len(responseBody))
+	logging.LogEvent("cache_hit", map[string]interface{}{
+		"backend":    "milvus",
+		"similarity": bestSimilarity,
+		"threshold":  threshold,
+		"metric":     metricType,
+		"model":      model,
+		"collection": c.collectionName,
+	})
+	metrics.RecordCacheOperation("milvus", "find_similar", "hit", time.Since(start).Seconds())
+	storedAt, expiresAt := parseMilvusHitTiming(hit)
+	return lookupResultFromTimestamps(responseBody, bestSimilarity, storedAt, expiresAt), nil
+}
+
+func parseMilvusHitTiming(hit *client.SearchResult) (time.Time, time.Time) {
+	var storedAt, expiresAt time.Time
+	for _, field := range hit.Fields {
+		if col, ok := field.(*entity.ColumnInt64); ok && col.Len() > 0 {
+			val, _ := col.ValueByIdx(0)
+			if col.Name() == "timestamp" && val > 0 {
+				storedAt = time.Unix(val, 0)
+			} else if col.Name() == "expires_at" && val > 0 {
+				expiresAt = time.Unix(val, 0)
+			}
+		}
+	}
+	return storedAt, expiresAt
+}
+
+// isHexString checks if a string contains only hexadecimal characters
+func isHexString(s string) bool {
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
+}

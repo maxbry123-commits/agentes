@@ -1,0 +1,57 @@
+# ============================================================================
+# Cognithor · Caddyfile — Simpler Alternative to Nginx
+# ============================================================================
+# Caddy provides automatic HTTPS via Let's Encrypt.
+#
+# Usage:
+#   1. Replace {$DOMAIN} with your domain or set the DOMAIN env var
+#   2. caddy run --config deploy/Caddyfile
+#
+# With Docker:
+#   docker run -d --name caddy \
+#     -p 80:80 -p 443:443 \
+#     -v caddy_data:/data \
+#     -v ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro \
+#     --network cognithor-internal \
+#     -e DOMAIN=jarvis.example.com \
+#     caddy:alpine
+# ============================================================================
+
+{$DOMAIN:localhost} {
+	# Security headers
+	header {
+		X-Frame-Options DENY
+		X-Content-Type-Options nosniff
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy strict-origin-when-cross-origin
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+	}
+
+	# WebSocket — must come before the general reverse_proxy
+	@websocket {
+		path /ws/*
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websocket webui:8080
+
+	# Control Center API — strip /control/ prefix
+	handle_path /control/* {
+		reverse_proxy jarvis:8741
+	}
+
+	# Health check (no auth)
+	handle /health {
+		reverse_proxy webui:8080 {
+			rewrite /api/v1/health
+		}
+	}
+
+	# Web UI (default)
+	reverse_proxy webui:8080
+
+	# Upload limit
+	request_body {
+		max_size 55MB
+	}
+}
