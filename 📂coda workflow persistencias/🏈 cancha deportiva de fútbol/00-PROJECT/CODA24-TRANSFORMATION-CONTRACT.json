@@ -1,0 +1,78 @@
+{
+  "schema": "yaiwes.coda.persistence-link/v1",
+  "mode": "FAIL_CLOSED_ARCHITECTURE_ONLY",
+  "purpose": "Transform each imported project into a benign persistence-workflow link while preserving useful agent orchestration patterns.",
+  "preserve": [
+    "planning",
+    "task decomposition",
+    "multi-agent coordination",
+    "memory",
+    "checkpointing",
+    "resume/recovery",
+    "retry/backoff",
+    "reflection/verification",
+    "DAG/state-machine control flow",
+    "reporting",
+    "observability"
+  ],
+  "replace_or_disable": [
+    "exploit execution",
+    "credential dumping",
+    "payload generation",
+    "evasion or bypass automation",
+    "remote shell/C2",
+    "unauthorized network scanning",
+    "destructive actions",
+    "attack-tool subprocess adapters"
+  ],
+  "allowed_task_types": [
+    "research",
+    "code_review",
+    "documentation",
+    "data_transform",
+    "unit_test",
+    "integration_test_mock",
+    "report",
+    "checkpoint",
+    "handoff"
+  ],
+  "link_lifecycle": [
+    "LOAD_STATE",
+    "VALIDATE_TASK",
+    "PLAN",
+    "SAVE_CHECKPOINT",
+    "EXECUTE_SAFE_TASK_ADAPTER",
+    "VERIFY",
+    "SAVE_RESULT",
+    "HANDOFF_READY"
+  ],
+  "failure_lifecycle": [
+    "CAPTURE_ERROR",
+    "SAVE_CHECKPOINT",
+    "RETRY_WITH_BOUND",
+    "FAIL_CLOSED"
+  ],
+  "required_per_component_artifacts": [
+    "PERSISTENCE-LINK-MANIFEST.json",
+    "PERSISTENCE-ARCHITECTURE-MAP.md",
+    "safe adapter implementation",
+    "state/checkpoint tests",
+    "handoff test",
+    "forbidden-capability regression test"
+  ],
+  "required_tests": [
+    "checkpoint_roundtrip",
+    "resume_after_interruption",
+    "bounded_retry",
+    "idempotent_replay",
+    "handoff_to_next_link",
+    "forbidden_offensive_capability_disabled",
+    "no_unapproved_subprocess_or_network_side_effects"
+  ],
+  "chain_rule": "A link may hand off only after its safe tests pass; the cycle may close only when all 24 links pass the same contract.",
+  "fables_integration": {
+    "status": "WAITING_FOR_USER_PLUGIN_UPLOAD",
+    "path": "📂coda workflow persistencias/Fables enchufe universal",
+    "rule": "Use Fables only as the universal wiring layer after its uploaded code is audited; do not invent or substitute plugin behavior."
+  }
+}

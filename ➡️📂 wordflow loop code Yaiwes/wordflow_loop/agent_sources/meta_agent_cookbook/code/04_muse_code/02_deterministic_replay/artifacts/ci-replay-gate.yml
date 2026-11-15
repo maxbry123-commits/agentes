@@ -1,0 +1,21 @@
+# Golden-trace replay workflow template.
+#
+# Add your supported Muse Code installation step or use a runner image that
+# already provides `muse`, then place this file in .github/workflows/.
+name: replay-gate
+
+on:
+  pull_request:
+  merge_group:
+
+jobs:
+  replay-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Verify Muse Code
+        run: muse --version
+      - name: Replay every golden trace
+        run: ./artifacts/replay_gate.sh golden-traces

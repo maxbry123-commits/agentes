@@ -1,0 +1,38 @@
+[
+  {
+    "paper_id": "paper_8e3ea4f00612",
+    "claim_supported": "Intention-Aware Diffusion Model for Pedestrian Trajectory Prediction is relevant to intent_conditioned_led_virat",
+    "quote": "Abstract\nPredicting pedestrian motion trajectories is critical for the\npath planning and motion control of autonomous vehicles.\nRecent diffusion-based models have shown promising results\nin capturing the inherent stochasticity of pedestrian behav-\nior for trajectory prediction. However, the absence of explicit\nsemantic modelling of pedestrian intent in many diffusion-\nbased methods may result in misinterpreted behaviors and re-\nduced prediction accuracy. To address the above challenges,\nwe propose a diffusion-based pedestrian trajectory predic-\ntion framework that incorporates both short-term and long-\nterm motion intentions. Short-term intent is modelled using\na residual polar representation, which decouples direction\nand magnitude to capture fine-grained local motion patterns.\nLong-term intent is estimated through a learnable, token-\nbased endpoint predictor that generates multiple candidate\ngoals with associated probabilities, enabling multimodal and\ncontext-aware intention modelling. Furthermore, we enhance\nthe diffusion process by incorporating adaptive guidance and\na residual noise predictor that dynamically refines denoising\naccuracy. The proposed framework is evaluated on t",
+    "evidence_id": "evidence_81f2d18bc5da",
+    "section": "Abstract",
+    "page": null,
+    "chunk_id": "chunk_767a492d4903",
+    "support_level": "weak",
+    "is_usable": true,
+    "checker_note": "evidence has source text"
+  },
+  {
+    "paper_id": "paper_8e3ea4f00612",
+    "claim_supported": "Intention-Aware Diffusion Model for Pedestrian Trajectory Prediction is relevant to intent_conditioned_led_virat",
+    "quote": "Experiments\nExperimental Settings\nDatasets: In this study, we evaluate the proposed model\non three widely used pedestrian trajectory datasets: ETH\n(Pellegrini et al. 2009), UCY (Alon Lerner 2007), and the\nStanford Drone Dataset (SDD) (Robicquet et al. 2016). SDD\nis a large-scale dataset captured from a bird’s-eye view us-\ning drone cameras. The ETH dataset comprises two scenes,\nETH and HOTEL, while the UCY dataset includes three\nscenes: ZARA1, ZARA2, and UNIV . All trajectories are\nprovided in world coordinates, and evaluation results are re-\nported in meters. All sequences consist of 8 observed and 12\npredicted frames over 8 seconds.\nMetrics: Following previous works, we adopt two stan-\ndard evaluation metrics to assess the performance of the\nproposed method. Average Displacement Error (ADE) mea-\nsures the mean Euclidean distance between the predicted\nand ground-truth trajectories over all prediction time steps,\nwhile Final Displacement Error (FDE) computes the Eu-\nclidean distance between the predicted final position and the\nground-truth endpoint. In line with prior studies, we report\nthe best result among 20 sampled trajectories.\nImplementation: The network is implemented in Py-",
+    "evidence_id": "evidence_e7b091a9cd07",
+    "section": "Experiments",
+    "page": null,
+    "chunk_id": "chunk_95eae875447b",
+    "support_level": "weak",
+    "is_usable": true,
+    "checker_note": "evidence has source text"
+  },
+  {
+    "paper_id": "paper_5bd0be79ab7f",
+    "claim_supported": "Using a Diffusion Model for Pedestrian Trajectory Prediction in Semi-Open Autonomous Driving Environments is relevant to intent_conditioned_led_virat",
+    "quote": "[page 1]\n17208 IEEE SENSORS JOURNAL, VOL. 24, NO. 10, 15 MAY 2024\nUsing a Diffusion Model for Pedestrian\nTrajectory Prediction in Semi-Open\nAutonomous Driving Environments\nYingjuan Tang\n , Hongwen He\n , Senior Member, IEEE, Y ong Wang\n , and Yifan Wu\nAbstract—In recent years, the pervasive deployment and\nprogression of autonomous driving technology have engen-\ndered heightened demands, particularly within the intricate\ncampus and surrounding environments frequently traversed\nby autonomous delivery vehicles, such as automated food\ndelivery and courier services. Accurately predicting pedes-\ntrian trajectories is paramount in the realm of autonomous\ndriving. In the face of complex scenarios within campus\nand surrounding environments, traditional pedestrian trajec-\ntory prediction methods have failed to achieve satisfactory\nresults. To address this challenge systematically, this arti-\ncle uses a digital twin methodology to establish a novel\ndataset, denoted as the vulnerable pedestrian trajectory pre-\ndiction dataset (VPT), grounded in the authentic road network\nstructures of six campuses and their environs. This article\nproposed a universal transformer diffusion modeling for vul-\nnera",
+    "evidence_id": "evidence_61b01104a979",
+    "section": "Unknown",
+    "page": null,
+    "chunk_id": "chunk_f1734e82c75b",
+    "support_level": "weak",
+    "is_usable": true,
+    "checker_note": "evidence has source text"
+  }
+]

@@ -1,0 +1,371 @@
+{
+  "contract": "tel.workflow/v4",
+  "project": "Wordflow LOOP Yaiwes",
+  "mode": "FAIL_CLOSED_EXECUTION_LOOP",
+  "authorized_write_root": "➡️📂 wordflow loop code Yaiwes/",
+  "status": "CODE_GRAPH_30_OF_30_PRESERVED__CLOSURE_PLAN_ACTIVE__CL002_IN_PROGRESS",
+  "current_node": "CL-002",
+  "checkpoint_id": "WFLOOP-CODE-GRAPH-20260911-0019",
+  "queue_mode": "DAG_DEPENDENCIES_PLUS_PARALLEL_INDEPENDENT",
+  "historical_local_closure": {
+    "status": "LOCAL_TESTS_PASS_AUTH_PROVIDER_TEST_PENDING",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/FINAL_3STEP_CLOSURE_TEST_2026-09-10.json",
+    "commit": "6c4b10a49fa8de3bd85348f15bd5f5fa461d128c"
+  },
+  "new_phase": {
+    "name": "CODE_GRAPH_ARCHITECTURE_PROGRAMMING_LOOP",
+    "director_approved": true,
+    "gap_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/GAPS-INVESTIGACION-CODE-GRAPH-20260910.md",
+    "gaps_total": 30,
+    "gaps_closed": 30,
+    "gaps_closed_ids": [
+      "G-001",
+      "G-002",
+      "G-003",
+      "G-004",
+      "G-005",
+      "G-006",
+      "G-007",
+      "G-008",
+      "G-009",
+      "G-010",
+      "G-011",
+      "G-012",
+      "G-013",
+      "G-014",
+      "G-015",
+      "G-016",
+      "G-017",
+      "G-018",
+      "G-019",
+      "G-020",
+      "G-021",
+      "G-022",
+      "G-023",
+      "G-024",
+      "G-025",
+      "G-026",
+      "G-027",
+      "G-028",
+      "G-029",
+      "G-030"
+    ],
+    "gaps_blocked": [],
+    "gaps_in_research": [],
+    "gaps_open": [],
+    "write_scope_enforced": true
+  },
+  "g001_code_graph_workspace": {
+    "status": "CLOSED_VERIFIED_LOCAL",
+    "module_blob": "6fe57e6c4233532623a8de589892de2d28897cb9",
+    "tests_blob": "c7f00e3155d22c559907d50af31bf95403a5eb68",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G001_CODE_GRAPH_WORKSPACE_2026-09-10.json"
+  },
+  "g002_file_audit_council": {
+    "status": "CLOSED_VERIFIED_LOCAL",
+    "module_blob": "e6624c0b39421a01d54cf0615920073c5dd1ee0f",
+    "tests_blob": "d490a7e15205c37a0f476e6e4c0de7f9429f36c6",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G002_FILE_AUDIT_COUNCIL_2026-09-10.json",
+    "council_execution_authority": false
+  },
+  "g003_task_graph": {
+    "status": "CLOSED_VERIFIED_LOCAL",
+    "module_blob": "91fd7779b2e8c27e3dd7f282847df1e2e4ab4f62",
+    "tests_blob": "882eb17b4289c747adf3850407e8a6a13b80ae65"
+  },
+  "g004_placement_classifier": {
+    "status": "CLOSED_VERIFIED_LOCAL",
+    "module_blob": "69698ad30ba1903e0780efcea1952a3737aeb23e"
+  },
+  "g005_reuse_selector": {
+    "status": "CLOSED_VERIFIED_LOCAL",
+    "module_blob": "bc7f4805fc7f13e6de0341b84c533d4b7fb6b044",
+    "tests_blob": "1bcd0fca22d1238d28add1880e882e7af863ad52",
+    "external_install_or_copy": "NONE"
+  },
+  "g006_code_generation": {
+    "status": "CLOSED_VERIFIED_LOCAL",
+    "owner": "SOL_2",
+    "dependency_g018": "VERIFIED",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G006_CODE_GENERATION_POLICY_2026-09-12.json",
+    "pytest": "PASS_9_OF_9"
+  },
+  "g011_canonical_motor_gate": {
+    "status": "VERIFIED_CLOSED",
+    "module_blob": "def0ccc402d4e9797ff7ac30a92c1993aec47914",
+    "tests_blob": "55a6e4fda73010cad2359f5e0ad9307bd44fc815",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G011_CANONICAL_COPY_MOVE_MOTORS_2026-09-11.json"
+  },
+  "g013_source_truth_reconciliation": {
+    "status": "CLOSED_VERIFIED_LOCAL_0019",
+    "owner": "SOL_1",
+    "contract": "yaiwes.truth_reconciliation/v1",
+    "module": "➡️📂 Wordflow LOOP Yaiwes/runtime/src/core/source_truth_reconciler.py",
+    "module_blob": "fb93ce9ee5b86439b0ba36ef72c404134d1984b1",
+    "tests": "➡️📂 Wordflow LOOP Yaiwes/runtime/tests/test_source_truth_reconciler.py",
+    "tests_blob": "f39cb13a84d1dbb7fcb1c1467f712bf003a431df",
+    "canonical_checkpoint": "WFLOOP-CODE-GRAPH-20260911-0019",
+    "truth_readback": "PASS_8_OF_8",
+    "exact_pytest": "PASS_7_OF_7",
+    "reconciliation_status": "CONSISTENT",
+    "task_nodes_close_commit": "5db4739d6bed2a34bd1e148ed23ea820f6b69aa3",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G013_CANONICAL_RECONCILIATION_2026-09-11.json"
+  },
+  "g018_fables": {
+    "status": "CLOSED_VERIFIED_LOCAL",
+    "owner": "SOL_2",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G018_FABLES_EXACT_BLOB_PYTEST_2026-09-12.json",
+    "pytest": "PASS_4_OF_4"
+  },
+  "g019_global_audit": {
+    "status": "CLOSED_VERIFIED_REAL_TREE",
+    "owner": "SOL_1",
+    "claim_commit": "d6aafd207ab89db0437d8c4f17da016fec534687",
+    "repair_commit": "a7d9b763304b1cbe5bf01e083f0ed8cf9c34e1a1",
+    "task_nodes_close_commit": "a36da44d74fbd961ebc13998e1732c0d2a90ce68",
+    "evidence_commit": "f68a3de1962220412718ac5fe2377fc6eb1d482f",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G019_GLOBAL_WORDFLOW_AUDIT_2026-09-12.json",
+    "scope": "inventory_capabilities_duplicates_orphans_broken_routes_unused_code_ledger",
+    "full_audit_job": "6aa5c76221047bf1b037e8ee",
+    "classification_job": "6aa5c7ab5527934177ed1d37",
+    "audit_report_sha256": "c39505cec5fa9b938d1caed5cbfcb3a2ee9484a4349d7136e778f3d2ede005a1",
+    "unittest": "PASS_11_OF_11",
+    "broken_required_paths": 0,
+    "broken_internal_imports": 0,
+    "duplicates": "34_STAGING_MIRROR_NO_AUTO_DELETE",
+    "orphan_candidates": "42_REFERENCED_ACTIVE_PLUS_1_STAGING_ONLY_REFERENCE_NO_AUTO_DELETE",
+    "resolved_gap": "uek_cluster missing src.uek.cache_engine -> REUSE src.parallel.mavis_parallel.SmartCache"
+  },
+  "g022_sandbox": {
+    "status": "CLOSED_VERIFIED_PHYSICAL_ISOLATION",
+    "owner": "ASTRA_GPT_LOOP",
+    "closure_executor": "SOL_GPT_USER_DIRECTED_TAKEOVER",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G022_PHYSICAL_SANDBOX_CLOSURE_2026-09-15.json",
+    "github_actions_run": "34931798702",
+    "four_test_gate": "PASS_4_OF_4"
+  },
+  "g027_graphiti": {
+    "status": "CLOSED_VERIFIED_LOCAL",
+    "owner": "SOL_2",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G027_GRAPHITI_TEMPORAL_ADAPTER_2026-09-12.json",
+    "runtime_activation": "FAIL_CLOSED_UNTIL_G022"
+  },
+  "g028_graphology": {
+    "status": "CLOSED_VERIFIED_NO_VALUE_GAP",
+    "owner": "SOL_2",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G028_GRAPHOLOGY_NO_VALUE_2026-09-12.json"
+  },
+  "source_of_truth_reconciliation": {
+    "status": "CONSISTENT_VERIFIED_0019",
+    "canonical_checkpoint": "WFLOOP-CODE-GRAPH-20260911-0019",
+    "drift": [],
+    "conflicts": [],
+    "missing": [],
+    "G-013": "PASS"
+  },
+  "reuse_audit": {
+    "chat_a_chat_b": "VERIFIED_CLOSED_G016",
+    "sandbox": "VERIFIED_PHYSICAL_ISOLATION_G022",
+    "installation_deployment": "VERIFIED_DETERMINISTIC_G017",
+    "canonical_motors_inside_loop": "VERIFIED_CLOSED_G011",
+    "agent_memory": "VERIFIED_CLOSED_G014"
+  },
+  "research_confirmed": {
+    "graphify_source": "maxbry123-commits/osquestador-auditor/Graphify",
+    "graphiti_source": "maxbry123-commits/osquestador-auditor/graphiti",
+    "graphology_source": "maxbry123-commits/osquestador-auditor/graphology",
+    "community_sources_count": 12,
+    "motor_policy": "CANONICAL_IMMUTABLE_READBACK_REQUIRED"
+  },
+  "agent_fleet": {
+    "fleet_count": 18,
+    "council12_count": 12,
+    "router_status": "LOCAL_PASS_EXTERNAL_AUTH_PENDING"
+  },
+  "external_auth_gap": "AUTH_PROVIDER_TEST_PENDING",
+  "next_actions": [
+    "CL-002 IN_PROGRESS: publish/read-back verified MiniMax/Kimi GitHub components into exact agent_sources destination.",
+    "CL-003: resolve official npm @minimax-ai/code acquisition with exact integrity.",
+    "CL-004: resolve kimi-code/kimi-cli symlink-safe acquisition without weakening canonical motors.",
+    "CL-005..CL-013: reconcile, classify, integrate, test, global-close by DAG.",
+    "Claude pending queue registered: after CL-005, execute CLAUDE-AGENT-REVIEW-01 -> Frontend/Code integration + LOOP/workflow reuse -> validation."
+  ],
+  "g017_deployment": {
+    "status": "CLOSED_VERIFIED_DETERMINISTIC_DEPLOYMENT",
+    "owner": "SOL_GPT_USER_DIRECTED_TAKEOVER",
+    "evidence": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/G017_DETERMINISTIC_DEPLOYMENT_CLOSURE_2026-09-15.json",
+    "github_actions_run": "34931798702",
+    "health_smoke": "PASS_REAL",
+    "rollback": "PASS_VERIFIED"
+  },
+  "closure_plan_2026_09_17": {
+    "schema": "yaiwes.closure-plan/v1",
+    "created_at": "2026-09-17T23:29:00Z",
+    "status": "ACTIVE_CL002_IN_PROGRESS",
+    "executor": "CHATGPT_WATCHDOG_HOURLY",
+    "task_nodes_commit": "9066af89d805348c623c63432617ef47db944f63",
+    "destination_agent_sources": "➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources/",
+    "forensic_snapshot": {
+      "project_root_components": 16,
+      "agent_source_trees_present": 20,
+      "fleet_registered": 18,
+      "meta_sources_present_not_fleet_registered": 2,
+      "adapters_present": [
+        "browser_use_adapter.py",
+        "codebase_memory_mcp_adapter.py"
+      ],
+      "runtime_core_modules_observed": 38,
+      "public_minimax_kimi_acquisition_targets": 13
+    },
+    "truth": {
+      "source_presence_is_runtime_integration": false,
+      "current_fleet_runtime_status": "READY_FOR_TEST_RUNTIME_ENV_REQUIRED",
+      "local_source_runtime_claim": false,
+      "meta_agent_cookbook": "PRESENT_NOT_FLEET; target=skills/patterns",
+      "meta_muse_code_sdk": "PRESENT_NOT_FLEET; target=session/continuity"
+    },
+    "acquisition_targets": [
+      "npm:@minimax-ai/code",
+      "MiniMax-AI/Mini-Agent",
+      "MiniMax-AI/OpenRoom",
+      "MiniMax-AI/cli",
+      "MiniMax-AI/MiniMax-Code-Plugins",
+      "MiniMax-AI/MiniMax-MCP",
+      "MiniMax-AI/MiniMax-MCP-JS",
+      "MiniMax-AI/MiniMax-Coding-Plan-MCP",
+      "MoonshotAI/kimi-code",
+      "MoonshotAI/kimi-cli",
+      "MoonshotAI/kimi-agent-sdk",
+      "MoonshotAI/kimi-agent-rs",
+      "MoonshotAI/Kimi-Researcher"
+    ],
+    "completed": [
+      "CL-001"
+    ],
+    "pending": [
+      "CL-002",
+      "CL-003",
+      "CL-004",
+      "CL-005",
+      "CL-006",
+      "CL-007",
+      "CL-008",
+      "CL-009",
+      "CL-010",
+      "CL-011",
+      "CL-012",
+      "CL-013"
+    ],
+    "final_gate": "100_PERCENT_IN_SCOPE_PASS_OR_EXPLICIT_SOURCE_NOT_PUBLIC_CLASSIFICATION",
+    "last_xray_at": "2026-09-17T23:35:00Z",
+    "integration_map": {
+      "control_plane": [
+        "Crazy Wall Orquestador",
+        "HANDOFF.md",
+        "STATE.json",
+        "CHECKPOINT.json",
+        "TASK-NODES.json",
+        "BITACORA-CRAZY-WALL.md"
+      ],
+      "execution_core": [
+        "runtime/src/core",
+        "wordflow_loop/contracts",
+        "wordflow_loop/workflows",
+        "wordflow_loop/adapters",
+        "wordflow_loop/plugins",
+        "wordflow_loop/skills"
+      ],
+      "acquisition": [
+        "➡️📂motores de descarga extracción copiado movimiento archivos agentes",
+        "wordflow_loop/agent_sources",
+        "📂 archivos download"
+      ],
+      "persistence": [
+        "📂 Capa de persistencia open mythos",
+        "runtime/src/core/continuity_supervisor.py",
+        "runtime/src/core/agent_memory_loader.py"
+      ],
+      "deployment_validation": [
+        "📂 Capa workflow GitHub Action",
+        "runtime/tests",
+        "wordflow_loop/evidence"
+      ],
+      "existing_fleet_sources": [
+        "agent_zero",
+        "aider",
+        "claude_code",
+        "cline",
+        "codex",
+        "goose",
+        "hermes",
+        "kimi_k",
+        "mimo_code",
+        "mirothinker",
+        "muse_glimmer",
+        "openclaw",
+        "opencode",
+        "opendev",
+        "openhands",
+        "qwen_code",
+        "research_agent_lab",
+        "smolagents"
+      ],
+      "skills_sdk_sources": {
+        "meta_agent_cookbook": "CL-009 skills/patterns",
+        "meta_muse_code_sdk": "CL-009 session/continuity/approval/resume"
+      },
+      "minimax_targets": {
+        "Mini-Agent": "CL-006 classify -> CL-007 fleet -> CL-008 transport",
+        "OpenRoom": "CL-006 classify UI/agent -> CL-010 only if value",
+        "mcode": "CL-003 acquisition -> CL-007 fleet -> CL-008 ACP/stdio",
+        "mmx CLI": "CL-010 infrastructure",
+        "Code Plugins": "CL-010 plugin layer",
+        "MiniMax MCP": "CL-010 MCP port",
+        "MiniMax MCP JS": "CL-010 MCP JS port",
+        "Coding Plan MCP": "CL-010 planning capability"
+      },
+      "kimi_targets": {
+        "kimi-code": "CL-004 acquisition -> CL-007 fleet -> CL-008 ACP/stdio",
+        "kimi-cli": "CL-004 acquisition -> CL-011 legacy/fallback only if value",
+        "kimi-agent-sdk": "CL-011 SDK/transport",
+        "kimi-agent-rs": "CL-011 SDK/transport",
+        "Kimi-Researcher": "CL-011 research capability subject to NO_VALUE_GAP"
+      },
+      "invariant": "NO_SOURCE_PRESENCE_EQUALS_RUNTIME_PASS"
+    }
+  },
+  "claude_pending_queue": {
+    "status": "PENDING",
+    "assigned_to": "CLAUDE",
+    "created_at": "2026-09-18T00:49:00-05:00",
+    "prerequisite": "CL-005 must close physical publication/read-back before CLAUDE-AGENT-REVIEW-01 becomes executable",
+    "nodes": [
+      "CLAUDE-AGENT-REVIEW-01",
+      "CLAUDE-FRONTEND-CODE-INTEGRATION-02",
+      "CLAUDE-LOOP-WORKFLOW-REUSE-03",
+      "CLAUDE-INTEGRATION-VALIDATION-04"
+    ],
+    "scope": {
+      "frontend": "Review/adapt approved agent capabilities for maxbry123-commits/frontend without duplicating runtime/state engines.",
+      "code": "Review/integrate approved agents into Wordflow Code Yaiwes using existing fleet/adapters/transports/contracts.",
+      "loop_workflow": "Inspect LOOP/workflow/retry/resume/checkpoint/fan-out/fan-in/handoff patterns and REUSE/ADAPT/REJECT only mechanisms that improve existing Wordflow LOOP."
+    },
+    "invariants": [
+      "PENDING does not equal claimed or PASS",
+      "NO_PARALLEL_ORCHESTRATOR",
+      "NO_DUPLICATE_SCHEDULER",
+      "SOURCE_PRESENCE_DOES_NOT_EQUAL_RUNTIME_INTEGRATION",
+      "READ_FRESH_BEFORE_WRITE",
+      "TEST_AND_READBACK_BEFORE_PASS"
+    ]
+  },
+  "agent_source_mount_status": {
+    "status": "MOUNTED",
+    "commit": "28a47f47b7f127ba400c0bcbbb930daa424f6d85",
+    "agent_sources_tree": "aa2e2b79b60fe48349fc03998f97560fdbf965d4",
+    "github_submodules": 12,
+    "mcode_mount": "NPM_PIN_MANIFEST",
+    "github_actions_used": false,
+    "note": "Sources are mounted/pinned. Gitlink mounts are not equivalent to vendored full source blobs; mcode full npm package bytes are not vendored."
+  }
+}

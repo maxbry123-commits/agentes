@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yaiwes.local/schemas/wordflow-loop-v1.json",
+  "title": "YAIWES Wordflow LOOP Contract",
+  "type": "object",
+  "required": ["node_id", "layer", "literal", "literal_sha256", "mutation", "authorization"],
+  "properties": {
+    "node_id": {"type": "string", "minLength": 1},
+    "layer": {"type": "string", "pattern": "^L[0-9]{2}_[A-Z0-9_]+$"},
+    "literal": {"type": "string", "minLength": 1},
+    "literal_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "depends_on": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "allowed_actions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "allowed_paths": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "forbidden_actions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "mutation": {"type": "boolean"},
+    "authorization": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "timeout_ms": {"type": "integer", "minimum": 1}
+  },
+  "additionalProperties": false
+}

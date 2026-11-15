@@ -1,0 +1,43 @@
+{
+  "paper_id": "paper_8e3ea4f00612",
+  "task": "pedestrian_trajectory_prediction",
+  "method_card_id": "method_3f96a41605de",
+  "problem_setting": "Use the copied LED/VIRAT codebase to explore intention or language-conditioned trajectory prediction on top of the validated baseline.",
+  "input_modalities": [
+    "trajectory",
+    "intention",
+    "scene"
+  ],
+  "output": "future trajectory",
+  "model_architecture": {
+    "encoder": "transformer/social encoder",
+    "decoder": "diffusion denoiser",
+    "fusion_module": "language/intention conditioning"
+  },
+  "temporal_modeling": "",
+  "fusion_strategy": {
+    "type": "conditioned",
+    "description": "detected language/intention conditioning terms in local PDF text"
+  },
+  "training_objective": "",
+  "datasets": [],
+  "metrics": [
+    "ADE",
+    "FDE",
+    "miss_rate",
+    "multimodal_diversity"
+  ],
+  "main_results": "",
+  "limitations": [],
+  "reusable_ideas_for_current_topic": [
+    "Investigate relevance of Intention-Aware Diffusion Model for Pedestrian Trajectory Prediction to current topic"
+  ],
+  "implementation_difficulty": "medium",
+  "risk": [
+    "auto-extracted hints require human verification against full paper"
+  ],
+  "evidence_ids": [
+    "evidence_81f2d18bc5da",
+    "evidence_e7b091a9cd07"
+  ]
+}

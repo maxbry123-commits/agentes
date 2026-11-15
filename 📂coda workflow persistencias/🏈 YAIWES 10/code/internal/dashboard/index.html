@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pentest Swarm Operations Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#000000; --panel:rgba(9,11,10,.6); --hair:#161816;
+    --line:rgba(124,227,139,.14); --line-2:rgba(124,227,139,.3);
+    --ink:#e9f4ec; --ink-dim:#7f8c83; --ink-faint:#4c554e;
+    --green:#7ce38b; --green-hi:#b6ffc4; --green-deep:#1f7a3a; --glow:rgba(124,227,139,.5);
+    --crit:#ff5d6e; --high:#f5b35a; --med:#ffcf5c; --low:#5b93ff; --info:#7d8a83;
+    --disp:"Orbitron",system-ui,sans-serif;
+    --ui:"Rajdhani",system-ui,-apple-system,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--ui);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  #bgfx{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5}
+  body::after{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(124,227,139,.028) 0 1px,transparent 1px 3px);mix-blend-mode:screen;opacity:.4}
+  .wrap{position:relative;z-index:2;max-width:1560px;margin:0 auto;padding:20px 24px 56px}
+  .mono{font-family:var(--mono)}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:9px}::-webkit-scrollbar-track{background:transparent}
+
+  /* boot overlay */
+  #boot{position:fixed;inset:0;z-index:50;background:#000;display:grid;place-items:center;transition:opacity .6s .2s}
+  #boot .b{text-align:center}
+  #boot .t{font-family:var(--disp);font-weight:900;font-size:26px;letter-spacing:.2em;color:var(--green);text-shadow:0 0 24px var(--glow);opacity:0;animation:bootin .5s .1s forwards}
+  #boot .s{font-family:var(--mono);font-size:11px;letter-spacing:.34em;color:var(--ink-dim);text-transform:uppercase;margin-top:14px;opacity:0;animation:bootin .5s .5s forwards}
+  #boot .bar{width:220px;height:2px;background:var(--hair);margin:20px auto 0;overflow:hidden;border-radius:2px}
+  #boot .bar i{display:block;height:100%;width:0;background:var(--green);box-shadow:0 0 10px var(--green);animation:load 1s .2s forwards}
+  @keyframes bootin{to{opacity:1}}@keyframes load{to{width:100%}}
+  body.booted #boot{opacity:0;pointer-events:none}
+  .stage{opacity:0;transform:translateY(10px);transition:opacity .7s,transform .7s}
+  body.booted .stage{opacity:1;transform:none}
+
+  /* panels */
+  .panel{position:relative;border:1px solid var(--line);border-radius:4px;background:var(--panel);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:16px 17px}
+  .panel::before,.panel::after{content:"";position:absolute;width:13px;height:13px;pointer-events:none}
+  .panel::before{top:-1px;left:-1px;border-top:2px solid var(--green);border-left:2px solid var(--green);border-radius:4px 0 0 0;box-shadow:-2px -2px 10px -3px var(--glow)}
+  .panel::after{bottom:-1px;right:-1px;border-bottom:2px solid var(--green);border-right:2px solid var(--green);border-radius:0 0 4px 0;box-shadow:2px 2px 10px -3px var(--glow)}
+  .head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  h2.sec{margin:0;font-family:var(--disp);font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--ink);font-weight:700;display:flex;align-items:center;gap:9px}
+  h2.sec::before{content:"";width:6px;height:6px;background:var(--green);box-shadow:0 0 8px var(--green);transform:rotate(45deg)}
+  .head .rule{flex:1;height:1px;background:linear-gradient(90deg,var(--line-2),transparent)}
+  .head .tag{font-family:var(--mono);font-size:10px;color:var(--ink-faint);letter-spacing:.06em}
+
+  /* command bar */
+  .bar{display:flex;align-items:center;gap:24px;flex-wrap:wrap;position:relative;border:1px solid var(--line);border-radius:4px;background:linear-gradient(180deg,rgba(12,16,13,.72),rgba(3,5,4,.72));backdrop-filter:blur(8px);padding:15px 22px;overflow:hidden}
+  .bar::after{content:"";position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,transparent,var(--green),transparent);opacity:.6;animation:sweep 6s linear infinite}
+  @keyframes sweep{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+  .mark{display:flex;align-items:center;gap:15px}
+  .mark canvas{filter:drop-shadow(0 0 14px var(--glow))}
+  .mark .wm{font-family:var(--disp);font-weight:900;font-size:20px;letter-spacing:.08em;line-height:1}
+  .mark .wm b{color:var(--green);text-shadow:0 0 18px var(--glow)}
+  .mark .sub{display:flex;gap:9px;font-family:var(--mono);font-size:9px;letter-spacing:.3em;color:var(--ink-faint);margin-top:6px;text-transform:uppercase}
+  .mark .sub .by{color:var(--green);opacity:.8}
+  .mission{min-width:210px}
+  .mission .k{font-family:var(--mono);font-size:9px;letter-spacing:.24em;color:var(--ink-faint);text-transform:uppercase}
+  .mission .v{font-family:var(--mono);font-weight:500;font-size:13px;color:var(--green-hi);word-break:break-all;margin-top:3px}
+  .mission .obj{color:var(--ink-dim);font-size:13px}
+  .telemetry{margin-left:auto;display:flex;align-items:stretch;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:rgba(4,6,5,.6)}
+  .tm{padding:9px 18px;border-right:1px solid var(--line);min-width:88px}
+  .tm:last-child{border-right:0}
+  .tm .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.2em;color:var(--ink-faint);text-transform:uppercase}
+  .tm .v{font-family:var(--disp);font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1;margin-top:3px;text-shadow:0 0 14px rgba(124,227,139,.22)}
+  .status{display:flex;align-items:center;gap:11px;padding:9px 18px;border-right:1px solid var(--line)}
+  .status .lamp{position:relative;width:9px;height:9px}
+  .status .lamp i{position:absolute;inset:0;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green)}
+  .status.live .lamp i{animation:blip 1.3s ease-out infinite}
+  .status .lamp::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:1px solid var(--green);opacity:0}
+  .status.live .lamp::after{animation:ring 1.6s ease-out infinite}
+  @keyframes blip{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes ring{0%{transform:scale(.4);opacity:.8}100%{transform:scale(2.4);opacity:0}}
+  .status .txt{font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:.2em;color:var(--green)}
+  .killbtn{margin-left:14px;align-self:center;cursor:pointer;font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:.18em;color:var(--crit);background:rgba(255,93,110,.06);border:1px solid var(--crit);border-radius:4px;padding:7px 13px;transition:.15s}
+  .killbtn:hover{background:var(--crit);color:#0a0000;box-shadow:0 0 16px -3px var(--crit)}
+  .killbtn:disabled{cursor:default;opacity:.4;color:var(--ink-faint);border-color:var(--hair);background:none;box-shadow:none}
+
+  /* phase strip */
+  .phases{display:flex;align-items:center;gap:0;margin-top:14px;border:1px solid var(--line);border-radius:4px;background:rgba(6,8,7,.5);overflow:hidden}
+  .ph{flex:1;display:flex;align-items:center;justify-content:center;gap:9px;padding:11px 10px;position:relative;font-family:var(--disp);font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-faint);transition:.4s}
+  .ph:not(:last-child)::after{content:"›";position:absolute;right:-6px;color:var(--ink-faint);font-family:var(--ui);font-size:16px;z-index:2}
+  .ph .d{width:7px;height:7px;border-radius:50%;background:var(--hair);transition:.4s}
+  .ph.done{color:var(--ink-dim)}.ph.done .d{background:var(--green-deep)}
+  .ph.active{color:var(--green);background:rgba(124,227,139,.06)}
+  .ph.active .d{background:var(--green);box-shadow:0 0 12px var(--green);animation:blip 1.2s infinite}
+
+  /* progress console */
+  .progress{margin-top:14px;position:relative;border:1px solid var(--line);border-radius:4px;background:linear-gradient(180deg,rgba(10,14,11,.6),rgba(3,5,4,.6));backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:13px 18px;overflow:hidden}
+  .pg-top{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+  .pg-phase{flex:1;min-width:230px}
+  .pg-plabel{font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--green);text-shadow:0 0 14px var(--glow)}
+  .pg-track{height:6px;border-radius:4px;background:var(--hair);margin-top:9px;overflow:hidden;position:relative}
+  .pg-track i{position:relative;z-index:2;display:block;height:100%;width:0;border-radius:4px;background:linear-gradient(90deg,var(--green-deep),var(--green));box-shadow:0 0 12px var(--green);transition:width .7s cubic-bezier(.2,.7,.3,1)}
+  .pg-track::after{content:"";position:absolute;inset:0;z-index:1;background:linear-gradient(90deg,transparent,rgba(124,227,139,.35),transparent);transform:translateX(-100%);animation:sweep 2.6s linear infinite;opacity:.6}
+  .pg-counters{display:flex;gap:22px}
+  .pg-c{text-align:right;min-width:52px}
+  .pg-c .pg-n{display:block;font-family:var(--disp);font-weight:700;font-size:22px;font-variant-numeric:tabular-nums;line-height:1;text-shadow:0 0 12px rgba(124,227,139,.25)}
+  .pg-c .pg-u{font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;color:var(--ink-faint);text-transform:uppercase}
+  .pg-now{display:flex;align-items:center;gap:12px;margin-top:12px;padding-top:11px;border-top:1px solid var(--hair)}
+  .pg-now-k{font-family:var(--mono);font-size:9px;letter-spacing:.24em;color:var(--green);text-transform:uppercase;flex:none;border:1px solid var(--line);border-radius:3px;padding:3px 8px}
+  .pg-now-v{font-family:var(--mono);font-size:12.5px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .25s}
+  .pg-now-v.flash{color:var(--green-hi)}
+
+  /* hero attack graph */
+  .hero{margin-top:16px;padding:0;overflow:hidden}
+  .hero .head{padding:16px 18px 0}
+  #graph{display:block;width:100%;height:400px}
+
+  .grid3{display:grid;grid-template-columns:1.05fr 1fr 1.2fr;gap:16px;margin-top:16px}
+  @media(max-width:1080px){.grid3{grid-template-columns:1fr}}
+  .grid2{display:grid;grid-template-columns:360px 1fr;gap:16px;margin-top:16px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+
+  .ring-wrap{display:flex;flex-direction:column;align-items:center;gap:14px}
+  .ring{position:relative;width:186px;height:186px}
+  .ring .core{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+  .ring .core .n{font-family:var(--disp);font-size:46px;font-weight:800;line-height:.9;font-variant-numeric:tabular-nums;text-shadow:0 0 22px rgba(124,227,139,.3)}
+  .ring .core .l{font-family:var(--mono);font-size:9px;letter-spacing:.26em;color:var(--ink-faint);text-transform:uppercase;margin-top:6px}
+  .legend{width:100%;display:flex;flex-direction:column}
+  .legend .row{display:flex;align-items:center;gap:11px;padding:7px 3px;border-bottom:1px solid var(--hair);font-size:14px}
+  .legend .row:last-child{border-bottom:0}
+  .legend .sw{width:8px;height:8px;border-radius:2px;flex:none;box-shadow:0 0 10px currentColor}
+  .legend .lbl{font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;font-size:11px;color:var(--ink-dim)}
+  .legend .row .c{margin-left:auto;font-family:var(--disp);font-weight:700;font-variant-numeric:tabular-nums;font-size:17px}
+  .legend .row.zero{opacity:.3}
+
+  .threat{display:flex;flex-direction:column;align-items:center}
+  .threat .lvl{font-family:var(--disp);font-weight:800;font-size:23px;letter-spacing:.12em;text-transform:uppercase;margin-top:-14px}
+  .threat .cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;color:var(--ink-faint);text-transform:uppercase;margin-top:4px}
+
+  #timeline{display:block;width:100%;height:190px}
+  .tl-empty{color:var(--ink-faint);font-family:var(--mono);font-size:12px;text-align:center;padding:66px 0}
+
+  .swarm{display:flex;flex-direction:column;gap:9px}
+  .node{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:13px;border:1px solid var(--hair);border-radius:4px;background:rgba(6,8,7,.6);padding:11px 13px;transition:.3s}
+  .node .glyph{width:40px;height:40px;border-radius:4px;border:1px solid var(--line);background:#050605;display:grid;place-items:center;color:var(--ink-dim);font-family:var(--mono);font-size:16px;transition:.3s}
+  .node .nm{font-family:var(--disp);font-weight:700;font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+  .node .role{color:var(--ink-faint);font-size:12px;margin-top:1px}
+  .node .cnt{text-align:right;font-family:var(--disp)}
+  .node .cnt .n{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+  .node .cnt .u{font-family:var(--mono);font-size:8px;letter-spacing:.16em;color:var(--ink-faint);text-transform:uppercase;margin-top:2px}
+  .node.active{border-color:var(--green);box-shadow:0 0 0 1px var(--glow),0 0 30px -8px var(--glow);transform:translateX(3px)}
+  .node.active .glyph{color:var(--green);border-color:var(--green);background:rgba(124,227,139,.1);box-shadow:0 0 16px -4px var(--glow)}
+  .node.active .cnt .n{color:var(--green);text-shadow:0 0 14px var(--glow)}
+  .actbar{grid-column:1/-1;height:2px;border-radius:2px;background:var(--hair);margin-top:10px;overflow:hidden}
+  .actbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--green-deep),var(--green));box-shadow:0 0 8px var(--green);transition:width .5s}
+
+  .flist{display:flex;flex-direction:column;gap:10px;max-height:452px;overflow:auto;padding-right:5px}
+  .fcard{border:1px solid var(--hair);border-left:3px solid var(--sev);border-radius:4px;background:rgba(6,8,7,.6);padding:12px 14px;animation:rise .45s cubic-bezier(.2,.7,.3,1)}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .fcard .top{display:flex;align-items:center;gap:10px}
+  .badge{font-family:var(--disp);font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;padding:3px 8px;border-radius:3px;color:#000;background:var(--sev);box-shadow:0 0 14px -3px var(--sev)}
+  .fcard .cvss{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+  .fcard .ttl{font-weight:600;margin-top:8px;font-size:15px;line-height:1.3;text-wrap:balance}
+  .fcard .cat{font-family:var(--mono);color:var(--ink-faint);font-size:10px;letter-spacing:.05em;margin-top:4px;text-transform:uppercase}
+  .empty{color:var(--ink-faint);font-size:14px;padding:18px 4px;display:flex;align-items:center;gap:12px;font-family:var(--mono)}
+  .empty .scan{width:14px;height:14px;border:1.5px solid var(--hair);border-top-color:var(--green);border-radius:50%;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* attack chains */
+  .chains-panel{margin-top:16px}
+  .chains{display:flex;flex-direction:column;gap:14px}
+  .chain{border:1px solid var(--hair);border-radius:4px;background:rgba(6,8,7,.5);padding:13px 15px;animation:rise .4s cubic-bezier(.2,.7,.3,1)}
+  .chain .ch-head{display:flex;align-items:center;gap:11px;cursor:pointer;user-select:none}
+  .chain .ch-head:hover .ch-name{color:var(--green-hi)}
+  .chain .ch-chev{color:var(--ink-faint);font-family:var(--mono);font-size:11px;transition:transform .2s;flex:none}
+  .chain.open .ch-chev{transform:rotate(90deg);color:var(--green)}
+  .chain .ch-pips{display:flex;gap:4px;margin-left:2px}
+  .chain .ch-pips .pip{width:15px;height:5px;border-radius:2px;background:var(--hair);transition:.3s}
+  .chain .ch-pips .pip.run{background:var(--green);animation:blip 1s infinite}
+  .chain .ch-pips .pip.ok{background:var(--green);box-shadow:0 0 7px -1px var(--glow)}
+  .chain .ch-pips .pip.fail{background:var(--crit);opacity:.55}
+  .chain .ch-name{font-family:var(--disp);font-weight:700;font-size:13px;letter-spacing:.04em;transition:color .2s}
+  .chain .ch-dot{width:7px;height:7px;border-radius:50%;background:var(--hair);flex:none}
+  .chain.run .ch-dot{background:var(--green);box-shadow:0 0 10px var(--green);animation:blip 1.1s infinite}
+  .chain.done .ch-dot{background:var(--green);box-shadow:0 0 10px var(--green)}
+  .chain.failed .ch-dot{background:var(--crit)}
+  .chain .ch-status{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}
+  .chain.done .ch-status{color:var(--green)}
+  .chain.failed .ch-status{color:var(--crit)}
+  .steps{display:none;gap:26px;overflow-x:auto;padding:2px 2px 8px;margin-top:14px}
+  .chain.open .steps{display:flex}
+  .steps::-webkit-scrollbar{height:7px}
+  .step{flex:0 0 auto;width:194px;position:relative;border:1px solid var(--hair);border-radius:4px;background:#050705;padding:11px 13px 12px;transition:border-color .35s,box-shadow .35s,opacity .35s}
+  .step:not(:last-child)::after{content:"→";position:absolute;right:-20px;top:50%;transform:translateY(-50%);color:var(--ink-faint);font-family:var(--ui);font-size:17px;z-index:2}
+  .step .s-idx{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--ink-faint)}
+  .step .s-name{font-family:var(--ui);font-weight:600;font-size:13.5px;line-height:1.25;margin-top:4px}
+  .step .s-tech{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--ink-faint);margin-top:8px;display:inline-block;border:1px solid var(--hair);border-radius:3px;padding:2px 7px}
+  .step .s-state{position:absolute;top:10px;right:11px;font-family:var(--mono);font-size:13px;color:var(--ink-faint)}
+  .step.run{border-color:var(--green);box-shadow:0 0 0 1px var(--glow)}
+  .step.run .s-state::after{content:"◌";animation:blip 1s infinite}
+  .step.ok{border-color:var(--green);box-shadow:0 0 22px -11px var(--glow)}
+  .step.ok .s-state{color:var(--green)}.step.ok .s-state::after{content:"✓"}
+  .step.ok .s-tech{border-color:var(--line-2);color:var(--green-hi)}
+  .step.fail{opacity:.48;border-color:rgba(255,93,110,.35)}
+  .step.fail .s-state{color:var(--crit)}.step.fail .s-state::after{content:"✕"}
+  .chains-empty{color:var(--ink-faint);font-family:var(--mono);font-size:13px;display:flex;align-items:center;gap:12px;padding:8px 2px}
+  .chains-empty .scan{width:14px;height:14px;border:1.5px solid var(--hair);border-top-color:var(--green);border-radius:50%;animation:spin 1s linear infinite}
+  .feed-panel{margin-top:16px}
+  .feed{font-family:var(--mono);font-size:12px;line-height:1.75;max-height:290px;overflow:auto;background:rgba(2,3,2,.7);border:1px solid var(--hair);border-radius:4px;padding:13px 15px}
+  .feed .ln{display:flex;gap:12px;white-space:pre-wrap;word-break:break-word;padding:1px 0}
+  .feed .ln::before{content:"›";color:var(--green);opacity:.4;flex:none}
+  .feed .ts{color:#32382f;flex:none}
+  .feed .ag{color:var(--ink-faint);flex:none;min-width:74px;text-transform:uppercase;font-size:10px;letter-spacing:.05em;align-self:center}
+  .feed .tag{flex:none;font-weight:600;min-width:48px}
+  .t-think{color:#8fd0ff}.t-call{color:var(--green)}.t-result{color:var(--green-hi)}
+  .t-find{color:#ff8b97}.t-state{color:#c3a6ff}.t-err{color:#ff5d6e}.t-done{color:var(--green);font-weight:700}
+
+  /* mission summary + report */
+  #report{margin-top:16px;display:none}
+  .summary{border:1px solid var(--line-2);border-radius:4px;background:linear-gradient(180deg,rgba(124,227,139,.05),rgba(6,8,7,.6));padding:20px 22px;margin-bottom:16px;position:relative;overflow:hidden}
+  .summary::before,.summary::after{content:"";position:absolute;width:16px;height:16px}
+  .summary::before{top:-1px;left:-1px;border-top:2px solid var(--green);border-left:2px solid var(--green)}
+  .summary::after{bottom:-1px;right:-1px;border-bottom:2px solid var(--green);border-right:2px solid var(--green)}
+  .summary .lbl{font-family:var(--disp);font-size:11px;letter-spacing:.26em;text-transform:uppercase;color:var(--green);font-weight:700}
+  .summary .stats{display:flex;flex-wrap:wrap;gap:26px;margin-top:14px;align-items:flex-end}
+  .summary .big{font-family:var(--disp);font-weight:800;font-size:52px;line-height:.85;font-variant-numeric:tabular-nums;text-shadow:0 0 26px rgba(124,227,139,.3)}
+  .summary .big small{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--ink-faint);text-transform:uppercase;margin-top:8px;font-weight:400}
+  .summary .chips{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .chip{font-family:var(--disp);font-size:12px;font-weight:700;padding:6px 12px;border-radius:3px;color:#000;box-shadow:0 0 16px -4px currentColor}
+  .chip small{font-weight:500;opacity:.7;margin-left:5px}
+  .metaline{display:flex;gap:26px;margin-top:16px;font-family:var(--mono);font-size:12px;color:var(--ink-dim);flex-wrap:wrap}
+  .metaline b{color:var(--green-hi);font-weight:500}
+
+  .exec{border:1px solid var(--hair);border-left:2px solid var(--green);border-radius:4px;background:rgba(6,8,7,.6);padding:15px 17px;color:var(--ink-dim);font-size:14.5px;line-height:1.65;margin-bottom:16px}
+  .exec .lbl{display:block;font-family:var(--disp);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--green);margin-bottom:9px;font-weight:700}
+  details.fd{border:1px solid var(--hair);border-left:3px solid var(--sev);border-radius:4px;background:rgba(6,8,7,.6);overflow:hidden;margin-bottom:10px}
+  details.fd summary{list-style:none;cursor:pointer;padding:14px 16px;display:flex;align-items:center;gap:12px}
+  details.fd summary::-webkit-details-marker{display:none}
+  details.fd summary .ttl{font-weight:600;font-size:15px}
+  details.fd summary .cvss{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
+  details.fd summary .chev{color:var(--ink-faint);transition:.2s;font-family:var(--mono);font-size:11px}
+  details.fd[open] summary .chev{transform:rotate(90deg);color:var(--green)}
+  details.fd .body{padding:2px 16px 16px;color:var(--ink-dim);font-size:14px;line-height:1.6}
+  details.fd h4{color:var(--ink);margin:15px 0 6px;font-family:var(--disp);font-size:10px;text-transform:uppercase;letter-spacing:.16em;font-weight:700}
+  .term{background:#010201;border:1px solid var(--hair);border-radius:4px;overflow:hidden;margin-top:3px}
+  .term .chrome{display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid var(--hair)}
+  .term .chrome i{width:9px;height:9px;border-radius:50%;background:var(--hair)}
+  .term .chrome i:first-child{background:var(--crit)}.term .chrome i:nth-child(2){background:var(--high)}.term .chrome i:nth-child(3){background:var(--green)}
+  .term pre{margin:0;padding:12px 14px;font-family:var(--mono);font-size:11.5px;line-height:1.55;color:#c6d6c9;overflow:auto;max-height:250px}
+  .roi{font-family:var(--mono);font-size:12px;color:var(--ink-dim);text-align:center;padding:10px}
+  /* proven attack chains (report) */
+  .chrow{border:1px solid var(--hair);border-left:3px solid var(--crit);border-radius:4px;background:rgba(6,8,7,.6);padding:11px 14px;margin-bottom:9px}
+  .chrow:last-child{margin-bottom:0}
+  .chrow.ok{border-left-color:var(--green)}
+  .chrow-h{display:flex;align-items:center;gap:10px}
+  .chrow-d{width:7px;height:7px;border-radius:50%;flex:none;background:var(--crit)}
+  .chrow.ok .chrow-d{background:var(--green);box-shadow:0 0 10px var(--green)}
+  .chrow-n{font-family:var(--disp);font-weight:700;font-size:13px;letter-spacing:.04em}
+  .chrow-s{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--crit);text-transform:uppercase}
+  .chrow.ok .chrow-s{color:var(--green)}
+  .chrow-t{font-family:var(--mono);font-size:10.5px;color:var(--ink-dim);margin-top:8px;letter-spacing:.03em;word-break:break-word}
+  @media print{
+    #bgfx,body::after,#boot,.bar,.phases,.progress,.hero,.chains-panel,.grid3,.grid2,.feed-panel,.foot{display:none!important}
+    body{background:#000}#report{display:block!important;margin-top:0}
+    .panel,.summary{break-inside:avoid}details.fd[open] .body,details.fd .body{display:block}
+  }
+  /* inline finding detail view (expands in place — no modal) */
+  .flist details.fd{animation:rise .45s cubic-bezier(.2,.7,.3,1)}
+  details.fd summary:hover .ttl{color:var(--green-hi)}
+  details.fd summary .badge{flex:none}
+  details.fd summary .ttl{flex:1 1 auto;min-width:0}
+  details.fd summary .more{font-family:var(--mono);font-size:9.5px;color:var(--ink-faint);letter-spacing:.08em;text-transform:uppercase;flex:none}
+  details.fd[open] summary .more{color:var(--green)}
+  details.fd h4{display:flex;align-items:center;gap:8px}
+  details.fd h4::before{content:"";width:5px;height:5px;background:var(--green);transform:rotate(45deg)}
+  .fd .pills{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 2px}
+  .fd .pill{font-family:var(--mono);font-size:10px;letter-spacing:.05em;padding:5px 10px;border:1px solid var(--line);border-radius:3px;color:var(--ink-dim);text-transform:uppercase}
+  .fd .pill b{color:var(--green-hi);font-weight:500;text-transform:none}
+  .fd .why{border:1px solid var(--line);border-left:3px solid var(--sev);border-radius:4px;background:rgba(124,227,139,.03);padding:13px 15px;margin-top:14px;font-size:14px;line-height:1.6;color:var(--ink)}
+  .fd .why .k{display:block;font-family:var(--disp);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--sev);margin-bottom:7px;font-weight:700}
+  .fd .fbody{color:var(--ink-dim);font-size:14px;line-height:1.65}
+  .foot{margin-top:30px;text-align:center;font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--ink-faint);text-transform:uppercase}
+  .foot b{color:var(--green);opacity:.8;font-weight:500}
+</style>
+</head>
+<body data-palette="#ff5d6e,#f5b35a,#ffcf5c,#5b93ff,#7d8a83">
+<canvas id="bgfx"></canvas>
+<div id="boot"><div class="b"><div class="t">PENTEST SWARM</div><div class="s">Initializing operations deck</div><div class="bar"><i></i></div></div></div>
+
+<div class="wrap">
+  <div class="bar stage">
+    <div class="mark">
+      <canvas id="markfx" width="40" height="40"></canvas>
+      <div><div class="wm">PENTEST <b>SWARM</b></div><div class="sub"><span>OPERATIONS DECK</span><span class="by">// ARMUR</span></div></div>
+    </div>
+    <div class="mission"><div class="k">Target</div><div class="v" id="target">—</div><div class="obj" id="objective"></div></div>
+    <div class="telemetry">
+      <div class="status live" id="status"><span class="lamp"><i></i></span><span class="txt" id="statusText">LIVE</span></div>
+      <div class="tm"><div class="k">Elapsed</div><div class="v" id="elapsed">0:00</div></div>
+      <div class="tm"><div class="k">Surface</div><div class="v" id="surface">0</div></div>
+      <div class="tm"><div class="k">Spend</div><div class="v" id="spend">$0.00</div></div>
+      <div class="tm"><div class="k">Findings</div><div class="v" id="fcount">0</div></div>
+      <button class="killbtn" id="killbtn" title="Stop the swarm now — it winds down gracefully and still writes the report">■ STOP</button>
+    </div>
+  </div>
+
+  <div class="phases stage" id="phases"></div>
+
+  <div class="progress stage" id="progress">
+    <div class="pg-top">
+      <div class="pg-phase">
+        <span class="pg-plabel" id="pgPhaseLabel">IDLE — AWAITING LAUNCH</span>
+        <div class="pg-track"><i id="pgFill"></i></div>
+      </div>
+      <div class="pg-counters">
+        <div class="pg-c"><span class="pg-n" id="pgEndpoints">0</span><span class="pg-u">Endpoints</span></div>
+        <div class="pg-c"><span class="pg-n" id="pgChains">0</span><span class="pg-u">Chains</span></div>
+        <div class="pg-c"><span class="pg-n" id="pgProbes">0</span><span class="pg-u">Probes</span></div>
+        <div class="pg-c"><span class="pg-n" id="pgFindings">0</span><span class="pg-u">Findings</span></div>
+      </div>
+    </div>
+    <div class="pg-now"><span class="pg-now-k">Now</span><span class="pg-now-v" id="pgNow">idle — awaiting launch signal</span></div>
+  </div>
+
+  <div class="panel hero stage">
+    <div class="head"><h2 class="sec">Attack Graph</h2><span class="rule"></span><span class="tag mono">target · agents · surface · findings</span></div>
+    <canvas id="graph"></canvas>
+  </div>
+
+  <div class="panel chains-panel stage">
+    <div class="head"><h2 class="sec">Attack Chains</h2><span class="rule"></span><span class="tag mono">MITRE ATT&amp;CK · executing live</span></div>
+    <div class="chains" id="chains"><div class="chains-empty"><span class="scan"></span>AWAITING EXPLOITATION — the swarm builds multi-step chains once it finds a way in…</div></div>
+  </div>
+
+  <div class="grid3 stage">
+    <div class="panel">
+      <div class="head"><h2 class="sec">Severity</h2><span class="rule"></span></div>
+      <div class="ring-wrap">
+        <div class="ring"><svg width="186" height="186" viewBox="0 0 186 186" id="ring"></svg>
+          <div class="core"><div><div class="n" id="ringTotal">0</div><div class="l">Findings</div></div></div></div>
+        <div class="legend" id="legend"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="head"><h2 class="sec">Threat Level</h2><span class="rule"></span></div>
+      <div class="threat">
+        <svg width="230" height="150" viewBox="0 0 230 150" id="gauge"></svg>
+        <div class="lvl" id="threatLvl" style="color:var(--info)">NONE</div>
+        <div class="cap">weighted exposure index</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="head"><h2 class="sec">Detection Timeline</h2><span class="rule"></span><span class="tag mono" id="tlTag"></span></div>
+      <canvas id="timeline"></canvas>
+      <div class="tl-empty" id="tlEmpty">awaiting first detection…</div>
+    </div>
+  </div>
+
+  <div class="grid2 stage">
+    <div class="panel">
+      <div class="head"><h2 class="sec">Agents</h2><span class="rule"></span><span class="tag mono">4 online</span></div>
+      <div class="swarm" id="swarm"></div>
+    </div>
+    <div class="panel">
+      <div class="head"><h2 class="sec">Findings · graded live</h2><span class="rule"></span></div>
+      <div class="flist" id="flist"><div class="empty"><span class="scan"></span>SCANNING — awaiting first vulnerability…</div></div>
+    </div>
+  </div>
+
+  <div class="panel feed-panel stage">
+    <div class="head"><h2 class="sec">Live Activity</h2><span class="rule"></span><span class="tag mono">tail -f swarm</span></div>
+    <div class="feed" id="feed"></div>
+  </div>
+
+  <div id="report">
+    <div class="summary">
+      <div class="lbl">◆ Operation Complete</div>
+      <div class="stats">
+        <div class="big"><span id="sumFindings">0</span><small>vulnerabilities proven</small></div>
+        <div class="big"><span id="sumSurface">0</span><small>endpoints mapped</small></div>
+        <div class="chips" id="sumChips"></div>
+      </div>
+      <div class="metaline">
+        <span>TARGET <b id="sumTarget">—</b></span><span>DURATION <b id="sumTime">—</b></span>
+        <span>LLM SPEND <b id="sumSpend">—</b></span><span>THREAT <b id="sumThreat">—</b></span>
+      </div>
+    </div>
+    <div id="execWrap"></div>
+    <div class="panel" id="chainReportPanel" style="margin-bottom:16px;display:none">
+      <div class="head"><h2 class="sec">Proven Attack Chains</h2><span class="rule"></span><span class="tag mono" id="chainReportTag"></span></div>
+      <div id="chainReport"></div>
+    </div>
+    <div class="panel"><div class="head"><h2 class="sec">Graded Findings</h2><span class="rule"></span></div>
+      <div id="reportFindings"></div>
+      <details class="fd" id="narrativeWrap" style="--sev:var(--hair)">
+        <summary><span class="chev">▸</span><span class="ttl">Attack narrative</span></summary>
+        <div class="body"><div id="narrative"></div></div>
+      </details>
+      <div class="roi" id="roi"></div>
+    </div>
+  </div>
+
+  <div class="foot">Pentest Swarm by <b>ARMUR</b> · served locally · live neural telemetry</div>
+</div>
+
+<script>
+const CSSV=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const SEV={critical:{v:'--crit',label:'Critical',rank:0,w:100},high:{v:'--high',label:'High',rank:1,w:75},
+  medium:{v:'--med',label:'Medium',rank:2,w:50},low:{v:'--low',label:'Low',rank:3,w:25},
+  informational:{v:'--info',label:'Info',rank:4,w:8},info:{v:'--info',label:'Info',rank:4,w:8}};
+const SEV_ORDER=['critical','high','medium','low','informational'];
+const AGENTS=[{id:'recon',role:'maps the attack surface',g:'▚'},{id:'classifier',role:'grades by severity',g:'◈'},
+  {id:'exploit',role:'runs & proves chains',g:'⚡'},{id:'report',role:'assembles the report',g:'▤'}];
+const PHASES=[{id:'recon',label:'Recon'},{id:'classify',label:'Classify'},{id:'exploit',label:'Exploit'},{id:'report',label:'Report'}];
+const AG2PH={recon:'recon',classifier:'classify',exploit:'exploit',report:'report'};
+const S={counts:{critical:0,high:0,medium:0,low:0,informational:0},findings:new Set(),findingList:[],start:null,done:false,acts:{},maxAct:1,tl:[],surface:0,phase:-1};
+let chainCount=0,probeCount=0;
+const sevKey=s=>{s=(s||'').toLowerCase();return SEV[s]?s:'informational';};
+const sevCol=k=>CSSV(SEV[k].v);
+const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const GREEN=()=>CSSV('--green');
+
+/* ── finding detail panel ── */
+function whyGrade(f){const k=sevKey(f.severity),cv=f.cvss?(' with a CVSS base score of '+f.cvss):'';
+  const t=((f.title||'')+' '+(f.category||'')).toLowerCase();let impact;
+  if(/bola|idor|object.?level|access.?control/.test(t))impact='It is a broken-access-control flaw: an attacker can read or modify records belonging to other users — a direct breach of confidentiality and integrity.';
+  else if(/nosql|sql|injection/.test(t))impact='It is an injection flaw: untrusted input reaches a backend query, letting an attacker bypass logic and read or tamper with stored data.';
+  else if(/excessive data|data exposure|pii/.test(t))impact='The API returns more data than the client needs, leaking other users’ personal information to any authenticated caller.';
+  else if(/mass assignment/.test(t))impact='Unvalidated fields bind to internal objects, letting an attacker set privileged attributes they should not control.';
+  else if(/ssrf/.test(t))impact='The server can be coerced into making requests to attacker-chosen destinations, reaching internal systems.';
+  else if(/\.env|disclosure|secret|exposure|config/.test(t))impact='Sensitive configuration or secrets are exposed, giving an attacker material to escalate further.';
+  else impact='It is directly exploitable and affects the confidentiality, integrity, or availability of the target.';
+  const band={critical:'Critical issues are trivially exploitable with severe, often systemic impact — fix immediately.',
+    high:'High-severity issues are readily exploitable with serious impact — remediate promptly.',
+    medium:'Medium-severity issues are exploitable under some conditions or carry moderate impact.',
+    low:'Low-severity issues have limited impact or need unlikely conditions.',
+    informational:'Informational items carry little direct risk but are worth noting.'}[k];
+  const proven=(/high/i.test(f.confidence||'')||/business_logic|api_business/i.test(f.category||''))?' This finding was confirmed by running the attack against the live target — a proven exploit, not a heuristic guess.':'';
+  return `Graded ${SEV[k].label}${cv}. ${impact} ${band}${proven}`;}
+function findingBodyHTML(f){const k=sevKey(f.severity),c=sevCol(k);
+  const pill=(l,v)=>v?`<span class="pill">${l} <b>${esc(String(v))}</b></span>`:'';
+  const pills=[pill('Class',f.category),pill('Confidence',f.confidence),f.cvss?pill('CVSS',f.cvss):'',pill('Endpoint',f.target)].join('');
+  const what=f.description?esc(f.description):'<span style="color:var(--ink-faint);font-family:var(--mono)">No extended description available yet — the graded report fills this in once the run completes.</span>';
+  const evid=f.evidence?`<h4>Evidence</h4><div class="term"><div class="chrome"><i></i><i></i><i></i></div><pre>${esc(String(f.evidence).slice(0,4000))}</pre></div>`:'';
+  const rem=f.remediation?`<h4>Remediation</h4><div class="fbody">${esc(f.remediation)}</div>`:'';
+  return `<div class="pills">${pills}</div>
+    <div class="why" style="--sev:${c}"><span class="k">Why this grade</span>${esc(whyGrade(f))}</div>
+    <h4>What it is</h4><div class="fbody">${what}</div>${evid}${rem}`;}
+function buildFinding(f,more){const k=sevKey(f.severity),c=sevCol(k);
+  const d=document.createElement('details');d.className='fd';d.style.setProperty('--sev',c);
+  d.innerHTML=`<summary><span class="badge" style="--sev:${c}">${SEV[k].label}</span><span class="ttl">${esc(f.title||'')}</span>${f.cvss?`<span class="cvss">CVSS ${esc(String(f.cvss))}</span>`:''}<span class="more">${more||'details'}</span><span class="chev">▸</span></summary><div class="body">${findingBodyHTML(f)}</div>`;
+  return d;}
+addEventListener('keydown',e=>{if(e.key==='Escape'){const open=document.querySelectorAll('details.fd[open]');if(open.length){open.forEach(d=>d.open=false);e.preventDefault();}}});
+
+/* phases */
+const phEl=document.getElementById('phases');
+PHASES.forEach(p=>{const d=document.createElement('div');d.className='ph';d.id='ph-'+p.id;
+  d.innerHTML=`<span class="d"></span>${p.label}`;phEl.appendChild(d);});
+function setPhase(agent){const ph=AG2PH[agent];if(!ph)return;const idx=PHASES.findIndex(p=>p.id===ph);if(idx<S.phase)return;S.phase=idx;
+  PHASES.forEach((p,i)=>{const e=document.getElementById('ph-'+p.id);e.className='ph'+(i<idx?' done':i===idx?' active':'');});updateProgress();}
+function allPhasesDone(){PHASES.forEach(p=>document.getElementById('ph-'+p.id).className='ph done');}
+
+/* ── progress console ── */
+function updateProgress(){const total=PHASES.length,idx=S.phase;
+  const lbl=document.getElementById('pgPhaseLabel'),fill=document.getElementById('pgFill');
+  if(S.done){fill.style.width='100%';lbl.textContent='COMPLETE · '+total+'/'+total+' PHASES';}
+  else if(idx<0){fill.style.width='0%';lbl.textContent='IDLE — AWAITING LAUNCH';}
+  else{fill.style.width=Math.round((idx+1)/total*100)+'%';lbl.textContent='PHASE '+(idx+1)+'/'+total+' · '+PHASES[idx].label.toUpperCase();}
+  document.getElementById('pgEndpoints').textContent=S.surface;
+  document.getElementById('pgChains').textContent=chainCount;
+  document.getElementById('pgProbes').textContent=probeCount;
+  document.getElementById('pgFindings').textContent=S.findings.size;}
+let _nowTO;
+function setNow(txt){if(!txt)return;const el=document.getElementById('pgNow');el.textContent=txt;
+  el.classList.add('flash');clearTimeout(_nowTO);_nowTO=setTimeout(()=>el.classList.remove('flash'),650);}
+
+/* agent cards */
+const swarmEl=document.getElementById('swarm');
+AGENTS.forEach(a=>{const n=document.createElement('div');n.className='node';n.id='node-'+a.id;
+  n.innerHTML=`<div class="glyph">${a.g}</div><div><div class="nm">${a.id}</div><div class="role">${a.role}</div></div>
+    <div class="cnt"><div class="n" id="cnt-${a.id}">0</div><div class="u">acts</div></div><div class="actbar"><i id="bar-${a.id}"></i></div>`;swarmEl.appendChild(n);});
+
+/* count-up */
+function countTo(el,to){const from=+String(el.textContent).replace(/[^0-9]/g,'')||0;if(from===to){el.textContent=to;return;}
+  const t0=performance.now(),dur=550;(function step(t){const k=Math.min(1,(t-t0)/dur);const e=1-Math.pow(1-k,3);
+    el.textContent=Math.round(from+(to-from)*e);if(k<1)requestAnimationFrame(step);})(t0);}
+
+/* elapsed */
+setInterval(()=>{if(S.start&&!S.done){const s=(Date.now()-S.start)/1000|0;
+  document.getElementById('elapsed').textContent=(s/60|0)+':'+String(s%60).padStart(2,'0');}},1000);
+
+/* DPR canvas */
+function fit(cv,h){const dpr=Math.min(devicePixelRatio||1,2);const w=cv.clientWidth||cv.parentElement.clientWidth;
+  cv.width=w*dpr;cv.height=h*dpr;const x=cv.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);return[x,w,h];}
+const lerp=(a,b,k)=>a+(b-a)*k;
+
+/* ── ATTACK GRAPH ── */
+const gcv=document.getElementById('graph');let gx,GW,GH=400,agents=[],endpoints=[],finds=[],probes=[],parts=[],coreE=0,radar=0,tgt={x:0,y:0};
+function layoutGraph(){[gx,GW,GH]=fit(gcv,400);tgt={x:GW/2,y:GH/2};const base=Math.min(GW/2-40,GH/2-30);
+  window._R={a:base*0.34,e:base*0.64,f:base*0.95,base};
+  agents=AGENTS.map((a,i)=>{const ang=-Math.PI/2+i*Math.PI/2;return{id:a.id,label:a.id.toUpperCase(),
+    x:tgt.x+Math.cos(ang)*window._R.a,y:tgt.y+Math.sin(ang)*window._R.a*0.9,energy:0};});}
+layoutGraph();addEventListener('resize',()=>{layoutGraph();layoutTL();});
+const EP_CAP=32,FIND_CAP=18,PROBE_CAP=60;
+function hexA(hex,a){hex=(hex||'').trim();if(hex[0]==='#'){let h=hex.slice(1);if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16);return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;}return hex;}
+function agentNode(id){return agents.find(a=>a.id===id);}
+function fireAgent(id){const n=agentNode(id);if(!n)return;n.energy=1;coreE=Math.min(1,coreE+.5);n._pk={p:0};}
+function seed(id){const n=agentNode(id);return n?{x:n.x,y:n.y}:{x:tgt.x,y:tgt.y};}
+function addEndpointNode(path){if(endpoints.find(e=>e.path===path))return;if(endpoints.length>=EP_CAP)endpoints.shift();
+  const s=seed('recon');endpoints.push({path,label:(path.split('/').filter(Boolean).slice(-1)[0]||path).slice(0,14),x:s.x,y:s.y,born:performance.now()});}
+function addFindNode(k){const c=sevCol(k),s=seed('exploit');if(finds.length>=FIND_CAP)finds.shift();finds.push({k,c,x:s.x,y:s.y,born:performance.now(),pulse:1});
+  for(let i=0;i<12;i++){const a=Math.random()*7;parts.push({x:s.x,y:s.y,vx:Math.cos(a)*(1+Math.random()*2.4),vy:Math.sin(a)*(1+Math.random()*2.4),life:1,c});}}
+/* probe worker — one BOLA replay fanning out FROM the exploit agent as a tiny
+   decentralized-mesh node. ok → green glow, miss → dim. Capped, oldest recycled. */
+function addProbeNode(ok){const s=seed('exploit');if(probes.length>=PROBE_CAP)probes.shift();
+  const ang=Math.random()*Math.PI*2,rad=24+Math.random()*48;
+  probes.push({ang,rad,x:s.x,y:s.y,ok:!!ok,pulse:1});
+  const c=ok?GREEN():'rgba(124,227,139,0.5)';
+  for(let i=0;i<(ok?6:3);i++){const a=Math.random()*7;parts.push({x:s.x,y:s.y,vx:Math.cos(a)*(0.5+Math.random()*1.6),vy:Math.sin(a)*(0.5+Math.random()*1.6),life:.75,c});}}
+function drawGraph(t){if(!gx)return;gx.clearRect(0,0,GW,GH);const g=GREEN(),ox=tgt.x,oy=tgt.y,R=window._R;radar+=0.006;
+  // radar sweep
+  const grd=gx.createConicGradient?gx.createConicGradient(radar,ox,oy):null;
+  if(grd){grd.addColorStop(0,'rgba(124,227,139,0.10)');grd.addColorStop(0.08,'rgba(124,227,139,0)');grd.addColorStop(1,'rgba(124,227,139,0)');
+    gx.fillStyle=grd;gx.beginPath();gx.arc(ox,oy,R.f,0,7);gx.fill();}
+  // orbit rings
+  [R.a,R.e,R.f].forEach((rr,i)=>{gx.beginPath();gx.arc(ox,oy,rr,0,7);gx.strokeStyle=`rgba(124,227,139,${0.09-i*0.02})`;gx.lineWidth=1;gx.setLineDash([3,7]);gx.stroke();});gx.setLineDash([]);
+  // endpoint nodes (surface) — clustered toward the recon agent
+  const rec=agentNode('recon'),exp=agentNode('exploit');
+  const en=endpoints.length,estep=Math.min(0.42,2.7/Math.max(en,1));
+  endpoints.forEach((e,i)=>{const ang=-Math.PI/2+(i-(en-1)/2)*estep;
+    const sx=ox+Math.cos(ang)*R.e,sy=oy+Math.sin(ang)*R.e*0.96;e.x=lerp(e.x,sx,0.12);e.y=lerp(e.y,sy,0.12);
+    const ax=rec?rec.x:ox,ay=rec?rec.y:oy;
+    gx.beginPath();gx.moveTo(ax,ay);gx.lineTo(e.x,e.y);gx.strokeStyle='rgba(124,227,139,0.09)';gx.lineWidth=0.7;gx.stroke();
+    gx.save();gx.translate(e.x,e.y);gx.rotate(Math.PI/4);gx.fillStyle='rgba(124,227,139,0.55)';gx.shadowBlur=6;gx.shadowColor=g;gx.fillRect(-3,-3,6,6);gx.restore();gx.shadowBlur=0;
+    gx.fillStyle=CSSV('--ink-faint');gx.font='500 8px "JetBrains Mono",monospace';gx.textAlign='center';gx.textBaseline='middle';gx.fillText(e.label,e.x,e.y-11);});
+  // finding nodes — clustered toward the exploit agent, edge flashes on land
+  const fn=finds.length,fstep=Math.min(0.5,2.9/Math.max(fn,1));
+  finds.forEach((f,i)=>{const ang=Math.PI/2+(i-(fn-1)/2)*fstep;
+    const sx=ox+Math.cos(ang)*R.f,sy=oy+Math.sin(ang)*R.f;f.x=lerp(f.x,sx,0.1);f.y=lerp(f.y,sy,0.1);f.pulse*=0.95;
+    const ax=exp?exp.x:ox,ay=exp?exp.y:oy;
+    gx.beginPath();gx.moveTo(ax,ay);gx.lineTo(f.x,f.y);gx.strokeStyle=hexA(f.c,0.14+f.pulse*0.5);gx.lineWidth=0.8+f.pulse*1.8;gx.stroke();
+    gx.beginPath();gx.arc(f.x,f.y,4+f.pulse*7,0,7);gx.fillStyle=f.c;gx.shadowBlur=12+f.pulse*16;gx.shadowColor=f.c;gx.fill();gx.shadowBlur=0;});
+  // empty-state hint
+  if(!endpoints.length&&!finds.length){gx.fillStyle='rgba(124,227,139,0.22)';gx.font='500 10px "JetBrains Mono",monospace';gx.textAlign='center';gx.textBaseline='middle';
+    gx.fillText('surface will map here as the swarm probes', ox, oy+R.f*0.6);}
+  // probe mesh — the exploit agent fanning out into many concurrent BOLA
+  // workers: short edges + tiny nodes clustered around EXPLOIT. Drawn under the
+  // agent nodes so EXPLOIT sits at the hub of its own decentralized swarm.
+  if(probes.length){const ex=exp?exp.x:ox,ey=exp?exp.y:oy;
+    probes.forEach(p=>{const px=ex+Math.cos(p.ang)*p.rad,py=ey+Math.sin(p.ang)*p.rad;
+      p.x=lerp(p.x,px,0.18);p.y=lerp(p.y,py,0.18);p.pulse*=0.94;
+      gx.beginPath();gx.moveTo(ex,ey);gx.lineTo(p.x,p.y);
+      gx.strokeStyle=p.ok?hexA(g,0.2+p.pulse*0.45):'rgba(124,227,139,0.07)';gx.lineWidth=p.ok?0.9:0.6;gx.stroke();
+      const r=p.ok?2.6+p.pulse*3:1.7;gx.beginPath();gx.arc(p.x,p.y,r,0,7);
+      if(p.ok){gx.fillStyle=g;gx.shadowBlur=9+p.pulse*11;gx.shadowColor=g;}else{gx.fillStyle='rgba(124,227,139,0.3)';}
+      gx.fill();gx.shadowBlur=0;});}
+  // agent links + packets + nodes
+  agents.forEach(n=>{gx.beginPath();gx.moveTo(n.x,n.y);gx.lineTo(ox,oy);gx.strokeStyle=`rgba(124,227,139,${0.1+n.energy*0.5})`;gx.lineWidth=0.7+n.energy*1.8;gx.stroke();
+    if(n._pk){n._pk.p+=0.02;const px=lerp(n.x,ox,n._pk.p),py=lerp(n.y,oy,n._pk.p);gx.beginPath();gx.arc(px,py,2.4,0,7);gx.fillStyle=g;gx.shadowBlur=10;gx.shadowColor=g;gx.fill();gx.shadowBlur=0;if(n._pk.p>=1)n._pk=null;}
+    n.energy*=0.93;const e=n.energy;gx.beginPath();gx.arc(n.x,n.y,10+e*4,0,7);gx.fillStyle='rgba(6,10,7,0.92)';gx.shadowBlur=e*22;gx.shadowColor=g;gx.fill();gx.shadowBlur=0;
+    gx.beginPath();gx.arc(n.x,n.y,10+e*4,0,7);gx.strokeStyle=e>0.05?g:'rgba(124,227,139,0.4)';gx.lineWidth=1+e;gx.stroke();
+    gx.fillStyle=e>0.1?CSSV('--green-hi'):CSSV('--ink-dim');gx.font='700 9px Orbitron,sans-serif';gx.textAlign='center';gx.textBaseline='middle';gx.fillText(n.label,n.x,n.y-21);
+    gx.fillStyle=CSSV('--ink-faint');gx.font='500 8px "JetBrains Mono",monospace';gx.fillText((S.acts[n.id]||0)+'',n.x,n.y+21);});
+  // core (TARGET)
+  const ce=0.5+coreE*0.5;gx.beginPath();gx.arc(ox,oy,18,0,7);gx.fillStyle=`rgba(124,227,139,${0.12+coreE*0.22})`;gx.shadowBlur=30*ce;gx.shadowColor=g;gx.fill();gx.shadowBlur=0;
+  gx.beginPath();gx.arc(ox,oy,18,0,7);gx.strokeStyle=g;gx.lineWidth=1.6;gx.stroke();coreE*=0.94;
+  gx.fillStyle=g;gx.font='700 8px Orbitron,sans-serif';gx.textAlign='center';gx.textBaseline='middle';gx.fillText('TARGET',ox,oy);
+  // particles
+  parts=parts.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vx*=0.97;p.vy*=0.97;p.life-=0.02;gx.globalAlpha=Math.max(p.life,0);
+    gx.beginPath();gx.arc(p.x,p.y,2.2,0,7);gx.fillStyle=p.c;gx.shadowBlur=8;gx.shadowColor=p.c;gx.fill();gx.shadowBlur=0;gx.globalAlpha=1;return p.life>0;});}
+
+/* background field */
+const bg=document.getElementById('bgfx');let bx=bg.getContext('2d'),BW,BH,dots=[];
+function layoutBG(){const dpr=Math.min(devicePixelRatio||1,2);BW=innerWidth;BH=innerHeight;bg.width=BW*dpr;bg.height=BH*dpr;bx.setTransform(dpr,0,0,dpr,0,0);
+  dots=Array.from({length:Math.min(64,Math.round(BW*BH/28000))},()=>({x:Math.random()*BW,y:Math.random()*BH,vx:(Math.random()-.5)*.14,vy:(Math.random()-.5)*.14}));}
+layoutBG();addEventListener('resize',layoutBG);
+function drawBG(){bx.clearRect(0,0,BW,BH);dots.forEach(d=>{d.x=(d.x+d.vx+BW)%BW;d.y=(d.y+d.vy+BH)%BH;bx.beginPath();bx.arc(d.x,d.y,1,0,7);bx.fillStyle='rgba(124,227,139,0.45)';bx.fill();});
+  for(let i=0;i<dots.length;i++)for(let j=i+1;j<dots.length;j++){const a=dots[i],b=dots[j],dx=a.x-b.x,dy=a.y-b.y,dd=dx*dx+dy*dy;
+    if(dd<16000){bx.beginPath();bx.moveTo(a.x,a.y);bx.lineTo(b.x,b.y);bx.strokeStyle='rgba(124,227,139,'+(0.1*(1-dd/16000))+')';bx.lineWidth=.5;bx.stroke();}}}
+
+/* mark */
+const mk=document.getElementById('markfx'),mkx=mk.getContext('2d');
+function drawMark(t){const dpr=2;if(mk.width!==40*dpr){mk.width=40*dpr;mk.height=40*dpr;mkx.setTransform(dpr,0,0,dpr,0,0);}
+  mkx.clearRect(0,0,40,40);const g=GREEN();mkx.save();mkx.translate(20,20);mkx.rotate(t/3200);
+  for(let i=0;i<6;i++){const a=i*Math.PI/3;mkx.beginPath();mkx.moveTo(0,0);mkx.lineTo(Math.cos(a)*13,Math.sin(a)*13);mkx.strokeStyle='rgba(124,227,139,.45)';mkx.lineWidth=1.2;mkx.stroke();
+    mkx.beginPath();mkx.arc(Math.cos(a)*13,Math.sin(a)*13,2,0,7);mkx.fillStyle=g;mkx.fill();}
+  mkx.beginPath();mkx.arc(0,0,3.6,0,7);mkx.fillStyle=g;mkx.shadowBlur=8;mkx.shadowColor=g;mkx.fill();mkx.restore();}
+
+let t0=performance.now();
+function loop(t){drawBG();drawGraph(t-t0);drawMark(t-t0);requestAnimationFrame(loop);}
+requestAnimationFrame(loop);
+/* boot */
+setTimeout(()=>document.body.classList.add('booted'),1300);
+
+/* agents */
+function bumpAgent(agent){const a=AGENTS.find(x=>x.id===agent);if(!a)return;setPhase(agent);
+  S.acts[agent]=(S.acts[agent]||0)+1;if(S.acts[agent]>S.maxAct)S.maxAct=S.acts[agent];
+  document.getElementById('cnt-'+agent).textContent=S.acts[agent];
+  AGENTS.forEach(x=>document.getElementById('bar-'+x.id).style.width=Math.round(100*(S.acts[x.id]||0)/S.maxAct)+'%');
+  const node=document.getElementById('node-'+agent);node.classList.add('active');clearTimeout(node._t);node._t=setTimeout(()=>node.classList.remove('active'),1500);
+  fireAgent(agent);}
+
+/* feed */
+const TAG={thought:['think','t-think'],tool_call:['exec','t-call'],tool_result:['ok','t-result'],finding_discovered:['vuln','t-find'],state_change:['sys','t-state'],step_executed:['step','t-call'],error:['err','t-err'],milestone:['◆','t-done']};
+const NOWABLE={tool_call:1,tool_result:1,state_change:1,step_executed:1,finding_discovered:1,milestone:1,error:1};
+const feedEl=document.getElementById('feed');
+function addFeed(ev){const[tag,cls]=TAG[ev.type]||['·',''];const ln=document.createElement('div');ln.className='ln';
+  ln.innerHTML=`<span class="ts">${ev.ts||''}</span><span class="ag">${esc(ev.agent||'')}</span><span class="tag ${cls}">${tag}</span><span>${esc(ev.detail||'')}</span>`;
+  feedEl.appendChild(ln);while(feedEl.children.length>500)feedEl.removeChild(feedEl.firstChild);feedEl.scrollTop=feedEl.scrollHeight;}
+
+/* findings */
+const flistEl=document.getElementById('flist');
+function addFinding(f){const key=(f.title||'').toLowerCase().trim();if(!key||S.findings.has(key))return;S.findings.add(key);S.findingList.push(f);
+  if(flistEl.querySelector('.empty'))flistEl.innerHTML='';const k=sevKey(f.severity);
+  const el=buildFinding(f);
+  flistEl.prepend(el);S.counts[k]=(S.counts[k]||0)+1;countTo(document.getElementById('fcount'),S.findings.size);
+  const sec=S.start?Math.max(1,(Date.now()-S.start)/1000|0):1;S.tl.push({t:sec,n:S.findings.size,k:k,c:Object.assign({},S.counts)});
+  drawRing();drawGauge();drawTL();addFindNode(k);}
+
+/* ── attack chains ── */
+const chainsEl=document.getElementById('chains');const CHAINS={};
+function addChain(ev){if(!ev.chainId||CHAINS[ev.chainId])return;if(chainCount>=14)return;chainCount++;
+  if(chainsEl.querySelector('.chains-empty'))chainsEl.innerHTML='';
+  const wrap=document.createElement('div');wrap.className='chain run';
+  const steps=(ev.steps||[]);
+  const pips=steps.map((_,i)=>`<span class="pip" data-i="${i}"></span>`).join('');
+  wrap.innerHTML=`<div class="ch-head"><span class="ch-chev">▸</span><span class="ch-dot"></span><span class="ch-name">${esc(ev.chainName||'attack chain')}</span><span class="ch-pips">${pips}</span><span class="ch-status">running · 0/${steps.length}</span></div>
+    <div class="steps">${steps.map((s,i)=>`<div class="step" data-name="${esc(s.name)}"><div class="s-idx">STEP ${String(i+1).padStart(2,'0')}</div><div class="s-name">${esc(s.name)}</div>${s.technique?`<div class="s-tech">${esc(s.technique)}</div>`:''}<div class="s-state"></div></div>`).join('')}</div>`;
+  chainsEl.prepend(wrap);
+  wrap.querySelector('.ch-head').addEventListener('click',()=>wrap.classList.toggle('open'));
+  CHAINS[ev.chainId]={el:wrap,total:steps.length,done:0,lastOk:false,name:ev.chainName||'attack chain',steps:steps,proven:false};
+  const first=wrap.querySelector('.step');if(first)first.classList.add('run');
+  const p0=wrap.querySelector('.pip');if(p0)p0.classList.add('run');}
+function stepChain(ev){const c=CHAINS[ev.chainId];if(!c)return;
+  const steps=[...c.el.querySelectorAll('.step')];
+  const pips=[...c.el.querySelectorAll('.pip')];
+  let idx=steps.findIndex(s=>s.dataset.name===ev.step&&!s.classList.contains('ok')&&!s.classList.contains('fail'));
+  if(idx<0)idx=steps.findIndex(s=>!s.classList.contains('ok')&&!s.classList.contains('fail'));
+  if(idx<0)return;
+  const cur=steps[idx],st8=ev.ok?'ok':'fail';
+  cur.classList.remove('run');cur.classList.add(st8);
+  if(pips[idx]){pips[idx].classList.remove('run');pips[idx].classList.add(st8);}
+  c.done++;c.lastOk=ev.ok;
+  const nextIdx=steps.findIndex(s=>!s.classList.contains('ok')&&!s.classList.contains('fail'));
+  if(nextIdx>=0){steps[nextIdx].classList.add('run');if(pips[nextIdx])pips[nextIdx].classList.add('run');}
+  const st=c.el.querySelector('.ch-status');
+  if(c.done>=c.total){const proven=steps[steps.length-1].classList.contains('ok');c.proven=proven;
+    c.el.classList.remove('run');c.el.classList.add(proven?'done':'failed');
+    st.textContent=proven?'exploit proven':'no exploit — path spent';
+    st.title=proven?'The final step confirmed the vulnerability with captured evidence.':'The swarm ran every step of this chain but the exploit step did not confirm a vulnerability, so this attack path is spent.';}
+  else st.textContent=`running · ${c.done}/${c.total}`;}
+
+/* severity radial */
+function drawRing(){const svg=document.getElementById('ring'),ns='http://www.w3.org/2000/svg',cx=93,cy=93,r=71,sw=15,gap=0.02;
+  const total=SEV_ORDER.reduce((s,k)=>s+(S.counts[k]||0),0);document.getElementById('ringTotal').textContent=total;svg.innerHTML='';
+  const tr=document.createElementNS(ns,'circle');tr.setAttribute('cx',cx);tr.setAttribute('cy',cy);tr.setAttribute('r',r);tr.setAttribute('fill','none');tr.setAttribute('stroke',CSSV('--hair'));tr.setAttribute('stroke-width',sw);svg.appendChild(tr);
+  const C=2*Math.PI*r;let off=0;if(total>0)SEV_ORDER.forEach(k=>{const v=S.counts[k]||0;if(!v)return;const fr=v/total,seg=Math.max(fr-gap,.005)*C;
+    const a=document.createElementNS(ns,'circle');a.setAttribute('cx',cx);a.setAttribute('cy',cy);a.setAttribute('r',r);a.setAttribute('fill','none');a.setAttribute('stroke',sevCol(k));a.setAttribute('stroke-width',sw);a.setAttribute('stroke-linecap','round');
+    a.setAttribute('stroke-dasharray',`${seg} ${C-seg}`);a.setAttribute('stroke-dashoffset',-off*C);a.setAttribute('transform',`rotate(-90 ${cx} ${cy})`);a.style.filter='drop-shadow(0 0 5px '+sevCol(k)+')';svg.appendChild(a);off+=fr;});
+  const leg=document.getElementById('legend');leg.innerHTML='';SEV_ORDER.forEach(k=>{const v=S.counts[k]||0;const row=document.createElement('div');row.className='row'+(v?'':' zero');
+    row.innerHTML=`<span class="sw" style="background:${sevCol(k)};color:${sevCol(k)}"></span><span class="lbl">${SEV[k].label}</span><span class="c">${v}</span>`;leg.appendChild(row);});}
+drawRing();
+
+/* threat gauge — composite risk score with a graduated arc, ticks, band
+   labels, an eased needle, and a live numeric readout. The score blends the
+   worst severity seen (which sets the band) with finding volume (which pushes
+   the needle within/toward the next band), so it climbs as evidence mounts
+   instead of snapping between four fixed stops. */
+// Band floors sit comfortably inside each label range so the volume bonus
+// nudges the needle without crossing bands: the worst severity always reads
+// as itself (a pile of lows never shows CRITICAL).
+const THREAT_FLOOR={critical:92,high:66,medium:42,low:18,informational:6,info:6};
+function threatScore(){
+  const tot=SEV_ORDER.reduce((s,k)=>s+(S.counts[k]||0),0);if(!tot)return 0;
+  const worst=SEV_ORDER.find(k=>S.counts[k]>0),base=THREAT_FLOOR[worst]||6;
+  const vol=Math.min(10,(tot-1)*2); // more findings → a little higher, capped
+  return Math.min(100,base+vol);
+}
+function threatLabel(sc){return sc>=80?'CRITICAL':sc>=54?'HIGH':sc>=28?'MEDIUM':sc>0?'LOW':'NONE';}
+function threatCol(sc){return sc>=80?CSSV('--crit'):sc>=54?CSSV('--high'):sc>=28?CSSV('--med'):sc>0?CSSV('--low'):CSSV('--info');}
+let gaugeCur=0,gaugeTarget=0,gaugeRAF=0;
+function drawGauge(){gaugeTarget=threatScore();if(!gaugeRAF)gaugeRAF=requestAnimationFrame(gaugeStep);}
+function gaugeStep(){
+  const d=gaugeTarget-gaugeCur;gaugeCur+= Math.abs(d)<0.4?d:d*0.18;
+  renderGauge(gaugeCur);
+  if(Math.abs(gaugeTarget-gaugeCur)>0.4){gaugeRAF=requestAnimationFrame(gaugeStep);}else{gaugeCur=gaugeTarget;renderGauge(gaugeCur);gaugeRAF=0;}
+}
+function renderGauge(scoreN){
+  const svg=document.getElementById('gauge'),ns='http://www.w3.org/2000/svg',cx=115,cy=120,r=86;svg.innerHTML='';
+  // Top semicircle: 180° (left) → 360° (right), sweeping over the top.
+  const a0=Math.PI,a1=2*Math.PI,frac=Math.max(0,Math.min(1,scoreN/100)),pt=(a,rad)=>[cx+Math.cos(a)*rad,cy+Math.sin(a)*rad];
+  const mk=(t,x,y,fill,size,extra)=>{const e=document.createElementNS(ns,'text');e.setAttribute('x',x);e.setAttribute('y',y);e.setAttribute('fill',fill);e.setAttribute('font-size',size);e.setAttribute('text-anchor','middle');e.setAttribute('font-family',extra&&extra.mono?'var(--mono)':'var(--disp)');if(extra&&extra.w)e.setAttribute('font-weight',extra.w);if(extra&&extra.ls)e.setAttribute('letter-spacing',extra.ls);e.textContent=t;svg.appendChild(e);};
+  // Graduated track: many short segments low→crit so the arc reads as a smooth risk ramp;
+  // the portion under the current score is lit, the rest dim.
+  const SEG=54;for(let i=0;i<SEG;i++){const s=i/SEG,e=(i+1)/SEG,mid=(s+e)/2;
+    const c=mid>=.8?'--crit':mid>=.54?'--high':mid>=.28?'--med':'--low';
+    const[x1,y1]=pt(a0+(a1-a0)*s,r),[x2,y2]=pt(a0+(a1-a0)*e,r),p=document.createElementNS(ns,'path');
+    p.setAttribute('d',`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}`);p.setAttribute('fill','none');p.setAttribute('stroke',CSSV(c));
+    p.setAttribute('stroke-width',10);p.setAttribute('opacity',s<frac?0.95:0.15);if(s<frac)p.style.filter='drop-shadow(0 0 5px '+CSSV(c)+')';svg.appendChild(p);}
+  const col=threatCol(scoreN);
+  // Band boundary ticks + labels (LOW/MED/HIGH at 25/50/75).
+  [[.28,'LOW'],[.54,'MED'],[.8,'HIGH']].forEach(([f,lbl])=>{const a=a0+(a1-a0)*f;
+    const[tx1,ty1]=pt(a,r+2),[tx2,ty2]=pt(a,r-12),tk=document.createElementNS(ns,'line');
+    tk.setAttribute('x1',tx1);tk.setAttribute('y1',ty1);tk.setAttribute('x2',tx2);tk.setAttribute('y2',ty2);tk.setAttribute('stroke',CSSV('--ink-faint'));tk.setAttribute('stroke-width',1);svg.appendChild(tk);
+    const[lx,ly]=pt(a,r+13);mk(lbl,lx,ly+2.5,CSSV('--ink-faint'),'7',{mono:1,ls:'0.5'});});
+  // Eased needle + glowing hub.
+  const ang=a0+(a1-a0)*frac,[ax,ay]=pt(ang,r-14);
+  const nd=document.createElementNS(ns,'line');nd.setAttribute('x1',cx);nd.setAttribute('y1',cy);nd.setAttribute('x2',ax);nd.setAttribute('y2',ay);nd.setAttribute('stroke',col);nd.setAttribute('stroke-width',2.5);nd.setAttribute('stroke-linecap','round');if(scoreN>0)nd.style.filter='drop-shadow(0 0 6px '+col+')';svg.appendChild(nd);
+  const hub=document.createElementNS(ns,'circle');hub.setAttribute('cx',cx);hub.setAttribute('cy',cy);hub.setAttribute('r',5.5);hub.setAttribute('fill',col);hub.style.filter='drop-shadow(0 0 8px '+col+')';svg.appendChild(hub);
+  // Center numeric score + caption, tucked inside the arc.
+  mk(Math.round(scoreN),cx,cy-34,col,'34',{w:800});
+  mk('RISK SCORE',cx,cy-19,CSSV('--ink-faint'),'8',{mono:1,ls:'2'});
+  const el=document.getElementById('threatLvl');if(el){el.textContent=threatLabel(scoreN);el.style.color=col;el.style.textShadow='0 0 18px '+col+'55';}
+}
+renderGauge(0);
+
+/* timeline */
+const tl=document.getElementById('timeline');let tlx,TW,TH=190;
+function layoutTL(){[tlx,TW,TH]=fit(tl,190);drawTL();}layoutTL();
+// Detection timeline — a stacked severity area showing how the finding mix
+// grows over time, with a colored pulse at each detection, a "first blood"
+// marker, elapsed-time + count axes, and a severity legend. Reads as a real
+// detection stream instead of one flat count line.
+const TL_STACK=['critical','high','medium','low','informational']; // top→bottom of the stack
+function hexA(v,a){const c=CSSV(v).trim();if(c[0]!=='#')return c;const n=c.length===4?c.slice(1).split('').map(x=>x+x).join(''):c.slice(1);const r=parseInt(n.slice(0,2),16),gg=parseInt(n.slice(2,4),16),b=parseInt(n.slice(4,6),16);return`rgba(${r},${gg},${b},${a})`;}
+function drawTL(){[tlx,TW,TH]=fit(tl,190);tlx.clearRect(0,0,TW,TH);const pts=S.tl;
+  document.getElementById('tlEmpty').style.display=pts.length?'none':'block';if(!pts.length)return;
+  const last=pts[pts.length-1];document.getElementById('tlTag').textContent=last.n+' total';
+  const padL=26,padR=12,padT=14,padB=22,maxN=Math.max(2,last.n),maxT=Math.max(last.t,5);
+  const X=t=>padL+(t/maxT)*(TW-padL-padR),Y=n=>TH-padB-(n/maxN)*(TH-padT-padB);
+  // Gridlines + Y count ticks.
+  tlx.font='9px monospace';tlx.textBaseline='middle';
+  for(let i=0;i<=3;i++){const v=Math.round(maxN*i/3),y=Y(v);tlx.strokeStyle=hexA('--green',0.05);tlx.lineWidth=1;tlx.beginPath();tlx.moveTo(padL,y);tlx.lineTo(TW-padR,y);tlx.stroke();
+    tlx.fillStyle=CSSV('--ink-faint');tlx.textAlign='right';tlx.fillText(v,padL-6,y);}
+  // Stacked severity areas (cumulative, step). Each pt carries a counts snapshot in .c.
+  const cum=t=>{let s=0;const o={};TL_STACK.forEach(k=>{o[k]=s;s+=(t.c&&t.c[k])||0;});o._top=s;return o;};
+  TL_STACK.forEach(k=>{
+    let any=false;const top=[],bot=[];
+    pts.forEach(p=>{const c=cum(p),lo=c[k],hi=c[k]+((p.c&&p.c[k])||0);if(hi>lo)any=true;top.push([X(p.t),Y(hi)]);bot.push([X(p.t),Y(lo)]);});
+    if(!any)return;
+    // step path: baseline at t=0, step up at each detection.
+    tlx.beginPath();tlx.moveTo(padL,bot[0][1]);
+    let py=top[0][1];tlx.lineTo(padL,py);
+    top.forEach(([x,y])=>{tlx.lineTo(x,py);tlx.lineTo(x,y);py=y;});
+    tlx.lineTo(X(maxT),py);
+    let by=bot[bot.length-1][1];tlx.lineTo(X(maxT),by);
+    for(let i=bot.length-1;i>=0;i--){const[x,y]=bot[i];tlx.lineTo(x,by);tlx.lineTo(x,y);by=y;}
+    tlx.closePath();tlx.fillStyle=hexA(SEV[k].v,0.32);tlx.fill();
+    tlx.strokeStyle=hexA(SEV[k].v,0.55);tlx.lineWidth=1;tlx.stroke();});
+  // First-blood marker.
+  const fb=pts[0];tlx.strokeStyle=hexA('--ink-faint',0.5);tlx.setLineDash([3,3]);tlx.lineWidth=1;tlx.beginPath();tlx.moveTo(X(fb.t),padT);tlx.lineTo(X(fb.t),TH-padB);tlx.stroke();tlx.setLineDash([]);
+  tlx.fillStyle=CSSV('--ink-faint');tlx.textAlign='center';tlx.fillText('1st '+fb.t+'s',X(fb.t),padT+2);
+  // Detection pulses — one colored dot per finding, glow on the newest.
+  pts.forEach((p,i)=>{const col=sevCol(p.k||'informational'),x=X(p.t),y=Y(p.n),newest=i===pts.length-1;
+    tlx.beginPath();tlx.arc(x,y,newest?4:2.6,0,7);tlx.fillStyle=col;tlx.shadowBlur=newest?12:5;tlx.shadowColor=col;tlx.fill();tlx.shadowBlur=0;});
+  // X axis elapsed labels.
+  tlx.fillStyle=CSSV('--ink-faint');tlx.textAlign='left';tlx.fillText('0s',padL,TH-padB+9);
+  tlx.textAlign='right';tlx.fillText(maxT+'s',TW-padR,TH-padB+9);}
+
+/* SSE */
+function setDone(){if(S.done)return;S.done=true;allPhasesDone();updateProgress();const s=document.getElementById('status');s.classList.remove('live');document.getElementById('statusText').textContent='COMPLETE';setNow('operation complete — assembling report');disableKill();renderReportBase();pollReport();}
+/* killswitch — POST /api/stop; the swarm winds down gracefully and still writes the report */
+function disableKill(){const b=document.getElementById('killbtn');if(b){b.disabled=true;b.textContent='■ STOPPED';}}
+(function(){const b=document.getElementById('killbtn');if(!b)return;b.addEventListener('click',()=>{
+  if(S.done||b.disabled)return;
+  if(!confirm('Stop the swarm now? It winds down gracefully and still writes the report for what it has found so far.'))return;
+  b.disabled=true;b.textContent='■ STOPPING…';document.getElementById('statusText').textContent='STOPPING';setNow('killswitch engaged — winding down');
+  fetch('/api/stop',{method:'POST'}).catch(()=>{});});})();
+const es=new EventSource('/events');
+es.onmessage=m=>{let ev;try{ev=JSON.parse(m.data);}catch(e){return;}if(!S.start)S.start=Date.now();
+  switch(ev.kind){
+    case 'meta':document.getElementById('target').textContent=ev.detail||'—';document.getElementById('objective').textContent=ev.title||'';break;
+    case 'spend':{const x=(ev.detail||'').match(/\$([0-9.]+)/);if(x)document.getElementById('spend').textContent='$'+x[1];break;}
+    case 'endpoint':S.surface++;countTo(document.getElementById('surface'),S.surface);addEndpointNode(ev.detail||'');setNow('recon · mapped '+(ev.detail||'endpoint'));break;
+    case 'finding':addFinding({severity:ev.severity,title:ev.title,category:ev.category,cvss:ev.cvss,confidence:ev.confidence,description:ev.description});setNow('classifier · graded '+sevKey(ev.severity)+' — '+(ev.title||''));break;
+    case 'chain':addChain(ev);setNow('exploit · building chain "'+(ev.chainName||'attack chain')+'"');break;
+    case 'chainstep':stepChain(ev);setNow('exploit · '+(ev.step||'step')+' — '+(ev.ok?'proven':'no exploit'));break;
+    case 'probe':probeCount++;addProbeNode(ev.ok);fireAgent('exploit');setPhase('exploit');
+      if(ev.ok||probeCount%5===1)setNow('exploit · probing '+(ev.detail||'endpoint')+(ev.ok?' — cross-user 200!':''));break;
+    case 'status':if(ev.status==='complete')setDone();else if(ev.status==='stopping'){document.getElementById('statusText').textContent='STOPPING';disableKill();}break;
+    default:addFeed(ev);bumpAgent(ev.agent);
+      if(NOWABLE[ev.type])setNow((ev.agent?ev.agent+' · ':'')+(ev.detail||ev.type));
+      if(ev.type==='milestone'&&/complete/i.test(ev.detail||''))setDone();}
+  updateProgress();};
+
+/* report */
+const elapsedText=()=>document.getElementById('elapsed').textContent;
+function renderChips(){const chips=document.getElementById('sumChips');chips.innerHTML='';
+  SEV_ORDER.forEach(k=>{const v=S.counts[k]||0;if(!v)return;const c=document.createElement('span');c.className='chip';c.style.background=sevCol(k);c.style.color=sevCol(k);
+    c.innerHTML=`<span style="color:#000">${v}</span><small style="color:#000">${SEV[k].label}</small>`;chips.appendChild(c);});}
+function chainStats(){const list=Object.values(CHAINS);return{list,proven:list.filter(c=>c.proven).length};}
+function genExec(){const n=S.findings.size,c=S.counts.critical||0,h=S.counts.high||0,tgtName=document.getElementById('target').textContent;
+  const sevPart=(c||h)?`, of which ${c} ${c===1?'is':'are'} critical and ${h} high-severity`:'';
+  const cs=chainStats(),chainPart=cs.list.length?` The swarm executed ${cs.list.length} multi-step attack chain${cs.list.length>1?'s':''} against the live target, proving ${cs.proven} exploit path${cs.proven!==1?'s':''} end-to-end.`:'';
+  return `The swarm mapped ${S.surface} endpoint${S.surface!==1?'s':''} of attack surface on ${tgtName} in ${elapsedText()} and proved ${n} finding${n!==1?'s':''}${sevPart}.${chainPart}`;}
+function renderChainReport(){const panel=document.getElementById('chainReportPanel'),host=document.getElementById('chainReport');
+  const{list,proven}=chainStats();if(!list.length){panel.style.display='none';return;}
+  panel.style.display='block';document.getElementById('chainReportTag').textContent=proven+'/'+list.length+' proven';host.innerHTML='';
+  list.forEach(c=>{const row=document.createElement('div');row.className='chrow'+(c.proven?' ok':'');
+    const techs=(c.steps||[]).map(s=>esc(s.technique||s.name||'')).filter(Boolean).join(' → ');
+    row.innerHTML=`<div class="chrow-h"><span class="chrow-d"></span><span class="chrow-n">${esc(c.name)}</span><span class="chrow-s">${c.proven?'exploit proven':'path spent'}</span></div>${techs?`<div class="chrow-t">${techs}</div>`:''}`;
+    host.appendChild(row);});}
+function renderFindingList(list,more){const host=document.getElementById('reportFindings');host.innerHTML='';
+  const fs=list.slice().sort((a,b)=>SEV[sevKey(a.severity)].rank-SEV[sevKey(b.severity)].rank);
+  if(!fs.length){host.innerHTML='<div class="empty" style="opacity:.6">No vulnerabilities were proven in this run.</div>';return;}
+  fs.forEach(f=>host.appendChild(buildFinding(f,more)));}
+function renderReportBase(){document.getElementById('report').style.display='block';
+  document.getElementById('fcount').textContent=S.findings.size;drawRing();drawGauge();renderChips();
+  countTo(document.getElementById('sumFindings'),S.findings.size);
+  countTo(document.getElementById('sumSurface'),S.surface);
+  document.getElementById('sumTarget').textContent=document.getElementById('target').textContent;
+  document.getElementById('sumTime').textContent=elapsedText();
+  document.getElementById('sumSpend').textContent=document.getElementById('spend').textContent;
+  document.getElementById('sumThreat').textContent=threatLabel(threatScore());
+  document.getElementById('execWrap').innerHTML=`<div class="exec"><span class="lbl">Executive Summary</span>${esc(genExec())}</div>`;
+  renderChainReport();
+  renderFindingList(S.findingList,'details');}
+let tries=0;function pollReport(){fetch('/api/report').then(r=>r.status===200?r.json():null).then(rep=>{if(rep){renderReport(rep);return;}if(tries++<25)setTimeout(pollReport,2000);}).catch(()=>{if(tries++<25)setTimeout(pollReport,2000);});}
+function renderReport(rep){document.getElementById('report').style.display='block';const rs=rep.risk_summary||{};
+  if(rs.critical_count!=null||rs.high_count!=null||rs.medium_count!=null)S.counts={critical:rs.critical_count||0,high:rs.high_count||0,medium:rs.medium_count||0,low:rs.low_count||0,informational:rs.info_count||0};
+  const fcnt=(rep.findings||[]).length||S.findings.size;
+  document.getElementById('fcount').textContent=fcnt;drawRing();drawGauge();renderChips();
+  countTo(document.getElementById('sumFindings'),fcnt);
+  countTo(document.getElementById('sumSurface'),S.surface);
+  document.getElementById('sumTarget').textContent=rep.target||document.getElementById('target').textContent;
+  document.getElementById('sumTime').textContent=elapsedText();
+  document.getElementById('sumSpend').textContent=document.getElementById('spend').textContent;
+  document.getElementById('sumThreat').textContent=threatLabel(threatScore());
+  const exec=(rep.executive_summary||'').replace(/^Executive Summary:\s*/i,'').replace(/\n{2,}/g,'\n').trim();
+  document.getElementById('execWrap').innerHTML=`<div class="exec"><span class="lbl">Executive Summary</span>${exec?esc(exec).slice(0,900):esc(genExec())}</div>`;
+  renderChainReport();
+  const fs=(rep.findings||[]).map(f=>({severity:f.severity,title:f.title,cvss:f.cvss_score,description:f.description,evidence:(f.evidence||[]).map(e=>e.content).filter(Boolean).join('\n\n'),remediation:f.remediation,category:f.category||'',confidence:f.confidence||'',target:(f.affected_components||[])[0]||''}));
+  renderFindingList(fs.length?fs:S.findingList,'read finding');
+  const nar=(rep.attack_narrative||'').trim();document.getElementById('narrativeWrap').style.display=nar?'block':'none';
+  document.getElementById('narrative').innerHTML=nar?esc(nar).replace(/\n/g,'<br>'):'';
+  document.getElementById('roi').textContent=(rep.roi_footer||'').replace(/\*\*/g,'');}
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+{
+  "artifact_id": "yaiwes.codebase_memory_mcp",
+  "version": "commit:2058d49a04b785315c9f5bb56b6e2365822b576b",
+  "estado": "testing",
+  "categoria": "transversal",
+  "etapa": "T",
+  "contrato": {
+    "rol": "service",
+    "consume": "codebase_local",
+    "expone": "mcp_read_only",
+    "input_map": {"tool_name": "string", "arguments": "object|null"},
+    "output_map": {"mcp_request": "dict"}
+  },
+  "ejecucion": {
+    "kind": "tool",
+    "transport": "mcp_stdio",
+    "runtime_type": "code_intelligence",
+    "entry_point": "codebase-memory-mcp",
+    "llm_ratio": 0.0,
+    "idempotente": true,
+    "max_steps": 20,
+    "allowed_actions": ["mcp.get_architecture", "mcp.semantic_query", "mcp.detect_changes"]
+  },
+  "seguridad": {
+    "sandbox": "required_g022",
+    "permisos": ["filesystem_read", "local_cache_write"],
+    "limites": {"timeout_ms": 120000, "deadline_ms": 120000}
+  },
+  "activacion": {
+    "eventos": ["programming.preanalysis"],
+    "wake_words": [],
+    "condicion": "acquisition_verified && fables_registered && sandbox_verified"
+  },
+  "telemetria": {"metricas": ["tiempo", "errores", "queries"], "span_otel": true},
+  "evidencia": {"produce": ["motor_readback", "adapter_request", "sandbox_result"], "destino": "wordflow_loop/evidence/"},
+  "failover": {"sustituible_por": ["yaiwes.code_graph_workspace"], "compensacion": "fallback_to_existing_deterministic_code_graph"},
+  "salud": {"metodo": "static_adapter_until_runtime_verified", "heartbeat_interval_s": 30},
+  "trazas": {"task_id_requerido": true, "trace_id_requerido": true}
+}

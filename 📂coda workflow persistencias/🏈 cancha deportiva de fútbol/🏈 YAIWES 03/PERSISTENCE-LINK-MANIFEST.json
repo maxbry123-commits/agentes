@@ -1,0 +1,45 @@
+{
+  "schema": "yaiwes.coda.persistence-link-manifest/v1",
+  "link_id": "03-LuaN1aoAgent",
+  "source_repo": "SanMuzZzZz/LuaN1aoAgent",
+  "source_commit": "2efe2c5020332d90ee82d108fc82a6604a6610eb",
+  "source_tree_sha256": "09910912fabc3176a14bde84144c226dbe03734b068fa533ab4bb93474d1227a",
+  "download_extract_verified": true,
+  "role": "persistent-dag-plan-project-checkpoint-handoff",
+  "next_link": "04-AI-Pentest",
+  "preserved": [
+    "graph-store pattern",
+    "runtime-store pattern",
+    "execution-log pattern",
+    "planner command/control pattern",
+    "projection/projector coordination",
+    "operation identity",
+    "runtime owner lease",
+    "epoch budget clock"
+  ],
+  "excluded_from_coda_runtime": [
+    "network connectivity runtime",
+    "host egress",
+    "network sandbox",
+    "executor sandbox",
+    "traffic proxy",
+    "browser target actions",
+    "external target tools"
+  ],
+  "surgical_policy_file": "code/src/coda-persistence-policy.ts",
+  "safe_runtime": "code/coda_persistence/link.py",
+  "tests": {
+    "workflow_run_id": 34810674795,
+    "job_id": 103871220697,
+    "result": "PASS",
+    "passed_for_link": 4,
+    "failed_for_link": 0,
+    "checks": [
+      "graph_handoff",
+      "resume_is_idempotent",
+      "forbidden_execution_fails_closed",
+      "checkpoint_path_is_contained"
+    ]
+  },
+  "status": "TRANSFORMED_SAFE_LINK_PASS"
+}

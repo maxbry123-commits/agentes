@@ -1,0 +1,48 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4.2",
+  "component": "🏈 23-HackSynth",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.2",
+  "source_files_audited": 11,
+  "last_delta_candidates": 0,
+  "last_delta_changed": 0,
+  "active_surfaces_transformed_cumulative": 3,
+  "component_runtime": "yaiwes_internal/persistence_runtime.py",
+  "link_count": 4,
+  "links": [
+    {
+      "order": 1,
+      "path": "overthewire_bench/krypton_solver.py",
+      "original_sha256": "6512e2510d6fef091fe6d772c4ab1cd9501823b7ba95275501fa205b22fdc64f",
+      "active_sha256": "81b4339f2da81de896074d7116e2a5fc4664b18cb4b4c7ecf552a04801f39e57",
+      "quarantine": "_yaiwes_upstream_quarantine/overthewire_bench/krypton_solver.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "overthewire_bench/natas_solver.py",
+      "original_sha256": "37567e7b8e6a3241a6c7c42321b9865cc7e0606a0a8bf70a44485ad10163d1b7",
+      "active_sha256": "d0b910619a88bcd84f90431cad15571671308aef88e5962818bcade744a7442c",
+      "quarantine": "_yaiwes_upstream_quarantine/overthewire_bench/natas_solver.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "picoctf_bench/challenge_solver.py",
+      "original_sha256": "11929338693447c541fc5efa3209cca7b475fc910a9056bf70d8abf38313a076",
+      "active_sha256": "1a546eeb0fd39867bf7c375bbe875d69d05a90147574e3e527e1c8c1c0271cd5",
+      "quarantine": "_yaiwes_upstream_quarantine/picoctf_bench/challenge_solver.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 4,
+      "path": "yaiwes_internal/persistence_runtime.py",
+      "active_sha256": "e30fce230fe61d93c2651ae6eddd3a34c37c937fb811810a0f8eaae86be85d9c",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "GENERATED_INTERNAL_RUNTIME_V4_2"
+    }
+  ]
+}

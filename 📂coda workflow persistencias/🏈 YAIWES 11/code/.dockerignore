@@ -1,0 +1,56 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# 环境
+.env
+.venv
+venv/
+.conda/
+
+# 配置文件（通过挂载注入，不打入镜像）
+config.json
+
+# 向量数据库（运行时数据）
+rag_db/
+rag_db_backup/
+
+# 缓存
+tool_embeddings_cache.json
+
+# 日志
+logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 附件 & 输入文件（运行时挂载）
+attachments/
+question.txt
+scope.txt
+suggestion.txt
+
+# 输出目录（运行时挂载）
+writeups/
+reports/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore

@@ -1,0 +1,51 @@
+name: Publish npm
+
+# Publishes the @armurai/pentestswarm npm package (the thin wrapper that
+# downloads the matching GoReleaser binary at install time).
+#
+# Runs on:
+#   - every release tag (v*)   → publishes the version from the tag
+#   - manual "Run workflow"     → publishes whatever version is in
+#                                 npm/package.json on the chosen ref
+#
+# Auth: an npm *automation* token stored as the NPM_TOKEN repo secret.
+# Automation tokens bypass 2FA, so CI can publish without an OTP prompt.
+# The token lives only in GitHub Secrets — never in the repo or logs.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          # Writes an .npmrc that authenticates to npm via NODE_AUTH_TOKEN.
+          registry-url: "https://registry.npmjs.org"
+
+      # On a tag build, force package.json to match the tag so the version
+      # published to npm and the GitHub release the postinstall pulls from
+      # can never drift. On a manual run this step is skipped and we publish
+      # the version already committed in npm/package.json.
+      - name: Sync package version to tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: npm
+        run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
+
+      - name: Publish
+        working-directory: npm
+        # publishConfig.access=public in package.json → publishes publicly.
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

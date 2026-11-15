@@ -1,0 +1,44 @@
+{
+  "schema": "yaiwes.crazy_wall.integration_workflow_readback/v1",
+  "agent": "SOL_INTEGRACION_1",
+  "scope": "WORKFLOW_FAIL_ONLY",
+  "preserved_closed_scope": ["N1-N27", "Temporal"],
+  "constraints": {
+    "lfs": false,
+    "step4": false,
+    "lateral_refactor": false,
+    "restore_noncanonical_logic": false
+  },
+  "finding": {
+    "workflow": ".github/workflows/yaiwes-core-complete-inventory-audit.yml",
+    "prior_classification": "WORKFLOW_FAIL",
+    "root_cause": "inventory audit if-expression/parser GAP",
+    "repair_commit": "ee55d1ab11ddf81775903594eee05ce285382e49",
+    "repair_title": "repair(workflow): quote inventory audit if expression"
+  },
+  "evidence": {
+    "run_id": 34640145547,
+    "run_number": 158,
+    "status": "completed",
+    "conclusion": "success",
+    "job_id": 103397565562,
+    "job_name": "inventory",
+    "job_conclusion": "success",
+    "steps": {
+      "checkout": "success",
+      "generate_complete_inventory": "success",
+      "commit_inventory_race_safe_retry": "success",
+      "post_checkout": "success"
+    }
+  },
+  "classification": {
+    "workflow_publish_fail": "CLOSED_VERIFIED",
+    "component_fail": "NOT_INFERRED_FROM_THIS_RUN"
+  },
+  "read_back": {
+    "source": "GitHub Actions REST run + jobs endpoints",
+    "result": "PASS",
+    "statement": "Run 34640145547 completed successfully with one successful inventory job and all substantive steps successful. The parser/workflow repair is therefore closed as WORKFLOW_FAIL; this evidence does not certify component completeness."
+  },
+  "next_gate": "Continue X-Ray only for another related WORKFLOW_FAIL; distinguish workflow/publish failures from component failures."
+}

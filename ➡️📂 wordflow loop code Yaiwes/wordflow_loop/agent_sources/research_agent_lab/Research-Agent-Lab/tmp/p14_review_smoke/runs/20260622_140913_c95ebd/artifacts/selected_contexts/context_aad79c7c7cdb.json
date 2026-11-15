@@ -1,0 +1,104 @@
+{
+  "context_id": "context_aad79c7c7cdb",
+  "paper_id": "paper_8e3ea4f00612",
+  "paper_title": "Intention-Aware Diffusion Model for Pedestrian Trajectory Prediction",
+  "context_chars": 5931,
+  "chunks": [
+    {
+      "paper_id": "paper_8e3ea4f00612",
+      "chunk_id": "chunk_95eae875447b",
+      "text": "Experiments\nExperimental Settings\nDatasets: In this study, we evaluate the proposed model\non three widely used pedestrian trajectory datasets: ETH\n(Pellegrini et al. 2009), UCY (Alon Lerner 2007), and the\nStanford Drone Dataset (SDD) (Robicquet et al. 2016). SDD\nis a large-scale dataset captured from a bird’s-eye view us-\ning drone cameras. The ETH dataset comprises two scenes,\nETH and HOTEL, while the UCY dataset includes three\nscenes: ZARA1, ZARA2, and UNIV . All trajectories are\nprovided in world coordinates, and evaluation results are re-\nported in meters. All sequences consist of 8 observed and 12\npredicted frames over 8 seconds.\nMetrics: Following previous works, we adopt two stan-\ndard evaluation metrics to assess the performance of the\nproposed method. Average Displacement Error (ADE) mea-\nsures the mean Euclidean distance between the predicted\nand ground-truth trajectories over all prediction time steps,\nwhile Final Displacement Error (FDE) computes the Eu-\nclidean distance between the predicted final position and the\nground-truth endpoint. In line with prior studies, we report\nthe best result among 20 sampled trajectories.\nImplementation: The network is implemented in Py-\nTorch. The noise estimation module uses 4 Transformer\nlayers with hidden size 512 and 4 attention heads. The\nshort-term intention estimator employs 4 self-attention lay-\ners mapping features to 256 dimensions, while the long-term",
+      "score": 18.5,
+      "section": "Experiments",
+      "page_start": null,
+      "page_end": null,
+      "matched_terms": [
+        "pedestrian",
+        "trajectory",
+        "prediction",
+        "intention",
+        "model",
+        "ade",
+        "fde",
+        "for",
+        "method",
+        "intent",
+        "attention",
+        "experiment",
+        "dataset",
+        "metric"
+      ]
+    },
+    {
+      "paper_id": "paper_8e3ea4f00612",
+      "chunk_id": "chunk_7620c93af347",
+      "text": "[page 7]\nFigure 5: Visualisation of prediction results on the\nETH/UCY dataset. Our method (yellow) is compared with\nMID (purple) and Social-V AE (cyan) across four scenarios\nfrom ETH and UCY datasets.\nFigure 6: Illustration of predicted endpoints on three scenar-\nios from the SDD dataset.\ncus, making it harder to capture a coherent and interpretable\nintention distribution, while too few may limit its ability to\nrepresent the diversity of plausible intent hypotheses.\nWe further evaluate the impact of diffusion steps K by\nvarying it from 10 to 200, with detailed results shown in Ta-\nble 5. Overall prediction performance consistently peaks at\nK = 100, where both ADE and FDE reach their lowest val-\nues. Too few steps may hinder the model’s ability to effec-\ntively capture fine-grained noise transitions, while too many\nmake subtle differences between steps harder to distinguish,\npotentially exceeding the model’s representational capacity.\nLastly, we investigate refinement input and correction tar-\nget. Using either noised state Yk or predicted noise ϵk as\ninput, and refining either residual noise ∆ϵk or residual data\n∆Y0, we find correcting ∆ϵk yields better results (Table 6).\nThis suggests refining noise is more effective than adjusting\ndata directly. Using noise state to correct predicted noise is\nalso more accurate than using data state, likely due to noise\nspace’s simpler, more continuous structure, while direct data\nadjustment is more complex and susceptible to errors.",
+      "score": 17.5,
+      "section": "Ablation",
+      "page_start": null,
+      "page_end": null,
+      "matched_terms": [
+        "prediction",
+        "intention",
+        "diffusion",
+        "model",
+        "ade",
+        "fde",
+        "rate",
+        "diversity",
+        "for",
+        "method",
+        "intent",
+        "fusion",
+        "dataset"
+      ]
+    },
+    {
+      "paper_id": "paper_8e3ea4f00612",
+      "chunk_id": "chunk_08ab5b7c135b",
+      "text": "Ablation Study\nTo assess the impact of different model components, we con-\nduct ablation studies on the following aspects.\nPedestrian motion intentions are modeled from both long-\nterm and short-term perspectives, with a softmask mecha-\nnism and residual noise refinement jointly regulating their\ninfluence during the diffusion process. This ablation study\nevaluates the contribution of each component. As shown in\nTable 3, removing any of them degrades performance, high-\nlighting their critical role in accurate trajectory prediction.\nSimilarly, an ablation study on the number of candidate\nendpoints M was conducted, as shown in Table 4. Results\nindicate that prediction performance is sensitive to M, and\nthe relationship is not linear. Overall performance across\nscenarios is maximized when M is 5. A possible explana-\ntion is that too many candidates may dilute the model’s fo-",
+      "score": 16.5,
+      "section": "Ablation",
+      "page_start": null,
+      "page_end": null,
+      "matched_terms": [
+        "pedestrian",
+        "trajectory",
+        "prediction",
+        "intention",
+        "diffusion",
+        "model",
+        "ade",
+        "rate",
+        "for",
+        "intent",
+        "fusion",
+        "ablation"
+      ]
+    },
+    {
+      "paper_id": "paper_8e3ea4f00612",
+      "chunk_id": "chunk_767a492d4903",
+      "text": "Abstract\nPredicting pedestrian motion trajectories is critical for the\npath planning and motion control of autonomous vehicles.\nRecent diffusion-based models have shown promising results\nin capturing the inherent stochasticity of pedestrian behav-\nior for trajectory prediction. However, the absence of explicit\nsemantic modelling of pedestrian intent in many diffusion-\nbased methods may result in misinterpreted behaviors and re-\nduced prediction accuracy. To address the above challenges,\nwe propose a diffusion-based pedestrian trajectory predic-\ntion framework that incorporates both short-term and long-\nterm motion intentions. Short-term intent is modelled using\na residual polar representation, which decouples direction\nand magnitude to capture fine-grained local motion patterns.\nLong-term intent is estimated through a learnable, token-\nbased endpoint predictor that generates multiple candidate\ngoals with associated probabilities, enabling multimodal and\ncontext-aware intention modelling. Furthermore, we enhance\nthe diffusion process by incorporating adaptive guidance and\na residual noise predictor that dynamically refines denoising\naccuracy. The proposed framework is evaluated on the widely\nused ETH, UCY , and SDD benchmarks, demonstrating com-\npetitive results against state-of-the-art methods.",
+      "score": 14.5,
+      "section": "Abstract",
+      "page_start": null,
+      "page_end": null,
+      "matched_terms": [
+        "pedestrian",
+        "trajectory",
+        "prediction",
+        "intention",
+        "diffusion",
+        "model",
+        "multimodal",
+        "rate",
+        "for",
+        "method",
+        "denoising",
+        "intent",
+        "fusion"
+      ]
+    }
+  ]
+}

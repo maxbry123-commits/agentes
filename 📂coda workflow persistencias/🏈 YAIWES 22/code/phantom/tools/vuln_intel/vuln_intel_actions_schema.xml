@@ -1,0 +1,94 @@
+<tools>
+  <tool name="cve_search">
+    <description>Search NVD for CVEs.</description>
+    <parameters>
+      <parameter name="product" type="string" required="true">
+        <description>Product name.</description>
+      </parameter>
+      <parameter name="version" type="string" required="false">
+        <description>Version string.</description>
+      </parameter>
+      <parameter name="vendor" type="string" required="false">
+        <description>Vendor name.</description>
+      </parameter>
+      <parameter name="severity" type="string" required="false">
+        <description>CRITICAL, HIGH, MEDIUM, LOW.</description>
+      </parameter>
+      <parameter name="max_results" type="integer" required="false">
+        <description>Max results.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>CVEs, CVSS scores, counts.</description>
+    </returns>
+    <examples>
+      <function=cve_search>
+        <parameter=product>apache</parameter>
+        <parameter=version>2.4.49</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="exploit_search">
+    <description>Search exploit databases.</description>
+    <parameters>
+      <parameter name="cve_id" type="string" required="false">
+        <description>CVE ID.</description>
+      </parameter>
+      <parameter name="product" type="string" required="false">
+        <description>Product name.</description>
+      </parameter>
+      <parameter name="exploit_type" type="string" required="false">
+        <description>remote, local, webapps, dos.</description>
+      </parameter>
+      <parameter name="max_results" type="integer" required="false">
+        <description>Max results.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>exploits, has_metasploit, has_poc.</description>
+    </returns>
+    <examples>
+      <function=exploit_search>
+        <parameter=cve_id>CVE-2024-XXXXX</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="version_to_cves">
+    <description>Map version string to CVEs.</description>
+    <parameters>
+      <parameter name="version_string" type="string" required="true">
+        <description>Version from fingerprinting.</description>
+      </parameter>
+      <parameter name="include_exploits" type="boolean" required="false">
+        <description>Search exploits too.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>product, CVEs, exploits, risk_level.</description>
+    </returns>
+    <examples>
+      <function=version_to_cves>
+        <parameter=version_string>Apache/2.4.49</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="get_cve_details">
+    <description>Get CVE details.</description>
+    <parameters>
+      <parameter name="cve_id" type="string" required="true">
+        <description>CVE ID.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>description, cvss_score, severity, references.</description>
+    </returns>
+    <examples>
+      <function=get_cve_details>
+        <parameter=cve_id>CVE-2024-XXXXX</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

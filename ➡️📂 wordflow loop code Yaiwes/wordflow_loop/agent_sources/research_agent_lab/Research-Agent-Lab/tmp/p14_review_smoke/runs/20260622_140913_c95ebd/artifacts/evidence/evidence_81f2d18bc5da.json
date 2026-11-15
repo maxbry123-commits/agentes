@@ -1,0 +1,10 @@
+{
+  "paper_id": "paper_8e3ea4f00612",
+  "claim_supported": "Intention-Aware Diffusion Model for Pedestrian Trajectory Prediction is relevant to intent_conditioned_led_virat",
+  "quote": "Abstract\nPredicting pedestrian motion trajectories is critical for the\npath planning and motion control of autonomous vehicles.\nRecent diffusion-based models have shown promising results\nin capturing the inherent stochasticity of pedestrian behav-\nior for trajectory prediction. However, the absence of explicit\nsemantic modelling of pedestrian intent in many diffusion-\nbased methods may result in misinterpreted behaviors and re-\nduced prediction accuracy. To address the above challenges,\nwe propose a diffusion-based pedestrian trajectory predic-\ntion framework that incorporates both short-term and long-\nterm motion intentions. Short-term intent is modelled using\na residual polar representation, which decouples direction\nand magnitude to capture fine-grained local motion patterns.\nLong-term intent is estimated through a learnable, token-\nbased endpoint predictor that generates multiple candidate\ngoals with associated probabilities, enabling multimodal and\ncontext-aware intention modelling. Furthermore, we enhance\nthe diffusion process by incorporating adaptive guidance and\na residual noise predictor that dynamically refines denoising\naccuracy. The proposed framework is evaluated on t",
+  "evidence_id": "evidence_81f2d18bc5da",
+  "section": "Abstract",
+  "page": null,
+  "chunk_id": "chunk_767a492d4903",
+  "support_level": "weak"
+}

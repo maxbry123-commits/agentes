@@ -1,0 +1,31 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 21",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_source": "backend/agent/planning/dynamic_planner.py",
+  "workflow_symbol": "DynamicPlanner.get_next_task",
+  "language": "python",
+  "source_decision": "RESTORE_BENIGN",
+  "source_sha256": "9a79be1c72619c1f8e1ea38eb32b38a7e4525379de5221c88eb461d79067ce15",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  },
+  "workflow_status": "COMPLETED",
+  "real_internal_workflow": true,
+  "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+  "evidence": {
+    "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+    "entered": true,
+    "status": "COMPLETED",
+    "executed_lines": [
+      716,
+      717
+    ],
+    "executed_line_count": 2,
+    "safe_boundary": null
+  },
+  "checkpoint": "REAL_INTERNAL_WORKFLOW_EXECUTED",
+  "handoff": "YAIWES 22"
+}

@@ -1,0 +1,15 @@
+{
+  "schema": "yaiwes.component_intake/v2",
+  "queue": [
+    {
+      "id": "COMP-CODEBASE-MEMORY-MCP",
+      "source_repo": "https://github.com/DeusData/codebase-memory-mcp",
+      "source_ref": "2058d49a04b785315c9f5bb56b6e2365822b576b",
+      "slug": "codebase-memory-mcp",
+      "dest_repo": "maxbry123-commits/agentes",
+      "dest_branch": "main",
+      "dest_root": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/components/codebase-memory-mcp",
+      "publish": true
+    }
+  ]
+}

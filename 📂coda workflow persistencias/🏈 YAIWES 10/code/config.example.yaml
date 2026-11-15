@@ -1,0 +1,195 @@
+# pentestswarm configuration
+# Copy this to config.yaml and fill in your values.
+# All values can be overridden via environment variables prefixed with PENTESTSWARM_
+# Example: PENTESTSWARM_ORCHESTRATOR_API_KEY=sk-ant-...
+
+# --- Server ---
+server:
+  host: "0.0.0.0"          # API server bind address
+  port: 8080               # API server port
+  api_key: ""              # Optional. When set, all /api/v1/* routes require
+                           # an `X-API-Key` header matching this value.
+                           # /api/v1/health is always exempt (LB probes).
+                           # Env override: PENTESTSWARM_SERVER_API_KEY.
+  cors_origins: "*"        # Comma-separated allowed origins for the CORS
+                           # middleware. Default "*" preserves prior
+                           # behaviour for now — production deployments
+                           # should set this to the dashboard's actual
+                           # origin (e.g. "http://localhost:3000" for
+                           # the bundled web/ dashboard). A future major
+                           # release will tighten the default.
+
+# --- Database ---
+database:
+  host: "localhost"
+  port: 5432
+  user: "pentestswarm"
+  password: ""             # REQUIRED — set via PENTESTSWARM_DATABASE_PASSWORD
+  name: "pentestswarm"
+  sslmode: "disable"       # disable, require, verify-ca, verify-full
+
+# --- Redis ---
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+
+# --- Orchestrator (main AI) ---
+orchestrator:
+  provider: "claude"       # claude, together, openai, gemini, ollama, lmstudio, orcarouter
+  model: "claude-sonnet-4-6" # Model to use for orchestration
+  api_key: ""              # REQUIRED for Claude/Together/OpenAI/Gemini/OrcaRouter — set via
+                           #   PENTESTSWARM_ORCHESTRATOR_API_KEY
+  endpoint: ""             # Required for ollama/lmstudio (e.g. http://localhost:11434).
+                           # For openai: optional override (Together AI / DeepSeek / Groq).
+                           # For gemini: leave empty unless proxying.
+                           # For orcarouter: optional override (defaults to https://api.orcarouter.ai/v1).
+  context_window: 200000   # Max context window size in tokens
+  max_tokens: 8192         # Max output tokens per completion
+  temperature: 0.1         # Lower = more deterministic
+
+# --- Together AI example (open cyber-benchmark leaders: GLM, Qwen, DeepSeek, Kimi) ---
+# Together is a first-class provider — just set provider "together" and a key;
+# the endpoint defaults to Together's API automatically. Browse model IDs at
+# together.ai/models. The swarm needs native tool calling; GLM/Qwen/DeepSeek all support it.
+# orchestrator:
+#   provider: "together"
+#   model: "zai-org/GLM-5.3"        # or "Qwen/...", "deepseek-ai/...", "moonshotai/Kimi-..."
+#   api_key: "..."                  # or set PENTESTSWARM_ORCHESTRATOR_API_KEY
+#   context_window: 128000
+
+# --- Gemini example (get a key at https://aistudio.google.com/apikey) ---
+# orchestrator:
+#   provider: "gemini"
+#   model: "gemini-2.5-flash"   # or gemini-2.5-pro / gemini-2.5-flash-lite
+#   api_key: "AIzaSy..."        # or set PENTESTSWARM_ORCHESTRATOR_API_KEY
+#   context_window: 1000000
+
+# --- OrcaRouter example (get a key at https://www.orcarouter.ai) ---
+# One endpoint with gateway-level, zero-trust security for AI agents, fronting
+# many frontier models (Claude, GPT, ...). The swarm depends on native tool
+# calling, so pin a fixed tool-capable model rather than orcarouter/auto.
+# orchestrator:
+#   provider: "orcarouter"
+#   model: "openai/gpt-5.5"     # or e.g. "anthropic/claude-sonnet-4.6"
+#   api_key: "sk-orca-..."      # or set PENTESTSWARM_ORCHESTRATOR_API_KEY
+#   endpoint: "https://api.orcarouter.ai/v1"
+#   context_window: 200000
+
+# --- Specialist Agent Models ---
+# By default, ALL agents inherit the orchestrator's provider and API key.
+# This means with just a Claude API key above, everything works — no Ollama needed.
+#
+# To use local fine-tuned models instead (v2.0), uncomment and configure:
+agents:
+  recon:
+    provider: ""               # empty = inherit from orchestrator (Claude)
+    model: ""                  # empty = use orchestrator's model
+    # To use fine-tuned local model instead:
+    # provider: "ollama"
+    # model: "ArmurAI/recon-agent-qwen2.5-7b"
+    # endpoint: "http://localhost:11434"
+  classifier:
+    provider: ""
+    model: ""
+  exploit:
+    provider: ""
+    model: ""
+  report:
+    provider: ""
+    model: ""
+
+# --- Security Tool Settings ---
+tools:
+  default_timeout: 300     # Default tool timeout in seconds
+  subfinder:
+    recursive: false       # Recursive subdomain enumeration
+    timeout: 300
+    rate_limit: 10         # Requests per second
+  httpx:
+    follow_redirects: true
+    timeout: 30            # Per-request timeout in seconds
+    threads: 50
+  nuclei:
+    template_path: ""      # Custom template directory (leave empty for default)
+    severity:              # Minimum severity levels to scan
+      - critical
+      - high
+      - medium
+    rate_limit: 150        # Requests per second
+    timeout: 300
+  naabu:
+    ports: "top-1000"      # Port specification: "top-100", "top-1000", "80,443,8080"
+    rate: 1000             # Packets per second
+    timeout: 300
+  katana:
+    depth: 3               # Crawl depth
+    js_crawl: true         # Enable JavaScript-aware crawling
+    timeout: 300
+
+# --- Scope Enforcement ---
+scope:
+  enforce_strict: true     # ALWAYS true — cannot be disabled. Safety constraint.
+
+# --- Continuous ASM ---
+asm:
+  enabled: false           # Enable continuous attack surface monitoring
+  default_schedule: "24h"  # How often to re-scan watched scopes
+  max_auto_campaigns: 3    # Max auto-triggered campaigns per 24h per scope
+  notification_slack: ""   # Slack webhook URL for ASM alerts
+  notification_email: ""   # Email address for ASM alerts
+
+# --- Bug Bounty ---
+bugbounty:
+  hackerone_api_key: ""    # HackerOne API key
+  hackerone_username: ""   # HackerOne username
+  bugcrowd_api_key: ""     # Bugcrowd API key
+
+# --- Shared Intelligence Network ---
+intelligence:
+  enabled: false           # Must be explicitly enabled (opt-in)
+  share_patterns: false    # Contribute anonymized patterns to community
+  consume_patterns: false  # Use community patterns to improve scans
+  api_endpoint: "https://api.pentestswarm.ai"
+
+# --- Integrations ---
+integrations:
+  jira:
+    url: ""                # Jira instance URL (e.g. https://company.atlassian.net)
+    api_token: ""
+    project: ""            # Default project key
+    issue_type: "Bug"      # Default issue type
+  slack:
+    bot_token: ""          # Slack bot token (xoxb-...)
+    signing_secret: ""
+    channel: ""            # Default channel for notifications
+
+# --- OSINT (passive intelligence — hits third-party APIs about a target,
+#     never the target itself, so safe to run before the engagement opens) ---
+# All three are optional. If a client's credentials aren't set, that
+# source is skipped silently — the scan still runs without it.
+osint:
+  shodan:
+    api_key: ""            # Shodan API key. Get one at https://account.shodan.io/
+                           # Env: PENTESTSWARM_SHODAN_API_KEY
+  censys:
+    api_id: ""             # Censys API ID (the v2 "ID" half, not the legacy v1 key)
+    api_secret: ""         # Censys API secret. Get both at
+                           # https://search.censys.io/account/api
+                           # Env: PENTESTSWARM_CENSYS_API_ID / PENTESTSWARM_CENSYS_API_SECRET
+  github_search:
+    token: ""              # Any GitHub PAT (no scopes required for public code search).
+                           # Get one at https://github.com/settings/tokens
+                           # Env: PENTESTSWARM_GITHUB_SEARCH_TOKEN
+  gitlab_search:
+    token: ""              # GitLab PAT with `read_api` scope.
+                           # Get one at https://gitlab.com/-/user_settings/personal_access_tokens
+                           # Env: PENTESTSWARM_GITLAB_SEARCH_TOKEN
+                           # For self-hosted GitLab, also set:
+                           # endpoint: "https://gitlab.your-org.example/api/v4"
+
+# --- Logging ---
+logging:
+  level: "info"            # debug, info, warn, error
+  format: "console"        # console (human-readable) or json (structured)

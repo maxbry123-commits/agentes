@@ -1,0 +1,23 @@
+{
+  "name": "full_research_loop_v1",
+  "agents": [
+    "research_manager",
+    "local_paper_library",
+    "literature_search",
+    "paper_triage",
+    "local_paper_parser",
+    "paper_reader",
+    "evidence_checker",
+    "method_card_extractor",
+    "synthesis",
+    "codebase_analyzer",
+    "opportunity_agent",
+    "experiment_planner",
+    "developer_agent",
+    "reviewer_agent"
+  ],
+  "policy": {
+    "external_repo_edits": "human_approval_required",
+    "default_mode": "offline_seed_first"
+  }
+}

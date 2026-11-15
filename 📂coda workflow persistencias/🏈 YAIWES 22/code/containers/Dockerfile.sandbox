@@ -1,0 +1,84 @@
+# Phantom sandbox image — self-hosted base with Phantom tool server overlay
+# Build time: ~2 minutes (overlay only)
+# SEC-005 FIX: Image pinned by digest for supply chain integrity.
+
+FROM ghcr.io/usta0x001/phantom-sandbox@sha256:5b6a12657b6f73bc4a8203b8307b11d9be9c3fd26f51d375ffe5cd6240ee701b
+
+USER root
+
+# ─── Copy Phantom source modules needed by the tool server ───────────────────
+WORKDIR /app
+
+COPY phantom/__init__.py phantom/
+COPY phantom/config/ phantom/config/
+COPY phantom/utils/ phantom/utils/
+COPY phantom/telemetry/ phantom/telemetry/
+
+COPY phantom/runtime/tool_server.py \
+     phantom/runtime/__init__.py \
+     phantom/runtime/runtime.py \
+     phantom/runtime/
+
+COPY phantom/tools/__init__.py \
+     phantom/tools/registry.py \
+     phantom/tools/executor.py \
+     phantom/tools/argument_parser.py \
+     phantom/tools/context.py \
+     phantom/tools/
+
+COPY phantom/tools/browser/   phantom/tools/browser/
+COPY phantom/tools/file_edit/ phantom/tools/file_edit/
+COPY phantom/tools/findings/  phantom/tools/findings/
+COPY phantom/tools/notes/     phantom/tools/notes/
+COPY phantom/tools/python/    phantom/tools/python/
+COPY phantom/tools/terminal/  phantom/tools/terminal/
+COPY phantom/tools/proxy/     phantom/tools/proxy/
+COPY phantom/tools/security/  phantom/tools/security/
+
+# ─── Install any extra phantom dependencies not in base venv ─────────────────
+# Most deps (fastapi, uvicorn, ipython, pydantic, httpx) already exist in /app/venv
+RUN /app/venv/bin/pip install --no-cache-dir --quiet libtmux pyte openhands-aci numpydoc 2>/dev/null || true && \
+    rm -rf /root/.cache/pip /tmp/pip-* 2>/dev/null || true
+
+# ─── Install security tools for pentesting ───────────────────────────────────
+# wpscan - WordPress vulnerability scanner (Ruby gem, via pre-built binary)
+RUN curl -sL https://github.com/wpscanteam/wpscan/releases/download/v3.9.5/wpww-3.9.5-linux-x64.tar.xz -o /tmp/wpww.tar.xz && \
+    tar -xJf /tmp/wpww.tar.xz -C /tmp && \
+    mv /tmp/wpww /usr/local/bin/wpscan && \
+    chmod +x /usr/local/bin/wpscan && \
+    rm -f /tmp/wpww.tar.xz && \
+    ln -sf /usr/local/bin/wpscan /usr/bin/wpscan 2>/dev/null || true
+
+# Install additional wordlists and tools if not present
+RUN mkdir -p /home/pentester/tools/wordlists /home/pentester/.wtf && \
+    curl -sL "https://github.com/danielmiessler/SecLists/archive/refs/heads/master.zip" -o /tmp/seclists.zip && \
+    unzip -q -o /tmp/seclists.zip -d /tmp && \
+    mv /tmp/SecLists-master/* /home/pentester/tools/wordlists/ 2>/dev/null || true && \
+    rm -rf /tmp/seclists.zip /tmp/SecLists-master 2>/dev/null || true
+
+# gobuster - Directory/File DNS web scanner
+RUN which gobuster || (apt-get update -qq && apt-get install -y -qq gobuster 2>/dev/null) || true
+
+# nuclei - Update templates to latest
+RUN nuclei -update-templates 2>/dev/null || true
+
+# Fix Windows CRLF line endings on all copied Python and shell files
+RUN find /app/phantom -name '*.py' -exec sed -i 's/\r$//' {} + 2>/dev/null || true
+
+# ─── Override entrypoint to start phantom's tool server ──────────────────────
+COPY containers/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh && \
+    chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Set PYTHONPATH so phantom module is importable from /app
+ENV PYTHONPATH=/app
+ENV PHANTOM_SANDBOX_MODE=true
+ENV VIRTUAL_ENV="/app/venv"
+ENV PATH="/app/venv/bin:/home/pentester/go/bin:/home/pentester/.local/bin:$PATH"
+
+RUN chown -R pentester:pentester /app/phantom /workspace 2>/dev/null || true
+
+USER pentester
+WORKDIR /workspace
+
+ENTRYPOINT ["docker-entrypoint.sh"]

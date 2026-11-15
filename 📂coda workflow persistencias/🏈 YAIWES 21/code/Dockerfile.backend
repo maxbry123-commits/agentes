@@ -1,0 +1,170 @@
+# H-Pentest 2.0 Backend Dockerfile
+# 完整集成：Nuclei + SQLMap + 目录扫描工具 + 全换源加速
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# ============================================
+# 🚀 国内镜像源加速（必须）
+# ============================================
+# APT清华源
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources && \
+    sed -i 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources
+
+# ============================================
+# 系统依赖安装
+# ============================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ git curl wget vim ca-certificates \
+    net-tools dnsutils iputils-ping \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================
+# 🔥 安装 Go 1.21+ (Nuclei v3依赖)
+# ============================================
+ARG GO_VERSION=1.21.5
+RUN wget -q https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz && \
+    rm go${GO_VERSION}.linux-amd64.tar.gz
+
+ENV PATH="/usr/local/go/bin:/root/go/bin:${PATH}"
+ENV GOPATH="/root/go"
+ENV GOPROXY="https://goproxy.cn,direct"
+ENV GO111MODULE=on
+
+# ============================================
+# 🔥 Python环境 + PIP清华源 + 优化安装
+# ============================================
+COPY backend/requirements.txt .
+
+# 配置pip并分批安装依赖（提升缓存命中率）
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn && \
+    pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# 🔥 第一批：核心框架（最不常变）
+RUN pip install --no-cache-dir \
+    fastapi==0.115.5 \
+    uvicorn[standard]==0.32.1 \
+    python-multipart==0.0.20 \
+    pydantic==2.10.3 \
+    pydantic-settings==2.1.0 \
+    websockets==14.1 \
+    python-dotenv==1.0.0
+
+# 🔥 第二批：数据库
+RUN pip install --no-cache-dir \
+    sqlalchemy==2.0.25 \
+    aiosqlite==0.20.0 \
+    alembic==1.13.1
+
+# 🔥 第三批：LLM和工具（可能经常变）
+RUN pip install --no-cache-dir \
+    openai==1.58.1 \
+    httpx==0.27.2 \
+    tiktoken==0.8.0 \
+    requests==2.32.5 \
+    beautifulsoup4==4.12.2 \
+    lxml==5.4.0 \
+    tqdm==4.67.1 \
+    PyYAML==6.0.2 \
+    loguru==0.7.2 \
+    docker==7.1.0 \
+    tenacity==9.1.2
+
+# 🔥 第四批：LangChain（依赖最复杂）
+RUN pip install --no-cache-dir \
+    langchain-core==0.3.64 \
+    langchain-text-splitters==0.3.2 && \
+    pip install --no-cache-dir \
+    langchain==0.3.18 \
+    langchain-openai==0.3.35 \
+    langchain-community==0.3.17
+
+# 🔥 第五批：渗透测试工具（最大但相对独立）
+RUN pip install --no-cache-dir \
+    dataclasses-json==0.6.7 \
+    fenjing==0.8.1 \
+    pwntools==4.15.0
+
+# ============================================
+# 🔥 安装渗透测试工具
+# ============================================
+# Nuclei v3
+RUN echo "📦 Installing Nuclei..." && \
+    go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
+    nuclei -version && \
+    echo "✅ Nuclei installed"
+
+# 创建工具目录
+RUN mkdir -p /app/tools && chmod -R 755 /app/tools
+
+# Nuclei模板（11000+）- 直接下载（失败则跳过）
+RUN echo "📥 Downloading Nuclei templates..." && \
+    (git clone --depth 1 https://gh-proxy.org/https://github.com/projectdiscovery/nuclei-templates.git /app/tools/nuclei-templates || \
+     echo "⚠️ Download failed, will use nuclei -update-templates at runtime") && \
+    if [ -d "/app/tools/nuclei-templates" ]; then \
+        TEMPLATE_COUNT=$(find /app/tools/nuclei-templates -name '*.yaml' 2>/dev/null | wc -l); \
+        echo "✅ Nuclei templates: ${TEMPLATE_COUNT} templates"; \
+        chmod -R 755 /app/tools/nuclei-templates; \
+    fi
+
+# SQLMap
+RUN echo "📥 Cloning SQLMap..." && \
+    git clone --depth 1 https://gh-proxy.org/https://github.com/sqlmapproject/sqlmap.git /app/tools/sqlmap && \
+    chmod +x /app/tools/sqlmap/sqlmap.py && \
+    echo "✅ SQLMap installed"
+
+# Dirsearch（目录扫描）
+RUN echo "📥 Cloning Dirsearch..." && \
+    git clone --depth 1 https://gh-proxy.org/https://github.com/maurosoria/dirsearch.git /app/tools/dirsearch && \
+    chmod +x /app/tools/dirsearch/dirsearch.py && \
+    pip install --no-cache-dir -r /app/tools/dirsearch/requirements.txt && \
+    echo "✅ Dirsearch installed"
+
+# ============================================
+# 复制项目代码
+# ============================================
+COPY . .
+
+# 创建必要目录
+RUN mkdir -p logs cache reports knowledge/documents payloads temp data
+
+# 设置权限
+RUN chmod -R 777 /app
+
+# ============================================
+# 环境变量
+# ============================================
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV NUCLEI_TEMPLATES_PATH=/app/tools/nuclei-templates
+
+# ============================================
+# 验证工具安装
+# ============================================
+RUN echo "" && \
+    echo "🎯 ====================================" && \
+    echo "   H-Pentest 2.0 Tools Verification" && \
+    echo "=====================================" && \
+    echo "🔧 Nuclei: $(nuclei -version 2>&1 | head -n1)" && \
+    echo "🔧 Go: $(go version)" && \
+    echo "🔧 Python: $(python --version)" && \
+    echo "📁 Nuclei Templates: $(find /app/tools/nuclei-templates -name '*.yaml' | wc -l) files" && \
+    echo "📁 SQLMap: $(ls -la /app/tools/sqlmap/sqlmap.py 2>&1 | awk '{print $5}') bytes" && \
+    echo "📁 Dirsearch: $(ls -la /app/tools/dirsearch/dirsearch.py 2>&1 | awk '{print $5}') bytes" && \
+    echo "=====================================" && \
+    echo "✅ All tools ready!" && \
+    echo ""
+
+EXPOSE 8000
+
+# 创建必要的目录
+RUN mkdir -p /app/data /app/logs /app/reports /app/knowledge /app/cache && \
+    chmod -R 777 /app/data /app/logs /app/reports /app/cache
+
+# 设置工作目录到backend（重要！）
+WORKDIR /app/backend
+
+# 启动命令
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

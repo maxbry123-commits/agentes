@@ -1,0 +1,30 @@
+[package]
+name = "opendev-runtime"
+description = "Runtime services: approval rules, cost tracking, interrupt token, plan management, error handling"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+opendev-models = { workspace = true }
+opendev-config = { workspace = true }
+opendev-history = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }
+dirs-next = "2"
+fd-lock = "4"
+notify = "8"
+notify-debouncer-mini = "0.7"
+rand = "0.8"
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "macros"] }

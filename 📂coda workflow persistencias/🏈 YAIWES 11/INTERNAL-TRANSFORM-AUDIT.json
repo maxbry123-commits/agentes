@@ -1,0 +1,9 @@
+{
+  "schema": "yaiwes.internal.transform/v1",
+  "component": "🏈 11-LLM-CTF-Solver",
+  "mode": "TRANSFORM",
+  "source_files": 138,
+  "candidates": 0,
+  "changed": 0,
+  "findings": []
+}

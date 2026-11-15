@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 1046444,
+  "bundle_sha256": "da02efedca73afed04fd8804ec37b041b10681a4d2ca17d3f15a502bab5c91e2",
+  "extracted_tree": {
+    "bytes": 2400640,
+    "files": 357,
+    "sha256": "745ebea49fb4931ed59799d8b9599a93bb3d9943463bacc89734be9574787158"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 1046444,
+      "name": "08-Redcell.bundle.zip.part-0001",
+      "sha256": "da02efedca73afed04fd8804ec37b041b10681a4d2ca17d3f15a502bab5c91e2"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "08-Redcell",
+  "source_bytes": 2400640,
+  "source_commit": "27b118b4e7f2171d7f70710720b9e5a07e978b8a",
+  "source_files": 357,
+  "source_ref": "HEAD",
+  "source_repo": "martian56/redcell",
+  "source_tree": {
+    "bytes": 2400640,
+    "files": 357,
+    "sha256": "745ebea49fb4931ed59799d8b9599a93bb3d9943463bacc89734be9574787158"
+  }
+}

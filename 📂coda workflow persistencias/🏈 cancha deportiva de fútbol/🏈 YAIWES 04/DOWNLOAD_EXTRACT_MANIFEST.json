@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 245002,
+  "bundle_sha256": "713dd595a279e854354875a03887a94b87289033a69c1fed41a8c8a0968d43a3",
+  "extracted_tree": {
+    "bytes": 916202,
+    "files": 93,
+    "sha256": "abbe0288a25989adfd5a779c9b72a020f5eb5eb501716fb30d68fd84842ec4f2"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 245002,
+      "name": "04-AI-Pentest.bundle.zip.part-0001",
+      "sha256": "713dd595a279e854354875a03887a94b87289033a69c1fed41a8c8a0968d43a3"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "04-AI-Pentest",
+  "source_bytes": 916202,
+  "source_commit": "de242f062a79afc2c61e3aaf2a877a3ceacc1644",
+  "source_files": 93,
+  "source_ref": "HEAD",
+  "source_repo": "yuanweipeifang/AI_Pentest",
+  "source_tree": {
+    "bytes": 916202,
+    "files": 93,
+    "sha256": "abbe0288a25989adfd5a779c9b72a020f5eb5eb501716fb30d68fd84842ec4f2"
+  }
+}

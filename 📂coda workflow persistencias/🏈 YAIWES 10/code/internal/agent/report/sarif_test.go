@@ -1,0 +1,99 @@
+package report
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/pipeline"
+	"github.com/google/uuid"
+)
+
+func buildTestReport() *pipeline.PentestReport {
+	return &pipeline.PentestReport{
+		ID:     uuid.New(),
+		Target: "https://example.com",
+		Findings: []pipeline.ReportFinding{
+			{
+				ID: uuid.New(), Title: "SQL Injection in /search", Severity: pipeline.SeverityCritical,
+				CVSSScore: 9.8, Description: "UNION-based SQLi",
+				AffectedComponents: []string{"https://example.com/search"},
+				References:         []string{"https://cwe.mitre.org/data/definitions/89.html"},
+				Remediation:        "Parameterize queries.",
+			},
+			{
+				ID: uuid.New(), Title: "X-Frame-Options missing", Severity: pipeline.SeverityLow,
+				CVSSScore: 2.4, Description: "Header absent",
+				AffectedComponents: []string{"https://example.com/"},
+			},
+		},
+	}
+}
+
+func TestToSARIF_ProducesValidJSON(t *testing.T) {
+	r := NewRenderer()
+	out, err := r.ToSARIF(buildTestReport())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if doc["version"] != "2.1.0" {
+		t.Errorf("version: %v", doc["version"])
+	}
+}
+
+func TestToSARIF_SeverityLevelMapping(t *testing.T) {
+	r := NewRenderer()
+	out, _ := r.ToSARIF(buildTestReport())
+	body := string(out)
+	// critical must map to "error"
+	if !strings.Contains(body, `"level": "error"`) {
+		t.Error("critical severity should map to SARIF level=error")
+	}
+	// low must map to "note"
+	if !strings.Contains(body, `"level": "note"`) {
+		t.Error("low severity should map to SARIF level=note")
+	}
+}
+
+func TestToSARIF_RuleIDSafe(t *testing.T) {
+	r := NewRenderer()
+	out, _ := r.ToSARIF(&pipeline.PentestReport{
+		Findings: []pipeline.ReportFinding{{
+			Title:              "Critical -- SQL/SSRF & <Dangerous> payload",
+			Severity:           pipeline.SeverityHigh,
+			AffectedComponents: []string{"x"},
+		}},
+	})
+	body := string(out)
+	// Rule id must be ascii lowercase + hyphens + "/" namespace.
+	if !strings.Contains(body, `"id": "pentestswarm/critical-sql-ssrf-dangerous-payload"`) {
+		t.Fatalf("rule id not sanitized correctly in:\n%s", body)
+	}
+}
+
+func TestToSARIF_EmptyReport(t *testing.T) {
+	r := NewRenderer()
+	out, err := r.ToSARIF(&pipeline.PentestReport{ID: uuid.New()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	_ = json.Unmarshal(out, &doc)
+	runs, _ := doc["runs"].([]any)
+	if len(runs) != 1 {
+		t.Fatalf("want 1 run, got %d", len(runs))
+	}
+}
+
+func TestToSARIF_SecuritySeverityProp(t *testing.T) {
+	r := NewRenderer()
+	out, _ := r.ToSARIF(buildTestReport())
+	// GitHub Code Scanning ranks alerts by this float string.
+	if !strings.Contains(string(out), `"security-severity": "9.8"`) {
+		t.Error("security-severity property missing or wrong format")
+	}
+}

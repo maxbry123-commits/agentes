@@ -1,0 +1,31 @@
+{
+  "schema": "yaiwes.meta4-copy-evidence/v1",
+  "motor_path": "➡️📂motores de descarga extracción copiado movimiento archivos agentes/➡️📂motor de copiar archivos/motor_3_copy_batches.py",
+  "motor_blob": "3689924361ce4a1a9fde4ae2b6f6009c37a6042d",
+  "motor_modified": false,
+  "destination": "➡️📂 wordflow loop code Yaiwes/wordflow_loop/agent_sources",
+  "verified_total": 4,
+  "results": [
+    {
+      "id": "meta_muse_code_sdk",
+      "files": 224,
+      "manifest_match": true
+    },
+    {
+      "id": "muse_glimmer",
+      "files": 42,
+      "manifest_match": true
+    },
+    {
+      "id": "metacua",
+      "files": 76,
+      "manifest_match": true
+    },
+    {
+      "id": "cua_mcp",
+      "files": 9,
+      "manifest_match": true
+    }
+  ],
+  "verdict": "VERIFIED_4_OF_4"
+}

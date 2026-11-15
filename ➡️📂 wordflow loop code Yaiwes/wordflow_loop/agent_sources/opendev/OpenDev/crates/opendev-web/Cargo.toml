@@ -1,0 +1,61 @@
+[package]
+name = "opendev-web"
+description = "Web backend (axum + WebSocket) for OpenDev AI coding agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["ws"] }
+axum-extra = { version = "0.10", features = ["cookie"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "fs"] }
+
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+strum = { workspace = true }
+
+# Internal crates
+opendev-models = { workspace = true }
+opendev-config = { workspace = true }
+opendev-history = { workspace = true }
+opendev-http = { workspace = true }
+opendev-mcp = { workspace = true }
+
+# Futures for WebSocket streams
+futures = "0.3"
+
+# Async trait support
+async-trait = "0.1"
+
+# Cookie time support
+time = "0.3"
+
+# Password hashing
+argon2 = { version = "0.5", features = ["std"] }
+password-hash = { version = "0.5", features = ["std"] }
+rand_core = { version = "0.6", features = ["std"] }
+
+# Token signing (HMAC-SHA256)
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+
+# Embedded SPA frontend assets (built web-ui bundle in static/)
+rust-embed = "8"
+mime_guess = "2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+tempfile = { workspace = true }
+axum = { version = "0.8", features = ["ws"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

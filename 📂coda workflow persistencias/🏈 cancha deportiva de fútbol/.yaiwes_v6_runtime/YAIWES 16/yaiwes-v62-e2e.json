@@ -1,0 +1,44 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 16",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_source": "src/orchestrator.py",
+  "workflow_symbol": "Orchestrator.run",
+  "language": "python",
+  "source_decision": "RESTORE_BENIGN",
+  "source_sha256": "4d315831c7c0d59df72fbb548b78af0a9128efd0206de869af957fda9acb306f",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  },
+  "workflow_status": "SAFE_BOUNDARY_EXCEPTION",
+  "real_internal_workflow": true,
+  "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+  "evidence": {
+    "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+    "entered": true,
+    "status": "SAFE_BOUNDARY_EXCEPTION",
+    "executed_lines": [
+      109,
+      110,
+      111,
+      113,
+      115,
+      116,
+      117,
+      118,
+      119,
+      120,
+      121,
+      125,
+      128,
+      130,
+      131
+    ],
+    "executed_line_count": 15,
+    "safe_boundary": "TypeError: '>=' not supported between instances of '_Null' and '_Null'"
+  },
+  "checkpoint": "REAL_INTERNAL_WORKFLOW_EXECUTED",
+  "handoff": "YAIWES 17"
+}

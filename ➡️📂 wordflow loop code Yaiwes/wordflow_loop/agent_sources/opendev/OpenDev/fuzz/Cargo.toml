@@ -1,0 +1,25 @@
+[package]
+name = "opendev-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+regex = "1"
+
+# Prevent this from interfering with workspace members.
+[workspace]
+
+[[bin]]
+name = "fuzz_bash_dangerous"
+path = "fuzz_targets/fuzz_bash_dangerous.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_patch_hunk"
+path = "fuzz_targets/fuzz_patch_hunk.rs"
+doc = false

@@ -1,0 +1,335 @@
+package llm
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+)
+
+// OllamaProvider implements Provider using Ollama's REST API.
+type OllamaProvider struct {
+	endpoint      string
+	model         string
+	contextWindow int
+	httpClient    *http.Client
+}
+
+// OllamaProviderConfig holds configuration for creating an OllamaProvider.
+type OllamaProviderConfig struct {
+	Endpoint      string
+	Model         string
+	ContextWindow int
+}
+
+// NewOllamaProvider creates a new Ollama provider.
+func NewOllamaProvider(cfg OllamaProviderConfig) *OllamaProvider {
+	if cfg.Endpoint == "" {
+		cfg.Endpoint = "http://localhost:11434"
+	}
+	if cfg.ContextWindow <= 0 {
+		cfg.ContextWindow = 32000
+	}
+
+	return &OllamaProvider{
+		endpoint:      cfg.Endpoint,
+		model:         cfg.Model,
+		contextWindow: cfg.ContextWindow,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Minute, // long timeout for LLM inference
+		},
+	}
+}
+
+// ollamaChatRequest is the request body for POST /api/chat.
+type ollamaChatRequest struct {
+	Model    string              `json:"model"`
+	Messages []ollamaChatMessage `json:"messages"`
+	Stream   bool                `json:"stream"`
+	Options  ollamaOptions       `json:"options,omitempty"`
+	Tools    []ollamaTool        `json:"tools,omitempty"`
+	Think    bool                `json:"think"`
+}
+
+type ollamaChatMessage struct {
+	Role      string           `json:"role"`
+	Content   string           `json:"content"`
+	ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
+}
+
+type ollamaOptions struct {
+	Temperature float64 `json:"temperature,omitempty"`
+	NumPredict  int     `json:"num_predict,omitempty"`
+	// NumCtx sets the model's context window. Without it, Ollama silently
+	// defaults to 4096 tokens regardless of the configured context_window,
+	// which truncates large recon tool outputs and collapses analysis to
+	// an empty surface. Wire it from the provider's contextWindow.
+	NumCtx int `json:"num_ctx,omitempty"`
+}
+
+type ollamaTool struct {
+	Type     string             `json:"type"`
+	Function ollamaToolFunction `json:"function"`
+}
+
+type ollamaToolFunction struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Parameters  json.RawMessage `json:"parameters"`
+}
+
+type ollamaToolCall struct {
+	Function ollamaToolCallFunction `json:"function"`
+}
+
+type ollamaToolCallFunction struct {
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
+// ollamaChatResponse is the response body from POST /api/chat.
+type ollamaChatResponse struct {
+	Model           string            `json:"model"`
+	Message         ollamaChatMessage `json:"message"`
+	Done            bool              `json:"done"`
+	DoneReason      string            `json:"done_reason"`
+	TotalDuration   int64             `json:"total_duration"`
+	PromptEvalCount int               `json:"prompt_eval_count"`
+	EvalCount       int               `json:"eval_count"`
+}
+
+func (o *OllamaProvider) Complete(ctx context.Context, req CompletionRequest) (*CompletionResponse, error) {
+	body := o.buildRequest(req, false)
+
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling ollama request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", o.endpoint+"/api/chat", bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("creating ollama request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := o.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("ollama request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var ollamaResp ollamaChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
+		return nil, fmt.Errorf("decoding ollama response: %w", err)
+	}
+
+	return o.parseResponse(ollamaResp), nil
+}
+
+func (o *OllamaProvider) Stream(ctx context.Context, req CompletionRequest) (<-chan StreamChunk, error) {
+	body := o.buildRequest(req, true)
+
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling ollama request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", o.endpoint+"/api/chat", bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("creating ollama request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := o.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("ollama stream request failed: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
+	}
+
+	ch := make(chan StreamChunk, 100)
+
+	go func() {
+		defer close(ch)
+		defer resp.Body.Close()
+
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			if len(line) == 0 {
+				continue
+			}
+
+			var chunk ollamaChatResponse
+			if err := json.Unmarshal(line, &chunk); err != nil {
+				continue
+			}
+
+			if chunk.Message.Content != "" {
+				ch <- StreamChunk{Delta: chunk.Message.Content}
+			}
+
+			if chunk.Done {
+				ch <- StreamChunk{Done: true}
+				return
+			}
+		}
+	}()
+
+	return ch, nil
+}
+
+func (o *OllamaProvider) HealthCheck(ctx context.Context) error {
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", o.endpoint+"/api/tags", nil)
+	if err != nil {
+		return fmt.Errorf("creating health check request: %w", err)
+	}
+
+	resp, err := o.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("ollama is not reachable at %s: %w", o.endpoint, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("ollama returned status %d — is it running?", resp.StatusCode)
+	}
+
+	// Verify our model is available
+	var tagsResp struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tagsResp); err != nil {
+		return fmt.Errorf("parsing ollama tags response: %w", err)
+	}
+
+	for _, m := range tagsResp.Models {
+		if m.Name == o.model || m.Name == o.model+":latest" {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("model %q not found in Ollama — run: ollama pull %s", o.model, o.model)
+}
+
+func (o *OllamaProvider) ModelName() string {
+	return o.model
+}
+
+func (o *OllamaProvider) ContextWindow() int {
+	return o.contextWindow
+}
+
+func (o *OllamaProvider) SupportsToolUse() bool {
+	// Ollama supports tool use for some models (Llama 3.1+, Mistral, etc.)
+	return true
+}
+
+// PullModel downloads a model from the Ollama registry.
+func (o *OllamaProvider) PullModel(ctx context.Context, name string) error {
+	body, _ := json.Marshal(map[string]any{
+		"name":   name,
+		"stream": false,
+	})
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", o.endpoint+"/api/pull", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("creating pull request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := o.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("pulling model %s: %w", name, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("pull failed with status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+func (o *OllamaProvider) buildRequest(req CompletionRequest, stream bool) ollamaChatRequest {
+	var messages []ollamaChatMessage
+
+	// Add system prompt as first message
+	if req.SystemPrompt != "" {
+		messages = append(messages, ollamaChatMessage{
+			Role:    "system",
+			Content: req.SystemPrompt,
+		})
+	}
+
+	for _, msg := range req.Messages {
+		messages = append(messages, ollamaChatMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		})
+	}
+
+	r := ollamaChatRequest{
+		Model:    o.model,
+		Messages: messages,
+		Stream:   stream,
+		Options: ollamaOptions{
+			Temperature: req.Temperature,
+			NumPredict:  req.MaxTokens,
+			NumCtx:      o.contextWindow,
+		},
+		Think: false,
+	}
+
+	// Convert tools
+	for _, t := range req.Tools {
+		r.Tools = append(r.Tools, ollamaTool{
+			Type: "function",
+			Function: ollamaToolFunction{
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.Parameters,
+			},
+		})
+	}
+
+	return r
+}
+
+func (o *OllamaProvider) parseResponse(resp ollamaChatResponse) *CompletionResponse {
+	result := &CompletionResponse{
+		Content:    resp.Message.Content,
+		StopReason: resp.DoneReason,
+		Usage: Usage{
+			InputTokens:  resp.PromptEvalCount,
+			OutputTokens: resp.EvalCount,
+		},
+	}
+
+	// Parse tool calls if present
+	for _, tc := range resp.Message.ToolCalls {
+		argsJSON, _ := json.Marshal(tc.Function.Arguments)
+		result.ToolCalls = append(result.ToolCalls, ToolCall{
+			ID:        fmt.Sprintf("tc_%s_%d", tc.Function.Name, time.Now().UnixNano()),
+			Name:      tc.Function.Name,
+			Arguments: string(argsJSON),
+		})
+	}
+
+	return result
+}

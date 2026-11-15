@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 414635,
+  "bundle_sha256": "58a0147a616cc2a21d5d182254bfbf179ae98c9537765b87c4673abf17c1afd5",
+  "extracted_tree": {
+    "bytes": 1246899,
+    "files": 154,
+    "sha256": "f493ecdb3cfbdd34f81e90a179cb931b5345137d77eed8cdabaeb861c5580a1a"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 414635,
+      "name": "12-PentestGPT.bundle.zip.part-0001",
+      "sha256": "58a0147a616cc2a21d5d182254bfbf179ae98c9537765b87c4673abf17c1afd5"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "12-PentestGPT",
+  "source_bytes": 1246899,
+  "source_commit": "e8b1bb77d1ac00329675cec3b060aba971ec1ac8",
+  "source_files": 154,
+  "source_ref": "HEAD",
+  "source_repo": "GreyDGL/PentestGPT",
+  "source_tree": {
+    "bytes": 1246899,
+    "files": 154,
+    "sha256": "f493ecdb3cfbdd34f81e90a179cb931b5345137d77eed8cdabaeb861c5580a1a"
+  }
+}

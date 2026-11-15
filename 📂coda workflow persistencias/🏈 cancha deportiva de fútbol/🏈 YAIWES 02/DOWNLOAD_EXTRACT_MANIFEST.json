@@ -1,0 +1,38 @@
+{
+  "bundle_bytes": 16246666,
+  "bundle_sha256": "a99315374d493ebcc4e5e6466def21ba6a4aa3e9793453ad38b6535ef77f03c7",
+  "extracted_tree": {
+    "bytes": 28224044,
+    "files": 1048,
+    "sha256": "bf55ae3fb9879cb1106461b870648fc216b2612f1103622e10550620e078565b"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 12582912,
+      "name": "02-CyberStrikeAI.bundle.zip.part-0001",
+      "sha256": "5abf00db919cca8328be56a6ec6e846d646f789512e35b9de40ea288076dbe24"
+    },
+    {
+      "bytes": 3663754,
+      "name": "02-CyberStrikeAI.bundle.zip.part-0002",
+      "sha256": "f4303a30e280c2708160b5f59c808b2302610c5f09598cbb0176e4b2041ef819"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "02-CyberStrikeAI",
+  "source_bytes": 28224044,
+  "source_commit": "ac101d8476d700f7766107894727a9f8234d1867",
+  "source_files": 1048,
+  "source_ref": "HEAD",
+  "source_repo": "AIPentest/CyberStrikeAI",
+  "source_tree": {
+    "bytes": 28224044,
+    "files": 1048,
+    "sha256": "bf55ae3fb9879cb1106461b870648fc216b2612f1103622e10550620e078565b"
+  }
+}

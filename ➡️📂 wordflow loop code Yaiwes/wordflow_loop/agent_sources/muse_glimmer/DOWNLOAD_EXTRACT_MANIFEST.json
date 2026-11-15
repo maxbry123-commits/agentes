@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 5805775,
+  "bundle_sha256": "08bd2c349bc99814e6317548bcb7a76409da1ac62356c6fcf89fc7a4729f7477",
+  "extracted_tree": {
+    "bytes": 6119167,
+    "files": 40,
+    "sha256": "750ea29d02559c4660cb1de17df786b38113f1d2a7bcd9eda76d1d1407bdd615"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 5805775,
+      "name": "Meta-Muse-Glimmer-Agent-2026.bundle.zip.part-0001",
+      "sha256": "08bd2c349bc99814e6317548bcb7a76409da1ac62356c6fcf89fc7a4729f7477"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "Meta-Muse-Glimmer-Agent-2026",
+  "source_bytes": 6119167,
+  "source_commit": "499ad7422c2175cf47dbad5df37c4c8f6c11f924",
+  "source_files": 40,
+  "source_ref": "499ad7422c2175cf47dbad5df37c4c8f6c11f924",
+  "source_repo": "meta-models/meta-oss-cookbook",
+  "source_tree": {
+    "bytes": 6119167,
+    "files": 40,
+    "sha256": "750ea29d02559c4660cb1de17df786b38113f1d2a7bcd9eda76d1d1407bdd615"
+  }
+}

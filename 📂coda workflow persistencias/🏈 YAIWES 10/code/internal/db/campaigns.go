@@ -1,0 +1,201 @@
+package db
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/pipeline"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// CampaignStore persists campaigns to PostgreSQL.
+type CampaignStore struct {
+	pool *pgxpool.Pool
+}
+
+// NewCampaignStore creates a campaign store.
+func NewCampaignStore(pool *pgxpool.Pool) *CampaignStore {
+	return &CampaignStore{pool: pool}
+}
+
+// Create inserts a new campaign.
+func (s *CampaignStore) Create(ctx context.Context, c *pipeline.Campaign) error {
+	scopeJSON, _ := json.Marshal(c.Scope)
+
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO campaigns (id, name, target, objective, status, mode, scope, auth_token, provider, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		c.ID, c.Name, c.Target, c.Objective, c.Status, c.Mode,
+		scopeJSON, c.AuthToken, c.Provider, c.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("inserting campaign: %w", err)
+	}
+	return nil
+}
+
+// Get retrieves a campaign by ID.
+func (s *CampaignStore) Get(ctx context.Context, id uuid.UUID) (*pipeline.Campaign, error) {
+	var c pipeline.Campaign
+	var scopeJSON []byte
+
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, name, target, objective, status, mode, scope, provider, created_at, started_at, completed_at
+		 FROM campaigns WHERE id = $1`, id,
+	).Scan(&c.ID, &c.Name, &c.Target, &c.Objective, &c.Status, &c.Mode,
+		&scopeJSON, &c.Provider, &c.CreatedAt, &c.StartedAt, &c.CompletedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting campaign %s: %w", id, err)
+	}
+
+	json.Unmarshal(scopeJSON, &c.Scope)
+	return &c, nil
+}
+
+// UpdateStatus updates a campaign's status and timestamps.
+func (s *CampaignStore) UpdateStatus(ctx context.Context, id uuid.UUID, status pipeline.CampaignStatus) error {
+	query := `UPDATE campaigns SET status = $1 WHERE id = $2`
+	args := []any{status, id}
+
+	// Set timestamps based on status
+	switch status {
+	case pipeline.StatusRecon:
+		query = `UPDATE campaigns SET status = $1, started_at = $3 WHERE id = $2`
+		now := time.Now()
+		args = append(args, now)
+	case pipeline.StatusComplete, pipeline.StatusFailed, pipeline.StatusAborted:
+		query = `UPDATE campaigns SET status = $1, completed_at = $3 WHERE id = $2`
+		now := time.Now()
+		args = append(args, now)
+	}
+
+	_, err := s.pool.Exec(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("updating campaign status: %w", err)
+	}
+	return nil
+}
+
+// List returns all campaigns ordered by creation date.
+func (s *CampaignStore) List(ctx context.Context, limit, offset int) ([]pipeline.Campaign, int, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	var total int
+	s.pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaigns").Scan(&total)
+
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, name, target, objective, status, mode, provider, created_at, started_at, completed_at
+		 FROM campaigns ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("listing campaigns: %w", err)
+	}
+	defer rows.Close()
+
+	var campaigns []pipeline.Campaign
+	for rows.Next() {
+		var c pipeline.Campaign
+		if err := rows.Scan(&c.ID, &c.Name, &c.Target, &c.Objective, &c.Status, &c.Mode,
+			&c.Provider, &c.CreatedAt, &c.StartedAt, &c.CompletedAt); err != nil {
+			continue
+		}
+		campaigns = append(campaigns, c)
+	}
+
+	return campaigns, total, nil
+}
+
+// AppendEvent adds an event to the campaign event log.
+func (s *CampaignStore) AppendEvent(ctx context.Context, event pipeline.CampaignEvent) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO campaign_events (id, campaign_id, timestamp, event_type, agent_name, detail, data)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		uuid.New(), event.CampaignID, event.Timestamp, event.EventType,
+		event.AgentName, event.Detail, event.Data,
+	)
+	if err != nil {
+		return fmt.Errorf("appending event: %w", err)
+	}
+	return nil
+}
+
+// GetEvents returns events for a campaign.
+func (s *CampaignStore) GetEvents(ctx context.Context, campaignID uuid.UUID, limit int) ([]pipeline.CampaignEvent, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, campaign_id, timestamp, event_type, agent_name, detail, data
+		 FROM campaign_events WHERE campaign_id = $1 ORDER BY timestamp DESC LIMIT $2`,
+		campaignID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []pipeline.CampaignEvent
+	for rows.Next() {
+		var e pipeline.CampaignEvent
+		if err := rows.Scan(&e.ID, &e.CampaignID, &e.Timestamp, &e.EventType,
+			&e.AgentName, &e.Detail, &e.Data); err != nil {
+			continue
+		}
+		events = append(events, e)
+	}
+
+	return events, nil
+}
+
+// InsertFinding saves a classified finding.
+func (s *CampaignStore) InsertFinding(ctx context.Context, f pipeline.ClassifiedFinding) error {
+	evidenceJSON, _ := json.Marshal(f.Evidence)
+
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO classified_findings (id, raw_finding_id, campaign_id, title, description,
+		 cve_ids, cvss_score, cvss_vector, severity, attack_category, confidence,
+		 false_positive_probability, evidence, target, classified_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+		f.ID, f.RawFindingID, f.CampaignID, f.Title, f.Description,
+		f.CVEIDs, f.CVSSScore, f.CVSSVector, f.Severity, f.AttackCategory, f.Confidence,
+		f.FalsePositiveProbability, evidenceJSON, f.Target, f.ClassifiedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("inserting finding: %w", err)
+	}
+	return nil
+}
+
+// GetFindings returns findings for a campaign.
+func (s *CampaignStore) GetFindings(ctx context.Context, campaignID uuid.UUID) ([]pipeline.ClassifiedFinding, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, campaign_id, title, description, cve_ids, cvss_score, cvss_vector,
+		 severity, attack_category, confidence, false_positive_probability, target, classified_at
+		 FROM classified_findings WHERE campaign_id = $1 ORDER BY cvss_score DESC`,
+		campaignID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting findings: %w", err)
+	}
+	defer rows.Close()
+
+	var findings []pipeline.ClassifiedFinding
+	for rows.Next() {
+		var f pipeline.ClassifiedFinding
+		if err := rows.Scan(&f.ID, &f.CampaignID, &f.Title, &f.Description,
+			&f.CVEIDs, &f.CVSSScore, &f.CVSSVector, &f.Severity, &f.AttackCategory,
+			&f.Confidence, &f.FalsePositiveProbability, &f.Target, &f.ClassifiedAt); err != nil {
+			continue
+		}
+		findings = append(findings, f)
+	}
+
+	return findings, nil
+}

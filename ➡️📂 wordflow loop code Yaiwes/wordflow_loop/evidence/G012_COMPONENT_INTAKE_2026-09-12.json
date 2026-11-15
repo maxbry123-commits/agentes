@@ -1,0 +1,61 @@
+{
+  "schema": "yaiwes.evidence/v1",
+  "gap": "G-012",
+  "owner": "ASTRA_GPT_LOOP",
+  "base_snapshot": "e604f11af284d2c97097414341d0d087661aeade",
+  "result": "IMPLEMENTED_AND_VERIFIED_REAL_LOCAL",
+  "contract": "yaiwes.component_intake/v2",
+  "changes": {
+    "schema": "runtime/schemas/component-intake-v2.schema.json",
+    "module": "runtime/src/core/component_intake.py",
+    "tests": "runtime/tests/test_component_intake.py"
+  },
+  "git_blob_precommit": {
+    "schema": "74f6d4a4b5a179a076405ac16545aba6b4c7ff3b",
+    "module": "135c47abf199d4d9b25075068ca9567575b071d1",
+    "tests": "020e81b36239a8bc02a399cc81cbbc599b1d5848"
+  },
+  "canonical_motor_locks": {
+    "download_extract_motor": "84d566e2ee4e98e42eb3a864026d067d48caabd9",
+    "download_extract_engine": "91e6e4486692eab314be5c7130d8310d3c855397",
+    "extract_only_motor": "a52d5dc0e6ff26f75d753b848dcc1a40c5dd4500"
+  },
+  "real_execution": {
+    "download_source": "https://github.com/octocat/Hello-World",
+    "pinned_source_commit": "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d",
+    "motor_exit_code": 0,
+    "motor_verdict": "VERIFIED_CLOSED",
+    "source_commit_readback": "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d",
+    "extraction_verified": true,
+    "no_lfs": true,
+    "extracted_tree": {
+      "bytes": 13,
+      "files": 1,
+      "sha256": "c5b7244f8a80dc42253d91a4898f0fe1918967367b2f2b998ae1b3c8dc3bd8e2"
+    },
+    "extract_only_real_execution": "PASS",
+    "adapter_and_motor_real_test": "PASS_7_OF_7"
+  },
+  "negative_gates": [
+    "unpinned source ref rejected",
+    "destination outside authorized root rejected",
+    "symlink escape rejected",
+    "archive SHA-256 mismatch rejected",
+    "queue mutation without explicit authorization rejected",
+    "incomplete motor result rejected"
+  ],
+  "verification": {
+    "python_compile": "PASS",
+    "json_parse": "PASS",
+    "git_diff_check": "PASS",
+    "pytest": "NOT_AVAILABLE_NO_MODULE_NAMED_PYTEST",
+    "external_provider_execution": "NOT_CLAIMED"
+  },
+  "constraints": {
+    "writes_outside_authorized_root": false,
+    "lfs_used": false,
+    "force_used": false,
+    "canonical_motor_modified": false,
+    "execution_auto_authorized": false
+  }
+}

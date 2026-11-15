@@ -1,0 +1,19 @@
+{
+  "title": "Evidence-guided first experiment for pedestrian_trajectory_prediction",
+  "hypothesis": "A small, controlled modification aligned with topic priorities can test whether the research direction is feasible: preserve baseline_original outputs; smoke-test every change before full training; prefer small conditioning changes over broad rewrites.",
+  "opportunity_id": "opportunity_57163acc1663",
+  "based_on_papers": [
+    "paper_8e3ea4f00612",
+    "paper_5bd0be79ab7f"
+  ],
+  "technical_strategy": "Plan a minimal intention-conditioning experiment that can be toggled from cfg/virat without changing baseline outputs. Integration points: Add optional per-agent intention/language features in VIRATDataset output. Fuse optional condition features in data_preprocess before initializer/denoiser calls. Inject condition features into LEDInitializer mean/variance/scale branches.",
+  "expected_benefit": "Produce a measurable baseline delta before larger architecture changes.",
+  "novelty_level": "low",
+  "implementation_difficulty": "medium",
+  "data_requirement": "existing data",
+  "risk": [
+    "offline literature pass may miss stronger related work",
+    "experiment should be reviewed before code changes"
+  ],
+  "recommended_priority": 1
+}

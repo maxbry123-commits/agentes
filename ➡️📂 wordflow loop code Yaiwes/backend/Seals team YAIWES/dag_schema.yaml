@@ -1,0 +1,65 @@
+schema: "seals-team.dag/v1"
+description: "El Sheriff/Validador/Sentinela como grafo, no como prompt"
+
+nodes:
+  - id: leer_tarea
+    type: DETERMINISTIC
+    action: "lee siguiente entrada de task_contract.json / inventario"
+    next: verificar_tipo
+
+  - id: verificar_tipo
+    type: DETERMINISTIC
+    branches:
+      instalar_paquete: instalar_deterministico
+      evaluar_componente: consultar_experto_cerebras
+      diseno_arquitectura: escalar_a_claude_verificador
+      gap_desconocido: investigar_comunidad
+
+  - id: instalar_deterministico
+    type: DETERMINISTIC
+    on_success: registrar_evidencia
+    on_fail: investigar_comunidad
+
+  - id: consultar_experto_cerebras
+    type: LLM
+    provider: cerebras
+    budget: HIGH_VOLUME
+    on_result: verificador_pre_salida
+
+  - id: verificador_pre_salida
+    type: LLM
+    provider: claude
+    budget: LOW_VOLUME
+    on_pass: registrar_evidencia
+    on_fail: investigar_comunidad
+
+  - id: escalar_a_claude_verificador
+    type: LLM
+    provider: claude
+    budget: LOW_VOLUME
+    on_result: registrar_evidencia
+
+  - id: investigar_comunidad
+    type: LLM
+    provider: cerebras
+    max_intentos: 20
+    on_fail: registrar_gap_y_seguir
+
+  - id: registrar_evidencia
+    type: DETERMINISTIC
+    action: "escribe path + sha256 + resultado en Crazy Wall"
+    next: siguiente_tarea
+
+  - id: registrar_gap_y_seguir
+    type: DETERMINISTIC
+    action: "escribe GAP con evidencia en Crazy Wall, no detiene el loop"
+    next: siguiente_tarea
+
+  - id: siguiente_tarea
+    type: DETERMINISTIC
+    loop_to: leer_tarea
+    on_empty_queue: activar_watchdog
+
+  - id: activar_watchdog
+    type: DETERMINISTIC
+    action: "watchdog.py escanea inventario + Crazy Wall por trabajo pendiente"

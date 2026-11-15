@@ -1,0 +1,43 @@
+[package]
+name = "opendev-cli"
+description = "Binary entry point for the OpenDev CLI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "opendev"
+path = "src/main.rs"
+
+[dependencies]
+opendev-models = { workspace = true }
+opendev-context = { workspace = true }
+opendev-config = { workspace = true }
+opendev-history = { workspace = true }
+opendev-repl = { workspace = true }
+opendev-tools-core = { workspace = true }
+opendev-web = { workspace = true }
+opendev-mcp = { workspace = true }
+opendev-http = { workspace = true }
+opendev-agents = { workspace = true }
+opendev-runtime = { workspace = true }
+opendev-tui = { workspace = true }
+opendev-tools-impl = { workspace = true }
+opendev-channels = { workspace = true }
+
+async-trait = { workspace = true }
+crossterm = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde_json = { workspace = true }
+dirs-next = { workspace = true }
+reqwest = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -1,0 +1,31 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (web-ui)
+web-ui/node_modules/
+web-ui/dist/
+
+# OpenDev local
+.opendev/
+.claude/
+CLAUDE.md
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local

@@ -1,0 +1,31 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 09",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_source": "agent/sub_agent_runner.py",
+  "workflow_symbol": "SubAgentRunner.run",
+  "language": "python",
+  "source_decision": "KEEP_UNCHANGED",
+  "source_sha256": "1af0a5ecf073990fdbec0578340a573d9c666ebf6fc8e807dd3f0bcc65034a59",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  },
+  "workflow_status": "COMPLETED",
+  "real_internal_workflow": true,
+  "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+  "evidence": {
+    "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+    "entered": true,
+    "status": "COMPLETED",
+    "executed_lines": [
+      67,
+      70
+    ],
+    "executed_line_count": 2,
+    "safe_boundary": null
+  },
+  "checkpoint": "REAL_INTERNAL_WORKFLOW_EXECUTED",
+  "handoff": "YAIWES 10"
+}

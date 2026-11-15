@@ -1,0 +1,18 @@
+{
+  "contract": "tel.workflow/v4",
+  "slug": "agent_fleet",
+  "plugin_id": "yaiwes.runtime.agent_fleet",
+  "slot": 12,
+  "status": "ACTIVE",
+  "role": "deterministic_agent_routing",
+  "source_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_adapter.py",
+  "source_proof": "3e88678073c895899ab05dac0dd1c0ecee3c817e",
+  "registry_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_registry.json",
+  "ficha_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/contracts/ficha.agent_fleet.v2.json",
+  "health_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/agent_fleet_health.json",
+  "ready_manifest_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet/AGENT_FLEET_READY_FOR_TEST.json",
+  "step3_evidence_path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence/STEP3_AGENT_FLEET_VERIFY.json",
+  "historical_step3_run_id": 34406268016,
+  "health": true,
+  "scope_root": "➡️📂 Wordflow LOOP Yaiwes/"
+}

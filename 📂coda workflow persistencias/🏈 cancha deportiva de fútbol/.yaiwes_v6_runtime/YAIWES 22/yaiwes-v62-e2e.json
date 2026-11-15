@@ -1,0 +1,34 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "component": "YAIWES 22",
+  "task_id": "yaiwes-v62-e2e",
+  "status": "RELEASED",
+  "workflow_source": "phantom/agents/state.py",
+  "workflow_symbol": "AgentState.prune_invalid_anchors",
+  "language": "python",
+  "source_decision": "RESTORE_BENIGN",
+  "source_sha256": "f9762349e3c3d115c19d3dcb3208bfbe1c597b622499e292979556b2f1e9dddc",
+  "payload": {
+    "mode": "benign-research-persistence",
+    "contract": "active-source-sha-only"
+  },
+  "workflow_status": "COMPLETED",
+  "real_internal_workflow": true,
+  "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+  "evidence": {
+    "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+    "entered": true,
+    "status": "COMPLETED",
+    "executed_lines": [
+      218,
+      219,
+      220,
+      226,
+      227
+    ],
+    "executed_line_count": 5,
+    "safe_boundary": null
+  },
+  "checkpoint": "REAL_INTERNAL_WORKFLOW_EXECUTED",
+  "handoff": "YAIWES 23"
+}

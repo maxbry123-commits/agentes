@@ -1,0 +1,82 @@
+{
+  "app": {
+    "name": "H-Pentest 2.0",
+    "version": "2.0.0",
+    "debug": false
+  },
+  "database": {
+    "url": "sqlite+aiosqlite:////app/data/h-pentest.db"
+  },
+  "openai": {
+    "api_key": "your-api-key-here",
+    "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+    "model": "GLM-4.6",
+    "model_mini": "GLM-4.6",
+    "temperature": 0.7,
+    "max_tokens": 8192
+  },
+  "llm": {
+    "worker": {
+      "model": null,
+      "temperature": null,
+      "max_tokens": null
+    },
+    "meta": {
+      "model": null,
+      "temperature": 0.3,
+      "max_tokens": 8192
+    },
+    "strategic": {
+      "model": null,
+      "temperature": 0.5,
+      "max_tokens": 8192
+    },
+    "context": {
+      "model": null
+    }
+  },
+  "dashscope": {
+    "api_key": "your-api-key-here",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  },
+  "embedding": {
+    "model": "text-embedding-v3",
+    "api_key": "your-api-key-here",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  },
+  "rerank": {
+    "model": "gte-rerank",
+    "api_key": "your-api-key-here",
+    "base_url": "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"
+  },
+  "process": {
+    "max_concurrent_tasks": 3,
+    "task_timeout": 3600
+  },
+  "websocket": {
+    "heartbeat_interval": 30,
+    "message_queue_size": 1000
+  },
+  "kali": {
+    "image": "kalilinux/kali-rolling",
+    "tools_path": "/usr/share/kali-tools"
+  },
+  "knowledge": {
+    "base_path": "./knowledge",
+    "cache_dir": "./cache"
+  },
+  "rag": {
+    "enabled": true,
+    "top_k": 5,
+    "rerank_enabled": true,
+    "score_threshold": 0.3
+  },
+  "docker": {
+    "socket": "unix:///var/run/docker.sock"
+  },
+  "tools": {
+    "nuclei_templates_path": "/app/tools/nuclei-templates",
+    "sqlmap_path": "/app/tools/sqlmap/sqlmap.py",
+    "dirsearch_path": "/app/tools/dirsearch/dirsearch.py"
+  }
+}

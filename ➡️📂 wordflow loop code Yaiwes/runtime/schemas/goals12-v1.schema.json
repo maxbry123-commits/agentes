@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "yaiwes.goals12/v1",
+  "title": "YAIWES GOALS12 evidence run",
+  "type": "object",
+  "required": [
+    "schema",
+    "node_id",
+    "input_goals",
+    "output_goals",
+    "council",
+    "simulations",
+    "refutations",
+    "cross_checks"
+  ],
+  "properties": {
+    "schema": {"const": "yaiwes.goals12/v1"},
+    "node_id": {"type": "string", "minLength": 1},
+    "input_goals": {"type": "object", "minProperties": 12},
+    "output_goals": {"type": "object", "minProperties": 12},
+    "council": {"type": "array", "minItems": 12, "items": {"$ref": "#/$defs/check"}},
+    "simulations": {"type": "array", "minItems": 3, "items": {"$ref": "#/$defs/check"}},
+    "refutations": {"type": "array", "minItems": 3, "items": {"$ref": "#/$defs/refutation"}},
+    "cross_checks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/check"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "evidenceRefs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "check": {
+      "type": "object",
+      "required": ["name", "passed", "evidence_refs"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "passed": {"const": true},
+        "evidence_refs": {"$ref": "#/$defs/evidenceRefs"}
+      },
+      "additionalProperties": false
+    },
+    "refutation": {
+      "type": "object",
+      "required": ["name", "survived", "evidence_refs"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "survived": {"const": true},
+        "evidence_refs": {"$ref": "#/$defs/evidenceRefs"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

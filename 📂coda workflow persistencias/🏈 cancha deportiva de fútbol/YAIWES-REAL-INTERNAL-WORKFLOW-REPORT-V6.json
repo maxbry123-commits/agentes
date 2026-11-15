@@ -1,0 +1,251 @@
+{
+  "schema": "yaiwes.real.internal.workflow/v6",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "task_id": "yaiwes-v62-e2e",
+  "components": 24,
+  "real_internal_workflows_executed": 23,
+  "source_unavailable_closures": 1,
+  "status": "CLOSED",
+  "evidence": [
+    {
+      "component": "YAIWES 01",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "backend/app/services/agent/agents/orchestrator.py",
+      "symbol": "OrchestratorAgent.run",
+      "sha256": "d0d05ac28c6afbe2c7947031d728b555566625035df3272e8cbeefc0ca639317",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 02"
+    },
+    {
+      "component": "YAIWES 02",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "internal/database/plantask.go",
+      "symbol": "ListConversationPlanTasks",
+      "sha256": "6678c691a3bb6c8f4faeb82d917900572b253f576cd9b374a540a99869444386",
+      "engine": "GO_NATIVE_ISOLATED_ORIGINAL_SYMBOL",
+      "handoff": "YAIWES 03"
+    },
+    {
+      "component": "YAIWES 03",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "src/planner-commands.ts",
+      "symbol": "normalizePlannerDecision",
+      "sha256": "743e525f202c5b4478d2c3f0b12d27f43f06f287d10872f6c67c3a7443c39fa2",
+      "engine": "TYPESCRIPT_NATIVE_ORIGINAL_MODULE",
+      "handoff": "YAIWES 04"
+    },
+    {
+      "component": "YAIWES 04",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "backend/agents/coordinator_agent.py",
+      "symbol": "CoordinatorAgent.execute",
+      "sha256": "06801294c9c9638dfafbd8c2444c3f83fdfd8299df6a024d39b0082ef7d2635e",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 05"
+    },
+    {
+      "component": "YAIWES 05",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "common/websocket/task_manager.go",
+      "symbol": "NewTaskManager",
+      "sha256": "677786c5877da14f1d8a607198672ca510444ddf542ddbc24c9f59bb1d019ff3",
+      "engine": "GO_NATIVE_ISOLATED_ORIGINAL_SYMBOL",
+      "handoff": "YAIWES 06"
+    },
+    {
+      "component": "YAIWES 06",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "backend/pkg/resources/resources.go",
+      "symbol": "SaveToTemp",
+      "sha256": "5c09a509e65b6e68ab31fafb0faa4d6a8805207f4b94cb9ba803f5972041bf54",
+      "engine": "GO_NATIVE_ISOLATED_ORIGINAL_SYMBOL",
+      "handoff": "YAIWES 07"
+    },
+    {
+      "component": "YAIWES 07",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "strix/tools/mcp/session.py",
+      "symbol": "SupervisedMcpSession.start",
+      "sha256": "5c4e375b90f1ee33eaf4ab9534d1eaae3a6d6d7d3b51ac1a8ca48935e9160988",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 08"
+    },
+    {
+      "component": "YAIWES 08",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "packages/core/redcell_core/steer.py",
+      "symbol": "drain_steer",
+      "sha256": "1e9b772ab72385a9477e27d1ca943110bb9b399f82146915276333d391747b78",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 09"
+    },
+    {
+      "component": "YAIWES 09",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "agent/sub_agent_runner.py",
+      "symbol": "SubAgentRunner.run",
+      "sha256": "1af0a5ecf073990fdbec0578340a573d9c666ebf6fc8e807dd3f0bcc65034a59",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 10"
+    },
+    {
+      "component": "YAIWES 10",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "internal/agent/orchestrator/planner.go",
+      "symbol": "Planner.DecomposeObjective",
+      "sha256": "981e479edfd09841eada5333ebdecdbca3e94dc52ca3a6a579da002ffdea9718",
+      "engine": "GO_NATIVE_ISOLATED_ORIGINAL_SYMBOL",
+      "handoff": "YAIWES 11"
+    },
+    {
+      "component": "YAIWES 11",
+      "real_internal_workflow": true,
+      "workflow_status": "SAFE_BOUNDARY_EXCEPTION",
+      "source": "agent/memory.py",
+      "symbol": "Memory.add_step",
+      "sha256": "048d22939b24b4890e9164d1f369170eec9696f6c7c6247daf2a8b221f690cab",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 12"
+    },
+    {
+      "component": "YAIWES 12",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "pentestgpt_agent/src/pentestgpt_agent/loop.py",
+      "symbol": "PentestLoop.run",
+      "sha256": "8039b64dc24be7edd7347ee14cf003f0ad1a195d1b4e1a98d0a3c9b67894a183",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 13"
+    },
+    {
+      "component": "YAIWES 13",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "agent/logger.py",
+      "symbol": "SessionLogger.log_step",
+      "sha256": "bc7591965484ad35edd469169b41e3b9ba85b004de1bd49348f7031f5ad25bb0",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 14"
+    },
+    {
+      "component": "YAIWES 14",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "mcp/src/prompt_socket.py",
+      "symbol": "start",
+      "sha256": "9c5371c18fd87f6dcc5082297f8f06da1fde67f075593dd626635e72ea38a04a",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 15"
+    },
+    {
+      "component": "YAIWES 15",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "skills/memory/__init__.py",
+      "symbol": "MemorySkill.execute",
+      "sha256": "cec6e4e4459108cdba90bbd6c428353051745e10ff69436368616d7ced059ad2",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 16"
+    },
+    {
+      "component": "YAIWES 16",
+      "real_internal_workflow": true,
+      "workflow_status": "SAFE_BOUNDARY_EXCEPTION",
+      "source": "src/orchestrator.py",
+      "symbol": "Orchestrator.run",
+      "sha256": "4d315831c7c0d59df72fbb548b78af0a9128efd0206de869af957fda9acb306f",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 17"
+    },
+    {
+      "component": "YAIWES 17",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "core/agent_llm.py",
+      "symbol": "call_agent",
+      "sha256": "d6ef9473f3d2e540e6c7bdb9971781cc0265e0ffdc1cd88e0a05d354bb6de39d",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 18"
+    },
+    {
+      "component": "YAIWES 18",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "mcp_server/session_tools/__init__.py",
+      "symbol": "_dispatch_async_action",
+      "sha256": "e51ac78339e722df35bcc19104b167040ded2c532d10e8fc7e029cc3cd11bd5b",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 19"
+    },
+    {
+      "component": "YAIWES 19",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "tpt_agent/orchestrator.py",
+      "symbol": "OrchestratorManager.start_mission",
+      "sha256": "a46ee54da7521355c92bd9743d4e2243ecab19518f2fda9236f24ff386ea31b1",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 20"
+    },
+    {
+      "component": "YAIWES 20",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "src/openwhale/agents/base.py",
+      "symbol": "BaseChallengeAgent.run_competition",
+      "sha256": "5c5e28cad5d8923c29148ae01d1d78085c3f165c460e4f99111a954844d5c39f",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 21"
+    },
+    {
+      "component": "YAIWES 21",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "backend/agent/planning/dynamic_planner.py",
+      "symbol": "DynamicPlanner.get_next_task",
+      "sha256": "9a79be1c72619c1f8e1ea38eb32b38a7e4525379de5221c88eb461d79067ce15",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 22"
+    },
+    {
+      "component": "YAIWES 22",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "phantom/agents/state.py",
+      "symbol": "AgentState.prune_invalid_anchors",
+      "sha256": "f9762349e3c3d115c19d3dcb3208bfbe1c597b622499e292979556b2f1e9dddc",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 23"
+    },
+    {
+      "component": "YAIWES 23",
+      "real_internal_workflow": true,
+      "workflow_status": "COMPLETED",
+      "source": "run_bench.py",
+      "symbol": "main",
+      "sha256": "5d2e7425464e4e78de6041e8bf4192d8228462373eb660479b76203d72e68579",
+      "engine": "PYTHON_ORIGINAL_BODY_SAFE_SANDBOX",
+      "handoff": "YAIWES 24"
+    },
+    {
+      "component": "YAIWES 24",
+      "real_internal_workflow": false,
+      "workflow_status": "SOURCE_UNAVAILABLE_CLOSURE",
+      "source": null,
+      "symbol": null,
+      "sha256": null,
+      "engine": null,
+      "handoff": "CLOSE"
+    }
+  ]
+}

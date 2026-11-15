@@ -1,0 +1,100 @@
+{
+  "title": "Pentest Swarm AI — Swarm Overview",
+  "description": "Live view of a running swarm campaign. Data source = Loki (for structured scheduler + blackboard logs) or Prometheus (for scraped metrics). Panels read the swarm's structured JSON log fields emitted by internal/swarm/scheduler.go and internal/swarm/blackboard/logging.go.",
+  "tags": ["pentest-swarm-ai", "security", "swarm"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Findings written / minute",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "expr": "sum(rate({subsystem=\"blackboard\"} | json | event = \"blackboard.write\" [1m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active agents",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "expr": "count by(agent) ({subsystem=\"scheduler\"} | json | event = \"agent_started\")",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Budget exceeded events",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "expr": "sum(count_over_time({subsystem=\"scheduler\"} | json | event = \"budget_exceeded\" [1h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Agent errors / 5m",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "expr": "sum(count_over_time({subsystem=\"scheduler\"} | json | event = \"agent_error\" [5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Findings by type (stacked)",
+      "description": "Pheromone heatmap surrogate: shows which finding types the swarm is producing most. High recon volume early, classifier mid, exploit late is the healthy shape.",
+      "gridPos": {"x": 0, "y": 4, "w": 24, "h": 10},
+      "targets": [
+        {
+          "expr": "sum by(type) (rate({subsystem=\"blackboard\"} | json | event = \"blackboard.write\" [1m]))",
+          "refId": "A",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Agent handle latency (p50 / p95)",
+      "gridPos": {"x": 0, "y": 14, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by(agent, le) (rate(swarm_agent_handle_duration_seconds_bucket[1m])))",
+          "refId": "A",
+          "legendFormat": "p50 {{agent}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by(agent, le) (rate(swarm_agent_handle_duration_seconds_bucket[1m])))",
+          "refId": "B",
+          "legendFormat": "p95 {{agent}}"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Budget status per campaign",
+      "gridPos": {"x": 12, "y": 14, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "swarm_campaign_tokens_used / swarm_campaign_tokens_max",
+          "refId": "A",
+          "format": "table"
+        }
+      ]
+    }
+  ]
+}

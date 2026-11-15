@@ -1,0 +1,33 @@
+{
+  "bundle_bytes": 373534,
+  "bundle_sha256": "1dfbeac9fde21c44e4f6196c9d1f301ced66d225a9b0e927bf68b2cefa8e93cc",
+  "extracted_tree": {
+    "bytes": 1389940,
+    "files": 70,
+    "sha256": "a6c5430bd4e30d56c322351357626f4e503ba80f973078214e4c3344d4cae4f1"
+  },
+  "extraction_verified": true,
+  "max_github_blob_bytes": 99614720,
+  "no_lfs": true,
+  "part_size_limit_bytes": 12582912,
+  "parts": [
+    {
+      "bytes": 373534,
+      "name": "09-Shel.bundle.zip.part-0001",
+      "sha256": "1dfbeac9fde21c44e4f6196c9d1f301ced66d225a9b0e927bf68b2cefa8e93cc"
+    }
+  ],
+  "reconstruction_verified": true,
+  "schema": "yaiwes.hf.download-extract.v1",
+  "slug": "09-Shel",
+  "source_bytes": 1389940,
+  "source_commit": "201b6576e2b4c3db0e3a0949859cf44768aa14b9",
+  "source_files": 70,
+  "source_ref": "HEAD",
+  "source_repo": "shri7-lab/Shel",
+  "source_tree": {
+    "bytes": 1389940,
+    "files": 70,
+    "sha256": "a6c5430bd4e30d56c322351357626f4e503ba80f973078214e4c3344d4cae4f1"
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "status": "pass",
+  "score": 100,
+  "evaluation_id": "retrieval_eval_4dae4d130094",
+  "created_at": "2026-06-22T06:09:13.681098+00:00",
+  "checks": [
+    {
+      "name": "paper_count",
+      "status": "pass",
+      "severity": "blocker",
+      "message": "candidate papers found",
+      "evidence": {
+        "paper_count": 2
+      }
+    },
+    {
+      "name": "selected_paper_count",
+      "status": "pass",
+      "severity": "blocker",
+      "message": "selected papers found",
+      "evidence": {
+        "selected_paper_count": 2,
+        "paper_count": 2
+      }
+    },
+    {
+      "name": "source_mix",
+      "status": "pass",
+      "severity": "info",
+      "message": "paper source mix recorded",
+      "evidence": {
+        "source_mix": {
+          "local_paper": 2
+        }
+      }
+    },
+    {
+      "name": "keyword_coverage",
+      "status": "pass",
+      "severity": "warning",
+      "message": "keyword coverage=0.50",
+      "evidence": {
+        "keyword_coverage": 0.5
+      }
+    },
+    {
+      "name": "selected_keyword_coverage",
+      "status": "pass",
+      "severity": "warning",
+      "message": "selected keyword coverage=0.50",
+      "evidence": {
+        "selected_keyword_coverage": 0.5
+      }
+    },
+    {
+      "name": "reference_seed_inclusion",
+      "status": "pass",
+      "severity": "info",
+      "message": "no reference search seeds available",
+      "evidence": {
+        "reference_seed_count": 0
+      }
+    },
+    {
+      "name": "duplicate_title_rate",
+      "status": "pass",
+      "severity": "warning",
+      "message": "duplicate title rate=0.00",
+      "evidence": {
+        "duplicate_title_rate": 0.0,
+        "duplicate_title_count": 0
+      }
+    },
+    {
+      "name": "llm_retrieval_judge",
+      "status": "pass",
+      "severity": "info",
+      "message": "LLM retrieval judge disabled",
+      "evidence": {
+        "enable_llm": false,
+        "enable_retrieval_judge": false
+      }
+    }
+  ],
+  "judgements": [],
+  "blocking_issues": [],
+  "warnings": [],
+  "summary": [
+    "status=pass",
+    "score=100",
+    "papers=2",
+    "selected=2",
+    "judgements=0"
+  ]
+}

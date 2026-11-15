@@ -1,0 +1,23 @@
+evidence:
+  nodo_id: "T-008"
+  timestamp: "2026-08-18T22:30:00Z"
+  que_se_hizo: "Implementación completa del Tribunal Vectorizado con 6 roles, validación constitucional y compuerta de presupuesto de tokens LLM."
+  archivos_tocados:
+    - "src/tribunal/budget_gate.py"
+    - "src/tribunal/cross_validator.py"
+    - "src/tribunal/constitutional.py"
+    - "src/tribunal/tribunal.py"
+  tests:
+    - "test_budget_gate: PASS"
+    - "test_cross_validator: PASS"
+    - "test_constitutional_approve: PASS"
+    - "test_vectorized_tribunal: PASS"
+  score_tribunal: 95
+  delta_vs_anterior: "Nodo T-008 creado e integrado con validaciones en paralelo."
+  loc_generadas: 480
+  documentos_generados: 4
+  constitutional_pass: true
+  llm_budget_ok: true
+  cache_hit: false
+  execution_time_ms: 42
+  provider_compliance: true

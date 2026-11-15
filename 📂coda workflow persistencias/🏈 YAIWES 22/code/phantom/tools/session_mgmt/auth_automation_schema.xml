@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tools>
+  <tool name="automate_login">
+    <description>Automate login and extract authenticated session.</description>
+    <parameters>
+      <parameter name="target_url" type="string" required="true">
+        <description>Login page URL.</description>
+      </parameter>
+      <parameter name="username" type="string" required="true">
+        <description>Username or email.</description>
+      </parameter>
+      <parameter name="password" type="string" required="true">
+        <description>Password.</description>
+      </parameter>
+      <parameter name="flow_type" type="string" required="false">
+        <description>form, json_api, multi_step.</description>
+      </parameter>
+      <parameter name="username_field" type="string" required="false">
+        <description>Username field name.</description>
+      </parameter>
+      <parameter name="password_field" type="string" required="false">
+        <description>Password field name.</description>
+      </parameter>
+      <parameter name="submit_selector" type="string" required="false">
+        <description>CSS selector for submit.</description>
+      </parameter>
+      <parameter name="success_indicator" type="string" required="false">
+        <description>String confirming login success.</description>
+      </parameter>
+      <parameter name="session_name" type="string" required="false">
+        <description>Session name.</description>
+      </parameter>
+      <parameter name="use_browser" type="boolean" required="false">
+        <description>Use headless browser.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>success, session_id, cookies, tokens, authenticated.</description>
+    </returns>
+    <examples>
+      <function=automate_login>
+        <parameter=target_url>https://target.com/login</parameter>
+        <parameter=username>admin</parameter>
+        <parameter=password>Password123</parameter>
+        <parameter=success_indicator>Dashboard</parameter>
+      </function>
+    </examples>
+  </tool>
+
+  <tool name="refresh_jwt_token">
+    <description>Refresh expired JWT token.</description>
+    <parameters>
+      <parameter name="session_id" type="string" required="true">
+        <description>Session ID.</description>
+      </parameter>
+      <parameter name="refresh_token" type="string" required="false">
+        <description>Refresh token (if not cached).</description>
+      </parameter>
+      <parameter name="refresh_endpoint" type="string" required="false">
+        <description>Refresh endpoint URL.</description>
+      </parameter>
+    </parameters>
+    <returns type="Dict[str, Any]">
+      <description>success, new access token, expiration.</description>
+    </returns>
+    <examples>
+      <function=refresh_jwt_token>
+        <parameter=session_id>abc123</parameter>
+      </function>
+    </examples>
+  </tool>
+</tools>

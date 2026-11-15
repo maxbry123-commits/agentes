@@ -1,0 +1,111 @@
+{
+  "schema": "yaiwes.internal.link-manifest/v4.2",
+  "component": "🏈 08-Redcell",
+  "team": "Swarm agent team Navy seals YAIWES",
+  "version": "YAIWES-INTERNAL-PERSISTENCE-v4.2",
+  "source_files_audited": 221,
+  "last_delta_candidates": 0,
+  "last_delta_changed": 0,
+  "active_surfaces_transformed_cumulative": 10,
+  "component_runtime": "yaiwes_internal/persistence_runtime.py",
+  "link_count": 11,
+  "links": [
+    {
+      "order": 1,
+      "path": "apps/api/app/routers/resources.py",
+      "original_sha256": "b3c3b9b82a96cce151eff137d63b756bbe7218b6efb1591adef123362c9a59da",
+      "active_sha256": "7c113a98f13e5d964942618ea2902f7d00531a999220a564f58652a49940f28f",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/resources.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 2,
+      "path": "apps/api/app/routers/system.py",
+      "original_sha256": "c685f73f76de820923c7018bc4f848f5de0d95149847b247f85c1a410f11a20c",
+      "active_sha256": "372ac641c6c526c129006204173b7597ae8abe4f92acaef67e2fb7459d7af003",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/system.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 3,
+      "path": "apps/api/app/routers/ws.py",
+      "original_sha256": "7775f8ddfa7647697d67a6db3377879200a71acd47403005f3825eb0231017a5",
+      "active_sha256": "7120a90c0a94ef725e335b7c5b4d82fc8e1b25ca7f16ba6606806724b274e45a",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/api/app/routers/ws.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 4,
+      "path": "apps/web/src/app/panels/BrowserPanel.test.tsx",
+      "original_sha256": "209e9704df94de82e60e1bdbce3b5b718e76bfebb3f95c825982dd918b9a5aea",
+      "active_sha256": "55acd0c3e41f054b8ce6ed064431eb0491808f75a1210853f20cc6c6a9f4e9b5",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/web/src/app/panels/BrowserPanel.test.tsx.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 5,
+      "path": "apps/web/src/features/hooks.ts",
+      "original_sha256": "a71fedea2f901170f06a1a8c74f8a95ee9509bae8d9691dc0d33a19a89df9f51",
+      "active_sha256": "a3678d15b4141f35822cf1b0ae1201f10b1317ae1fa7ccdabd328a7fc48ce872",
+      "quarantine": "_yaiwes_upstream_quarantine/apps/web/src/features/hooks.ts.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 6,
+      "path": "packages/core/redcell_core/cli.py",
+      "original_sha256": "e3dd30fbd112daa7186143ba48ab5fb5e12474e2626b86dbce9e206736860515",
+      "active_sha256": "cdc2171e464a2c51b1b7334f2c9b7fa3031b0292e3e9a199493a19dfba0a1c45",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/cli.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 7,
+      "path": "packages/core/redcell_core/engine/execution.py",
+      "original_sha256": "ba1a932d9d219d9c5a159d458dee72650306fe97f258cdb5857188fa972a5acc",
+      "active_sha256": "cd10a5a97255e76c79673a174c5305ce51f55480405e47c7cd0e75304c64e100",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/engine/execution.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 8,
+      "path": "packages/core/redcell_core/engine/ngrok.py",
+      "original_sha256": "c766256b7f9d3803f7718f2554f625e83c5effe3f325007f3fb84f525a3ff554",
+      "active_sha256": "c30a3abbba6e46353f3e94647120971f94af1d304f2b246b662e21f29ec950cb",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/engine/ngrok.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 9,
+      "path": "packages/core/redcell_core/engine/runner.py",
+      "original_sha256": "ec2da2419acbb73b00892ce1a0301c9ecef4c07cf6757757aca766ee3517fd15",
+      "active_sha256": "b58d7225d6313f115a07e2bfcdc048d1cf61b12cc41689f18f7f4e57de6a538a",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/engine/runner.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 10,
+      "path": "packages/core/redcell_core/probe.py",
+      "original_sha256": "44fca4463927952e8c2338f9c5b25c9f4490b3041e21e890fde8d67f6cbeb91a",
+      "active_sha256": "05660284d889dd7e7db2cfa03a8d355a488e65d10776a0a1da02e5c2ead51083",
+      "quarantine": "_yaiwes_upstream_quarantine/packages/core/redcell_core/probe.py.original",
+      "transform_kind": "CUMULATIVE_INTERNAL_TRANSFORM",
+      "role": "TASK_PERSISTENCE_LINK"
+    },
+    {
+      "order": 11,
+      "path": "yaiwes_internal/persistence_runtime.py",
+      "active_sha256": "6583377adb9723785f03dc91f91d1de97e53ce47f2723813f844dbe73d0bfd2c",
+      "role": "COMPONENT_PERSISTENCE_LINK",
+      "transform_kind": "GENERATED_INTERNAL_RUNTIME_V4_2"
+    }
+  ]
+}

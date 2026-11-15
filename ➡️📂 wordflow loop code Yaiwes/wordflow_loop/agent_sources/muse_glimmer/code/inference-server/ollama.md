@@ -1,0 +1,75 @@
+# Ollama
+
+Run Muse Glimmer locally with one command, then connect it to an agent or access it via Ollama's API.
+
+![Launching Pi with Muse Glimmer through Ollama](../assets/ollama-launch-pi-muse-glimmer.png)
+
+## Install
+
+Install Ollama from [ollama.com/download](https://ollama.com/download).
+
+## Run Muse Glimmer
+
+
+```bash
+ollama run muse-glimmer
+```
+
+On Apple silicon, you can instead use Ollama's MLX engine:
+
+```bash
+ollama run muse-glimmer:30b-mlx
+```
+
+## Power coding apps with Muse Glimmer
+
+Ollama can configure coding agents like `claude`, `pi` and other long-running agents to be run with Muse Glimmer:
+
+```bash
+ollama launch claude --model muse-glimmer
+ollama launch pi --model muse-glimmer
+ollama launch opencode --model muse-glimmer
+ollama launch hermes --model muse-glimmer
+ollama launch openclaw --model muse-glimmer
+```
+
+## Call the API
+
+Ollama listens on `http://localhost:11434` by default. The native chat API needs no API key:
+
+```bash
+curl http://localhost:11434/api/chat -d '{
+  "model": "muse-glimmer",
+  "stream": false,
+  "messages": [
+    {"role": "user", "content": "In one sentence, what is Muse Glimmer good at?"}
+  ]
+}'
+```
+
+OpenAI clients can use the compatible chat-completions endpoint. `ollama` is a placeholder API key for local clients that require one:
+
+```bash
+curl http://localhost:11434/v1/chat/completions \
+  -H 'Authorization: Bearer ollama' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "muse-glimmer",
+    "messages": [
+      {"role": "user", "content": "In one sentence, what is Muse Glimmer good at?"}
+    ]
+  }'
+```
+
+## Troubleshooting
+
+Muse Glimmer requires Ollama 0.32.7 or later. Check your version with:
+
+```bash
+ollama --version
+```
+
+## Next steps
+
+- Learn the agent loop: [`../agentic-fundamentals/`](../agentic-fundamentals/)
+- Compare other runtimes: [`README.md`](README.md)

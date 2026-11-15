@@ -1,0 +1,43 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Data
+data/*.db
+data/*.json
+data/sessions/
+data/patterns.json
+
+# Reports
+reports/
+!reports/.gitkeep
+
+# Ship-discipline ledger (per-target already-reported signatures)
+.ship_ledger/
+
+# Evidence
+evidence/
+!evidence/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Docker
+docker-data/

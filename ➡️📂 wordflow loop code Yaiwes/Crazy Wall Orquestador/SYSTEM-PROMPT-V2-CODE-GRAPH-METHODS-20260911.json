@@ -1,0 +1,36 @@
+{
+  "contract": "tel.workflow/v4",
+  "event": "SYSTEM_PROMPT_V2_DIRECTOR_METHODS_BOUND",
+  "status": "VERIFIED_READBACK",
+  "authorized_write_root": "➡️📂 Wordflow LOOP Yaiwes/",
+  "system_prompt": {
+    "path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/prompts/SYSTEM_PROMPT.md",
+    "blob_sha": "2650336e9390a60658e8f0044041827f7e0c432e",
+    "commit": "0737fcfb00757c92f2a4bd4d159435da001c5133"
+  },
+  "mandatory_extension": {
+    "path": "➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/prompts/DIRECTOR-CODE-GRAPH-METHODS.md",
+    "blob_sha": "accd8f704b6e9ea1f81be5a62c701790f4d9c63e",
+    "commit": "c172ff1baf7dd1507fce53cd4cb6e722dba2ef44"
+  },
+  "methods_bound": [
+    "workflow_tel_v3_internal_compatibility_contract",
+    "input_output_goals_12_12",
+    "ask_consilio_12",
+    "sheriff_validator_simulate_research_rank_execute_sentinel_verify_supervisor_judge_guardian_coda",
+    "independent_final_verification",
+    "research_funnel",
+    "repeat_check",
+    "pypi_github_git_acquisition",
+    "library_license_release_provenance_ficha",
+    "reuse_patch_adapt_generate",
+    "fables_universal_plug_single_path",
+    "github_or_authorized_local_sandbox",
+    "graph_role_separation",
+    "g029_adopt_adapt_reject_matrix"
+  ],
+  "known_gap": {
+    "python_library_runner": "NOT_YET_IMPLEMENTED_AS_EXECUTABLE_SKILL",
+    "note": "Method is now mandatory in prompt; executable PyPI/GitHub research+Ficha runner still requires implementation and test before PASS."
+  }
+}

@@ -1,0 +1,805 @@
+#!/usr/bin/env bash
+# install_opencode.sh — set up pentest-agent for opencode
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
+OPENCODE_CONFIG="$OPENCODE_CONFIG_DIR/opencode.json"
+OPENCODE_COMMANDS_DIR="$OPENCODE_CONFIG_DIR/commands"
+OPENCODE_PLUGINS_DIR="$OPENCODE_CONFIG_DIR/plugins"
+# Agent-callable skills (opencode 1.16.0+). Smith invokes them as
+# `skill({name: "web-exploit"})` rather than the human typing the slash
+# command. Different layout: folder-per-skill with a SKILL.md inside, not
+# a flat .md file. Both locations get populated so human-typed slash
+# commands AND agent skill() calls keep working.
+OPENCODE_SKILLS_DIR="$OPENCODE_CONFIG_DIR/skills"
+
+# GUI-launched shells can omit common macOS CLI locations. Keep installer
+# prerequisite checks aligned with the MCP launcher runtime.
+export PATH="$PATH:/usr/local/bin:/opt/homebrew/bin:/snap/bin:/Applications/Docker.app/Contents/Resources/bin"
+
+# ── Platform ─────────────────────────────────────────────────────────────────
+# The MCP server is supervised by launchd on macOS and by a systemd *user* unit
+# on Linux. EVERY launchctl / ~/Library/LaunchAgents touch below is gated on
+# this: on Linux that directory does not exist, so the ungated plist write
+# (`sed ... > "$PLIST_DST"`) failed the redirect and `set -euo pipefail` aborted
+# the whole install with a bare "No such file or directory".
+case "$(uname -s)" in
+    Darwin) OS_KIND="macos" ;;
+    Linux)  OS_KIND="linux" ;;
+    *)      OS_KIND="other" ;;
+esac
+SYSTEMD_UNIT="agent-smith-mcp.service"
+SYSTEMD_UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+
+# ── Colours ──────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+ok()   { echo -e "${GREEN}✓${NC} $*"; }
+warn() { echo -e "${YELLOW}⚠${NC}  $*"; }
+die()  { echo -e "${RED}✗${NC} $*"; exit 1; }
+
+echo ""
+echo "  pentest-agent installer (opencode)"
+echo "  ===================================="
+echo ""
+
+# ── Prerequisites ─────────────────────────────────────────────────────────────
+if ! command -v docker >/dev/null 2>&1; then
+    if [[ "$OS_KIND" == "linux" ]]; then
+        die "docker not found — install Docker Engine: https://docs.docker.com/engine/install/ (then: sudo usermod -aG docker \"$USER\" && newgrp docker)"
+    fi
+    die "docker not found — install Docker Desktop first."
+fi
+command -v poetry   >/dev/null 2>&1 || die "poetry not found — install with: curl -sSL https://install.python-poetry.org | python3 -"
+command -v opencode >/dev/null 2>&1 || command -v opencode-cli >/dev/null 2>&1 || die "opencode not found — install from: https://opencode.ai"
+command -v node    >/dev/null 2>&1 || warn "node not found — Mermaid diagrams will render client-side (install Node.js v18+ for server-side pre-rendering)"
+
+ok "Prerequisites satisfied (docker, poetry, opencode)"
+
+# ── Pull skills submodule ────────────────────────────────────────────────────
+echo ""
+echo "Updating skills submodule from upstream..."
+if git -C "$REPO_DIR" submodule update --init --recursive --remote skills; then
+    ok "Skills submodule updated to $(git -C "$REPO_DIR/skills" rev-parse --short HEAD)"
+else
+    warn "Could not update skills from upstream — falling back to the pinned submodule commit"
+    git -C "$REPO_DIR" submodule update --init --recursive skills
+    ok "Skills submodule checked out at pinned commit $(git -C "$REPO_DIR/skills" rev-parse --short HEAD)"
+fi
+
+# ── Python dependencies ───────────────────────────────────────────────────────
+echo ""
+echo "Installing Python dependencies..."
+poetry -C "$REPO_DIR" install --no-interaction
+ok "Poetry dependencies installed"
+
+# ── Disarm any existing launchd plist before restarting the MCP ──────────────
+# launchd's plist runs start-mcp-server.sh every 5 s under KeepAlive=true. If a
+# previous install left one loaded — especially one pointing at a different
+# REPO_DIR — both that script and ours race `lsof -ti tcp:7778 | xargs kill -9`,
+# SIGKILLing each other. Unload first; we reload the rewritten plist after the
+# MCP is up.
+PLIST_DST="$HOME/Library/LaunchAgents/com.agent-smith.mcp-sse.plist"
+if [[ "$OS_KIND" == "macos" && -f "$PLIST_DST" ]]; then
+    _OLD_REPO="$(awk '/WorkingDirectory/{getline; gsub(/^[[:space:]]*<string>|<\/string>[[:space:]]*$/, ""); print; exit}' "$PLIST_DST")"
+    if [[ -n "$_OLD_REPO" && "$_OLD_REPO" != "$REPO_DIR" ]]; then
+        warn "Existing launchd plist points at: $_OLD_REPO"
+        warn "This install will replace it to point at: $REPO_DIR"
+    fi
+    launchctl unload "$PLIST_DST" 2>/dev/null || true
+fi
+
+# ── Start MCP SSE daemon ──────────────────────────────────────────────────────
+echo ""
+echo "Starting MCP SSE server..."
+chmod +x "$REPO_DIR/installers/start-mcp-server.sh"
+"$REPO_DIR/installers/start-mcp-server.sh" restart
+ok "MCP SSE server running on localhost:7778"
+
+# ── Register MCP server + instructions in opencode config ────────────────────
+echo ""
+echo "Registering pentest-agent MCP server (SSE) in opencode config..."
+mkdir -p "$OPENCODE_CONFIG_DIR"
+
+# NOTE: the heredoc delimiter is QUOTED ('PYEOF') so bash does NOT expand the
+# body. An UNQUOTED <<PYEOF ran command-substitution on the backticks in the
+# Python comments below (e.g. `opencode run`, `bash`), which executed
+# `opencode run` ("Error: You must provide a message or a command") and dropped
+# the installer into an interactive `bash`. Paths are passed via env instead.
+OPENCODE_CONFIG="$OPENCODE_CONFIG" REPO_DIR="$REPO_DIR" python3 - <<'PYEOF'
+import json
+import os
+from pathlib import Path
+
+config_path = Path(os.environ["OPENCODE_CONFIG"])
+repo_dir    = Path(os.environ["REPO_DIR"])
+
+try:
+    data = json.loads(config_path.read_text()) if config_path.exists() else {}
+except Exception:
+    data = {}
+
+# MCP server entry — remote transport (shared SSE daemon on 127.0.0.1:7778).
+# opencode's schema uses "remote" for any HTTP/SSE MCP server; there is no "sse" type.
+# timeout defaults to 5_000 ms in opencode if not set — far too short for spider,
+# sqlmap, ffuf, kali commands etc. Spider on enterprise SPAs can now run up to
+# 2h (see scan_tools._handle_spider), so MCP client timeout is 2.5h to keep a
+# safety margin above the longest-running tool.
+mcp = data.setdefault("mcp", {})
+mcp["pentest-agent"] = {
+    "type":    "remote",
+    "url":     "http://127.0.0.1:7778/sse",
+    "enabled": True,
+    "timeout": 9_000_000,
+}
+
+# Permissions — broaden auto-approval so both interactive and dashboard-spawned
+# opencode keep working without prompts the operator can't answer.
+#
+#   doom_loop  — opencode's built-in "repeated similar tool calls" detector.
+#                Pentest fuzzing IS legitimate repeated use against the same
+#                target (different payloads, headers, methods). Default "ask"
+#                prompt would kill `opencode run` (no TTY to answer it).
+#   bash       — agent-smith runs many shell commands (kali docker exec,
+#                curl, etc.). Default "ask" would prompt on every call.
+#   edit       — agent-smith writes findings/PoCs to disk on every confirmed bug.
+#   webfetch   — opencode's native webfetch is used during recon.
+#
+# Note: dashboard-spawned opencode ALSO passes --dangerously-skip-permissions
+# (see core/api_server.py:_spawn_smith), which auto-approves any "ask"
+# prompts but RESPECTS "deny". To keep a safety backstop without crippling
+# the agent, operators can add a `bash` deny pattern for truly destructive
+# commands (rm -rf, force-push, etc.) under permission.bash as an object
+# with patterns — see https://opencode.ai/docs/permissions/ .
+#   external_directory — agent-smith reviews codebases OUTSIDE opencode's cwd
+#                (the /codebase skill, `set_codebase`, etc.). opencode prompts
+#                "ask" before touching paths outside the project root; in a TUI
+#                that stalls the run, and under `opencode run` there's no TTY to
+#                answer it, so the session aborts. Allow it.
+perm = data.setdefault("permission", {})
+perm["doom_loop"] = "allow"
+for k in ("bash", "edit", "webfetch", "external_directory"):
+    perm.setdefault(k, "allow")
+
+# Bump the per-agent iteration cap for `opencode run`. Default is 500 steps,
+# which a "thorough" pentest blows past around the 60-70% coverage mark —
+# 135 cells × multiple injection tests per cell + finding-filing + qa_replies
+# easily totals 1000–1500 turns. 10000 leaves 5× headroom while still
+# guaranteeing the run terminates if it ever loops forever.
+agent_block = data.setdefault("agent", {})
+build_agent = agent_block.setdefault("build", {})
+build_agent.setdefault("steps", 10000)
+
+# ── Context-window safety (model-INDEPENDENT) ────────────────────────────────
+# opencode auto-compacts when:        input > context - compaction.reserved
+# the model server hard-rejects when: input + output > context
+# So opencode only compacts in time if  reserved > output. When it doesn't, the
+# provider raises "maximum context length is N tokens ..." and the whole TUI
+# session crashes BEFORE compaction ever runs (the default reserved=10000 is
+# smaller than a typical output reservation of 16384, so the crash wins the
+# race). The condition has NO `context` term — it cancels out — so this is not a
+# per-model hardcode: keep `reserved` a fixed buffer above `output`, and pin the
+# context window to whatever the model server actually reports (queried live).
+import urllib.request as _urlreq
+
+def _detect_context(base_url, model_id):
+    if not base_url:
+        return None
+    u = base_url.rstrip("/")
+    if not u.endswith("/v1"):
+        u += "/v1"
+    try:
+        with _urlreq.urlopen(u + "/models", timeout=4) as resp:
+            models = json.load(resp).get("data", [])
+    except Exception:
+        return None
+    # Prefer the exact model id; fall back to the first model advertised.
+    for want in (model_id, None):
+        for m in models:
+            if want is None or m.get("id") == want:
+                for k in ("max_model_len", "context_length", "max_context_length"):
+                    if isinstance(m.get(k), int):
+                        return m[k]
+    return None
+
+prov_id, _, model_id = data.get("model", "").partition("/")
+prov      = data.get("provider", {}).get(prov_id, {})
+base_url  = (prov.get("options") or {}).get("baseURL")
+model_cfg = (prov.get("models") or {}).get(model_id)
+
+comp = data.setdefault("compaction", {})
+comp["auto"] = True
+comp.setdefault("prune", True)   # evict already-read tool outputs (source files) from context
+
+DEFAULT_LOCAL_CONTEXT = 32768  # conservative floor for an unknown local model
+
+reserved = None
+detection_failed = False
+if model_cfg is not None:
+    limit = model_cfg.setdefault("limit", {})
+    detected = _detect_context(base_url, model_id)
+    true_ctx = detected or limit.get("context")
+    if true_ctx is None:
+        # Fail-soft: the model server was unreachable / advertised no window and
+        # the config pins none. Leaving limit.context unset lets opencode guess a
+        # window — and a local model with a small real window then overflows and
+        # crashes the TUI *before* compaction can run. Apply a conservative
+        # default so a request can never exceed the pin, and WARN loudly so the
+        # operator can correct it if the true window differs.
+        detection_failed = True
+        true_ctx = DEFAULT_LOCAL_CONTEXT
+    # Pin opencode's budget ~5% BELOW the model's real window. opencode fills the
+    # prompt up to limit.context - output; when limit.context equals the TRUE
+    # window it overshoots the server's hard wall by ~1 token and the request is
+    # rejected -- the deterministic "maximum context length is N tokens" crash,
+    # where the prompt is always exactly (true_ctx - output + 1). The margin keeps
+    # every request under the real ceiling while still using ~95% of the window.
+    if true_ctx:
+        limit["context"] = int(true_ctx * 0.95)
+        # SM-2: publish the model's TRUE window so the MCP server picks the right
+        # model profile (core.model_detect reads SMITH_CONTEXT_WINDOW; the MCP's
+        # .env loader makes it win over inherited env). Upsert into repo .env.
+        _envf = repo_dir / ".env"
+        _lines = [ln for ln in (_envf.read_text().splitlines() if _envf.exists() else [])
+                  if not ln.startswith("SMITH_CONTEXT_WINDOW=")]
+        _lines.append(f"SMITH_CONTEXT_WINDOW={int(true_ctx)}")
+        _envf.write_text("\n".join(_lines) + "\n")
+    context = limit.get("context")
+    if context:
+        # Respect an operator-chosen output budget; else a sane fraction capped at 16k.
+        output = limit.get("output") or min(16384, max(2048, context // 8))
+        limit["output"] = output
+        # compaction.reserved: headroom for the reactive compaction summary, kept
+        # above output so the invariant reserved > output always holds. The real
+        # overflow guard is the limit.context margin above; prune (reclaims ~70k
+        # when it fires) is the safety net for read-heavy turns.
+        buffer   = max(8000, context // 16)
+        reserved = min(output + buffer, context // 2)
+        if reserved <= output:                 # only reachable for absurdly small windows
+            reserved = min(context - 1, output + 1000)
+
+# Fallback when there's no local model config to derive from (e.g. a cloud model
+# whose window opencode already knows): still beat opencode's 10k default so the
+# buffer clears typical ~8k output reservations.
+comp["reserved"] = reserved if reserved is not None else max(comp.get("reserved", 0), 16000)
+
+if detection_failed:
+    _l = model_cfg["limit"]
+    print(f"  ⚠️  context safety: could NOT detect the context window for model "
+          f"'{model_id}' (server {base_url or '?'} unreachable or advertised none). "
+          f"Applied a conservative default limit.context={_l['context']} "
+          f"(compaction.reserved={comp['reserved']}). If the model's real window "
+          f"differs, set provider.{prov_id}.models.{model_id}.limit.context in "
+          f"~/.config/opencode/opencode.json.")
+elif model_cfg is not None and model_cfg.get("limit", {}).get("context"):
+    _l = model_cfg["limit"]
+    print(f"  context safety: window={_l['context']} output={_l['output']} "
+          f"compaction.reserved={comp['reserved']} (reserved>output: {comp['reserved'] > _l['output']})")
+else:
+    print(f"  context safety: no local model config detected — compaction.reserved={comp['reserved']} (fallback)")
+
+# Add CLAUDE.md to global instructions (avoid duplicates)
+instructions = data.setdefault("instructions", [])
+instructions_entry = str(repo_dir / "CLAUDE.md")
+if instructions_entry not in instructions:
+    instructions.append(instructions_entry)
+
+config_path.write_text(json.dumps(data, indent=2) + "\n")
+PYEOF
+ok "MCP server registered in $OPENCODE_CONFIG (transport: remote/SSE)"
+ok "CLAUDE.md added to global instructions"
+ok "Context-window safety set (compaction.reserved > model output; external dirs allowed)"
+
+# ── Install the auto-start supervisor (launchd on macOS, systemd on Linux) ───
+# PLIST_DST was set earlier (pre-disarm step); the unload is a no-op now but
+# keeps this section idempotent if someone runs it standalone.
+echo ""
+if [[ "$OS_KIND" == "macos" ]]; then
+    echo "Installing launchd plist..."
+    PLIST_SRC="$REPO_DIR/installers/com.agent-smith.mcp-sse.plist"
+    mkdir -p "$(dirname "$PLIST_DST")"
+    sed "s|REPO_DIR|$REPO_DIR|g" "$PLIST_SRC" > "$PLIST_DST"
+    launchctl unload "$PLIST_DST" 2>/dev/null || true
+    launchctl load "$PLIST_DST"
+    ok "launchd plist installed — MCP server auto-starts on login and restarts on crash"
+elif [[ "$OS_KIND" == "linux" ]]; then
+    echo "Installing systemd user unit..."
+    # `systemctl --user` needs a live user D-Bus session. It is absent in some
+    # containers, bare `ssh host cmd` invocations and minimal WSL distros — in
+    # that case fall back to the self-managed nohup instance that
+    # start-mcp-server.sh already launched above, and say so.
+    if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+        mkdir -p "$SYSTEMD_UNIT_DIR" "$REPO_DIR/logs"
+        sed "s|REPO_DIR|$REPO_DIR|g" \
+            "$REPO_DIR/installers/agent-smith-mcp.service" > "$SYSTEMD_UNIT_DIR/$SYSTEMD_UNIT"
+        systemctl --user daemon-reload
+
+        # start-mcp-server.sh started a self-managed nohup instance a moment ago
+        # (no supervisor was loaded then). It still holds port 7778, so systemd's
+        # instance would lose the bind, exit 1 and be respawned every 10 s — the
+        # dual-supervisor crash-loop. Hand the port over before enabling.
+        _PID_FILE="$REPO_DIR/logs/mcp_sse.pid"
+        if [[ -f "$_PID_FILE" ]] && kill -0 "$(cat "$_PID_FILE")" 2>/dev/null; then
+            kill "$(cat "$_PID_FILE")" 2>/dev/null || true
+            sleep 1
+        fi
+        rm -f "$_PID_FILE"
+
+        systemctl --user enable --now "$SYSTEMD_UNIT"
+        # Survive logout / start at boot on a headless box. Needs polkit or root;
+        # best-effort, and the unit still works for the current session without it.
+        loginctl enable-linger "$USER" >/dev/null 2>&1 || \
+            warn "loginctl enable-linger failed — MCP starts on login, not at boot (fix: sudo loginctl enable-linger $USER)"
+
+        # Readiness poll (curl is not guaranteed on a minimal server image).
+        if command -v curl >/dev/null 2>&1; then
+            for _i in $(seq 1 20); do
+                curl -sf --max-time 1 http://127.0.0.1:7778/sse >/dev/null 2>&1 && break
+                sleep 0.5
+            done
+        else
+            sleep 3
+        fi
+        if systemctl --user is-active --quiet "$SYSTEMD_UNIT"; then
+            ok "systemd user unit installed ($SYSTEMD_UNIT) — auto-starts on login and restarts on crash"
+        else
+            warn "systemd unit installed but not active — check: systemctl --user status $SYSTEMD_UNIT"
+            warn "and the server log: $REPO_DIR/logs/mcp_sse.log"
+        fi
+    else
+        warn "No systemd user session available — skipping auto-start unit."
+        warn "The MCP server is running as a self-managed process; restart it with:"
+        warn "  $REPO_DIR/installers/start-mcp-server.sh restart"
+    fi
+else
+    warn "Unsupported platform '$(uname -s)' for auto-start supervision — skipping."
+    warn "The MCP server is running as a self-managed process; restart it with:"
+    warn "  $REPO_DIR/installers/start-mcp-server.sh restart"
+fi
+
+# ── Ask whether to overwrite existing skill files ────────────────────────────
+echo ""
+_FORCE_SKILLS=false
+if ls "$OPENCODE_COMMANDS_DIR/"*.md >/dev/null 2>&1; then
+    printf "  Existing skill files found in %s.\n" "$OPENCODE_COMMANDS_DIR"
+    printf "  Overwrite with fresh copies from the repo? [Y/n]: "
+    IFS= read -r _overwrite_answer </dev/tty || true
+    echo ""
+    if [[ "${_overwrite_answer:-Y}" =~ ^[Yy]$ ]]; then
+        _FORCE_SKILLS=true
+        ok "Will overwrite existing skill files"
+    else
+        warn "Keeping existing skill files — skipping skill installation"
+    fi
+else
+    _FORCE_SKILLS=true
+fi
+
+# ── Copy helper ───────────────────────────────────────────────────────────────
+_cp() {
+    local src="$1" dst="$2"
+    [[ "$_FORCE_SKILLS" == false ]] && return 0
+    rm -f "$dst"
+    cp "$src" "$dst"
+}
+
+# ── Install compaction recovery plugin ──────────────────────────────────────
+echo ""
+echo "Installing compaction recovery plugin..."
+mkdir -p "$OPENCODE_PLUGINS_DIR"
+rm -f "$OPENCODE_PLUGINS_DIR/opencode-pentest-recovery.mjs"
+cp "$REPO_DIR/installers/opencode-pentest-recovery.mjs" \
+   "$OPENCODE_PLUGINS_DIR/opencode-pentest-recovery.mjs"
+ok "Compaction recovery plugin installed (preserves scan state across context compaction)"
+
+# ── Install slash commands ────────────────────────────────────────────────────
+echo ""
+echo "Installing slash commands..."
+mkdir -p "$OPENCODE_COMMANDS_DIR"
+
+# /pentester — top-level command
+if [ -f "$REPO_DIR/skills/pentester-opencode/SKILL.md" ]; then
+    _cp "$REPO_DIR/skills/pentester-opencode/SKILL.md" "$OPENCODE_COMMANDS_DIR/pentester.md"
+else
+    _cp "$REPO_DIR/skills/pentester.md" "$OPENCODE_COMMANDS_DIR/pentester.md"
+fi
+ok "/pentester command installed"
+
+# Skill commands — each gets its own file
+_SKILL_MISSING=()
+_SKILL_OK=0
+_install_skill() {
+    local name="$1"
+    local src="$2"
+    if [ ! -f "$src" ]; then
+        warn "Skill /${name} source not found: $src (skipping)"
+        _SKILL_MISSING+=("$name")
+        return
+    fi
+    _cp "$src" "$OPENCODE_COMMANDS_DIR/${name}.md"
+    _SKILL_OK=$((_SKILL_OK + 1))
+}
+
+for _skill_file in "$REPO_DIR"/skills/*/SKILL.md; do
+    [ -e "$_skill_file" ] || continue
+    _skill_name="$(basename "$(dirname "$_skill_file")")"
+
+    # /pentester is installed from the OpenCode-specific variant above.
+    [ "$_skill_name" = "pentester-opencode" ] && continue
+
+    _install_skill "$_skill_name" "$_skill_file"
+done
+
+# Backwards-compatible alias used by older docs and installs. Resolve by name so
+# it works whether threat-modeling is flat (skills/threat-modeling/) or nested in a
+# domain (skills/appsec/threat-modeling/).
+_tm_src="$(find "$REPO_DIR/skills" -maxdepth 3 -path '*/threat-modeling/SKILL.md' 2>/dev/null | head -1)"
+if [ -n "$_tm_src" ]; then
+    _install_skill "threat-model" "$_tm_src"
+fi
+
+ok "$_SKILL_OK skill commands installed"
+if [ ${#_SKILL_MISSING[@]} -gt 0 ]; then
+    warn "Missing skills (re-run the installer to fetch the latest skills submodule): ${_SKILL_MISSING[*]}"
+fi
+
+# ── Install agent-callable skills (opencode 1.16.0+ skill() tool) ────────────
+# The slash commands above are for HUMAN-typed `/web-exploit` input. Smith
+# (the AI agent) needs the same skill content discoverable via opencode's
+# native `skill({name: "..."})` tool, which only finds folder-shaped skills
+# under one of these documented paths:
+#   ~/.config/opencode/skills/<name>/SKILL.md     ← canonical opencode
+#   ~/.claude/skills/<name>/SKILL.md              ← Claude-compat fallback
+#   ~/.agents/skills/<name>/SKILL.md              ← agent-compat fallback
+# We populate the canonical opencode location below. Smith can then call
+# `skill({name: "web-exploit"})` directly instead of bash + cat-ing the
+# file (the workaround pattern in older agent-smith versions).
+echo ""
+echo "Installing skills for opencode's agent-side skill() tool..."
+mkdir -p "$OPENCODE_SKILLS_DIR"
+_AGENT_SKILL_OK=0
+_install_agent_skill() {
+    local name="$1"
+    local src="$2"
+    [ -f "$src" ] || return
+    local dst_dir="$OPENCODE_SKILLS_DIR/$name"
+    mkdir -p "$dst_dir"
+    _cp "$src" "$dst_dir/SKILL.md"
+    # Copy refs/ alongside so the agent doesn't have to chase relative paths
+    local refs_src
+    refs_src="$(dirname "$src")/refs"
+    if [ -d "$refs_src" ]; then
+        rm -rf "$dst_dir/refs"
+        cp -R "$refs_src" "$dst_dir/refs"
+    fi
+    # Mirror capabilities.yaml (manual-setup prerequisites) for parity with the
+    # Claude install. NOTE: the MCP server reads the AUTHORITATIVE copy from the
+    # repo's skills/<name>/capabilities.yaml at runtime (core.capabilities); this
+    # installed copy is a mirror for inspection/portability, not the source of truth.
+    local cap_src
+    cap_src="$(dirname "$src")/capabilities.yaml"
+    [ -f "$cap_src" ] && _cp "$cap_src" "$dst_dir/capabilities.yaml"
+    _AGENT_SKILL_OK=$((_AGENT_SKILL_OK + 1))
+}
+# /pentester gets the opencode variant when available
+if [ -f "$REPO_DIR/skills/pentester-opencode/SKILL.md" ]; then
+    _install_agent_skill "pentester" "$REPO_DIR/skills/pentester-opencode/SKILL.md"
+elif [ -f "$REPO_DIR/skills/pentester.md" ]; then
+    _install_agent_skill "pentester" "$REPO_DIR/skills/pentester.md"
+fi
+# Discover flat skills/<name>/SKILL.md AND nested skills/<domain>/<name>/SKILL.md.
+while IFS= read -r _skill_file; do
+    [ -e "$_skill_file" ] || continue
+    _skill_name="$(basename "$(dirname "$_skill_file")")"
+    [ "$_skill_name" = "pentester-opencode" ] && continue
+    _install_agent_skill "$_skill_name" "$_skill_file"
+done < <(find "$REPO_DIR/skills" -mindepth 2 -maxdepth 3 -name SKILL.md 2>/dev/null)
+ok "$_AGENT_SKILL_OK agent-callable skills installed in $OPENCODE_SKILLS_DIR"
+
+# ── Install skill reference files (lazy-loaded support material) ─────────────
+echo ""
+echo "Installing skill reference files..."
+_REF_OK=0
+while IFS= read -r _refs_src; do
+    [ -d "$_refs_src" ] || continue
+    _skill_name="$(basename "$(dirname "$_refs_src")")"
+    _refs_dst="$OPENCODE_COMMANDS_DIR/${_skill_name}-refs"
+
+    [[ "$_FORCE_SKILLS" == false ]] && continue
+
+    rm -rf "$_refs_dst"
+    mkdir -p "$_refs_dst"
+    cp -R "$_refs_src"/. "$_refs_dst"/
+    _REF_OK=$((_REF_OK + 1))
+done < <(find "$REPO_DIR/skills" -mindepth 2 -maxdepth 3 -type d -name refs 2>/dev/null)
+ok "$_REF_OK skill reference directories installed"
+
+# ── AI testing API keys (FuzzyAI + Garak) ────────────────────────────────────
+echo ""
+echo "AI testing tools (FuzzyAI + Garak) use LLM APIs for attacks and scoring."
+echo "Keys are stored in $REPO_DIR/.env (mode 600) and loaded automatically."
+echo "Press Enter to skip any key you don't need right now."
+echo ""
+
+ENV_FILE="$REPO_DIR/.env"
+if [ ! -f "$ENV_FILE" ] && [ -f "$REPO_DIR/.env.example" ]; then
+    cp "$REPO_DIR/.env.example" "$ENV_FILE"
+else
+    touch "$ENV_FILE"
+fi
+chmod 600 "$ENV_FILE"
+
+_ask_key() {
+    local key="$1"
+    local desc="$2"
+    local value=""
+    local existing
+    existing=$(grep -E "^${key}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-) || true
+    if [[ -n "$existing" ]]; then
+        printf "  %s already set. New value (Enter to keep): " "$key"
+    else
+        printf "  %s — %s\n  Value (Enter to skip): " "$key" "$desc"
+    fi
+    IFS= read -r -s value </dev/tty || true
+    echo ""
+    if [[ -n "$value" ]]; then
+        python3 -c "
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+lines = [l for l in p.read_text().splitlines() if not l.startswith(sys.argv[2] + '=')]
+lines.append(sys.argv[2] + '=' + sys.argv[3])
+p.write_text('\n'.join(lines) + '\n')
+" "$ENV_FILE" "$key" "$value"
+        ok "$key saved"
+    elif [[ -n "$existing" ]]; then
+        ok "$key unchanged"
+    else
+        warn "$key skipped"
+    fi
+}
+
+_ask_key "OPENAI_API_KEY"       "OpenAI key — FuzzyAI (openai provider) + Garak attacker/scorer"
+_ask_key "ANTHROPIC_API_KEY"    "Anthropic key — FuzzyAI (anthropic provider)"
+_ask_key "AZURE_OPENAI_API_KEY" "Azure OpenAI key — FuzzyAI (azure provider)"
+
+# ── Telegram bridge (optional) ────────────────────────────────────────────────
+echo ""
+echo "  Telegram bridge (optional) — get HIR / scan-complete alerts on your phone."
+echo "  Press Enter twice to skip; the bridge is a no-op when either key is blank."
+echo ""
+echo "  PREREQUISITE: install the Telegram app (https://telegram.org/apps)."
+echo "  Once installed, inside Telegram:"
+echo "    1. Open a chat with @BotFather → send /newbot → follow prompts → copy token"
+echo "    2. Search for your new bot → open the chat → send /start,"
+echo "       then send any text message (e.g. \"hi\") — getUpdates only returns"
+echo "       real messages, so /start alone may not surface the chat"
+echo "    3. In any browser, visit https://api.telegram.org/bot<TOKEN>/getUpdates"
+echo "       → copy the \"chat\":{\"id\": …} value (positive int for DMs, negative for groups/channels)"
+echo "       If you get {\"result\":[]}, send another message and refresh"
+echo ""
+
+_ask_key "TELEGRAM_BOT_TOKEN" "Bot token from @BotFather (format 123456:ABC-...)"
+_ask_key "TELEGRAM_CHAT_ID"   "Your Telegram chat ID — receives alerts; only this chat is allowlisted"
+
+# ── Slack bridge (optional) ───────────────────────────────────────────────────
+echo ""
+echo "  Slack bridge (optional) — same HIR / status alerts in a Slack channel."
+echo "  Press Enter to skip. Any combination of Telegram/Slack/Discord can run."
+echo ""
+echo "  Setup (inside Slack):"
+echo "    1. https://api.slack.com/apps → Create New App → From scratch"
+echo "    2. Activate Incoming Webhooks → Add New Webhook to Workspace"
+echo "    3. Pick the channel; copy the webhook URL"
+echo "       (https://hooks.slack.com/services/T…/B…/…)"
+echo ""
+
+_ask_key "SLACK_WEBHOOK_URL"   "Slack incoming webhook URL — must start with https://hooks.slack.com/"
+
+# ── Discord bridge (optional) ─────────────────────────────────────────────────
+echo ""
+echo "  Discord bridge (optional) — same alerts in a Discord channel."
+echo "  Press Enter to skip."
+echo ""
+echo "  Setup (inside Discord):"
+echo "    1. Open the channel → Settings → Integrations → Webhooks → New Webhook"
+echo "    2. Name it (e.g. \"agent-smith\"), confirm the channel"
+echo "    3. Copy the webhook URL (https://discord.com/api/webhooks/<id>/<token>)"
+echo ""
+
+_ask_key "DISCORD_WEBHOOK_URL" "Discord webhook URL — must start with https://discord.com/api/webhooks/"
+
+# ── Periodic status updates ───────────────────────────────────────────────────
+echo ""
+echo "  Periodic status updates push a short scan-summary to every configured"
+echo "  notifier sink. Defaults to every 30 min. Set to 0 to disable. The"
+echo "  message contains NO target, NO finding titles — only counts."
+echo ""
+
+_ask_key "STATUS_UPDATE_INTERVAL_MINUTES" "Status update interval in minutes (default 30; 0 disables)"
+
+# OOB backend for blind-vuln (SSRF/RCE/XXE/OAST-SQLi, DNS exfil) confirmation.
+# OOB_MODE=interactsh (default, DNS+HTTP) or http (any logger URL, HTTP-only).
+# Blank everything = interactsh public servers (oast.fun).
+_ask_key "OOB_MODE"         "OOB backend: interactsh (default) or http (blank = interactsh)"
+_ask_key "OOB_SERVER_URL"   "interactsh server URL or http logger base URL (blank = public oast.fun)"
+_ask_key "OOB_SERVER_TOKEN" "Auth token for a protected self-hosted interactsh server (blank if none/public)"
+_ask_key "OOB_POLL_URL"     "http-mode log read-endpoint, supports {id} (blank = interactsh or manual)"
+
+# ── Docker images ─────────────────────────────────────────────────────────────
+echo ""
+echo "  Docker images"
+echo "  ─────────────"
+echo ""
+
+_SCANNER_IMAGES=(
+    "instrumentisto/nmap"
+    "projectdiscovery/naabu"
+    "projectdiscovery/httpx"
+    "projectdiscovery/nuclei"
+    "projectdiscovery/subfinder"
+    "semgrep/semgrep"
+    "trufflesecurity/trufflehog"
+)
+printf "  Pull lightweight scanner images? (~2 min) [Y/n]: "
+read -r _pull_answer || true
+if [[ "${_pull_answer:-Y}" =~ ^[Yy]$ ]]; then
+    for img in "${_SCANNER_IMAGES[@]}"; do
+        if docker pull "$img" >/dev/null 2>&1; then
+            ok "Pulled $img"
+        else
+            warn "Failed to pull $img (will auto-pull on first use)"
+        fi
+    done
+else
+    warn "Scanner image pull skipped — images will auto-pull on first use"
+fi
+
+echo ""
+
+# Kali image (build) — modular: choose which tool domains to bake in.
+# core is always installed; each other domain is a --build-arg toggle.
+# Build a docker image, keeping the FULL build log on disk.
+#
+# This used to be `docker build ... 2>&1 | tail -5`, which threw the actual error
+# away: when the then-pinned `pyrit==0.11.0` became uninstallable (Kali moved to
+# Python 3.14, and PyRIT <= 0.13.0 caps Requires-Python at <3.14), pip's
+# "No matching distribution found" scrolled past and the operator was left with 5
+# lines of Dockerfile context and no cause. Failure detection was never the
+# problem — `set -o pipefail` propagated it correctly — visibility was.
+#
+# Design notes:
+#   * FOREGROUND pipeline, not `docker build &`: no detached child to reason about
+#     for signal delivery or cleanup, and the exit status comes straight back
+#     through the pipeline.
+#   * `tee` keeps every line; on a terminal `awk` collapses that to a live
+#     one-line step counter, and off a terminal (CI, piped to a file) the full
+#     stream is passed through instead.
+#   * The awk/cat filter always exits 0, so with `set -o pipefail` the pipeline
+#     status is docker's own.
+#   * `mktemp` per build: a fixed shared path in /tmp could already be owned by
+#     another user, and the redirect failing would print THEIR stale log as this
+#     build's error.
+_build_progress() {
+    if [ -t 1 ]; then
+        awk '/^#[0-9]+ \[[ 0-9]*[0-9]+\/[0-9]+\]/ { printf "\r\033[K  %.100s", $0; fflush() }
+             END { printf "\r\033[K" }'
+    else
+        cat
+    fi
+}
+
+_build_image() {  # $1=label  $2=image tag  $3=context dir  $4..=extra docker build args
+    local _label="$1" _tag="$2" _ctx="$3"; shift 3
+    local _safe="${_tag//[^a-zA-Z0-9]/-}"
+    local _tmp="${TMPDIR:-/tmp}"; _tmp="${_tmp%/}"
+    local _log
+    # X's must be TRAILING for both BSD and GNU mktemp — a "-XXXXXX.log" template
+    # is not expanded and would hand every run the same path.
+    _log="$(mktemp "${_tmp}/agent-smith-build-${_safe}-XXXXXX" 2>/dev/null)" \
+        || _log="${_tmp}/agent-smith-build-${_safe}.$$.log"
+    echo "  Build log: $_log"
+    if docker build "$@" -t "$_tag" "$_ctx" 2>&1 | tee "$_log" | _build_progress; then
+        ok "$_label image built: $_tag"
+        return 0
+    fi
+    warn "$_label build FAILED. Full log: $_log"
+    # Off a terminal the full stream was already echoed above, so don't repeat it.
+    # 60 lines, not 30: BuildKit's failure epilogue (the ">>> RUN" frame, the
+    # Dockerfile frame, the "failed to solve" line) is ~15 lines on its own, so a
+    # short tail can crowd out the failing step's actual output. Guarded on -s so
+    # a missing/empty log can't turn this into a second failure.
+    if [ -t 1 ] && [ -s "$_log" ]; then
+        echo "  ---------------- last 60 log lines ----------------"
+        tail -60 "$_log" | sed "s/^/  /"
+        echo "  ---------------------------------------------------"
+    fi
+    # Quoted so the hint stays copy-pasteable when the repo path contains spaces.
+    if [ "$#" -gt 0 ]; then
+        warn "Retry: docker build $* -t \"$_tag\" \"$_ctx\""
+    else
+        warn "Retry: docker build -t \"$_tag\" \"$_ctx\""
+    fi
+    return 1
+}
+
+printf "  Build Kali image? (required for most skills) [Y/n]: "
+read -r _kali_answer || true
+if [[ "${_kali_answer:-Y}" =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "  Choose Kali tool modules (core is always included). Build-time estimates"
+    echo "  are approximate and depend on your network speed:"
+    echo ""
+    echo "    core   (always)  MCP server, recon: nmap/nuclei/httpx/subfinder, wordlists  ~6 min"
+    echo "    web              web/API exploit, fuzzing, injection, JWT/OAuth, SSL, crawl  ~8 min"
+    echo "    infra            internal net, AD, credentials, service enum, pivoting       ~5 min"
+    echo "    mobile           Android/iOS reversing + Frida/objection dynamic analysis    ~4 min"
+    echo "    cloud            AWS/GCP CLIs, Prowler, ScoutSuite, trivy, kube-bench        ~7 min"
+    echo "    ai               LLM red-team: Garak, promptfoo (heaviest: torch)            ~12 min"
+    echo ""
+    _kali_build_args=()
+    _ask_kali_module() {  # $1=name  $2=build-arg  $3=default(Y|N)
+        local _def="$3" _ans _hint
+        [ "$_def" = "Y" ] && _hint="Y/n" || _hint="y/N"
+        printf "    Include %-7s module? [%s]: " "$1" "$_hint"
+        read -r _ans || true
+        _ans="${_ans:-$_def}"
+        if [[ "$_ans" =~ ^[Yy]$ ]]; then
+            _kali_build_args+=(--build-arg "$2=1")
+        else
+            _kali_build_args+=(--build-arg "$2=0")
+        fi
+        return 0
+    }
+    _ask_kali_module web    INSTALL_WEB    Y
+    _ask_kali_module infra  INSTALL_INFRA  Y
+    _ask_kali_module mobile INSTALL_MOBILE N
+    _ask_kali_module cloud  INSTALL_CLOUD  N
+    _ask_kali_module ai     INSTALL_AI     N
+    echo ""
+    echo "  Building pentest-agent/kali-mcp (this may take a while)..."
+    _build_image Kali pentest-agent/kali-mcp "$REPO_DIR/tools/kali/" "${_kali_build_args[@]}" || true
+else
+    warn "Kali build skipped — run later: docker build -t pentest-agent/kali-mcp $REPO_DIR/tools/kali/"
+fi
+
+echo ""
+
+printf "  Build Metasploit image? (~5 min — required for /metasploit skill) [Y/n]: "
+read -r _msf_answer || true
+if [[ "${_msf_answer:-Y}" =~ ^[Yy]$ ]]; then
+    echo "  Building pentest-agent/metasploit..."
+    _build_image Metasploit pentest-agent/metasploit "$REPO_DIR/tools/metasploit/" || true
+else
+    warn "Metasploit build skipped — run later: docker build -t pentest-agent/metasploit $REPO_DIR/tools/metasploit/"
+fi
+
+# MobSF needs no build — /android-security & /ios-security use the official MobSF
+# image, auto-pulled by tools/mobsf_runner.py on the first scan(tool='mobsf').
+
+# ── Done ──────────────────────────────────────────────────────────────────────
+echo ""
+echo "  Install complete!"
+echo ""
+warn "Tool approvals: opencode has no auto-approve mechanism. Each MCP tool will prompt"
+warn "for confirmation on first use in a session — this is expected behaviour."
+echo ""
+echo "  Available commands:"
+echo "    /pentester scan https://target.com       — full pentest"
+echo "    /api-security https://api.example.com    — OWASP API Top 10 (BOLA, BFLA, mass assignment, ...)"
+echo "    /analyze-cve lodash 4.17.20 CVE-...      — CVE exploitability analysis"
+echo "    /threat-model                             — PASTA threat model"
+echo "    /aikido-triage findings.csv /path/to/app — triage Aikido CSV + HTML report"
+echo "    /ai-redteam https://ai-app.com/api/chat   — OWASP LLM Top 10 red-team assessment"
+echo "    /colang-gen                              — generate NeMo Guardrails Colang configs"
+echo "    /cloud-security my-aws-account provider=aws — cloud security posture assessment"
+echo "    /ad-assessment 10.0.0.1 domain=CORP.LOCAL  — Active Directory security audit"
+echo "    /email-security example.com              — email SPF/DKIM/DMARC audit"
+echo "    /metasploit 10.0.0.5 cve=CVE-2017-0144   — Metasploit exploit validation"
+echo "    /android-security app.apk                — Android MASVS static+dynamic assessment"
+echo "    /ios-security app.ipa                    — iOS MASVS static+dynamic assessment"
+echo "    /gh-export                               — export findings as GitHub issue blocks"
+echo ""
+echo "  To rebuild images after adding new skills:"
+echo "    docker build -t pentest-agent/kali-mcp $REPO_DIR/tools/kali/"
+echo "    docker build -t pentest-agent/metasploit $REPO_DIR/tools/metasploit/"
+echo ""

@@ -1,0 +1,75 @@
+# ARCHIVED/REFERENCE WORKFLOW SOURCE.
+# This file is intentionally kept under the authorized Wordflow root and is NOT an active GitHub Action.
+name: Wordflow Agent Fleet STEP3 Verify
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-agent-fleet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            ➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/wordflow_loop/agent_fleet
+            ➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/evidence
+          sparse-checkout-cone-mode: false
+      - name: Verify deterministic fleet wiring
+        shell: bash
+        run: |
+          python - <<'PY'
+          import importlib.util, json, pathlib, sys
+          root = pathlib.Path('.')
+          wf = root / '➡️📂 Wordflow LOOP Yaiwes/wordflow_loop'
+          bind = wf / 'wordflow_loop/agent_fleet'
+          regp = bind / 'agent_fleet_registry.json'
+          adap = bind / 'agent_fleet_adapter.py'
+          healthp = bind / 'agent_fleet_health.json'
+          pluginp = bind / 'agent_fleet_plugin_registration.json'
+
+          reg = json.loads(regp.read_text())
+          assert reg['contract'] == 'tel.workflow/v4'
+          assert reg['status'] in {'WIRED_UNTESTED', 'READY_FOR_REAL_AGENT_TEST'}
+          assert len(reg['agents']) == 18
+          ids = [a['agent_id'] for a in reg['agents']]
+          assert len(ids) == len(set(ids)) == 18
+          assert len(reg['canonical_council12']) == 12
+          assert set(reg['canonical_council12']).issubset(ids)
+
+          spec = importlib.util.spec_from_file_location('agent_fleet_adapter', adap)
+          mod = importlib.util.module_from_spec(spec)
+          sys.modules[spec.name] = mod
+          spec.loader.exec_module(mod)
+          fleet = mod.AgentFleetAdapter(regp)
+          assert fleet.resolve(role='writer')['agent_id'] == 'opencode'
+          assert fleet.resolve(role='repair')['agent_id'] == 'openhands'
+          assert fleet.resolve(role='flow_review')['agent_id'] == 'claude_code'
+          assert fleet.resolve(role='research')['agent_id'] == 'goose'
+          assert fleet.resolve(role='fallback_coder')['agent_id'] == 'opendev'
+
+          health = json.loads(healthp.read_text())
+          assert health['fleet_count'] == 18
+          assert health['council12_count'] == 12
+          assert health['fail_closed'] is True
+
+          plugin = json.loads(pluginp.read_text())
+          assert plugin['plugin_id'] == 'yaiwes.runtime.agent_fleet'
+          assert plugin['scope_root'] == '➡️📂 Wordflow LOOP Yaiwes/'
+
+          unavailable = 0
+          for item in reg['agents']:
+              d = fleet.health_descriptor(item['agent_id'])
+              assert d['wired'] is True and d['fail_closed'] is True
+              if not d['runtime_configured']:
+                  unavailable += 1
+
+          print('WORDFLOW_AGENT_FLEET_REFERENCE_VERIFY=PASS')
+          print('fleet_count=18')
+          print('council12=12')
+          print(f'runtimes_unconfigured_fail_closed={unavailable}')
+          PY

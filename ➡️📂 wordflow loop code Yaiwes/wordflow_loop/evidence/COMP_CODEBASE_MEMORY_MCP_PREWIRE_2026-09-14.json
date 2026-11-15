@@ -1,0 +1,28 @@
+{
+  "schema": "yaiwes.component.integration-evidence/v1",
+  "component": "codebase-memory-mcp",
+  "source_repo": "DeusData/codebase-memory-mcp",
+  "source_commit": "2058d49a04b785315c9f5bb56b6e2365822b576b",
+  "license": "MIT",
+  "decision": "ADAPT",
+  "role": "codebase_structural_memory_preanalysis_via_mcp",
+  "canonical_motor_queue": "wordflow_loop/intake/COMP-CODEBASE-MEMORY-MCP.queue.json",
+  "adapter": "wordflow_loop/adapters/codebase_memory_mcp_adapter.py",
+  "ficha": "wordflow_loop/contracts/ficha.codebase_memory_mcp.v2.json",
+  "tests": "runtime/tests/test_codebase_memory_mcp_adapter.py",
+  "local_pytest": "PASS_5_OF_5",
+  "repo_ci": "NOT_RUN",
+  "motor_execution": "PENDING_RUNNER_EXECUTION",
+  "motor_readback": "PENDING",
+  "fables_runtime_registration": "PENDING_AFTER_ACQUISITION",
+  "sandbox_runtime": "BLOCKED_BY_G022",
+  "activation": "FAIL_CLOSED",
+  "verdict": "PREWIRED_NOT_RUNTIME_CLOSED",
+  "commits": {
+    "adapter": "90ef4889335f65fec9135aeb921e7a9f80a4c20b",
+    "tests": "ef644d517b5927bdfc474b719e9284ad7bf96cea",
+    "ficha": "69e5d6622c0f3f0b86c601791bdf2d921883721f",
+    "queue": "735aaad686eae53e3df7ab1bf7f87c64ccb39d31",
+    "registry": "db0c14d906d7f4375bbcd1f5ebe24f83de6642e0"
+  }
+}

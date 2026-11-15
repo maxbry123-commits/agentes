@@ -1,0 +1,228 @@
+// Package burp is a thin MCP client that talks to PortSwigger's
+// Burp Suite MCP server. The server is shipped as the "Burp Suite MCP"
+// BApp and exposes Burp's site-map, proxy, and scanner via JSON-RPC 2.0.
+//
+// This package does not attempt to be a general MCP client — it assumes
+// HTTP/JSON transport (the default Burp MCP configuration) and only the
+// handful of Burp tools the swarm calls. Add tool constants below when
+// you want to wrap more.
+package burp
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"sync/atomic"
+	"time"
+)
+
+// Client is an HTTP-transport MCP client for Burp.
+type Client struct {
+	endpoint string
+	http     *http.Client
+	nextID   atomic.Int64
+	apiKey   string // optional; Burp MCP can require a bearer token
+}
+
+// Config customizes a Client.
+type Config struct {
+	Endpoint string        // default http://127.0.0.1:9100/mcp
+	APIKey   string        // optional bearer
+	Timeout  time.Duration // per-request timeout; default 30s
+}
+
+// NewClient builds a client pointed at a running Burp MCP server.
+func NewClient(cfg Config) *Client {
+	if cfg.Endpoint == "" {
+		cfg.Endpoint = "http://127.0.0.1:9100/mcp"
+	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 30 * time.Second
+	}
+	return &Client{
+		endpoint: cfg.Endpoint,
+		http:     &http.Client{Timeout: cfg.Timeout},
+		apiKey:   cfg.APIKey,
+	}
+}
+
+// Ping calls the MCP `initialize` method; useful as a health check.
+func (c *Client) Ping(ctx context.Context) error {
+	_, err := c.call(ctx, "initialize", map[string]any{
+		"protocolVersion": "2024-11-05",
+		"clientInfo":      map[string]string{"name": "pentest-swarm-ai", "version": "0.2"},
+		"capabilities":    map[string]any{},
+	})
+	return err
+}
+
+// ListTools returns the advertised tools from the Burp MCP server.
+func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
+	raw, err := c.call(ctx, "tools/list", map[string]any{})
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Tools []Tool `json:"tools"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("parse tools/list: %w", err)
+	}
+	return out.Tools, nil
+}
+
+// Tool is the MCP tool advertisement shape.
+type Tool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"inputSchema"`
+}
+
+// CallTool invokes an MCP tool and returns its raw content blocks.
+func (c *Client) CallTool(ctx context.Context, name string, args map[string]any) (*CallResult, error) {
+	raw, err := c.call(ctx, "tools/call", map[string]any{
+		"name":      name,
+		"arguments": args,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out CallResult
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("parse tools/call: %w", err)
+	}
+	return &out, nil
+}
+
+// CallResult is the MCP tool-call response envelope.
+type CallResult struct {
+	Content []ContentBlock `json:"content"`
+	IsError bool           `json:"isError,omitempty"`
+}
+
+// ContentBlock is one piece of a tool-call response (text or JSON).
+type ContentBlock struct {
+	Type string          `json:"type"` // "text" | "resource" | ...
+	Text string          `json:"text,omitempty"`
+	Data json.RawMessage `json:"data,omitempty"`
+}
+
+// --- Burp-specific helpers ---
+
+// Canonical Burp MCP tool names. Keep these up-to-date with the Burp
+// MCP release notes — PortSwigger adds tools periodically.
+const (
+	ToolSiteMap      = "burp_sitemap"       // enumerate discovered URLs in the site map
+	ToolActiveScan   = "burp_active_scan"   // start an active scan on a URL or scope
+	ToolScanStatus   = "burp_scan_status"   // poll an existing scan
+	ToolGetIssues    = "burp_get_issues"    // retrieve scan issues
+	ToolProxyHistory = "burp_proxy_history" // recent proxy events
+)
+
+// StartActiveScan kicks off a Burp active scan on a target URL.
+// Returns the Burp-side task id so the caller can poll.
+func (c *Client) StartActiveScan(ctx context.Context, url string) (string, error) {
+	res, err := c.CallTool(ctx, ToolActiveScan, map[string]any{"url": url})
+	if err != nil {
+		return "", err
+	}
+	if res.IsError {
+		return "", fmt.Errorf("burp refused active_scan (see content for detail)")
+	}
+	// The task id is conventionally the first text block.
+	for _, b := range res.Content {
+		if b.Type == "text" && b.Text != "" {
+			return b.Text, nil
+		}
+	}
+	return "", fmt.Errorf("burp active_scan response missing task id")
+}
+
+// GetIssues pulls all issues (optionally filtered by task id) as raw JSON.
+func (c *Client) GetIssues(ctx context.Context, taskID string) ([]map[string]any, error) {
+	args := map[string]any{}
+	if taskID != "" {
+		args["task_id"] = taskID
+	}
+	res, err := c.CallTool(ctx, ToolGetIssues, args)
+	if err != nil {
+		return nil, err
+	}
+	var issues []map[string]any
+	for _, b := range res.Content {
+		if b.Type == "text" && b.Text != "" {
+			// Burp typically returns a JSON array of issues in a text block.
+			var batch []map[string]any
+			if err := json.Unmarshal([]byte(b.Text), &batch); err == nil {
+				issues = append(issues, batch...)
+			}
+		} else if len(b.Data) > 0 {
+			var batch []map[string]any
+			if err := json.Unmarshal(b.Data, &batch); err == nil {
+				issues = append(issues, batch...)
+			}
+		}
+	}
+	return issues, nil
+}
+
+// --- JSON-RPC 2.0 transport ---
+
+type rpcRequest struct {
+	JSONRPC string         `json:"jsonrpc"`
+	ID      int64          `json:"id"`
+	Method  string         `json:"method"`
+	Params  map[string]any `json:"params,omitempty"`
+}
+
+type rpcResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      int64           `json:"id"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   *rpcError       `json:"error,omitempty"`
+}
+
+type rpcError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+func (c *Client) call(ctx context.Context, method string, params map[string]any) (json.RawMessage, error) {
+	body, _ := json.Marshal(rpcRequest{
+		JSONRPC: "2.0",
+		ID:      c.nextID.Add(1),
+		Method:  method,
+		Params:  params,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("mcp transport: %w", err)
+	}
+	defer resp.Body.Close()
+	buf, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("burp mcp status %d: %s", resp.StatusCode, string(buf))
+	}
+	var rr rpcResponse
+	if err := json.Unmarshal(buf, &rr); err != nil {
+		return nil, fmt.Errorf("parse rpc response: %w", err)
+	}
+	if rr.Error != nil {
+		return nil, fmt.Errorf("mcp error %d: %s", rr.Error.Code, rr.Error.Message)
+	}
+	return rr.Result, nil
+}

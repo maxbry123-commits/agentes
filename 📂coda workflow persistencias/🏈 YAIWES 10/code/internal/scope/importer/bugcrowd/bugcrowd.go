@@ -1,0 +1,121 @@
+// Package bugcrowd imports scope from Bugcrowd programs via the v4 API.
+//
+//	GET https://api.bugcrowd.com/v4/engagements/<slug>/targets
+//
+// Requires a Bearer token (https://researcher-docs.bugcrowd.com/).
+// Unauthenticated public-program scraping is intentionally deferred —
+// Bugcrowd's public program pages are client-rendered React and need a
+// headless browser; easier to tell researchers to paste their API
+// token once than to maintain a scraper.
+//
+// Target types mapped:
+//
+//	"website" | "api" | "other"  → AllowedDomains (URL fields)
+//	"ip"                          → AllowedCIDRs (bare IP normalised /32, CIDRs pass through)
+//	everything else               → dropped
+package bugcrowd
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/Armur-Ai/Pentest-Swarm-AI/internal/scope"
+)
+
+// Client is a thin Bugcrowd v4 API client.
+type Client struct {
+	http    *http.Client
+	baseURL string
+	token   string
+}
+
+// Config customises a Client.
+type Config struct {
+	Token   string        // Bugcrowd researcher API token (Authorization: Token <token>)
+	Timeout time.Duration // default 30s
+}
+
+// NewClient builds a client. Token is required.
+func NewClient(cfg Config) *Client {
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 30 * time.Second
+	}
+	return &Client{
+		http:    &http.Client{Timeout: cfg.Timeout},
+		baseURL: "https://api.bugcrowd.com/v4",
+		token:   cfg.Token,
+	}
+}
+
+// Platform implements importer.Importer.
+func (c *Client) Platform() string { return "bugcrowd" }
+
+// Import pulls scope for the engagement (program) identified by slug.
+func (c *Client) Import(ctx context.Context, slug string) (*scope.ScopeDefinition, error) {
+	if c.token == "" {
+		return nil, fmt.Errorf("bugcrowd: API token required — store via 'pentestswarm init' or export BUGCROWD_API_TOKEN")
+	}
+	url := fmt.Sprintf("%s/engagements/%s/targets", c.baseURL, slug)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.bugcrowd.v4+json")
+	req.Header.Set("Authorization", "Token "+c.token)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("bugcrowd transport: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("bugcrowd %d: %s", resp.StatusCode, string(body))
+	}
+
+	var envelope struct {
+		Data []struct {
+			Attributes struct {
+				Name     string `json:"name"`
+				URI      string `json:"uri"`
+				Category string `json:"category"`
+				InScope  bool   `json:"in_scope"`
+			} `json:"attributes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, fmt.Errorf("parse bugcrowd response: %w", err)
+	}
+
+	def := &scope.ScopeDefinition{}
+	for _, t := range envelope.Data {
+		if !t.Attributes.InScope {
+			continue
+		}
+		raw := strings.TrimSpace(t.Attributes.URI)
+		if raw == "" {
+			raw = strings.TrimSpace(t.Attributes.Name)
+		}
+		if raw == "" {
+			continue
+		}
+		switch strings.ToLower(t.Attributes.Category) {
+		case "website", "api", "other":
+			def.AllowedDomains = append(def.AllowedDomains, raw)
+		case "ip":
+			// Bugcrowd returns either a bare IP or a CIDR; normalise
+			// bare IPs to /32 so downstream never handles a mixed shape.
+			if strings.Contains(raw, "/") {
+				def.AllowedCIDRs = append(def.AllowedCIDRs, raw)
+			} else {
+				def.AllowedCIDRs = append(def.AllowedCIDRs, raw+"/32")
+			}
+		}
+	}
+	return def, nil
+}

@@ -1,0 +1,68 @@
+## Summary
+
+{{.Summary}}
+
+## Steps to Reproduce
+
+{{- if .Reproduce}}
+{{- if .Reproduce.Command}}
+
+```sh
+{{.Reproduce.Command}}
+```
+{{- end}}
+{{- if .Reproduce.HTTPRequest}}
+
+```http
+{{.Reproduce.HTTPRequest}}
+```
+{{- end}}
+{{- if .Reproduce.ExpectedIndicator}}
+
+The response contains `{{.Reproduce.ExpectedIndicator}}`, which confirms the vulnerability.
+{{- end}}
+{{- else}}
+
+*(No automated reproduction was captured. Please investigate manually using the evidence below.)*
+{{- end}}
+
+{{- if .Evidence}}
+
+### Evidence
+
+{{range .Evidence}}
+- **{{.Type}}** ({{.Timestamp.Format "2006-01-02 15:04:05"}}){{if .Description}} — {{.Description}}{{end}}
+{{end}}
+{{- end}}
+
+## Impact
+
+{{.Impact}}
+
+## Recommendation
+
+{{.Remediation}}
+
+## Severity
+
+**{{.Severity}}** — CVSS {{printf "%.1f" .CVSSScore}}{{if .CVSSVector}} (`{{.CVSSVector}}`){{end}}
+
+{{- if .CVEIDs}}
+
+## Related CVEs
+
+{{range .CVEIDs}}- [{{.}}](https://nvd.nist.gov/vuln/detail/{{.}})
+{{end}}
+{{- end}}
+
+{{- if .CorroboratingTools}}
+
+## Verified by
+
+{{range .CorroboratingTools}}- {{.}}
+{{end}}
+{{- end}}
+
+---
+
+*Filed by Pentest Swarm AI. If this is a false positive, reply with `[FP]` and the classifier will suppress this pattern in your future scans.*

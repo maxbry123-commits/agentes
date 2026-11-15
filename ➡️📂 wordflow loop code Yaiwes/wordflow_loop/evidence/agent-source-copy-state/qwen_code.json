@@ -1,0 +1,2061 @@
+{
+  "batches": 4,
+  "completed": {
+    ".github/workflows/deploy-docs.yml": "COPIED_VERIFIED",
+    ".gitignore": "COPIED_VERIFIED",
+    ".pre-commit-config.yaml": "COPIED_VERIFIED",
+    "LICENSE": "COPIED_VERIFIED",
+    "MANIFEST.in": "COPIED_VERIFIED",
+    "README.md": "COPIED_VERIFIED",
+    "README_CN.md": "COPIED_VERIFIED",
+    "assets/screenshot-ci.png": "COPIED_VERIFIED",
+    "assets/screenshot-editor-movie.png": "COPIED_VERIFIED",
+    "assets/screenshot-multi-web-qa.png": "COPIED_VERIFIED",
+    "assets/screenshot-pdf-qa.png": "COPIED_VERIFIED",
+    "assets/screenshot-web-qa.png": "COPIED_VERIFIED",
+    "assets/screenshot-writing.png": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/README.md": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/code_interpreter.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/config.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/inference_and_execute.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/metrics/__init__.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/metrics/code_execution.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/metrics/gsm8k.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/metrics/visualization.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/models/__init__.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/models/base.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/models/dashscope.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/models/llm.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/models/qwen.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/parser/__init__.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/parser/internlm_parser.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/parser/react_parser.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/prompt/__init__.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/prompt/internlm_react.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/prompt/llama_react.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/prompt/qwen_react.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/prompt/react.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/requirements.txt": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/utils/__init__.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/utils/code_utils.py": "COPIED_VERIFIED",
+    "benchmark/code_interpreter/utils/data_utils.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/README.md": "COPIED_VERIFIED",
+    "benchmark/deepplanning/aggregate_results.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/env.example": "COPIED_VERIFIED",
+    "benchmark/deepplanning/models_config.json": "COPIED_VERIFIED",
+    "benchmark/deepplanning/requirements.txt": "COPIED_VERIFIED",
+    "benchmark/deepplanning/run_all.sh": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/README.md": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/agent/call_llm.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/agent/prompts.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/agent/shopping_agent.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/data/level_1_query_meta.json": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/data/level_2_query_meta.json": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/data/level_3_query_meta.json": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/evaluation/evaluation_pipeline.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/evaluation/score_statistics.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/run.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/run.sh": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/__init__.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/add_coupon_to_cart.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/add_product_to_cart.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/base_shopping_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/calculate_transport_time_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/delete_coupon_from_cart.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/delete_product_from_cart.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/filter_by_applicable_coupons_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/filter_by_brand_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/filter_by_color_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/filter_by_range_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/filter_by_size_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/get_cart_info.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/get_product_details_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/get_user_info.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/search_products_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/shopping_tool_schema.json": "COPIED_VERIFIED",
+    "benchmark/deepplanning/shoppingplanning/tools/sort_product_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/README.md": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/agent/__init__.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/agent/call_llm.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/agent/prompts.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/agent/tools_fn_agent.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/data/travelplanning_query_en.json": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/data/travelplanning_query_zh.json": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/evaluation/__init__.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/evaluation/constraints_commonsense.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/evaluation/constraints_hard.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/evaluation/convert_report.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/evaluation/eval_converted.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/evaluation/utils.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/run.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/run.sh": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/tools/__init__.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/tools/attraction_query_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/tools/base_travel_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/tools/flight_query_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/tools/hotel_query_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/tools/location_search_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/tools/restaurant_query_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/tools/roadroute_query_tool.py": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/tools/tool_schema.json": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/tools/tool_schema_en.json": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/tools/tool_schema_zh.json": "COPIED_VERIFIED",
+    "benchmark/deepplanning/travelplanning/tools/train_query_tool.py": "COPIED_VERIFIED",
+    "browser_qwen.md": "COPIED_VERIFIED",
+    "browser_qwen/background.js": "COPIED_VERIFIED",
+    "browser_qwen/img/copy.png": "COPIED_VERIFIED",
+    "browser_qwen/img/logo.png": "COPIED_VERIFIED",
+    "browser_qwen/img/popup.png": "COPIED_VERIFIED",
+    "browser_qwen/manifest.json": "COPIED_VERIFIED",
+    "browser_qwen/src/content.js": "COPIED_VERIFIED",
+    "browser_qwen/src/popup.html": "COPIED_VERIFIED",
+    "browser_qwen/src/popup.js": "COPIED_VERIFIED",
+    "browser_qwen_cn.md": "COPIED_VERIFIED",
+    "examples/__init__.py": "COPIED_VERIFIED",
+    "examples/assistant_add_custom_tool.py": "COPIED_VERIFIED",
+    "examples/assistant_audio.py": "COPIED_VERIFIED",
+    "examples/assistant_mcp_sqlite_bot.py": "COPIED_VERIFIED",
+    "examples/assistant_omni.py": "COPIED_VERIFIED",
+    "examples/assistant_qwen3.5.py": "COPIED_VERIFIED",
+    "examples/assistant_qwen3.py": "COPIED_VERIFIED",
+    "examples/assistant_qwen3_coder.py": "COPIED_VERIFIED",
+    "examples/assistant_qwen3vl.py": "COPIED_VERIFIED",
+    "examples/assistant_qwq.py": "COPIED_VERIFIED",
+    "examples/assistant_rag.py": "COPIED_VERIFIED",
+    "examples/assistant_weather_bot.py": "COPIED_VERIFIED",
+    "examples/function_calling.py": "COPIED_VERIFIED",
+    "examples/function_calling_in_parallel.py": "COPIED_VERIFIED",
+    "examples/gpt_mentions.py": "COPIED_VERIFIED",
+    "examples/group_chat_chess.py": "COPIED_VERIFIED",
+    "examples/group_chat_demo.py": "COPIED_VERIFIED",
+    "examples/llm_quick_chat_oai.py": "COPIED_VERIFIED",
+    "examples/llm_riddles.py": "COPIED_VERIFIED",
+    "examples/llm_vl_mix_text.py": "COPIED_VERIFIED",
+    "examples/long_dialogue.py": "COPIED_VERIFIED",
+    "examples/multi_agent_router.py": "COPIED_VERIFIED",
+    "examples/parallel_doc_qa.py": "COPIED_VERIFIED",
+    "examples/qwen2vl_assistant_tooluse.py": "COPIED_VERIFIED",
+    "examples/qwen2vl_assistant_video.py": "COPIED_VERIFIED",
+    "examples/qwen2vl_function_calling.py": "COPIED_VERIFIED",
+    "examples/react_data_analysis.py": "COPIED_VERIFIED",
+    "examples/resource/doc.pdf": "COPIED_VERIFIED",
+    "examples/resource/hopinn.jpg": "COPIED_VERIFIED",
+    "examples/resource/poem.pdf": "COPIED_VERIFIED",
+    "examples/resource/screenshot_with_plot.jpeg": "COPIED_VERIFIED",
+    "examples/resource/stock_prices.csv": "COPIED_VERIFIED",
+    "examples/tir_math.py": "COPIED_VERIFIED",
+    "examples/virtual_memory_qa.py": "COPIED_VERIFIED",
+    "examples/visual_storytelling.py": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/.gitignore": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/app/[lang]/[[...mdxPath]]/index.css": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/app/[lang]/[[...mdxPath]]/page.jsx": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/app/[lang]/layout.tsx": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/app/layout.tsx": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/app/page.tsx": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/app/robots.ts": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/app/sitemap.ts": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/_meta.ts": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/benchmarks/_meta.ts": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/benchmarks/deepplanning/index.mdx": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/benchmarks/deepplanning/src/framework.png": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/benchmarks/index.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/_meta.ts": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/core_moduls/_meta.ts": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/core_moduls/agent.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/core_moduls/context.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/core_moduls/llm.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/core_moduls/mcp.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/core_moduls/rag.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/core_moduls/schema.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/core_moduls/src/img.png": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/core_moduls/tool.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/get_started/_meta.ts": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/get_started/configuration.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/get_started/features.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/get_started/install.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/get_started/quickstart.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/guide/index.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/content/en/index.md": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/mdx-components.tsx": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/next-env.d.ts": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/next.config.mjs": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/package-lock.json": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/package.json": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/postcss.config.js": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/.nojekyll": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/favicon.png": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/fonts/Monoton/Monoton-Regular.ttf": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/fonts/Monoton/OFL.txt": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/fonts/Orbitron/OFL.txt": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/fonts/Orbitron/Orbitron-VariableFont_wght.ttf": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/fonts/Orbitron/README.txt": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/fonts/Orbitron/static/Orbitron-Black.ttf": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/fonts/Orbitron/static/Orbitron-Bold.ttf": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/fonts/Orbitron/static/Orbitron-ExtraBold.ttf": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/fonts/Orbitron/static/Orbitron-Medium.ttf": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/fonts/Orbitron/static/Orbitron-Regular.ttf": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/fonts/Orbitron/static/Orbitron-SemiBold.ttf": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/icons/ico_gemini.png": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/icons/icon_anthropic.png": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/icons/icon_dpsk.png": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/icons/icon_glm.png": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/icons/icon_kimi.png": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/icons/icon_openai.png": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/icons/icon_qwen.png": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/icons/icon_seed.png": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/icons/icon_x.png": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/public/site.webmanifest": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/src/components/font-loader.tsx": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/src/components/leaderboard.tsx": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/src/components/locale-anchor.tsx": "COPIED_VERIFIED",
+    "qwen-agent-docs/website/tsconfig.json": "COPIED_VERIFIED",
+    "qwen_agent/__init__.py": "COPIED_VERIFIED",
+    "qwen_agent/agent.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/__init__.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/article_agent.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/assistant.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/dialogue_retrieval_agent.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/dialogue_simulator.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/doc_qa/__init__.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/doc_qa/basic_doc_qa.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/doc_qa/parallel_doc_qa.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/doc_qa/parallel_doc_qa_member.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/doc_qa/parallel_doc_qa_summary.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/fncall_agent.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/group_chat.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/group_chat_auto_router.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/group_chat_creator.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/human_simulator.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/keygen_strategies/__init__.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/keygen_strategies/gen_keyword.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/keygen_strategies/gen_keyword_with_knowledge.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/keygen_strategies/split_query.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/keygen_strategies/split_query_then_gen_keyword.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/keygen_strategies/split_query_then_gen_keyword_with_knowledge.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/memo_assistant.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/react_chat.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/router.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/tir_agent.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/user_agent.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/virtual_memory_agent.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/write_from_scratch.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/writing/__init__.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/writing/continue_writing.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/writing/expand_writing.py": "COPIED_VERIFIED",
+    "qwen_agent/agents/writing/outline_writing.py": "COPIED_VERIFIED",
+    "qwen_agent/gui/__init__.py": "COPIED_VERIFIED",
+    "qwen_agent/gui/assets/app.css": "COPIED_VERIFIED",
+    "qwen_agent/gui/assets/appBot.css": "COPIED_VERIFIED",
+    "qwen_agent/gui/assets/logo.jpeg": "COPIED_VERIFIED",
+    "qwen_agent/gui/assets/user.jpeg": "COPIED_VERIFIED",
+    "qwen_agent/gui/gradio_dep.py": "COPIED_VERIFIED",
+    "qwen_agent/gui/gradio_utils.py": "COPIED_VERIFIED",
+    "qwen_agent/gui/utils.py": "COPIED_VERIFIED",
+    "qwen_agent/gui/web_ui.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/__init__.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/azure.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/base.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/fncall_prompts/__init__.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/fncall_prompts/base_fncall_prompt.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/fncall_prompts/nous_fncall_prompt.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/fncall_prompts/qwen_fncall_prompt.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/function_calling.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/oai.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/openvino.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/qwen_dashscope.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/qwenaudio_dashscope.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/qwenomni_oai.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/qwenvl_dashscope.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/qwenvl_oai.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/qwenvlo_dashscope.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/schema.py": "COPIED_VERIFIED",
+    "qwen_agent/llm/transformers_llm.py": "COPIED_VERIFIED",
+    "qwen_agent/log.py": "COPIED_VERIFIED",
+    "qwen_agent/memory/__init__.py": "COPIED_VERIFIED",
+    "qwen_agent/memory/memory.py": "COPIED_VERIFIED",
+    "qwen_agent/multi_agent_hub.py": "COPIED_VERIFIED",
+    "qwen_agent/settings.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/__init__.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/amap_weather.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/base.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/code_interpreter.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/doc_parser.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/extract_doc_vocabulary.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/image_gen.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/image_search.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/image_zoom_in_qwen3vl.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/mcp_manager.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/python_executor.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/resource/AlibabaPuHuiTi-3-45-Light.ttf.chunks/AlibabaPuHuiTi-3-45-Light.ttf.part-0000": "COPIED_VERIFIED",
+    "qwen_agent/tools/resource/AlibabaPuHuiTi-3-45-Light.ttf.chunks/AlibabaPuHuiTi-3-45-Light.ttf.part-0001": "COPIED_VERIFIED",
+    "qwen_agent/tools/resource/code_interpreter_image.dockerfile": "COPIED_VERIFIED",
+    "qwen_agent/tools/resource/code_interpreter_init_kernel.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/retrieval.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/search_tools/__init__.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/search_tools/base_search.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/search_tools/front_page_search.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/search_tools/hybrid_search.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/search_tools/keyword_search.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/search_tools/vector_search.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/simple_doc_parser.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/storage.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/web_extractor.py": "COPIED_VERIFIED",
+    "qwen_agent/tools/web_search.py": "COPIED_VERIFIED",
+    "qwen_agent/utils/__init__.py": "COPIED_VERIFIED",
+    "qwen_agent/utils/output_beautify.py": "COPIED_VERIFIED",
+    "qwen_agent/utils/parallel_executor.py": "COPIED_VERIFIED",
+    "qwen_agent/utils/qwen.tiktoken": "COPIED_VERIFIED",
+    "qwen_agent/utils/str_processing.py": "COPIED_VERIFIED",
+    "qwen_agent/utils/tokenization_qwen.py": "COPIED_VERIFIED",
+    "qwen_agent/utils/utils.py": "COPIED_VERIFIED",
+    "qwen_server/__init__.py": "COPIED_VERIFIED",
+    "qwen_server/add_qwen_libs.py": "COPIED_VERIFIED",
+    "qwen_server/assistant_server.py": "COPIED_VERIFIED",
+    "qwen_server/css/main.css": "COPIED_VERIFIED",
+    "qwen_server/database_server.py": "COPIED_VERIFIED",
+    "qwen_server/js/main.js": "COPIED_VERIFIED",
+    "qwen_server/output_beautify.py": "COPIED_VERIFIED",
+    "qwen_server/schema.py": "COPIED_VERIFIED",
+    "qwen_server/server_config.json": "COPIED_VERIFIED",
+    "qwen_server/utils.py": "COPIED_VERIFIED",
+    "qwen_server/workstation_server.py": "COPIED_VERIFIED",
+    "run_server.py": "COPIED_VERIFIED",
+    "setup.py": "COPIED_VERIFIED",
+    "tests/agents/test_article_agent.py": "COPIED_VERIFIED",
+    "tests/agents/test_assistant.py": "COPIED_VERIFIED",
+    "tests/agents/test_custom_tool_object.py": "COPIED_VERIFIED",
+    "tests/agents/test_doc_qa.py": "COPIED_VERIFIED",
+    "tests/agents/test_parallel_qa.py": "COPIED_VERIFIED",
+    "tests/agents/test_react_chat.py": "COPIED_VERIFIED",
+    "tests/agents/test_router.py": "COPIED_VERIFIED",
+    "tests/examples/test_examples.py": "COPIED_VERIFIED",
+    "tests/examples/test_long_dialogue.py": "COPIED_VERIFIED",
+    "tests/examples/test_vm_qa.py": "COPIED_VERIFIED",
+    "tests/llm/test_continue.py": "COPIED_VERIFIED",
+    "tests/llm/test_dashscope.py": "COPIED_VERIFIED",
+    "tests/llm/test_function_content.py": "COPIED_VERIFIED",
+    "tests/llm/test_oai.py": "COPIED_VERIFIED",
+    "tests/memory/test_memory.py": "COPIED_VERIFIED",
+    "tests/qwen_server/test_database_server.py": "COPIED_VERIFIED",
+    "tests/tools/test_doc_parser.py": "COPIED_VERIFIED",
+    "tests/tools/test_hybrid_search.py": "COPIED_VERIFIED",
+    "tests/tools/test_keyword_search.py": "COPIED_VERIFIED",
+    "tests/tools/test_simple_doc_parser.py": "COPIED_VERIFIED",
+    "tests/tools/test_tools.py": "COPIED_VERIFIED",
+    "tests/tools/test_vector_search.py": "COPIED_VERIFIED"
+  },
+  "failed": {},
+  "manifest": [
+    {
+      "bytes": 1281,
+      "rel": ".github/workflows/deploy-docs.yml",
+      "sha256": "8b1097d788dffbe5ec921b8415a776d761d667a1b467377ff1941f0604b16c35"
+    },
+    {
+      "bytes": 1274,
+      "rel": ".gitignore",
+      "sha256": "66f59bc37c0c1c4b8f0a9c10dc1806fdccdec15f4ca26df429fbc6208d33d5dd"
+    },
+    {
+      "bytes": 936,
+      "rel": ".pre-commit-config.yaml",
+      "sha256": "48a368aa6ae31671a24ba0a941251df97832979a91f89ef7ad3714b297399d49"
+    },
+    {
+      "bytes": 11358,
+      "rel": "LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "bytes": 85,
+      "rel": "MANIFEST.in",
+      "sha256": "69be5dc5b44f67f8525c65c3cb71582b804236ea1286b0ee4ae69ff46a8d03e4"
+    },
+    {
+      "bytes": 15159,
+      "rel": "README.md",
+      "sha256": "3918a61ddbd3b0fbc64e3a5ea0b20d663c5520f0d0effad43b10d831e6d61d8a"
+    },
+    {
+      "bytes": 14162,
+      "rel": "README_CN.md",
+      "sha256": "6f9d7e290ebea4d7c07bf0d60d3255bf7884cf3e24d0acfb34f101ecee00a2f4"
+    },
+    {
+      "bytes": 422489,
+      "rel": "assets/screenshot-ci.png",
+      "sha256": "faf5c5f25d3f9983ee9b23ccae9eda75b39752dca2aaf44fa86bd41d7d2a7860"
+    },
+    {
+      "bytes": 435443,
+      "rel": "assets/screenshot-editor-movie.png",
+      "sha256": "338de5bcf68bfa02a99b15e050287a222dadc2a197382deee4d9389435e28e69"
+    },
+    {
+      "bytes": 368163,
+      "rel": "assets/screenshot-multi-web-qa.png",
+      "sha256": "00cc96cf3f1e20644497d9aeaaa73d2e76d7993e6168cecdaf6ee713d597bd6b"
+    },
+    {
+      "bytes": 525987,
+      "rel": "assets/screenshot-pdf-qa.png",
+      "sha256": "51a62c66e733d45e98e9c4b90fa12216824007a62add52638a1b3e02d72b0bd7"
+    },
+    {
+      "bytes": 499218,
+      "rel": "assets/screenshot-web-qa.png",
+      "sha256": "068241483d6d0dfa6d4c0a5cb9dd95eb0418914c92dc8c110a18a913e7627bb3"
+    },
+    {
+      "bytes": 775571,
+      "rel": "assets/screenshot-writing.png",
+      "sha256": "0ca9529bd90c0bbfe3f7aa11e60ed536e862d30d155e13b926efcc67dd887fd8"
+    },
+    {
+      "bytes": 8395,
+      "rel": "benchmark/code_interpreter/README.md",
+      "sha256": "18a4f17a18aac07ff7a3fa76fd1988f497d2a99d25fa1f6e47ecc2554f8bf369"
+    },
+    {
+      "bytes": 7686,
+      "rel": "benchmark/code_interpreter/code_interpreter.py",
+      "sha256": "30912b6fcedf7c7005e8706272dc87067baae32fff7094a4ad0395963e984436"
+    },
+    {
+      "bytes": 2095,
+      "rel": "benchmark/code_interpreter/config.py",
+      "sha256": "bd2dcf11a715f6a480ae97c524191adf31d260bcc44a8f92e8febd44754e7500"
+    },
+    {
+      "bytes": 9033,
+      "rel": "benchmark/code_interpreter/inference_and_execute.py",
+      "sha256": "ce3da0426d5e96c5223b554f2775e3689b6e28d79cc5bc35073c59b416e8f29f"
+    },
+    {
+      "bytes": 0,
+      "rel": "benchmark/code_interpreter/metrics/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 8337,
+      "rel": "benchmark/code_interpreter/metrics/code_execution.py",
+      "sha256": "fb591fffa47a8c8c540140fb4f5e12d2dba9ac74c9c70f7ac527438f0db80f5c"
+    },
+    {
+      "bytes": 1684,
+      "rel": "benchmark/code_interpreter/metrics/gsm8k.py",
+      "sha256": "ac333618168f032801d91159a2fb3e5f644d5af5c75ffd761b0d1fa501b9bc40"
+    },
+    {
+      "bytes": 6398,
+      "rel": "benchmark/code_interpreter/metrics/visualization.py",
+      "sha256": "6e5aa2a69068f5e8fcf63c5018c8ea716e6ea225df575928dde09c6a5b4fb981"
+    },
+    {
+      "bytes": 178,
+      "rel": "benchmark/code_interpreter/models/__init__.py",
+      "sha256": "5cdb97b20b213fa4424fda889dab78c53690d8c289376aa393799c81659840d4"
+    },
+    {
+      "bytes": 748,
+      "rel": "benchmark/code_interpreter/models/base.py",
+      "sha256": "09c0ea735ef570c1bff90f22bd6f31376e469b1150e83f43899ea3475128da80"
+    },
+    {
+      "bytes": 1429,
+      "rel": "benchmark/code_interpreter/models/dashscope.py",
+      "sha256": "fcccb2381b8d61c1296c35fac5b3469997cdc602660ff9d3c3be7cca517bab2e"
+    },
+    {
+      "bytes": 853,
+      "rel": "benchmark/code_interpreter/models/llm.py",
+      "sha256": "51c9a73cd13c93943ebd340af4bf381691aa9524cf254f765641bb52827941a2"
+    },
+    {
+      "bytes": 1111,
+      "rel": "benchmark/code_interpreter/models/qwen.py",
+      "sha256": "0b486c2e4bad41944143899e6f4678c564f5d99e92e73ecc7b04ba8872a8469a"
+    },
+    {
+      "bytes": 115,
+      "rel": "benchmark/code_interpreter/parser/__init__.py",
+      "sha256": "8995188921aa451a344e80b88624eb05f4b245bb76156a15ec47b61c44f048c7"
+    },
+    {
+      "bytes": 343,
+      "rel": "benchmark/code_interpreter/parser/internlm_parser.py",
+      "sha256": "27bcc3dbe8f371be11a15c297c61b8f3b768634bc94584f350f2bc7b0cab14e3"
+    },
+    {
+      "bytes": 1801,
+      "rel": "benchmark/code_interpreter/parser/react_parser.py",
+      "sha256": "118bfd947c709defe924bbad97c274657d2c1bda54e655a770df063fe4748d6d"
+    },
+    {
+      "bytes": 193,
+      "rel": "benchmark/code_interpreter/prompt/__init__.py",
+      "sha256": "bd975542e059baa6b93d1ee98c58427b90386b2cf7232c570b1dac5e4e5a7ef0"
+    },
+    {
+      "bytes": 3448,
+      "rel": "benchmark/code_interpreter/prompt/internlm_react.py",
+      "sha256": "e919f99b9a1e8adeeff7f175568187bff943c41ce76a70cd0b37fbe02db85f31"
+    },
+    {
+      "bytes": 660,
+      "rel": "benchmark/code_interpreter/prompt/llama_react.py",
+      "sha256": "de747adaff38868aefffb38069096eb84c73b7719f53d9efbf44a8acf9bee89f"
+    },
+    {
+      "bytes": 2763,
+      "rel": "benchmark/code_interpreter/prompt/qwen_react.py",
+      "sha256": "c6200f66555891427379ab6cd4fdda2dc48b37ebf84a5601341e8b315f1baf3b"
+    },
+    {
+      "bytes": 2779,
+      "rel": "benchmark/code_interpreter/prompt/react.py",
+      "sha256": "a4bceb29353785584910a81d22bb0123ec5e9776baf60ae5ba8e4dc5cd3d4d88"
+    },
+    {
+      "bytes": 152,
+      "rel": "benchmark/code_interpreter/requirements.txt",
+      "sha256": "2c6e0c5eebd59d6e62d3782df964ad03b1fd69473eda10cdf8da2e757727f0d3"
+    },
+    {
+      "bytes": 0,
+      "rel": "benchmark/code_interpreter/utils/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 860,
+      "rel": "benchmark/code_interpreter/utils/code_utils.py",
+      "sha256": "4869dfe72e47813f999bd6866eee0fdddee1475b6c9d228b1382099c6ced8453"
+    },
+    {
+      "bytes": 728,
+      "rel": "benchmark/code_interpreter/utils/data_utils.py",
+      "sha256": "fa87f4eba8da192bf53963d25c6c77ba16612b50591c9fb884fc28671c9cfe2f"
+    },
+    {
+      "bytes": 8791,
+      "rel": "benchmark/deepplanning/README.md",
+      "sha256": "1ef553bb4ada3282ed626a0c03cd588336d47eccea258ff8c8bda2671420f542"
+    },
+    {
+      "bytes": 17342,
+      "rel": "benchmark/deepplanning/aggregate_results.py",
+      "sha256": "582b0e75fe38f1b55dcb588a3ba9d03572f79e263993141f2e9a2666e4fd1720"
+    },
+    {
+      "bytes": 239,
+      "rel": "benchmark/deepplanning/env.example",
+      "sha256": "989f57eb7762ae74f1699b3e9b6cd3a943a3e11cd3e0859dcf7957ad4f29c1a7"
+    },
+    {
+      "bytes": 991,
+      "rel": "benchmark/deepplanning/models_config.json",
+      "sha256": "2f98e75710b6bf654debfb8f045131c3d3bcd9cf8d31603ca0f7249f618fc546"
+    },
+    {
+      "bytes": 1445,
+      "rel": "benchmark/deepplanning/requirements.txt",
+      "sha256": "5db147ff5e9c3c80b8de2ed46fb4ccd3c25936ee414782b3cdb59711fd2644dc"
+    },
+    {
+      "bytes": 12123,
+      "rel": "benchmark/deepplanning/run_all.sh",
+      "sha256": "938848afade72ac35bc47db0c050a78d84ecd080b6275070e53bef3100db56e7"
+    },
+    {
+      "bytes": 10979,
+      "rel": "benchmark/deepplanning/shoppingplanning/README.md",
+      "sha256": "dbb6bb775c4784cfb2f67e7aa86a7e8948df5534098b833129b7ff41f3813d22"
+    },
+    {
+      "bytes": 5591,
+      "rel": "benchmark/deepplanning/shoppingplanning/agent/call_llm.py",
+      "sha256": "88049ad2cd593a1fe9d6c067082e0cbcb53a28a8d0dca48df8369fdbc4fbd707"
+    },
+    {
+      "bytes": 13854,
+      "rel": "benchmark/deepplanning/shoppingplanning/agent/prompts.py",
+      "sha256": "b22123c91b5e87415d2c41de408117006ade381eeb3389872732774688733a05"
+    },
+    {
+      "bytes": 21632,
+      "rel": "benchmark/deepplanning/shoppingplanning/agent/shopping_agent.py",
+      "sha256": "817a271d0aaece210a4783f9efbb0f4951237dc48d03ea10ac6bbaaee4c58bb9"
+    },
+    {
+      "bytes": 42067,
+      "rel": "benchmark/deepplanning/shoppingplanning/data/level_1_query_meta.json",
+      "sha256": "e2e583212e73036755e3dff82883e85cd47530227a57ddc39db40f78708dcc70"
+    },
+    {
+      "bytes": 47634,
+      "rel": "benchmark/deepplanning/shoppingplanning/data/level_2_query_meta.json",
+      "sha256": "d11650af34c5015cb9c8561bbc05c47100c552d1062eaf1dd5ae84c9b4f513b6"
+    },
+    {
+      "bytes": 15957,
+      "rel": "benchmark/deepplanning/shoppingplanning/data/level_3_query_meta.json",
+      "sha256": "a1db687a7f4b1252222a6043e0f0d11ca67b39fbb488b819be6943597c4a6fcc"
+    },
+    {
+      "bytes": 18519,
+      "rel": "benchmark/deepplanning/shoppingplanning/evaluation/evaluation_pipeline.py",
+      "sha256": "6dd5dc23b10c48c60fcb40d5e554c1b87ba31a4161f62a1409fa80ef1be84441"
+    },
+    {
+      "bytes": 11551,
+      "rel": "benchmark/deepplanning/shoppingplanning/evaluation/score_statistics.py",
+      "sha256": "5ff19856f9bd7ba5ad0718e5fe7eff42b37681fb14cb2371b5f3484a94a019af"
+    },
+    {
+      "bytes": 5806,
+      "rel": "benchmark/deepplanning/shoppingplanning/run.py",
+      "sha256": "bea6f9686fff4462f3957718d890b3ae7d3bab9600a39ac15d55143cebb72477"
+    },
+    {
+      "bytes": 4980,
+      "rel": "benchmark/deepplanning/shoppingplanning/run.sh",
+      "sha256": "e8c0073c1b23a8420b6980e63f024dae93e7140b16c4d05c88c3676a1b7b2f6e"
+    },
+    {
+      "bytes": 1300,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/__init__.py",
+      "sha256": "09cf766570ebf3d484ade9ae8706fba3b550cabe3c3e0f20107ead19f65da404"
+    },
+    {
+      "bytes": 12035,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/add_coupon_to_cart.py",
+      "sha256": "a4841af22fa2d38dc553b61b06b9afb0c62cc34314f701d31932ca81410d4d8a"
+    },
+    {
+      "bytes": 6271,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/add_product_to_cart.py",
+      "sha256": "c53eb94123cb354ec64396edbadfd357005038cca4a629fec18f5efc5bdef68d"
+    },
+    {
+      "bytes": 14756,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/base_shopping_tool.py",
+      "sha256": "4f146fb387a853eaa0a0ba0ba364dfbb76ca53f0996c8ef046b921500bbc2352"
+    },
+    {
+      "bytes": 8556,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/calculate_transport_time_tool.py",
+      "sha256": "b9c9aa0c0983ce080935684325a231bcd4444005144391938c8dc2150c282c0d"
+    },
+    {
+      "bytes": 10118,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/delete_coupon_from_cart.py",
+      "sha256": "73cbe2593f80eeca851a2f964b5229e3a70d3661c2b671dbc6111d019cb297e0"
+    },
+    {
+      "bytes": 6029,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/delete_product_from_cart.py",
+      "sha256": "5719ae69e2adcbd0e98e08a0efc503a17aa2381a04853ee9856f08f765813e8c"
+    },
+    {
+      "bytes": 3497,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/filter_by_applicable_coupons_tool.py",
+      "sha256": "7c1c33a01cc1e40ec89caa625a2cc3bb60a07412f9edd51c422589db140c11cb"
+    },
+    {
+      "bytes": 2843,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/filter_by_brand_tool.py",
+      "sha256": "6060afd7bd0af3662b34eda470ab674e9bebe21a37f68dcf6809ed5eaa273de6"
+    },
+    {
+      "bytes": 2686,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/filter_by_color_tool.py",
+      "sha256": "c6a52fe3700927d331ccea09b3a75cd9614c69d8cc8d050e1615d20221c1c35d"
+    },
+    {
+      "bytes": 4441,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/filter_by_range_tool.py",
+      "sha256": "e1fd3a7efdd85f525a122295ad3c26a3f4fed09e924130cb6ee812c7c36e8977"
+    },
+    {
+      "bytes": 2670,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/filter_by_size_tool.py",
+      "sha256": "411be463aaf453cba619a741a8c75f4e4530c5c9eb92d6f27ac6294a75b99d8a"
+    },
+    {
+      "bytes": 3286,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/get_cart_info.py",
+      "sha256": "4d2cd00f0cf8bb4ade840d98974210a0fd8ec072b87d3d2fdb78bdf27e6f22bd"
+    },
+    {
+      "bytes": 2117,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/get_product_details_tool.py",
+      "sha256": "debf7ed2d8fa648e5cf79881c504e17aa5da632f56070ce46068105ebceedf5e"
+    },
+    {
+      "bytes": 2799,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/get_user_info.py",
+      "sha256": "be057a492c571c17996d5dbe8b13e4a70a96a21e8e2318ba4ff1966da478e199"
+    },
+    {
+      "bytes": 4393,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/search_products_tool.py",
+      "sha256": "a8ffbc9eed3495b78c5266de697262d414cf2ef4502852ade99436cfb7aec6ae"
+    },
+    {
+      "bytes": 19146,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/shopping_tool_schema.json",
+      "sha256": "498435629a7ef9d50fbcd23bfc110af76c206a392981ad27c224b9c6c3ad5e69"
+    },
+    {
+      "bytes": 4153,
+      "rel": "benchmark/deepplanning/shoppingplanning/tools/sort_product_tool.py",
+      "sha256": "fd4c174965f19398ed9970390350d6d106e3a1b4563be09f27b819d8d034e181"
+    },
+    {
+      "bytes": 8129,
+      "rel": "benchmark/deepplanning/travelplanning/README.md",
+      "sha256": "8ef207a576f6a931caab0f301789fe3782ccfe24a5df2dcfc882f8d1b388fa67"
+    },
+    {
+      "bytes": 189,
+      "rel": "benchmark/deepplanning/travelplanning/agent/__init__.py",
+      "sha256": "ce39a439abf77edc6876c1108a82b4ad838d667649747ed0e3784d406c1ab163"
+    },
+    {
+      "bytes": 5856,
+      "rel": "benchmark/deepplanning/travelplanning/agent/call_llm.py",
+      "sha256": "d56c2daa101802a30c124c3cd13f47521728e3f2387acf7123c81f27f68841b9"
+    },
+    {
+      "bytes": 46502,
+      "rel": "benchmark/deepplanning/travelplanning/agent/prompts.py",
+      "sha256": "79a59a6cfc330c0c64ba0a555c6e349b5b0f4e13a8b6ccc14b6ab516225558fb"
+    },
+    {
+      "bytes": 21110,
+      "rel": "benchmark/deepplanning/travelplanning/agent/tools_fn_agent.py",
+      "sha256": "ccb3c45746ed590b1ee1e994cff0f651f53bec5aaa5dfbe058a27502bc1892af"
+    },
+    {
+      "bytes": 464744,
+      "rel": "benchmark/deepplanning/travelplanning/data/travelplanning_query_en.json",
+      "sha256": "60455bb30bd624b7b2faf436431203ad3df5a16f42a064e70f48e195c5c993c0"
+    },
+    {
+      "bytes": 421548,
+      "rel": "benchmark/deepplanning/travelplanning/data/travelplanning_query_zh.json",
+      "sha256": "c9ecc754851db6a42e376b2720ae07a9711e6f6ff4d8b235d5de71932e066e97"
+    },
+    {
+      "bytes": 306,
+      "rel": "benchmark/deepplanning/travelplanning/evaluation/__init__.py",
+      "sha256": "db33199465249f8cc104f7c3c778098124de0a3634f4556cfc2c244f0c68927e"
+    },
+    {
+      "bytes": 74485,
+      "rel": "benchmark/deepplanning/travelplanning/evaluation/constraints_commonsense.py",
+      "sha256": "8bb816bb68cf479069b165a83a0b680b53a13ccd9c8c6910af2b2f72bb48ee4e"
+    },
+    {
+      "bytes": 25917,
+      "rel": "benchmark/deepplanning/travelplanning/evaluation/constraints_hard.py",
+      "sha256": "94cb388f4f9cc586663c6db091306b1cb7a0718c8d2198e61305ca2e11c2f832"
+    },
+    {
+      "bytes": 13668,
+      "rel": "benchmark/deepplanning/travelplanning/evaluation/convert_report.py",
+      "sha256": "f3083a692d5a4dc277145612289e81d5f7a2ff17e2ff633d1110db7d3b0e16d3"
+    },
+    {
+      "bytes": 23884,
+      "rel": "benchmark/deepplanning/travelplanning/evaluation/eval_converted.py",
+      "sha256": "9087a8f6f7f369614f82d405e8a3683194e931098eb0ec5b672a6f18d3c3faea"
+    },
+    {
+      "bytes": 30723,
+      "rel": "benchmark/deepplanning/travelplanning/evaluation/utils.py",
+      "sha256": "65f1df11b5a93edc12926a83bb8b4fcbc712832aa2f4d5b23ef7e2309a5e5a3d"
+    },
+    {
+      "bytes": 17216,
+      "rel": "benchmark/deepplanning/travelplanning/run.py",
+      "sha256": "f63d8675044b5be62576868e57ea2aaf8c30a976ec85a2f22c78d98d76ec4be2"
+    },
+    {
+      "bytes": 13978,
+      "rel": "benchmark/deepplanning/travelplanning/run.sh",
+      "sha256": "dcedace8377a5bde51fe1737e913791c66b7081e9f514f8da761a616b54417aa"
+    },
+    {
+      "bytes": 725,
+      "rel": "benchmark/deepplanning/travelplanning/tools/__init__.py",
+      "sha256": "11001b907dc93ffcdb5544dd67bfb2ac47fb6d9e09c0fecf8422c9579e544fdc"
+    },
+    {
+      "bytes": 11108,
+      "rel": "benchmark/deepplanning/travelplanning/tools/attraction_query_tool.py",
+      "sha256": "ecc69107c4722258e2cc4643c7c8925af85d110074ec718d560e905e59d3a7cb"
+    },
+    {
+      "bytes": 11374,
+      "rel": "benchmark/deepplanning/travelplanning/tools/base_travel_tool.py",
+      "sha256": "6c65e76c91c5b207a5d6e30d4c8e7b703e874c966e29df20ae0f71600bdfcc7e"
+    },
+    {
+      "bytes": 5472,
+      "rel": "benchmark/deepplanning/travelplanning/tools/flight_query_tool.py",
+      "sha256": "75dd12626e470b798a7dc67dba02edabbaa24413e4246d526e3b4b79215fe18b"
+    },
+    {
+      "bytes": 5209,
+      "rel": "benchmark/deepplanning/travelplanning/tools/hotel_query_tool.py",
+      "sha256": "b5712e4f5072ebdc74ca2fcb94299b3edc060c42c2dbd98c9d7bf08699545541"
+    },
+    {
+      "bytes": 3372,
+      "rel": "benchmark/deepplanning/travelplanning/tools/location_search_tool.py",
+      "sha256": "e73f79e75d6819150c8fc84004518ae39f861e17e3e73bca537e92188c61b766"
+    },
+    {
+      "bytes": 8069,
+      "rel": "benchmark/deepplanning/travelplanning/tools/restaurant_query_tool.py",
+      "sha256": "83de8a5fe1d058dea62e2cf9d844690f51e31c946a304e62f680364d243f1d30"
+    },
+    {
+      "bytes": 5169,
+      "rel": "benchmark/deepplanning/travelplanning/tools/roadroute_query_tool.py",
+      "sha256": "769669bd953eef01fc219094f09bab4ca4e41830018e8f53c9697bfc8e6458d9"
+    },
+    {
+      "bytes": 8805,
+      "rel": "benchmark/deepplanning/travelplanning/tools/tool_schema.json",
+      "sha256": "a3a2baf0f2c0d9ba2517d9ecfbda6e05e195bea3090ac66f9d9538d434a18cbb"
+    },
+    {
+      "bytes": 9684,
+      "rel": "benchmark/deepplanning/travelplanning/tools/tool_schema_en.json",
+      "sha256": "8cdd4a8d5b266b93edd48ee1f73044226290461635cdf794481232fcc739a7d6"
+    },
+    {
+      "bytes": 8805,
+      "rel": "benchmark/deepplanning/travelplanning/tools/tool_schema_zh.json",
+      "sha256": "a3a2baf0f2c0d9ba2517d9ecfbda6e05e195bea3090ac66f9d9538d434a18cbb"
+    },
+    {
+      "bytes": 5531,
+      "rel": "benchmark/deepplanning/travelplanning/tools/train_query_tool.py",
+      "sha256": "77afb6611adba4539c4ebb74916df9dc26488fc586a8ed4b57f50a14fb90f072"
+    },
+    {
+      "bytes": 5077,
+      "rel": "browser_qwen.md",
+      "sha256": "83e28f62b5cf09bca1aab829f02f12c3a7b75abf2bac53a6db05995091efae62"
+    },
+    {
+      "bytes": 2464,
+      "rel": "browser_qwen/background.js",
+      "sha256": "160a7e41606c2c7e812a9d56909e256e4bce85bce0a559d1439ecec1340739c3"
+    },
+    {
+      "bytes": 2863,
+      "rel": "browser_qwen/img/copy.png",
+      "sha256": "ac2ef3d7d14b2e3954278364fbbd760c2d8780ed9a6b60efcffdca9390a5e13d"
+    },
+    {
+      "bytes": 732731,
+      "rel": "browser_qwen/img/logo.png",
+      "sha256": "9ea4d45fe307cf804076495c842a0ba54a840bdf1cc81310ccd3815c944e1dd6"
+    },
+    {
+      "bytes": 732731,
+      "rel": "browser_qwen/img/popup.png",
+      "sha256": "9ea4d45fe307cf804076495c842a0ba54a840bdf1cc81310ccd3815c944e1dd6"
+    },
+    {
+      "bytes": 952,
+      "rel": "browser_qwen/manifest.json",
+      "sha256": "8c93a8204cbd653dcd70744cc90a761c7b0332d31b42cfc2367a8deb613c2ba9"
+    },
+    {
+      "bytes": 2945,
+      "rel": "browser_qwen/src/content.js",
+      "sha256": "6e94951dcf8340e843a889fa78817b24b1a810f26295516dec611d58d7e282d0"
+    },
+    {
+      "bytes": 2656,
+      "rel": "browser_qwen/src/popup.html",
+      "sha256": "175823f89a1e97016afe2533b69d13b10c3a1f4253800c93e8c9546ca6b038f8"
+    },
+    {
+      "bytes": 3056,
+      "rel": "browser_qwen/src/popup.js",
+      "sha256": "5e439ef58c788d0bc79762c2af2c08ba1d20f3eb100dbf2aef1a6a5d1c84ddeb"
+    },
+    {
+      "bytes": 4851,
+      "rel": "browser_qwen_cn.md",
+      "sha256": "50e85279ff0d114d341b165ef8bdeee06a3820301766fb85a26c0de90dc89656"
+    },
+    {
+      "bytes": 617,
+      "rel": "examples/__init__.py",
+      "sha256": "0d85c02479b70b4aa12b9dca3f7007d9f583f79edec501236154edb2003681b5"
+    },
+    {
+      "bytes": 3383,
+      "rel": "examples/assistant_add_custom_tool.py",
+      "sha256": "186f4a2938fd7fb0826f51b4018948ff7df1c0de82fc92f0b24661268473689e"
+    },
+    {
+      "bytes": 1278,
+      "rel": "examples/assistant_audio.py",
+      "sha256": "1f817c0b915abe88c59044a1e31d1dc5088258f50e5eb5ad072a41ea44db57c9"
+    },
+    {
+      "bytes": 3155,
+      "rel": "examples/assistant_mcp_sqlite_bot.py",
+      "sha256": "35cbdeef3472df49e00f641f44c4f8a3c344c837f2b05fc61d8b925a78d29f32"
+    },
+    {
+      "bytes": 1982,
+      "rel": "examples/assistant_omni.py",
+      "sha256": "058bb985b74fb2596aa1ec775188e28f97d22c59753af7b658e7e3b53714c768"
+    },
+    {
+      "bytes": 3942,
+      "rel": "examples/assistant_qwen3.5.py",
+      "sha256": "013ac73e69517ace580da48cfec691d0e1887c787eab80993231217c9571d3c6"
+    },
+    {
+      "bytes": 4531,
+      "rel": "examples/assistant_qwen3.py",
+      "sha256": "a14b4d2c3cab34017452593ac1c276fd2f91724895198ad709ae5801b15be18b"
+    },
+    {
+      "bytes": 3976,
+      "rel": "examples/assistant_qwen3_coder.py",
+      "sha256": "fe0a1fe46c5b1d4014755cefe9704e91ac10f991220e88339b3f64565171c961"
+    },
+    {
+      "bytes": 1848,
+      "rel": "examples/assistant_qwen3vl.py",
+      "sha256": "ce2c598e0be42e2f55e5d3199aee60a4d6e6889f4a417d3c426d80e92acd1c65"
+    },
+    {
+      "bytes": 3234,
+      "rel": "examples/assistant_qwq.py",
+      "sha256": "c0875225df3442f1946d377f73193e3205ee6e4a56cd48ad25aaf625b5e34509"
+    },
+    {
+      "bytes": 1512,
+      "rel": "examples/assistant_rag.py",
+      "sha256": "c7d068550d3a0c7646ef0c100a77829050f33f1726954fce84a2eda684502907"
+    },
+    {
+      "bytes": 3097,
+      "rel": "examples/assistant_weather_bot.py",
+      "sha256": "bd694e8eca305e6cf4e31b957dae2ef76af283b56bf28b53c14f8639e3e73a59"
+    },
+    {
+      "bytes": 5958,
+      "rel": "examples/function_calling.py",
+      "sha256": "6ab80c0cc96cba842542548d74c5fa652d9f8d0dda3122576991a7c4702ee120"
+    },
+    {
+      "bytes": 5731,
+      "rel": "examples/function_calling_in_parallel.py",
+      "sha256": "86e5774068e8e57faeee18c2fe1ffabf82985798eba80db80f423d3a64b886b9"
+    },
+    {
+      "bytes": 2127,
+      "rel": "examples/gpt_mentions.py",
+      "sha256": "801a09bcd8a9ec6bfa235a7a22c93508ed4ccaba04cae1682c925382fce546c0"
+    },
+    {
+      "bytes": 3578,
+      "rel": "examples/group_chat_chess.py",
+      "sha256": "ad2d22479e69a46653c688d28917ee84222e31fce127bd022149c13732ab4cde"
+    },
+    {
+      "bytes": 12577,
+      "rel": "examples/group_chat_demo.py",
+      "sha256": "0a77e3a30ef1b2438349defdf8fe0ff9efa034e9e9f22f6728bc0403fc1dd368"
+    },
+    {
+      "bytes": 2809,
+      "rel": "examples/llm_quick_chat_oai.py",
+      "sha256": "2bc412d0de66125f1ee7e280dca23c99eaac3068330359cf254050b5330a0e58"
+    },
+    {
+      "bytes": 3359,
+      "rel": "examples/llm_riddles.py",
+      "sha256": "a78224942079444482e88b4a16f42c207642780c325b745b27916d750d82e483"
+    },
+    {
+      "bytes": 3416,
+      "rel": "examples/llm_vl_mix_text.py",
+      "sha256": "531858107dcd7d129cd204233c8089e9f89ecb71121b3b66058fe5dfb3029f33"
+    },
+    {
+      "bytes": 1672,
+      "rel": "examples/long_dialogue.py",
+      "sha256": "2963e458afef5628dd32aee8a9df097b687ef708f82f814166bcb68e86c8b55a"
+    },
+    {
+      "bytes": 3527,
+      "rel": "examples/multi_agent_router.py",
+      "sha256": "4ee1f12e23d979b61a519e43d107f4e7c0b7c5e46f0d5ca2dc8862fc3fbc80a0"
+    },
+    {
+      "bytes": 1751,
+      "rel": "examples/parallel_doc_qa.py",
+      "sha256": "388461319fdf5f8ef39a0d77e6ff72e07ab4fc728f036c04aeb61e51c2b5bf83"
+    },
+    {
+      "bytes": 14184,
+      "rel": "examples/qwen2vl_assistant_tooluse.py",
+      "sha256": "814b7283c4f63d820e403b2cab9a53ae191e975d124f4f472106582fd5d2741f"
+    },
+    {
+      "bytes": 1840,
+      "rel": "examples/qwen2vl_assistant_video.py",
+      "sha256": "881fcc84bce6f3f169f98d5bcef11046001533199a3330df444d671f6b7619fb"
+    },
+    {
+      "bytes": 4087,
+      "rel": "examples/qwen2vl_function_calling.py",
+      "sha256": "7add77c50db0144383f631922cff8d00248cdfca2b7575751a967112cb51bdb2"
+    },
+    {
+      "bytes": 3268,
+      "rel": "examples/react_data_analysis.py",
+      "sha256": "325de690794dd5d1bcbc239b288c627814958207a2137a3c5e74a611538b7df7"
+    },
+    {
+      "bytes": 34538,
+      "rel": "examples/resource/doc.pdf",
+      "sha256": "160fdf16fbaef2dcd2944aff65a9005a23fe104c18d43ca18e40d19ad4130576"
+    },
+    {
+      "bytes": 991838,
+      "rel": "examples/resource/hopinn.jpg",
+      "sha256": "cc3adffb265c903f5c4348f0a645188643bddf9c26e5f50de9ad7f7d4d60ecb4"
+    },
+    {
+      "bytes": 148868,
+      "rel": "examples/resource/poem.pdf",
+      "sha256": "83e1beaa6724ac55de12c900138fbf8d9e392c2b189e7d7bb9960b330c03faf7"
+    },
+    {
+      "bytes": 357334,
+      "rel": "examples/resource/screenshot_with_plot.jpeg",
+      "sha256": "f6dfa0c7cdbc513e79d1ec1548909db4faed909c03ec6f49dc68896379499737"
+    },
+    {
+      "bytes": 335,
+      "rel": "examples/resource/stock_prices.csv",
+      "sha256": "034cdd15f145825d64ed9cb87d626c3de253670792f9d7313d3d9d2e73567de6"
+    },
+    {
+      "bytes": 2938,
+      "rel": "examples/tir_math.py",
+      "sha256": "98c1fee80f51d3c91026d4d1b2e82a73a23c055e2fd13b7bb236272d3d1ecc78"
+    },
+    {
+      "bytes": 2611,
+      "rel": "examples/virtual_memory_qa.py",
+      "sha256": "4475caed76b04520dfa19759cfbc8685108d5f1a166a49903026045eca11f9d8"
+    },
+    {
+      "bytes": 4229,
+      "rel": "examples/visual_storytelling.py",
+      "sha256": "14fa2308e6d4a433ef57b0547059b3968d2f610335885166cc6a4e66a5ed5f22"
+    },
+    {
+      "bytes": 492,
+      "rel": "qwen-agent-docs/website/.gitignore",
+      "sha256": "dd1fb967c3d571c2658055e2b96cdf84d85debca58737305e6fea11f40c04117"
+    },
+    {
+      "bytes": 712,
+      "rel": "qwen-agent-docs/website/app/[lang]/[[...mdxPath]]/index.css",
+      "sha256": "686d98b2389e2fa479620018b324dd31522b409b8afe9cdbe2931a48889044ea"
+    },
+    {
+      "bytes": 2092,
+      "rel": "qwen-agent-docs/website/app/[lang]/[[...mdxPath]]/page.jsx",
+      "sha256": "cf5a3189e72c4da120aa8504e8662ff27a0ea9c7d6eb14513ceb2df13f1e7062"
+    },
+    {
+      "bytes": 2300,
+      "rel": "qwen-agent-docs/website/app/[lang]/layout.tsx",
+      "sha256": "360fc929d48c1e78c7f1fbbee8b2c3d7ad08a013429d3177733896785739a389"
+    },
+    {
+      "bytes": 2867,
+      "rel": "qwen-agent-docs/website/app/layout.tsx",
+      "sha256": "dfc691ebb3bad5b60571e9fe8f68fb6519af81e1ad03acf66101c1ac2d47efda"
+    },
+    {
+      "bytes": 146,
+      "rel": "qwen-agent-docs/website/app/page.tsx",
+      "sha256": "2436b91ff145996ce2c156d4dc27ab12ddcaecd36146357f3470c5291cf46882"
+    },
+    {
+      "bytes": 686,
+      "rel": "qwen-agent-docs/website/app/robots.ts",
+      "sha256": "efd20cb5a3b0a7b7b0ca57cb5074ac0083d30ee21e8cb77cbbb7b2674e31b4b5"
+    },
+    {
+      "bytes": 2620,
+      "rel": "qwen-agent-docs/website/app/sitemap.ts",
+      "sha256": "687e1600928fbca60eb6da3538499d9e7a6af1e3a4416db4aaee0ac1ebf164c7"
+    },
+    {
+      "bytes": 195,
+      "rel": "qwen-agent-docs/website/content/en/_meta.ts",
+      "sha256": "add0d86c661be29fb5afd4f47111151cc60b2c4e07edf3ed89341bb11aec9918"
+    },
+    {
+      "bytes": 75,
+      "rel": "qwen-agent-docs/website/content/en/benchmarks/_meta.ts",
+      "sha256": "8164aeb3b71cc37c2a348e5bb8c47c53337fae814201f090b2cccff48c64a524"
+    },
+    {
+      "bytes": 9333,
+      "rel": "qwen-agent-docs/website/content/en/benchmarks/deepplanning/index.mdx",
+      "sha256": "15160c05eb0a50874f6a609a44c335748a34b45ed60c18d61ef590dfe390a37a"
+    },
+    {
+      "bytes": 1202435,
+      "rel": "qwen-agent-docs/website/content/en/benchmarks/deepplanning/src/framework.png",
+      "sha256": "20c366c4ae3e87a5a0614c4eeb81ab4004681f09a66c1ac8b0817a0083aa6f5d"
+    },
+    {
+      "bytes": 543,
+      "rel": "qwen-agent-docs/website/content/en/benchmarks/index.md",
+      "sha256": "073469cedbb042f876ab8f056b1724bcaa39c0ef865a293c409cac12440d8c42"
+    },
+    {
+      "bytes": 101,
+      "rel": "qwen-agent-docs/website/content/en/guide/_meta.ts",
+      "sha256": "c4bb19d1f1ef98d333f70fbec56d9abcbecc66faee8edd99e86ddaf8964af85f"
+    },
+    {
+      "bytes": 214,
+      "rel": "qwen-agent-docs/website/content/en/guide/core_moduls/_meta.ts",
+      "sha256": "c75026f08ff7dbe29341ace443e185f3ae6f63929d043d0f4d6521295fbeb707"
+    },
+    {
+      "bytes": 11071,
+      "rel": "qwen-agent-docs/website/content/en/guide/core_moduls/agent.md",
+      "sha256": "7f474c7cb9008d56c989b0853114c4cdb4b805e32c3d1511ffecaca3a5c5081a"
+    },
+    {
+      "bytes": 1925,
+      "rel": "qwen-agent-docs/website/content/en/guide/core_moduls/context.md",
+      "sha256": "de624197ec389852a16d6231a245e5f4838e69882420f06c52b8f3dbf5f418d4"
+    },
+    {
+      "bytes": 4110,
+      "rel": "qwen-agent-docs/website/content/en/guide/core_moduls/llm.md",
+      "sha256": "ad8b4a419f0208a9cd9f9e74e9aebeee8282203c20a7ae6eeea033d32c95cdf7"
+    },
+    {
+      "bytes": 5731,
+      "rel": "qwen-agent-docs/website/content/en/guide/core_moduls/mcp.md",
+      "sha256": "ba6d61b9ae0868959ba0abac29c8449ea09b08ea0dd3402281319c100837f7f9"
+    },
+    {
+      "bytes": 2594,
+      "rel": "qwen-agent-docs/website/content/en/guide/core_moduls/rag.md",
+      "sha256": "5b13db7b963424d258813c31e15e3e9b79e23779d8dba98bd0b63e08e63ad1f1"
+    },
+    {
+      "bytes": 6206,
+      "rel": "qwen-agent-docs/website/content/en/guide/core_moduls/schema.md",
+      "sha256": "2a2b426799b0eaf1ea42ee9e1bf6e51c5b61a7d08c709fe7914d1722efce14a1"
+    },
+    {
+      "bytes": 324977,
+      "rel": "qwen-agent-docs/website/content/en/guide/core_moduls/src/img.png",
+      "sha256": "74b0fc964c8dda845b60231d1155c5aa9c122221e679f864ae812a6abac86fab"
+    },
+    {
+      "bytes": 4164,
+      "rel": "qwen-agent-docs/website/content/en/guide/core_moduls/tool.md",
+      "sha256": "1a64c53116680253775044a81e05ec32e64fdc765e854ba5be27594e5e36f71c"
+    },
+    {
+      "bytes": 165,
+      "rel": "qwen-agent-docs/website/content/en/guide/get_started/_meta.ts",
+      "sha256": "0f42c35a04942bcc1c154f201255afc0ac09980567ad22cb4b0fc04bcbd500ad"
+    },
+    {
+      "bytes": 12295,
+      "rel": "qwen-agent-docs/website/content/en/guide/get_started/configuration.md",
+      "sha256": "8cf4514d724361db8d9a5a7d91cc70c2c29faa993d7ddfcec73eea681d02a89f"
+    },
+    {
+      "bytes": 2568,
+      "rel": "qwen-agent-docs/website/content/en/guide/get_started/features.md",
+      "sha256": "2bed72cecedadc3e3aec3aa630bacd49de58b3454274b3e5854735bc4a5ba2ad"
+    },
+    {
+      "bytes": 664,
+      "rel": "qwen-agent-docs/website/content/en/guide/get_started/install.md",
+      "sha256": "c401f3c9e480b58efa54afb538eb8cf13110868c593cc3de925bd97209330ff8"
+    },
+    {
+      "bytes": 6638,
+      "rel": "qwen-agent-docs/website/content/en/guide/get_started/quickstart.md",
+      "sha256": "d5ea827c1e47a38e003025dc038a3af93de774afbca33a7a5e3d007169006bb3"
+    },
+    {
+      "bytes": 1687,
+      "rel": "qwen-agent-docs/website/content/en/guide/index.md",
+      "sha256": "e2b4ca44b2fb8bd4447928c4ae7fe561258ad08e6855a8cff88a949daa04f896"
+    },
+    {
+      "bytes": 724,
+      "rel": "qwen-agent-docs/website/content/en/index.md",
+      "sha256": "354efa46933bc97baa5cd9db1116828ee44581b98fedfa7f49dfc391fbae4dc1"
+    },
+    {
+      "bytes": 1467,
+      "rel": "qwen-agent-docs/website/mdx-components.tsx",
+      "sha256": "7002fc5fd3882b0b9fabdfb0a8c5505b77cdb36765b9ec9028d5c5666f77ac1c"
+    },
+    {
+      "bytes": 228,
+      "rel": "qwen-agent-docs/website/next-env.d.ts",
+      "sha256": "9dd9d642cdb87d4d5b3173217e0c45429b3e47a6f5cf5fb0ead6c644ec5fed01"
+    },
+    {
+      "bytes": 968,
+      "rel": "qwen-agent-docs/website/next.config.mjs",
+      "sha256": "d7ee1da77b30c2a5f25d0d8ea0282bc234640855858c4510c1e74b73d4cf5090"
+    },
+    {
+      "bytes": 367892,
+      "rel": "qwen-agent-docs/website/package-lock.json",
+      "sha256": "67a48513b81a16177095de7c395ea672d8186ea18016525052c00d0fd4477b04"
+    },
+    {
+      "bytes": 1893,
+      "rel": "qwen-agent-docs/website/package.json",
+      "sha256": "007c850e9a42b739b9001901c16d02529f156622ac5f4e5931f0fa594f56fab3"
+    },
+    {
+      "bytes": 94,
+      "rel": "qwen-agent-docs/website/postcss.config.js",
+      "sha256": "81cf69ef5f01044aa664a715dcd33ff0c6278d2575fdabd5d454e224fcb4d4b1"
+    },
+    {
+      "bytes": 0,
+      "rel": "qwen-agent-docs/website/public/.nojekyll",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 82880,
+      "rel": "qwen-agent-docs/website/public/favicon.png",
+      "sha256": "d54559fff2fe10123bd3cf9a7c91bb696060de04cc68ee5d561f1c070f54e269"
+    },
+    {
+      "bytes": 49908,
+      "rel": "qwen-agent-docs/website/public/fonts/Monoton/Monoton-Regular.ttf",
+      "sha256": "1565b395f454d5c2642d0f411030051e7342fbaf6d5bfc5da5899c47ecd3511e"
+    },
+    {
+      "bytes": 4496,
+      "rel": "qwen-agent-docs/website/public/fonts/Monoton/OFL.txt",
+      "sha256": "2955cc62805d9fdb8ee01991f2b6cd47caa14f8cb752571cfdf87af831bc8723"
+    },
+    {
+      "bytes": 4520,
+      "rel": "qwen-agent-docs/website/public/fonts/Orbitron/OFL.txt",
+      "sha256": "8eac52bc8ada70d211e0cada8332542248af55a12e7ec9b32fbf9eba10ba4819"
+    },
+    {
+      "bytes": 38548,
+      "rel": "qwen-agent-docs/website/public/fonts/Orbitron/Orbitron-VariableFont_wght.ttf",
+      "sha256": "46eefc7084fd9abffd87547c47f729b6071c7f7a8d5af281266bb09e5461c435"
+    },
+    {
+      "bytes": 2198,
+      "rel": "qwen-agent-docs/website/public/fonts/Orbitron/README.txt",
+      "sha256": "6e875bcd1d75a762d3f8172cb391b64cb6df707fee48d899641e9068dae87863"
+    },
+    {
+      "bytes": 23392,
+      "rel": "qwen-agent-docs/website/public/fonts/Orbitron/static/Orbitron-Black.ttf",
+      "sha256": "6085d23cdc834b71abdbab67079ab37b486b429edb5a0e634bf61379e255700a"
+    },
+    {
+      "bytes": 24668,
+      "rel": "qwen-agent-docs/website/public/fonts/Orbitron/static/Orbitron-Bold.ttf",
+      "sha256": "69403fffca24d8e5d3c588f89fdc832ed75b9e9d3176850b96ce23b27aeebbb2"
+    },
+    {
+      "bytes": 24696,
+      "rel": "qwen-agent-docs/website/public/fonts/Orbitron/static/Orbitron-ExtraBold.ttf",
+      "sha256": "5c3ffc0f6dcd6c9adddb4aa573be39aea7bf5364b006e7bf8d5386a00f18eb8e"
+    },
+    {
+      "bytes": 24752,
+      "rel": "qwen-agent-docs/website/public/fonts/Orbitron/static/Orbitron-Medium.ttf",
+      "sha256": "0963c8736d45390ebf17d75486d581f6ca4ad186c221801891a5801bb17df41b"
+    },
+    {
+      "bytes": 24716,
+      "rel": "qwen-agent-docs/website/public/fonts/Orbitron/static/Orbitron-Regular.ttf",
+      "sha256": "739162ac8e6fcadb559226f2fee57f55baad126728cec901b321042c7224088e"
+    },
+    {
+      "bytes": 24732,
+      "rel": "qwen-agent-docs/website/public/fonts/Orbitron/static/Orbitron-SemiBold.ttf",
+      "sha256": "dfa60e9800d9bd99366ca8eacac0f1a9f6e5e2218d7a19a0b36a0130e020e5f2"
+    },
+    {
+      "bytes": 1733,
+      "rel": "qwen-agent-docs/website/public/icons/ico_gemini.png",
+      "sha256": "16f187983d7819b3b12bead4a145f40cc9bc2b4ce0d200fd6201b4a241a95b77"
+    },
+    {
+      "bytes": 2955,
+      "rel": "qwen-agent-docs/website/public/icons/icon_anthropic.png",
+      "sha256": "fdddbedcc133a98a465c68d3f5fdb2172c1ca1c84bc3d319f5e67c40daf56e83"
+    },
+    {
+      "bytes": 2074,
+      "rel": "qwen-agent-docs/website/public/icons/icon_dpsk.png",
+      "sha256": "e5bd9e37d844a7ff91a539c5e2a43401614c7943ca0d0269db1afc8abc39280e"
+    },
+    {
+      "bytes": 1177,
+      "rel": "qwen-agent-docs/website/public/icons/icon_glm.png",
+      "sha256": "4b871b1e77832d9cd19a9968297d60607d120fb4076520cf6441b7600f411e2f"
+    },
+    {
+      "bytes": 1297,
+      "rel": "qwen-agent-docs/website/public/icons/icon_kimi.png",
+      "sha256": "1e9a6ba099a429e8510545d785014bca28788f7b895c8b0c93c92ee82b36672f"
+    },
+    {
+      "bytes": 1794,
+      "rel": "qwen-agent-docs/website/public/icons/icon_openai.png",
+      "sha256": "05ac30cd2b5eef58ef131eb2462e3312a81fadddd936104a9f60148068fb5506"
+    },
+    {
+      "bytes": 1730,
+      "rel": "qwen-agent-docs/website/public/icons/icon_qwen.png",
+      "sha256": "b3e05ba05bc816652106d5e5b50339d3be64f2dd6e9b97390be961af79116c6b"
+    },
+    {
+      "bytes": 1242,
+      "rel": "qwen-agent-docs/website/public/icons/icon_seed.png",
+      "sha256": "4712019aafcfd0dd3cad3ef5adedfd80f4ef0820a8739367e554e41bebc3327a"
+    },
+    {
+      "bytes": 1302,
+      "rel": "qwen-agent-docs/website/public/icons/icon_x.png",
+      "sha256": "6943fcb7a3de5ac144e153d41eefcfeea67c25176c5747586135c1bb7246ea24"
+    },
+    {
+      "bytes": 405,
+      "rel": "qwen-agent-docs/website/public/site.webmanifest",
+      "sha256": "d148fb13fd3d79b42c4e70060c133e213f89ca11b3f1d81c7dba63786e8d001c"
+    },
+    {
+      "bytes": 2790,
+      "rel": "qwen-agent-docs/website/src/components/font-loader.tsx",
+      "sha256": "4c2f4629f4a005f6a916a872c2542e26efc9529d8c928b6088a0eb642ca1335d"
+    },
+    {
+      "bytes": 21222,
+      "rel": "qwen-agent-docs/website/src/components/leaderboard.tsx",
+      "sha256": "7b8f6fe3e1e728246a7b229c064c8cc60e98d8ff4595cabd9e829bb428f13096"
+    },
+    {
+      "bytes": 4279,
+      "rel": "qwen-agent-docs/website/src/components/locale-anchor.tsx",
+      "sha256": "82f0b6c2597445077bc90fd6aa2d57c05580e6874b62d3e6e67e6d067434b17d"
+    },
+    {
+      "bytes": 599,
+      "rel": "qwen-agent-docs/website/tsconfig.json",
+      "sha256": "e8bb6ad019e4d18d6c8c72cd780e54f73fc392ace26f7ddc4c33634366cb0417"
+    },
+    {
+      "bytes": 754,
+      "rel": "qwen_agent/__init__.py",
+      "sha256": "65432bba382c63a3c708299535d2b378803fe8d31eceac5d006ca16c1d4f0a52"
+    },
+    {
+      "bytes": 11230,
+      "rel": "qwen_agent/agent.py",
+      "sha256": "56e20befee3bda299d380e23e620ed9ed9e45cf4cadb755acea67d712ba36ec9"
+    },
+    {
+      "bytes": 2008,
+      "rel": "qwen_agent/agents/__init__.py",
+      "sha256": "37c34e526174393e980dab212eb6c9c422cbbe1bd938e2996c0ddb1ffc238e3f"
+    },
+    {
+      "bytes": 1964,
+      "rel": "qwen_agent/agents/article_agent.py",
+      "sha256": "de04fe9ce2d9433e5cae7a3e4bc233279ee144ae46c69c82c8a4f997cbe26959"
+    },
+    {
+      "bytes": 6407,
+      "rel": "qwen_agent/agents/assistant.py",
+      "sha256": "d69505e07d97a04d87b228479df1115fe52eeb721a3256d3a2cd4fa4ff16bb99"
+    },
+    {
+      "bytes": 4014,
+      "rel": "qwen_agent/agents/dialogue_retrieval_agent.py",
+      "sha256": "ded1faa4b52a9b5628cd83be4790f16d0a8a8eab540e83785920b4f9f05201ac"
+    },
+    {
+      "bytes": 2668,
+      "rel": "qwen_agent/agents/dialogue_simulator.py",
+      "sha256": "397e52082796ddd0bc796030860cf7a1671ca5882f850390044076a0eb95db44"
+    },
+    {
+      "bytes": 751,
+      "rel": "qwen_agent/agents/doc_qa/__init__.py",
+      "sha256": "5669d30e3db2f1a9b729594a6834bfc675e97c2e75d5129df281b72330dd1a02"
+    },
+    {
+      "bytes": 3103,
+      "rel": "qwen_agent/agents/doc_qa/basic_doc_qa.py",
+      "sha256": "d77ec73d32cafc637409357a955e886edb5bf4952aa8400212a2e72c8c5e6af8"
+    },
+    {
+      "bytes": 10994,
+      "rel": "qwen_agent/agents/doc_qa/parallel_doc_qa.py",
+      "sha256": "a3a607bd90243286d4ff93e0ed06df062138c051ab84438789cbd7e9f47176d6"
+    },
+    {
+      "bytes": 5793,
+      "rel": "qwen_agent/agents/doc_qa/parallel_doc_qa_member.py",
+      "sha256": "8e2f6e1cd75e8c8770b66547540ca6e79b69fda14ecee539e6779f01333c3bb6"
+    },
+    {
+      "bytes": 3610,
+      "rel": "qwen_agent/agents/doc_qa/parallel_doc_qa_summary.py",
+      "sha256": "dfd7d89debb8cb1646eeff70278f206e5da8dbdb1a0b01d41154e9aff8aa7463"
+    },
+    {
+      "bytes": 5812,
+      "rel": "qwen_agent/agents/fncall_agent.py",
+      "sha256": "21de0e5ccc054ea33e63586192843d466d6e4de4f8a4adfe34f3519f61851ec6"
+    },
+    {
+      "bytes": 13958,
+      "rel": "qwen_agent/agents/group_chat.py",
+      "sha256": "543fc1ca0850ec4cdfd2aa631ff0826e3de09194abe127e1f4c26a92526016dc"
+    },
+    {
+      "bytes": 4252,
+      "rel": "qwen_agent/agents/group_chat_auto_router.py",
+      "sha256": "0a44061b25091e1c1c200159290f2ebf03bd86b7f1623b762d10bd254c49b570"
+    },
+    {
+      "bytes": 6983,
+      "rel": "qwen_agent/agents/group_chat_creator.py",
+      "sha256": "8707d33cd2e0c563af09201d569e961a91efaae441546cd107a9a6a2bc7d217d"
+    },
+    {
+      "bytes": 2940,
+      "rel": "qwen_agent/agents/human_simulator.py",
+      "sha256": "fab1c0c5e94d0ea1649fd72ee5d2c1a513817588705a7556d061feb0001dda30"
+    },
+    {
+      "bytes": 1020,
+      "rel": "qwen_agent/agents/keygen_strategies/__init__.py",
+      "sha256": "9e3e6030489c43fefaebe23de8655f42b2d13b06518d4289ea17207320d62e78"
+    },
+    {
+      "bytes": 3722,
+      "rel": "qwen_agent/agents/keygen_strategies/gen_keyword.py",
+      "sha256": "06bf74ed2e959895c5642699f7e7e743914c673589025e8191e65f30f2424593"
+    },
+    {
+      "bytes": 3835,
+      "rel": "qwen_agent/agents/keygen_strategies/gen_keyword_with_knowledge.py",
+      "sha256": "5a06d666b944bd14bcd4f9492a682a11724a95599a3526df133ed2b270a7b7ac"
+    },
+    {
+      "bytes": 4800,
+      "rel": "qwen_agent/agents/keygen_strategies/split_query.py",
+      "sha256": "3ba6f061da03190833a9862be14b07ef71c9f81398feacb9e6e29d158440b35a"
+    },
+    {
+      "bytes": 2812,
+      "rel": "qwen_agent/agents/keygen_strategies/split_query_then_gen_keyword.py",
+      "sha256": "5f73c1f60f2b56304c81a630432f8871975984548fd2a8888370a7a05e99c0f7"
+    },
+    {
+      "bytes": 1481,
+      "rel": "qwen_agent/agents/keygen_strategies/split_query_then_gen_keyword_with_knowledge.py",
+      "sha256": "bfc8d4ede89996b0e13450a7f9dc21df876797d822ade3659a49e62f2a08a62d"
+    },
+    {
+      "bytes": 4853,
+      "rel": "qwen_agent/agents/memo_assistant.py",
+      "sha256": "e6aab6d6084f1e7adad2cfd7f00b164639f3554ae446ec35cc3459c808c62e4d"
+    },
+    {
+      "bytes": 6981,
+      "rel": "qwen_agent/agents/react_chat.py",
+      "sha256": "a9187139e18ce05a00f4491fdfd30c5fcd516fe2a1bfd647161456b1944916d0"
+    },
+    {
+      "bytes": 4976,
+      "rel": "qwen_agent/agents/router.py",
+      "sha256": "06811e0a6a238741852878c429acf4cb02ca36f8e11b757b795d29a9d0cdf9d3"
+    },
+    {
+      "bytes": 5063,
+      "rel": "qwen_agent/agents/tir_agent.py",
+      "sha256": "61ba2c4ee88ae1379c5092c693650c7dd8390b96149aa6c20938ad03055101d4"
+    },
+    {
+      "bytes": 982,
+      "rel": "qwen_agent/agents/user_agent.py",
+      "sha256": "2aa7d3c4cc6cabfea468170f862243d858a543f8125b2cbac56ca09f483e48bb"
+    },
+    {
+      "bytes": 4459,
+      "rel": "qwen_agent/agents/virtual_memory_agent.py",
+      "sha256": "e3bc5a6461fd18802facd41deb58413a2ff92c127eb4577ff09234c5c9d1ed07"
+    },
+    {
+      "bytes": 4345,
+      "rel": "qwen_agent/agents/write_from_scratch.py",
+      "sha256": "e4ef58168e90933b661f0eb799faa2f3c6cc1f6a956d900a2cbdaf4a2d6082e7"
+    },
+    {
+      "bytes": 909,
+      "rel": "qwen_agent/agents/writing/__init__.py",
+      "sha256": "c34770e705e69f9e0f314d528107fb9adaa759fe4c17fe39e003558872ed5a08"
+    },
+    {
+      "bytes": 1908,
+      "rel": "qwen_agent/agents/writing/continue_writing.py",
+      "sha256": "c177a614902eb12acdea4c280d8b509f7f4ba34b7c9a88e8b4dc2dd08ba4153e"
+    },
+    {
+      "bytes": 2865,
+      "rel": "qwen_agent/agents/writing/expand_writing.py",
+      "sha256": "bab36c45cd4970e71676928f68bf5437bf75f90307a3aed3d09a608a5d4feb01"
+    },
+    {
+      "bytes": 2060,
+      "rel": "qwen_agent/agents/writing/outline_writing.py",
+      "sha256": "c250ff7f23af43f2e9a5acdffbf522a0868b2d8e54b4cbd19497dcc2c950e8de"
+    },
+    {
+      "bytes": 766,
+      "rel": "qwen_agent/gui/__init__.py",
+      "sha256": "e8b7fb7d82acbb6e7a21fdf7ca19db687885c68a5e59bc40e932c554c41fdc1f"
+    },
+    {
+      "bytes": 5977,
+      "rel": "qwen_agent/gui/assets/app.css",
+      "sha256": "89d0b3c28048148bb03c8e64100f523a3bcc1378d82f09255e5528401b2d2eb0"
+    },
+    {
+      "bytes": 5388,
+      "rel": "qwen_agent/gui/assets/appBot.css",
+      "sha256": "a921e3881da90fd286f90b62484cb82b4f058da61309169ad0b62c14e8d91e16"
+    },
+    {
+      "bytes": 94804,
+      "rel": "qwen_agent/gui/assets/logo.jpeg",
+      "sha256": "cff41dd92cc4548ba1d4893dafea0a96e9c5af2e91d04fde165c6b2c34568e1e"
+    },
+    {
+      "bytes": 16410,
+      "rel": "qwen_agent/gui/assets/user.jpeg",
+      "sha256": "3a5b00aa5b591cef7275f72cc11305dc2778dcc21aede96664b7921cb91d141b"
+    },
+    {
+      "bytes": 1017,
+      "rel": "qwen_agent/gui/gradio_dep.py",
+      "sha256": "5d7af248453f55baafba0cc68b802ff18967a9757e9125d33be1c88e155d7c64"
+    },
+    {
+      "bytes": 2245,
+      "rel": "qwen_agent/gui/gradio_utils.py",
+      "sha256": "1c2a459cfd6828fdb84656dbf7e25bf8269f02ac8c9ded6d588e3ee5f61aa0ee"
+    },
+    {
+      "bytes": 5387,
+      "rel": "qwen_agent/gui/utils.py",
+      "sha256": "f1a5052f738157159f9f7c4d172a4a34a117629528f07548d396f9ccd6a9dffb"
+    },
+    {
+      "bytes": 15328,
+      "rel": "qwen_agent/gui/web_ui.py",
+      "sha256": "25a7f99a2091dcf0bb34c0adbe69fcf3a689d10098dd01a83ba98d014937317e"
+    },
+    {
+      "bytes": 3782,
+      "rel": "qwen_agent/llm/__init__.py",
+      "sha256": "1497f1b0eef173470fb190d8bf6a22558d7b992df6646a9c27c7dc4d2f3f52d3"
+    },
+    {
+      "bytes": 1858,
+      "rel": "qwen_agent/llm/azure.py",
+      "sha256": "4a50cfbaf25134a841fa082a9ee9cd8420f30a2cb46a719ae7307be778e9aea1"
+    },
+    {
+      "bytes": 35704,
+      "rel": "qwen_agent/llm/base.py",
+      "sha256": "2cbf81cf2f9035c2d6013f11f7ceff8dc141eb9329fcd8ba1617eeb59cd6d7ae"
+    },
+    {
+      "bytes": 617,
+      "rel": "qwen_agent/llm/fncall_prompts/__init__.py",
+      "sha256": "0d85c02479b70b4aa12b9dca3f7007d9f583f79edec501236154edb2003681b5"
+    },
+    {
+      "bytes": 3764,
+      "rel": "qwen_agent/llm/fncall_prompts/base_fncall_prompt.py",
+      "sha256": "d121e69bbd3ff7952b25dabe2b900b2483c168e9ec29f1e2b1dbed8eef4a093a"
+    },
+    {
+      "bytes": 14248,
+      "rel": "qwen_agent/llm/fncall_prompts/nous_fncall_prompt.py",
+      "sha256": "98f8b9a7d4b5141b7c9df475b9026e23fcf245b3789ab3a711599af38ab1efba"
+    },
+    {
+      "bytes": 15789,
+      "rel": "qwen_agent/llm/fncall_prompts/qwen_fncall_prompt.py",
+      "sha256": "87338175171d25a044214d741aa14c96b6680bf819093767a03e20c40193c3e5"
+    },
+    {
+      "bytes": 9215,
+      "rel": "qwen_agent/llm/function_calling.py",
+      "sha256": "880f1bfa1544f8701f402d6a1dced24948a2390ba9a3067ee929848f5eb0fef7"
+    },
+    {
+      "bytes": 8983,
+      "rel": "qwen_agent/llm/oai.py",
+      "sha256": "a342a8717d9ca775971b052b9b20ab465ba8d27122d95fb84f268cbf2b81ea2e"
+    },
+    {
+      "bytes": 7016,
+      "rel": "qwen_agent/llm/openvino.py",
+      "sha256": "46b852e5feb40f3a26969dd7cbb811f415298c47c8220b6ef6d83ee3830e1313"
+    },
+    {
+      "bytes": 8488,
+      "rel": "qwen_agent/llm/qwen_dashscope.py",
+      "sha256": "4015040a866badb5194723b112f7facc2b56ea85e7aac0854e47064b391692e0"
+    },
+    {
+      "bytes": 1063,
+      "rel": "qwen_agent/llm/qwenaudio_dashscope.py",
+      "sha256": "38970dfe0bd1b50dfff629579f6eda606749914225cea014ea57eab664a80be5"
+    },
+    {
+      "bytes": 1309,
+      "rel": "qwen_agent/llm/qwenomni_oai.py",
+      "sha256": "7145e63c697e205d5da8a6adb08e13f05dab0f401fbd1b6750c0cb9d95f56905"
+    },
+    {
+      "bytes": 13032,
+      "rel": "qwen_agent/llm/qwenvl_dashscope.py",
+      "sha256": "554542256678b4ab647f0295afa892fbcec96c3ae1c151ee19ed5806e5fe1434"
+    },
+    {
+      "bytes": 4901,
+      "rel": "qwen_agent/llm/qwenvl_oai.py",
+      "sha256": "25664978d60df79abf968d50fe95b17f857e5db2f84714271d0e3d427c721b61"
+    },
+    {
+      "bytes": 443,
+      "rel": "qwen_agent/llm/qwenvlo_dashscope.py",
+      "sha256": "9b7ef72a0d663874e23047ce5fe9dc041b4ea7ca9e4753e66f14289579c70492"
+    },
+    {
+      "bytes": 5114,
+      "rel": "qwen_agent/llm/schema.py",
+      "sha256": "0a8eb03bc02b356ad2872723c71283fa107221f31360f72ad0ffe72468cd57b2"
+    },
+    {
+      "bytes": 7635,
+      "rel": "qwen_agent/llm/transformers_llm.py",
+      "sha256": "35c98be9fefd94c19e9e324e6cd835034f3d73cfa8051af7825a4005ffda67d4"
+    },
+    {
+      "bytes": 1300,
+      "rel": "qwen_agent/log.py",
+      "sha256": "93650f1c58194015b5ec7c126d5219422f246f1307fa401891ec1643d889ff72"
+    },
+    {
+      "bytes": 673,
+      "rel": "qwen_agent/memory/__init__.py",
+      "sha256": "1d6580cec6791b3ed067d59be42785380fe2937b39376db764d89b4212610c65"
+    },
+    {
+      "bytes": 6414,
+      "rel": "qwen_agent/memory/memory.py",
+      "sha256": "3bae0dd678298ac9d6cefcb769e26d6981cb36aa8dd073cc1a05e9d9283d2dd2"
+    },
+    {
+      "bytes": 2098,
+      "rel": "qwen_agent/multi_agent_hub.py",
+      "sha256": "2784e3a1da18e727fb084bbfdabe8e1824ac974a67f2e496a993d254fd895b8b"
+    },
+    {
+      "bytes": 1940,
+      "rel": "qwen_agent/settings.py",
+      "sha256": "73652f3fe2015641e10a8024b22dffc0cdfcbe7ddb7097e91ba54a796098f239"
+    },
+    {
+      "bytes": 1730,
+      "rel": "qwen_agent/tools/__init__.py",
+      "sha256": "083c27d74f71ae9c668947a1683f06cc16dfde919365de19e78290fae10b73db"
+    },
+    {
+      "bytes": 2712,
+      "rel": "qwen_agent/tools/amap_weather.py",
+      "sha256": "308773e847d6b5b929111b040454cd5602f97d08f8ace2fe2650f098db711399"
+    },
+    {
+      "bytes": 7793,
+      "rel": "qwen_agent/tools/base.py",
+      "sha256": "e699832d780199c28082c5d117ca362f2cdeca020dddf1f636845b1f91d4ba95"
+    },
+    {
+      "bytes": 19163,
+      "rel": "qwen_agent/tools/code_interpreter.py",
+      "sha256": "8bf0159e575095f756c822663565df203776c72090fba99e7b2d99d9fdd2d8de"
+    },
+    {
+      "bytes": 13573,
+      "rel": "qwen_agent/tools/doc_parser.py",
+      "sha256": "65eb1946c6d15a30d7491bd3928174b9669d138dcbb2e32e3577a9c62ce4101d"
+    },
+    {
+      "bytes": 3246,
+      "rel": "qwen_agent/tools/extract_doc_vocabulary.py",
+      "sha256": "cf945c935f71b8d00730420dc1f6993a119745c4d46d42e1efb8820813054a5a"
+    },
+    {
+      "bytes": 2149,
+      "rel": "qwen_agent/tools/image_gen.py",
+      "sha256": "9e5e0d9f6f59615416330cf923b855e68156658ca658d53001f88fb6ab62e4d9"
+    },
+    {
+      "bytes": 8235,
+      "rel": "qwen_agent/tools/image_search.py",
+      "sha256": "1126cca223be031aeb655b498f384ba58d9e867876de62b2f7711c34635a07d9"
+    },
+    {
+      "bytes": 7355,
+      "rel": "qwen_agent/tools/image_zoom_in_qwen3vl.py",
+      "sha256": "337407b266c33eef9a1eb6628737ae6d81eec22c0a2966a152ad4621ac57db82"
+    },
+    {
+      "bytes": 22339,
+      "rel": "qwen_agent/tools/mcp_manager.py",
+      "sha256": "f8b62ad282ada70e2f9d938332e30d4114982ded92a6acc644cedf883a21376f"
+    },
+    {
+      "bytes": 8468,
+      "rel": "qwen_agent/tools/python_executor.py",
+      "sha256": "fd588ae349fb1857f37bd8acfdf630d137ef5384cbb29c8f02e8a733377af988"
+    },
+    {
+      "bytes": 8388608,
+      "rel": "qwen_agent/tools/resource/AlibabaPuHuiTi-3-45-Light.ttf.chunks/AlibabaPuHuiTi-3-45-Light.ttf.part-0000",
+      "sha256": "466d2581116af49639b68203580db36d1169b8aef6691580ec0a05121aaf28c7"
+    },
+    {
+      "bytes": 171240,
+      "rel": "qwen_agent/tools/resource/AlibabaPuHuiTi-3-45-Light.ttf.chunks/AlibabaPuHuiTi-3-45-Light.ttf.part-0001",
+      "sha256": "31d56f4dacfdefb20b3a7bc9d6e0cd0e368d5ff21f5602a089153d907952ecce"
+    },
+    {
+      "bytes": 607,
+      "rel": "qwen_agent/tools/resource/code_interpreter_image.dockerfile",
+      "sha256": "fceca3ba2ed91de0832d9787e33733bfa656eda0f03cafe2eb7210138654ccee"
+    },
+    {
+      "bytes": 1790,
+      "rel": "qwen_agent/tools/resource/code_interpreter_init_kernel.py",
+      "sha256": "248011bbfb841394db329e65ec2d91c7aa26ffa90202f6ff1dfde2b903a19231"
+    },
+    {
+      "bytes": 4385,
+      "rel": "qwen_agent/tools/retrieval.py",
+      "sha256": "acf55910c342f8153f80e7fdda6358ca791d6dde5f303aa29f0597b1b05d26ac"
+    },
+    {
+      "bytes": 885,
+      "rel": "qwen_agent/tools/search_tools/__init__.py",
+      "sha256": "e1b6e5f699d5d82a04722e6295fc3ec6e6c3aa046ef357148773952d54aef47b"
+    },
+    {
+      "bytes": 7123,
+      "rel": "qwen_agent/tools/search_tools/base_search.py",
+      "sha256": "8944c6e9398f0147b1ac261f6e4ccabeb7512d98ee008fdc45517551ad604563"
+    },
+    {
+      "bytes": 1957,
+      "rel": "qwen_agent/tools/search_tools/front_page_search.py",
+      "sha256": "9143e5c5cf6543559828e5b69a82923cf050daf598ea1f98bcbfe39eab8f16eb"
+    },
+    {
+      "bytes": 2631,
+      "rel": "qwen_agent/tools/search_tools/hybrid_search.py",
+      "sha256": "5ff2a683dbba3281a4adea719a280996f554a425f61952af1106dfe69c78f7da"
+    },
+    {
+      "bytes": 8439,
+      "rel": "qwen_agent/tools/search_tools/keyword_search.py",
+      "sha256": "8948e2549c91f6ab3851bdb8d68180e3f90963771b679a874d4dee2a573bbbee"
+    },
+    {
+      "bytes": 2717,
+      "rel": "qwen_agent/tools/search_tools/vector_search.py",
+      "sha256": "da1675656506c1cd81fb02d5f0ee60ec576dc0f923e281229602ab7207eba7f9"
+    },
+    {
+      "bytes": 17827,
+      "rel": "qwen_agent/tools/simple_doc_parser.py",
+      "sha256": "d6c9e6164f556e07a31a706a70b6b94173727e05df257d2a6934367a062281b3"
+    },
+    {
+      "bytes": 4520,
+      "rel": "qwen_agent/tools/storage.py",
+      "sha256": "acc2716407ff3813084cb2b6d2decd7acb78b16ca0e792c95f4a14fe5c6a4ba1"
+    },
+    {
+      "bytes": 1339,
+      "rel": "qwen_agent/tools/web_extractor.py",
+      "sha256": "baa486c5ee776e0dff75fbbc522210062aeb11f8ab4f72bf1208d8d3c63e51a1"
+    },
+    {
+      "bytes": 2388,
+      "rel": "qwen_agent/tools/web_search.py",
+      "sha256": "83716a21a38882db084c19033172338dfc4c1f2a62d18b17967afa04d044a060"
+    },
+    {
+      "bytes": 617,
+      "rel": "qwen_agent/utils/__init__.py",
+      "sha256": "0d85c02479b70b4aa12b9dca3f7007d9f583f79edec501236154edb2003681b5"
+    },
+    {
+      "bytes": 6859,
+      "rel": "qwen_agent/utils/output_beautify.py",
+      "sha256": "e676671841299b2e532ce90f87fb81fe3cd122411ee9ef35f00b36b50e70cb09"
+    },
+    {
+      "bytes": 2478,
+      "rel": "qwen_agent/utils/parallel_executor.py",
+      "sha256": "69795249cdf39f3b47f76aadfa1682ed8cb1c11045983009d46ec39abc9a5429"
+    },
+    {
+      "bytes": 2561218,
+      "rel": "qwen_agent/utils/qwen.tiktoken",
+      "sha256": "b2b1b8dfb5cc5f024bafc373121c6aba3f66f9a5a0269e243470a1de16a33186"
+    },
+    {
+      "bytes": 1261,
+      "rel": "qwen_agent/utils/str_processing.py",
+      "sha256": "e43d20b77489d46399ed3425209ab563a41453a0d0e5d60877b1f27bbb6f64cd"
+    },
+    {
+      "bytes": 8924,
+      "rel": "qwen_agent/utils/tokenization_qwen.py",
+      "sha256": "f6fdddd23643224ddb6e97b57605c205dd85d6135523fc5dc9ab18b0bde94d7e"
+    },
+    {
+      "bytes": 21069,
+      "rel": "qwen_agent/utils/utils.py",
+      "sha256": "b8236e664ec8963f6d5eba7c0d47a49de793e9be2677fe5adb2da97c62e2ce44"
+    },
+    {
+      "bytes": 617,
+      "rel": "qwen_server/__init__.py",
+      "sha256": "0d85c02479b70b4aa12b9dca3f7007d9f583f79edec501236154edb2003681b5"
+    },
+    {
+      "bytes": 787,
+      "rel": "qwen_server/add_qwen_libs.py",
+      "sha256": "134112ab85443724220cedf49702eedc864a673479eccc9c6fb1875debe0cebd"
+    },
+    {
+      "bytes": 5461,
+      "rel": "qwen_server/assistant_server.py",
+      "sha256": "e1cd7c8259650311bb6e474e6cd12d97e22cbe8461ffd0f46373b23e6cec705e"
+    },
+    {
+      "bytes": 2154,
+      "rel": "qwen_server/css/main.css",
+      "sha256": "a025df9efee6fbc8c67b3a0afa37caa64da4af62f051868d767ce2b8b7327e33"
+    },
+    {
+      "bytes": 4931,
+      "rel": "qwen_server/database_server.py",
+      "sha256": "c7d478699185f84d43f51cc21487dab40709f1b3d35a6612744e1184e2b62d8c"
+    },
+    {
+      "bytes": 1979,
+      "rel": "qwen_server/js/main.js",
+      "sha256": "de2255da5c09277a5c5bc7f6a72404e3ec6a61c97c64e590f2289ac61b735732"
+    },
+    {
+      "bytes": 2059,
+      "rel": "qwen_server/output_beautify.py",
+      "sha256": "336ba7d9ee5f2d01a2f84b583a0e64f323629c384370c36515b390f23d77b90a"
+    },
+    {
+      "bytes": 1113,
+      "rel": "qwen_server/schema.py",
+      "sha256": "eac978576196527726bb287d2033894e49d90a9b9c1a0296992016a8640ff488"
+    },
+    {
+      "bytes": 482,
+      "rel": "qwen_server/server_config.json",
+      "sha256": "c9cdaa7805a6d94e7fb339e2e68ab3b051e1195b0c70dce6ac278477620ec51e"
+    },
+    {
+      "bytes": 3173,
+      "rel": "qwen_server/utils.py",
+      "sha256": "da712e531eca4fa643b1ca5b5d429e29a481c32045e1a97fd5ee02e489d01a8f"
+    },
+    {
+      "bytes": 25385,
+      "rel": "qwen_server/workstation_server.py",
+      "sha256": "c9ec310f93a7615bc7175a83f731f1f2236764863f63b3f6719ac7f69b244ebe"
+    },
+    {
+      "bytes": 5368,
+      "rel": "run_server.py",
+      "sha256": "dc46decc1a35f574b3db7651c8200efb0485b5c34d43fcac9c5471bd4bb81738"
+    },
+    {
+      "bytes": 3598,
+      "rel": "setup.py",
+      "sha256": "c9d7d5326858428fc1722c09c733f73f62e8d147fe1b13d4213ca320d97c96e5"
+    },
+    {
+      "bytes": 1200,
+      "rel": "tests/agents/test_article_agent.py",
+      "sha256": "c3e30e05ea09c1a7bb34c1a2738b1c8204ffa330c23c144bf3315f80889e6985"
+    },
+    {
+      "bytes": 2614,
+      "rel": "tests/agents/test_assistant.py",
+      "sha256": "cc9e3d6b5370d56033cbfc2232e05b868543856a43482ea1e29300b24f74e45a"
+    },
+    {
+      "bytes": 2111,
+      "rel": "tests/agents/test_custom_tool_object.py",
+      "sha256": "3ca9460e5d4cce4a6e66a347dd942642608b4b5154a1533a15724161f8cbf30f"
+    },
+    {
+      "bytes": 1088,
+      "rel": "tests/agents/test_doc_qa.py",
+      "sha256": "aa955a5544e06cb622e724b963d394507254d58d4b8daba6f07bf8d2c7be3e50"
+    },
+    {
+      "bytes": 1211,
+      "rel": "tests/agents/test_parallel_qa.py",
+      "sha256": "f537b5370fabf91145a563b18819893ae814250eb39633df01d9358e629934ea"
+    },
+    {
+      "bytes": 2071,
+      "rel": "tests/agents/test_react_chat.py",
+      "sha256": "7303f12aa45f26e737426779aae546ddc280c10fc2e387833290634787f50c54"
+    },
+    {
+      "bytes": 1875,
+      "rel": "tests/agents/test_router.py",
+      "sha256": "60216d21cc584cf05fa9c371f93f6dbe6996811787216781f9c7843730b93c1c"
+    },
+    {
+      "bytes": 4022,
+      "rel": "tests/examples/test_examples.py",
+      "sha256": "1fe74600586fa249af22834686c4ba4885b86d8b9d6fae0dd700f17126e73d44"
+    },
+    {
+      "bytes": 927,
+      "rel": "tests/examples/test_long_dialogue.py",
+      "sha256": "543bae315cf1aeef17479563f1499b7e57c8e7796f00955b691dba56c437aa5e"
+    },
+    {
+      "bytes": 898,
+      "rel": "tests/examples/test_vm_qa.py",
+      "sha256": "548bdc78df9ebccdb65462573a1c2a2011b67f1720e883310baa66b2dd6d21b7"
+    },
+    {
+      "bytes": 2268,
+      "rel": "tests/llm/test_continue.py",
+      "sha256": "4e9a3a0763d52e801e6f6bc59354a5197e033333dd4acbca3b2a879e84a1ecf8"
+    },
+    {
+      "bytes": 3698,
+      "rel": "tests/llm/test_dashscope.py",
+      "sha256": "5fb89d0a82579c26e901762d01ee5fd57ebc91a7f5e99097c902cea88de52c80"
+    },
+    {
+      "bytes": 3646,
+      "rel": "tests/llm/test_function_content.py",
+      "sha256": "7c91c101c3141d7f30752e2d9debe255972005c15622a66d74d88b3fc62fec8a"
+    },
+    {
+      "bytes": 2326,
+      "rel": "tests/llm/test_oai.py",
+      "sha256": "75e9668a5d124a3a86ba3307f7350180b07e6968068c333b09f5c0407cf45c92"
+    },
+    {
+      "bytes": 1449,
+      "rel": "tests/memory/test_memory.py",
+      "sha256": "880310738fa8188bfda3e6f946eddfddf8b823601b1b85c3a939fb74bfb92ba5"
+    },
+    {
+      "bytes": 2357,
+      "rel": "tests/qwen_server/test_database_server.py",
+      "sha256": "718398b220dae6a51c78440f7043ae3070197560082b119923c0f0192909ae68"
+    },
+    {
+      "bytes": 876,
+      "rel": "tests/tools/test_doc_parser.py",
+      "sha256": "0efeaf78f537b5f3e43f2344833b8efbdb97656886863ea1d5c12591d5e52056"
+    },
+    {
+      "bytes": 1911,
+      "rel": "tests/tools/test_hybrid_search.py",
+      "sha256": "69499941d30b3a611007922c927202e1c3e341a9cb85812028cbf5170d7fe397"
+    },
+    {
+      "bytes": 1915,
+      "rel": "tests/tools/test_keyword_search.py",
+      "sha256": "c6f53729221478e3da11a079f43c66e571f9855292a2adda417b517d27c5b89b"
+    },
+    {
+      "bytes": 902,
+      "rel": "tests/tools/test_simple_doc_parser.py",
+      "sha256": "d6bf21df71c575acc27aa2c1e3857c14c75fa80c8055aed66239488ef1f7789b"
+    },
+    {
+      "bytes": 2043,
+      "rel": "tests/tools/test_tools.py",
+      "sha256": "6a9e8f4971a19e31297b84b50fa0acef50f450da21c264a2f59b45a2630eccd5"
+    },
+    {
+      "bytes": 1911,
+      "rel": "tests/tools/test_vector_search.py",
+      "sha256": "e2fde7d281e85ba01130b9ce7625c7c503fc5c4fada61903021720b82d900e74"
+    }
+  ],
+  "schema": "yaiwes.frontend.copy-batches.v1"
+}
